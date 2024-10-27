@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concentric Circles</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+        canvas {
+            display: block;
+        }
+        #tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="circleCanvas"></canvas>
+    <div id="tooltip"></div>
+    <script>
+        const canvas = document.getElementById('circleCanvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('tooltip');
+        let circles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            drawCircles();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawCircles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            circles = [];
+            let initialRadius = 1; // Initialradius des ersten Kreises
+            let spacingFactor = 1.00001; // Abstandfaktor x
+            let lineWidth = 0.5; // Dicke der Linie
+            let numberOfCircles = 1000000; // Anzahl der Kreise
+
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = lineWidth;
+
+            let radius = initialRadius;
+            for (let i = 0; i < numberOfCircles; i++) {
+                if (radius > Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) / 2) {
+                    break;
+                }
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                circles.push({ radius: radius, index: i + 1 });
+                radius *= spacingFactor;
+            }
+
+            window.requestAnimationFrame(drawCircles);
+        }
+
+        let hoverTimeout;
+        canvas.addEventListener('mousemove', (event) => {
+            clearTimeout(hoverTimeout);
+            tooltip.style.display = 'none';
+
+            const mouseX = event.clientX;
+            const mouseY = event.clientY;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const distance = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
+
+            for (let i = 0; i < circles.length; i++) {
+                if (Math.abs(distance - circles[i].radius) < 5) {
+                    hoverTimeout = setTimeout(() => {
+                        tooltip.style.left = `${mouseX + 10}px`;
+                        tooltip.style.top = `${mouseY + 10}px`;
+                        tooltip.innerText = `Kreis Nummer: ${circles[i].index}`;
+                        tooltip.style.display = 'block';
+                    }, 1000);
+                    break;
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseout', () => {
+            clearTimeout(hoverTimeout);
+            tooltip.style.display = 'none';
+        });
+    </script>
+</body>
+</html>
