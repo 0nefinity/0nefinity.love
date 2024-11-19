@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dithering Vergleich</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        .half-screen {
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 20px;
+        }
+        h2 {
+            font-size: 6rem;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+        }
+        .spatial-dithering {
+            background: repeating-linear-gradient(
+                45deg,
+                #646464, /* Grau 100 */
+                #646464 5px,
+                #656565 5px, /* Grau 101 */
+                #656565 10px
+            );
+        }
+        .temporal-dithering {
+            background: #646464; /* Start mit Grau 100 */
+            animation: dithering 0.1s infinite alternate;
+        }
+        @keyframes dithering {
+            0% { background: #646464; } /* Grau 100 */
+            100% { background: #656565; } /* Grau 101 */
+        }
+    </style>
+</head>
+<body>
+    <div class="half-screen spatial-dithering">
+        <h2>Räumliches Dithering</h2>
+    </div>
+    <div class="half-screen temporal-dithering">
+        <h2>Temporales Dithering</h2>
+    </div>
+</body>
+</html>

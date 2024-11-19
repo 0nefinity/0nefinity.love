@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Concentric Circles with Zoom</title>
+    <title>Konzentrische Kreise mit Zoom</title>
     <style>
         body {
             margin: 0;
@@ -58,7 +58,8 @@
 
             let radius = initialRadius;
             for (let i = 0; i < numberOfCircles; i++) {
-                if (radius * zoomLevel > Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) / 2) {
+                // Wenn der Kreis außerhalb des sichtbaren Bereichs liegt, wird er nicht gezeichnet
+                if ((radius * zoomLevel) > (Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) / 2 + Math.max(Math.abs(offsetX), Math.abs(offsetY)))) {
                     break;
                 }
                 ctx.beginPath();
