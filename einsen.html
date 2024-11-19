@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weiße 1 auf schwarzem Hintergrund</title>
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-size: 5em;
+            position: relative;
+        }
+        .number {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0.1;
+        }
+    </style>
+    <script>
+        function createNumbers(count) {
+            const body = document.querySelector('body');
+            body.innerHTML = '';
+            for (let i = 0; i < count; i++) {
+                const div = document.createElement('div');
+                div.className = 'number';
+                div.textContent = '1';
+                div.style.opacity = (1 / (i + 1)).toString();
+                body.appendChild(div);
+            }
+        }
+
+        window.onload = function() {
+            const count = prompt("Wie viele Einsen möchten Sie übereinander legen?");
+            createNumbers(Math.min(parseInt(count), 50));
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>
