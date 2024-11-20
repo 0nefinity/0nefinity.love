@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0nefinity - Erster Prototyp</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+            background-color: black;
+            color: white;
+        }
+        #container {
+            display: flex;
+            flex: 1;
+            flex-direction: row;
+        }
+        #canvasContainer, #viewpointContainer {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid #ccc;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            background-color: black;
+        }
+        #toolbar {
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            border-bottom: 1px solid #ccc;
+        }
+        .line-settings {
+            position: absolute;
+            background: #444;
+            color: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            z-index: 10;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <button onclick="clearCanvas()">Löschen</button>
+    </div>
+    <div id="container">
+        <div id="canvasContainer">
+            <canvas id="drawCanvas"></canvas>
+            <div id="lineSettings" class="line-settings">
+                <label for="lineWidth">Linienbreite:</label>
+                <input type="number" id="lineWidth" min="1" max="10" step="1" oninput="updateLineSettingsRealtime()">
+                <br>
+                <input type="checkbox" id="enableFractal" onchange="toggleFractalSettings(); updateLineSettingsRealtime()"> Fraktale aktivieren
+                <br>
+                <div id="fractalSettings" style="display: none;">
+                    <label for="lineSpacing">Abstand der Fraktale:</label>
+                    <input type="number" id="lineSpacing" min="1" step="1" oninput="updateLineSettingsRealtime()">
+                    <br>
+                </div>
+                <button onclick="closeLineSettings()">Schließen</button>
+            </div>
+        </div>
+        <div id="viewpointContainer">
+            <div id="viewpoint">Viewpoint-Bereich (Noch in Arbeit)</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        const lineSettingsDiv = document.getElementById('lineSettings');
+        let drawing = false;
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let startX, startY, endX, endY;
+        let lines = [];
+        let panning = false;
+        let selectedLine = null;
+
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        window.addEventListener('resize', () => {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            redraw();
+        });
+
+        canvas.addEventListener('mousedown', (event) => {
+            if (event.button === 0) {
+                startDrawing(event);
+            } else if (event.button === 1) {
+                startPanning(event);
+            }
+        });
+        canvas.addEventListener('mouseup', (event) => {
+            if (event.button === 0) {
+                stopDrawing(event);
+            } else if (event.button === 1) {
+                stopPanning();
+            }
+        });
+        canvas.addEventListener('mousemove', (event) => {
+            if (drawing) {
+                updateLine(event);
+            } else if (panning) {
+                pan(event);
+            }
+        });
+        canvas.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            zoom(event.deltaY, event.offsetX, event.offsetY);
+        });
+
+        canvas.addEventListener('dblclick', (event) => {
+            const mouseX = (event.offsetX - offsetX) / scale;
+            const mouseY = (event.offsetY - offsetY) / scale;
+            selectedLine = lines.find(line => isNearLine(mouseX, mouseY, line));
+            if (selectedLine) {
+                openLineSettings(event.clientX, event.clientY);
+            }
+        });
+
+        function startDrawing(event) {
+            drawing = true;
+            startX = (event.offsetX - offsetX) / scale;
+            startY = (event.offsetY - offsetY) / scale;
+        }
+
+        function stopDrawing(event) {
+            drawing = false;
+            endX = (event.offsetX - offsetX) / scale;
+            endY = (event.offsetY - offsetY) / scale;
+            lines.push({ startX, startY, endX, endY, lineWidth: 2, spacing: 0, fractalEnabled: false });
+            redraw();
+        }
+
+        function updateLine(event) {
+            if (!drawing) return;
+            redraw();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2 / scale;
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo((event.offsetX - offsetX) / scale, (event.offsetY - offsetY) / scale);
+            ctx.stroke();
+        }
+
+        function drawInfiniteLine(line) {
+            const canvasWidth = canvas.width / scale;
+            const canvasHeight = canvas.height / scale;
+
+            const dx = line.endX - line.startX;
+            const dy = line.endY - line.startY;
+            
+            if (dx === 0 && dy === 0) return;
+
+            // Berechne die Schnittpunkte mit den Canvas-Rändern
+            let tMin = -Infinity;
+            let tMax = Infinity;
+
+            if (dx !== 0) {
+                tMin = Math.min((0 - line.startX) / dx, (canvasWidth - line.startX) / dx);
+                tMax = Math.max((0 - line.startX) / dx, (canvasWidth - line.startX) / dx);
+            }
+            if (dy !== 0) {
+                tMin = Math.min((0 - line.startY) / dy, (canvasHeight - line.startY) / dy, tMin);
+                tMax = Math.max((0 - line.startY) / dy, (canvasHeight - line.startY) / dy, tMax);
+            }
+
+            const extendedX1 = line.startX + tMin * dx;
+            const extendedY1 = line.startY + tMin * dy;
+            const extendedX2 = line.startX + tMax * dx;
+            const extendedY2 = line.startY + tMax * dy;
+
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = line.lineWidth / scale;
+            ctx.beginPath();
+            ctx.moveTo(extendedX1, extendedY1);
+            ctx.lineTo(extendedX2, extendedY2);
+            ctx.stroke();
+
+            // Draw Fractal Copies if enabled
+            if (line.fractalEnabled && line.spacing > 0) {
+                let spacing = line.spacing;
+                let offset = 1;
+                while (offset * spacing < canvasWidth || offset * spacing < canvasHeight) {
+                    ctx.beginPath();
+                    ctx.moveTo(extendedX1 + offset * spacing, extendedY1);
+                    ctx.lineTo(extendedX2 + offset * spacing, extendedY2);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(extendedX1 - offset * spacing, extendedY1);
+                    ctx.lineTo(extendedX2 - offset * spacing, extendedY2);
+                    ctx.stroke();
+                    offset++;
+                }
+            }
+        }
+
+        function redraw() {
+            ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+            ctx.clearRect(-offsetX / scale, -offsetY / scale, canvas.width / scale, canvas.height / scale);
+            lines.forEach(line => drawInfiniteLine(line));
+        }
+
+        function startPanning(event) {
+            panning = true;
+            startX = event.offsetX - offsetX;
+            startY = event.offsetY - offsetY;
+        }
+
+        function stopPanning() {
+            panning = false;
+        }
+
+        function pan(event) {
+            if (!panning) return;
+            offsetX = event.offsetX - startX;
+            offsetY = event.offsetY - startY;
+            redraw();
+        }
+
+        function zoom(deltaY, zoomX, zoomY) {
+            const zoomFactor = deltaY > 0 ? 0.9 : 1.1;
+            const newScale = scale * zoomFactor;
+
+            offsetX = zoomX - (zoomX - offsetX) * (newScale / scale);
+            offsetY = zoomY - (zoomY - offsetY) * (newScale / scale);
+            scale = newScale;
+            redraw();
+        }
+
+        function clearCanvas() {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            offsetX = 0;
+            offsetY = 0;
+            scale = 1;
+            lines = [];
+        }
+
+        function isNearLine(x, y, line) {
+            const dx = line.endX - line.startX;
+            const dy = line.endY - line.startY;
+            const lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared === 0) return false;
+            const t = ((x - line.startX) * dx + (y - line.startY) * dy) / lengthSquared;
+            const projectionX = line.startX + t * dx;
+            const projectionY = line.startY + t * dy;
+            const distance = Math.sqrt((x - projectionX) ** 2 + (y - projectionY) ** 2);
+            return distance < 5 / scale;
+        }
+
+        function openLineSettings(x, y) {
+            lineSettingsDiv.style.left = `${x}px`;
+            lineSettingsDiv.style.top = `${y}px`;
+            lineSettingsDiv.style.display = 'block';
+            document.getElementById('lineWidth').value = selectedLine.lineWidth;
+            document.getElementById('enableFractal').checked = selectedLine.fractalEnabled;
+            toggleFractalSettings();
+            if (selectedLine.fractalEnabled) {
+                document.getElementById('lineSpacing').value = selectedLine.spacing;
+            }
+        }
+
+        function updateLineSettingsRealtime() {
+            if (selectedLine) {
+                selectedLine.lineWidth = parseFloat(document.getElementById('lineWidth').value);
+                selectedLine.fractalEnabled = document.getElementById('enableFractal').checked;
+                if (selectedLine.fractalEnabled) {
+                    selectedLine.spacing = parseFloat(document.getElementById('lineSpacing').value);
+                }
+                redraw();
+            }
+        }
+
+        function closeLineSettings() {
+            lineSettingsDiv.style.display = 'none';
+        }
+
+        function toggleFractalSettings() {
+            const fractalSettingsDiv = document.getElementById('fractalSettings');
+            if (document.getElementById('enableFractal').checked) {
+                fractalSettingsDiv.style.display = 'block';
+            } else {
+                fractalSettingsDiv.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
