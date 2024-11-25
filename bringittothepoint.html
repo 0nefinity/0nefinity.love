@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Textvisualisierung</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: black;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let textData = '';
+    let lines = [];
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let panX = 0;
+    let panY = 0;
+    let scale = 1;
+
+    fetch('text.txt')
+      .then(response => response.text())
+      .then(data => {
+        textData = data.replace(/\s+/g, ' ').trim();
+        init();
+      })
+      .catch(error => console.error(error));
+
+    function init() {
+      const radius = Math.min(canvas.width, canvas.height) / 2 - 50; // Abstand zum Rand
+
+      // Vorläufige Schriftgröße setzen
+      let fontSize = 20;
+      ctx.font = `${fontSize}px monospace`;
+      let charWidth = ctx.measureText('M').width; // Durchschnittliche Zeichenbreite
+      let lineHeight = fontSize * 1.2; // Zeilenhöhe
+
+      // Geschätzte Anzahl der Zeilen basierend auf dem Radius
+      let estimatedLines = Math.floor((radius * 2) / lineHeight);
+
+      // Geschätzte maximale Zeichen pro Zeile (in der Mitte des Kreises)
+      let maxCharsInLine = Math.floor((2 * Math.sqrt(radius * radius - 0)) / charWidth);
+
+      // Gesamtkapazität des Kreises in Zeichen
+      let capacity = 0;
+      for (let i = 0; i < estimatedLines; i++) {
+        const yPos = -radius + i * lineHeight + lineHeight / 2;
+        const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
+        const maxLineWidth = lineRadius * 2;
+        const maxChars = Math.floor(maxLineWidth / charWidth);
+        capacity += maxChars;
+      }
+
+      // Schriftgröße anpassen, wenn Text länger oder kürzer als Kapazität ist
+      if (textData.length < capacity) {
+        // Schriftgröße erhöhen
+        while (textData.length < capacity && fontSize < 100) {
+          fontSize += 1;
+          ctx.font = `${fontSize}px monospace`;
+          charWidth = ctx.measureText('M').width;
+          lineHeight = fontSize * 1.2;
+          capacity = recalculateCapacity(radius, lineHeight, charWidth);
+        }
+      } else {
+        // Schriftgröße verringern
+        while (textData.length > capacity && fontSize > 5) {
+          fontSize -= 1;
+          ctx.font = `${fontSize}px monospace`;
+          charWidth = ctx.measureText('M').width;
+          lineHeight = fontSize * 1.2;
+          capacity = recalculateCapacity(radius, lineHeight, charWidth);
+        }
+      }
+
+      // Zeilen neu berechnen mit angepasster Schriftgröße
+      lines = [];
+      let textIndex = 0;
+      for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
+        const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
+        const maxLineWidth = lineRadius * 2;
+        const maxChars = Math.floor(maxLineWidth / charWidth);
+
+        const remainingChars = textData.length - textIndex;
+        const charsInLine = Math.min(maxChars, remainingChars);
+        const lineText = textData.substr(textIndex, charsInLine);
+        textIndex += charsInLine;
+
+        if (lineText.length > 0) {
+          lines.push({ text: lineText, y: yPos });
+        }
+      }
+
+      draw();
+    }
+
+    function recalculateCapacity(radius, lineHeight, charWidth) {
+      let newCapacity = 0;
+      for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
+        const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
+        const maxLineWidth = lineRadius * 2;
+        const maxChars = Math.floor(maxLineWidth / charWidth);
+        newCapacity += maxChars;
+      }
+      return newCapacity;
+    }
+
+    function draw() {
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+      ctx.scale(scale, scale);
+
+      lines.forEach((line) => {
+        ctx.fillText(line.text, 0, line.y);
+      });
+
+      ctx.restore();
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        panX += dx;
+        panY += dy;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomIntensity = 0.001;
+      scale += e.deltaY * -zoomIntensity;
+      scale = Math.min(Math.max(0.05, scale), 10); // Begrenzung des Zooms
+      draw();
+    });
+
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    });
+
+  </script>
+</body>
+</html>

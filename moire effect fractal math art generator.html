@@ -168,17 +168,8 @@
             if (dx === 0 && dy === 0) return;
 
             // Berechne die Schnittpunkte mit den Canvas-Rändern
-            let tMin = -Infinity;
-            let tMax = Infinity;
-
-            if (dx !== 0) {
-                tMin = Math.min((0 - line.startX) / dx, (canvasWidth - line.startX) / dx);
-                tMax = Math.max((0 - line.startX) / dx, (canvasWidth - line.startX) / dx);
-            }
-            if (dy !== 0) {
-                tMin = Math.min((0 - line.startY) / dy, (canvasHeight - line.startY) / dy, tMin);
-                tMax = Math.max((0 - line.startY) / dy, (canvasHeight - line.startY) / dy, tMax);
-            }
+            let tMin = -1000;  // Begrenze tMin und tMax, um endlose Verbindungen zu verhindern
+            let tMax = 1000;
 
             const extendedX1 = line.startX + tMin * dx;
             const extendedY1 = line.startY + tMin * dy;
@@ -196,7 +187,7 @@
             if (line.fractalEnabled && line.spacing > 0) {
                 let spacing = line.spacing;
                 let offset = 1;
-                while (offset * spacing < canvasWidth || offset * spacing < canvasHeight) {
+                while (offset * spacing < canvasWidth * 2 && offset * spacing < canvasHeight * 2) {
                     ctx.beginPath();
                     ctx.moveTo(extendedX1 + offset * spacing, extendedY1);
                     ctx.lineTo(extendedX2 + offset * spacing, extendedY2);
