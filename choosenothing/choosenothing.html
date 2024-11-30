@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quadrate und Hintergrundfarben</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #f0f0f0;
+    }
+
+    .container {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .square {
+      width: 100px;
+      height: 100px;
+      margin: 0 10px;
+      cursor: pointer;
+    }
+
+    .black { background-color: black; }
+    .white { background-color: white; }
+    .grey { background-color: grey; }
+
+    .custom-color {
+      background-color: #ff00ff;
+    }
+
+    /* Schachbrettmuster mit conic-gradient */
+    .transparent-grid {
+      background-image: conic-gradient(#c6c6c6 0%, #c6c6c6 25%, #f7f7f7 25%, #f7f7f7 50%, #c6c6c6 50%, #c6c6c6 75%, #f7f7f7 75%, #f7f7f7 100%);
+      background-size: 30px 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="square black" onclick="changeBackgroundColor('black')"></div>
+    <div class="square white" onclick="changeBackgroundColor('white')"></div>
+    <div class="square grey" onclick="changeBackgroundColor('grey')"></div>
+    <!-- Schachbrettmuster Quadrat -->
+    <div class="square transparent-grid" onclick="changeBackgroundToGrid()"></div>
+    <div class="square custom-color" onclick="openColorPicker(this)"></div>
+  </div>
+
+  <input type="color" id="colorPicker" style="display:none" onchange="changeCustomColor(event)">
+
+  <script>
+    function changeBackgroundColor(color) {
+      document.body.style.backgroundColor = color;
+      document.body.style.backgroundImage = ''; // Entfernt das Schachbrettmuster, wenn eine Farbe gesetzt wird
+    }
+
+    function changeBackgroundToGrid() {
+      // Setzt das Schachbrettmuster als Hintergrundbild
+      document.body.style.backgroundColor = ''; // Entfernt die Hintergrundfarbe, um das Muster sichtbar zu machen
+      document.body.style.backgroundImage = 'conic-gradient(#c6c6c6 0%, #c6c6c6 25%, #f7f7f7 25%, #f7f7f7 50%, #c6c6c6 50%, #c6c6c6 75%, #f7f7f7 75%, #f7f7f7 100%)';
+      document.body.style.backgroundSize = '30px 30px'; // Setzt die Größe des Schachbretts
+    }
+
+    function openColorPicker(square) {
+      const colorPicker = document.getElementById('colorPicker');
+      colorPicker.click();
+      colorPicker.onchange = function(event) {
+        changeBackgroundColor(event.target.value);
+        square.style.backgroundColor = event.target.value;
+      };
+    }
+  </script>
+
+</body>
+</html>

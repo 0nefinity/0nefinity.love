@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quadrate und Hintergrundfarben</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #f0f0f0;
+      position: relative; /* Position für den Hintergrund */
+    }
+
+    .container {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      width: 600px;
+      height: 100px;
+    }
+
+    .square {
+      width: 100px;
+      height: 100px;
+      margin: 0 10px;
+      cursor: pointer;
+      position: relative;
+      z-index: 2; /* Quadrate bleiben oben */
+      background-color: transparent; /* Transparente Farbe für den Hintergrund */
+    }
+
+    .black {
+      background-color: black;
+    }
+    .white {
+      background-color: white;
+    }
+    .grey {
+      background-color: grey;
+    }
+    .transparent-grid {
+      background-color: transparent; /* Schachbrettmuster */
+    }
+    .custom-color {
+      background-color: #ff00ff;
+    }
+
+    /* Hintergrundbild mit Schachbrettmuster */
+    body.schachbrett-background {
+      background-image: conic-gradient(#c6c6c6 0%, #c6c6c6 25%, #f7f7f7 25%, #f7f7f7 50%, #c6c6c6 50%, #c6c6c6 75%, #f7f7f7 75%, #f7f7f7 100%);
+      background-size: 30px 30px;
+      background-position: 0 0;
+      background-attachment: fixed; /* Fixiere den Hintergrund */
+    }
+
+    /* Hintergrundfarbe, wenn es keine Schachbrettmuster gibt */
+    body.color-background {
+      background-color: #f0f0f0;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="square black" onclick="changeBackground('black')"></div>
+    <div class="square white" onclick="changeBackground('white')"></div>
+    <div class="square grey" onclick="changeBackground('grey')"></div>
+    <div class="square transparent-grid" onclick="changeBackground('schachbrett')"></div>
+    <div class="square custom-color" onclick="openColorPicker()"></div>
+  </div>
+
+  <input type="color" id="colorPicker" style="display:none" onchange="setCustomColor(event)">
+
+  <script>
+    function changeBackground(color) {
+      if (color === 'schachbrett') {
+        document.body.classList.add('schachbrett-background');
+        document.body.classList.remove('color-background');
+      } else {
+        document.body.classList.remove('schachbrett-background');
+        document.body.classList.add('color-background');
+        document.body.style.backgroundColor = color;
+      }
+    }
+
+    function openColorPicker() {
+      const colorPicker = document.getElementById('colorPicker');
+      colorPicker.click();
+    }
+
+    function setCustomColor(event) {
+      changeBackground(event.target.value);
+    }
+  </script>
+
+</body>
+</html>
