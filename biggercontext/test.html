@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1 Divided by 0</title>
+<style>
+    body {
+        margin: 0;
+        background-color: black;
+        color: white;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+    }
+    #language-switch {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: none;
+        border: 1px solid white;
+        color: white;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
+    #content, #shrunk-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        transition: transform 1s ease;
+    }
+    .fraction {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 10vw;
+    }
+    .fraction .numerator, .fraction .denominator {
+        line-height: 1;
+    }
+    .fraction .denominator {
+        border-top: 2px solid white;
+        margin-top: 0.2em;
+    }
+    #message, #context-button {
+        margin-top: 20px;
+        opacity: 0;
+        transition: opacity 1s ease;
+    }
+    #context-button {
+        background: none;
+        border: 1px solid white;
+        color: white;
+        padding: 10px 20px;
+        cursor: pointer;
+    }
+    #outer-screen {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+    .symbol {
+        position: absolute;
+        font-size: 5vw;
+    }
+    #symbol-zero {
+        top: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    #symbol-one {
+        bottom: 10%;
+        left: 20%;
+    }
+    #symbol-infinity {
+        bottom: 10%;
+        right: 20%;
+    }
+</style>
+</head>
+<body>
+
+<button id="language-switch">Deutsch</button>
+
+<div id="content">
+    <div class="fraction">
+        <div class="numerator">1</div>
+        <div class="denominator">0</div>
+    </div>
+    <div id="message"></div>
+    <button id="context-button"></button>
+</div>
+
+<div id="outer-screen">
+    <div id="shrunk-content">
+        <div class="fraction">
+            <div class="numerator">1</div>
+            <div class="denominator">0</div>
+        </div>
+    </div>
+    <div class="symbol" id="symbol-zero">0</div>
+    <div class="symbol" id="symbol-one">1</div>
+    <div class="symbol" id="symbol-infinity">∞</div>
+</div>
+
+<script>
+    let language = 'en';
+
+    const translations = {
+        en: {
+            switchTo: 'Deutsch',
+            message: "don't try to fuck your math teacher with solving this",
+            buttonText: 'enable bigger context',
+        },
+        de: {
+            switchTo: 'English',
+            message: 'Versuchen Sie nicht, Ihren Mathelehrer mit der Lösung dieses Problems zu verärgern',
+            buttonText: 'zeige größeren Kontext',
+        }
+    };
+
+    const languageSwitch = document.getElementById('language-switch');
+    const message = document.getElementById('message');
+    const contextButton = document.getElementById('context-button');
+    const content = document.getElementById('content');
+    const outerScreen = document.getElementById('outer-screen');
+    const shrunkContent = document.getElementById('shrunk-content');
+
+    function updateLanguage() {
+        languageSwitch.textContent = translations[language].switchTo;
+        message.textContent = translations[language].message;
+        contextButton.textContent = translations[language].buttonText;
+    }
+
+    function showMessage() {
+        message.style.opacity = 1;
+    }
+
+    function showContextButton() {
+        contextButton.style.opacity = 1;
+    }
+
+    function shrinkContent() {
+        content.style.transform = 'scale(0.3)';
+        content.style.position = 'absolute';
+        content.style.top = '50%';
+        content.style.left = '50%';
+        content.style.transform = 'translate(-50%, -50%) scale(0.3)';
+        message.style.display = 'none';
+        contextButton.style.display = 'none';
+        outerScreen.style.display = 'block';
+    }
+
+    languageSwitch.addEventListener('click', () => {
+        language = language === 'en' ? 'de' : 'en';
+        updateLanguage();
+    });
+
+    contextButton.addEventListener('click', shrinkContent);
+
+    // Initialize
+    updateLanguage();
+
+    // Timing for message and button
+    setTimeout(showMessage, 3000);
+    setTimeout(showContextButton, 5000);
+</script>
+
+</body>
+</html>

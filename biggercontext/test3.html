@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recursive Zoom</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #screen1, #screen2 {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: black;
+            border: 2px solid transparent;
+            transition: all 1s ease;
+        }
+        #screen1 {
+            width: 100vw;
+            height: 100vh;
+        }
+        #button {
+            position: absolute;
+            bottom: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            color: white;
+            background-color: black;
+            border: 2px solid white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="screen1">
+        <button id="button">Zoom Out</button>
+    </div>
+    <script>
+        let currentScreen = document.getElementById('screen1');
+
+        function createNewScreen() {
+            // Create the new larger screen (screen2)
+            const newScreen = document.createElement('div');
+            newScreen.id = 'screen2';
+            newScreen.style.width = `${currentScreen.offsetWidth * 1.5}px`;
+            newScreen.style.height = `${currentScreen.offsetHeight * 1.5}px`;
+            newScreen.style.borderColor = 'white';
+
+            // Append the current screen inside the new larger screen
+            newScreen.appendChild(currentScreen);
+            document.body.appendChild(newScreen);
+
+            // Center the new screen and set it as the current screen
+            setTimeout(() => {
+                newScreen.style.transform = 'translate(-50%, -50%) scale(1)';
+                currentScreen.style.transform = 'translate(-50%, -50%) scale(0.66)';
+                currentScreen = newScreen;
+            }, 0);
+        }
+
+        document.getElementById('button').addEventListener('click', createNewScreen);
+    </script>
+</body>
+</html>
