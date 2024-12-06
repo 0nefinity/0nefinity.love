@@ -166,7 +166,7 @@
 
     function zoom(factor) {
       scale *= factor;
-      scale = Math.min(Math.max(0.01, scale), 1000);
+      scale = Math.min(Math.max(0.01, scale), 10000);
     }
 
     function startZoom(factor) {
