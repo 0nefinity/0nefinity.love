@@ -12,13 +12,43 @@
     canvas {
       display: block;
     }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    .zoom-btn {
+      width: 50px;
+      height: 50px;
+      background-color: transparent;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .zoom-btn:active {
+      transform: scale(0.95);
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <div id="controls">
+    <button class="zoom-btn" id="zoom-in">+</button>
+    <button class="zoom-btn" id="zoom-out">−</button>
+  </div>
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    const zoomInBtn = document.getElementById('zoom-in');
+    const zoomOutBtn = document.getElementById('zoom-out');
 
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -31,6 +61,7 @@
     let panX = 0;
     let panY = 0;
     let scale = 1;
+    let zoomInterval;
 
     fetch('bibel.txt')
       .then(response => response.text())
@@ -41,33 +72,16 @@
       .catch(error => console.error(error));
 
     function init() {
-      const radius = Math.min(canvas.width, canvas.height) / 2 - 50; // Abstand zum Rand
+      const radius = Math.min(canvas.width, canvas.height) / 2 - 50;
 
-      // Vorläufige Schriftgröße setzen
       let fontSize = 20;
       ctx.font = `${fontSize}px monospace`;
-      let charWidth = ctx.measureText('M').width; // Durchschnittliche Zeichenbreite
-      let lineHeight = fontSize * 1.2; // Zeilenhöhe
+      let charWidth = ctx.measureText('M').width;
+      let lineHeight = fontSize * 1.2;
 
-      // Geschätzte Anzahl der Zeilen basierend auf dem Radius
-      let estimatedLines = Math.floor((radius * 2) / lineHeight);
+      let capacity = recalculateCapacity(radius, lineHeight, charWidth);
 
-      // Geschätzte maximale Zeichen pro Zeile (in der Mitte des Kreises)
-      let maxCharsInLine = Math.floor((2 * Math.sqrt(radius * radius - 0)) / charWidth);
-
-      // Gesamtkapazität des Kreises in Zeichen
-      let capacity = 0;
-      for (let i = 0; i < estimatedLines; i++) {
-        const yPos = -radius + i * lineHeight + lineHeight / 2;
-        const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
-        const maxLineWidth = lineRadius * 2;
-        const maxChars = Math.floor(maxLineWidth / charWidth);
-        capacity += maxChars;
-      }
-
-      // Schriftgröße anpassen, wenn Text länger oder kürzer als Kapazität ist
       if (textData.length < capacity) {
-        // Schriftgröße erhöhen
         while (textData.length < capacity && fontSize < 100) {
           fontSize += 1;
           ctx.font = `${fontSize}px monospace`;
@@ -76,7 +90,6 @@
           capacity = recalculateCapacity(radius, lineHeight, charWidth);
         }
       } else {
-        // Schriftgröße verringern
         while (textData.length > capacity && fontSize > 5) {
           fontSize -= 1;
           ctx.font = `${fontSize}px monospace`;
@@ -86,7 +99,6 @@
         }
       }
 
-      // Zeilen neu berechnen mit angepasster Schriftgröße
       lines = [];
       let textIndex = 0;
       for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
@@ -124,6 +136,13 @@
       ctx.fillStyle = 'white';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
+      
+      // Automatisch Richtung Mitte laufen, wenn vollständig sichtbar
+      if (isTextFullyVisible()) {
+        panX = lerp(panX, 0, 0.1);
+        panY = lerp(panY, 0, 0.1);
+      }
+
       ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
       ctx.scale(scale, scale);
 
@@ -132,12 +151,39 @@
       });
 
       ctx.restore();
+      requestAnimationFrame(draw); // Für sanfte Updates
+    }
+
+    function isTextFullyVisible() {
+      const textWidth = canvas.width / scale;
+      const textHeight = canvas.height / scale;
+      return textWidth >= canvas.width && textHeight >= canvas.height;
+    }
+
+    function lerp(start, end, t) {
+      return start + (end - start) * t;
+    }
+
+    function zoom(factor) {
+      scale *= factor;
+      scale = Math.min(Math.max(0.01, scale), 1000);
+    }
+
+    function startZoom(factor) {
+      zoom(factor);
+      zoomInterval = setInterval(() => zoom(factor), 50);
+    }
+
+    function stopZoom() {
+      clearInterval(zoomInterval);
     }
 
     canvas.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      if (!isTextFullyVisible()) {
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      }
     });
 
     canvas.addEventListener('mousemove', (e) => {
@@ -148,7 +194,6 @@
         panY += dy;
         lastX = e.clientX;
         lastY = e.clientY;
-        draw();
       }
     });
 
@@ -162,18 +207,26 @@
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const zoomIntensity = 0.001;
-      scale += e.deltaY * -zoomIntensity;
-      scale = Math.min(Math.max(0.05, scale), 10); // Begrenzung des Zooms
-      draw();
+      zoom(Math.pow(1.05, -e.deltaY));
     });
 
     window.addEventListener('resize', () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      draw();
     });
 
+    zoomInBtn.addEventListener('mousedown', () => startZoom(1.1));
+    zoomInBtn.addEventListener('mouseup', stopZoom);
+    zoomInBtn.addEventListener('mouseleave', stopZoom);
+
+    zoomOutBtn.addEventListener('mousedown', () => startZoom(0.9));
+    zoomOutBtn.addEventListener('mouseup', stopZoom);
+    zoomOutBtn.addEventListener('mouseleave', stopZoom);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === '+') zoom(1.1);
+      if (e.key === '-') zoom(0.9);
+    });
   </script>
 </body>
 </html>
