@@ -2,123 +2,239 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0nefinity</title>
+  <title>Textvisualisierung</title>
   <style>
     body {
       margin: 0;
-      background-color: black;
-      color: white;
-      font-family: Arial, sans-serif;
       overflow: hidden;
+      background-color: black;
+      touch-action: none; /* Deaktiviert Standard-Zoom und Scroll */
     }
-
-    .menu-button {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      padding: 5px 10px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      color: white;
-      background-color: transparent;
-      font-size: 50px;
-      cursor: pointer;
-      z-index: 1000;
-      transition: all 0.3s ease;
-    }
-
-    .menu-button.expanded {
-      padding: 5px 10px;
-    }
-
-    .menu {
-      position: fixed;
-      top: 70px; /* Platz unterhalb des Symbols */
-      right: 10px;
-      width: 250px;
-      max-height: 90%;
-      background-color: rgba(0, 0, 0, 0.8); /* Transparenter Hintergrund */
-      padding: 10px;
-      box-sizing: border-box;
-      overflow-y: auto;
-      border-radius: 5px;
-      display: none;
-    }
-
-    .menu.open {
+    canvas {
       display: block;
     }
-
-    .menu ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      gap: 10px;
     }
-
-    .menu ul li {
-      margin: 5px 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .menu ul li a {
+    .zoom-btn {
+      width: 50px;
+      height: 50px;
+      background-color: transparent;
       color: white;
-      text-decoration: none;
+      border: none;
+      border-radius: 5px;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-
-    .menu ul li a:hover {
-      text-decoration: underline;
+    .zoom-btn:active {
+      transform: scale(0.95);
     }
   </style>
 </head>
 <body>
-  <div class="menu-button">≡</div>
-  <div class="menu">
-    <ul id="file-list"></ul>
+  <canvas id="canvas"></canvas>
+  <div id="controls">
+    <button class="zoom-btn" id="zoom-in">+</button>
+    <button class="zoom-btn" id="zoom-out">−</button>
   </div>
-
   <script>
-    const menuButton = document.querySelector('.menu-button');
-    const menu = document.querySelector('.menu');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const zoomInBtn = document.getElementById('zoom-in');
+    const zoomOutBtn = document.getElementById('zoom-out');
 
-    // Klick-Event für Menü
-    menuButton.addEventListener('click', () => {
-      menu.classList.toggle('open');
-      menuButton.classList.toggle('expanded');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-      // Ändere den Button-Text basierend auf dem Zustand
-      menuButton.textContent = menuButton.classList.contains('expanded') ? '0 ≡ 1 ≡ ∞' : '≡';
-    });
+    let textData = '';
+    let lines = [];
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let panX = 0;
+    let panY = 0;
+    let scale = 1;
+    let zoomInterval;
+    let initialDistance = 0;
 
-    // Funktion, um die Datei-Liste zu laden
-    async function loadFileList() {
-      try {
-        const response = await fetch('file-list.json');
-        const files = await response.json();
-        const fileList = document.getElementById('file-list');
+    fetch('bibel.txt')
+      .then(response => response.text())
+      .then(data => {
+        textData = data.replace(/\s+/g, ' ').trim();
+        init();
+      })
+      .catch(error => console.error(error));
 
-        files.forEach(file => {
-          const listItem = document.createElement('li');
-          const link = document.createElement('a');
-          link.href = file;
+    function init() {
+      const radius = Math.min(canvas.width, canvas.height) / 2 - 50;
 
-          // Entferne die Dateiendung für die Anzeige
-          const displayName = file.replace(/\.[^/.]+$/, '');
+      let fontSize = 20;
+      ctx.font = `${fontSize}px monospace`;
+      let charWidth = ctx.measureText('M').width;
+      let lineHeight = fontSize * 1.2;
 
-          link.textContent = displayName;
-          listItem.appendChild(link);
-          fileList.appendChild(listItem);
-        });
-      } catch (error) {
-        console.error('Fehler beim Laden der Datei-Liste:', error);
+      let capacity = recalculateCapacity(radius, lineHeight, charWidth);
+
+      if (textData.length < capacity) {
+        while (textData.length < capacity && fontSize < 100) {
+          fontSize += 1;
+          ctx.font = `${fontSize}px monospace`;
+          charWidth = ctx.measureText('M').width;
+          lineHeight = fontSize * 1.2;
+          capacity = recalculateCapacity(radius, lineHeight, charWidth);
+        }
+      } else {
+        while (textData.length > capacity && fontSize > 5) {
+          fontSize -= 1;
+          ctx.font = `${fontSize}px monospace`;
+          charWidth = ctx.measureText('M').width;
+          lineHeight = fontSize * 1.2;
+          capacity = recalculateCapacity(radius, lineHeight, charWidth);
+        }
       }
+
+      lines = [];
+      let textIndex = 0;
+      for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
+        const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
+        const maxLineWidth = lineRadius * 2;
+        const maxChars = Math.floor(maxLineWidth / charWidth);
+
+        const remainingChars = textData.length - textIndex;
+        const charsInLine = Math.min(maxChars, remainingChars);
+        const lineText = textData.substr(textIndex, charsInLine);
+        textIndex += charsInLine;
+
+        if (lineText.length > 0) {
+          lines.push({ text: lineText, y: yPos });
+        }
+      }
+
+      draw();
     }
 
-    // Datei-Liste laden
-    loadFileList();
+    function recalculateCapacity(radius, lineHeight, charWidth) {
+      let newCapacity = 0;
+      for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
+        const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
+        const maxLineWidth = lineRadius * 2;
+        const maxChars = Math.floor(maxLineWidth / charWidth);
+        newCapacity += maxChars;
+      }
+      return newCapacity;
+    }
+
+    function draw() {
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+      ctx.scale(scale, scale);
+
+      lines.forEach((line) => {
+        ctx.fillText(line.text, 0, line.y);
+      });
+
+      ctx.restore();
+    }
+
+    function zoom(factor, x = canvas.width / 2, y = canvas.height / 2) {
+      const zoomX = (x - canvas.width / 2 - panX) / scale;
+      const zoomY = (y - canvas.height / 2 - panY) / scale;
+
+      scale *= factor;
+
+      panX -= (zoomX * (factor - 1)) * scale;
+      panY -= (zoomY * (factor - 1)) * scale;
+
+      draw();
+    }
+
+    function startZoom(factor) {
+      zoom(factor);
+      zoomInterval = setInterval(() => zoom(factor), 50);
+    }
+
+    function stopZoom() {
+      clearInterval(zoomInterval);
+    }
+
+    // Maussteuerung
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        panX += dx;
+        panY += dy;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoom(Math.pow(1.05, -e.deltaY), e.clientX, e.clientY);
+    });
+
+    // Touchsteuerung
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        initialDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 2) {
+        const currentDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+
+        const factor = currentDistance / initialDistance;
+        zoom(factor, (e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2);
+        initialDistance = currentDistance;
+      }
+    });
+
+    zoomInBtn.addEventListener('mousedown', () => startZoom(1.1));
+    zoomInBtn.addEventListener('mouseup', stopZoom);
+    zoomOutBtn.addEventListener('mousedown', () => startZoom(0.9));
+    zoomOutBtn.addEventListener('mouseup', stopZoom);
+
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    });
   </script>
 </body>
 </html>
