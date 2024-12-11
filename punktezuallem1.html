@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Punktbasierter Textgenerator</title>
+    <style>
+        /* Basisstile für Body und HTML, um volle Höhe und Breite zu nutzen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            box-sizing: border-box;
+            overflow-x: hidden; /* Verhindert horizontales Scrollen */
+        }
+
+        /* Stil für die Steuerungselemente */
+        .controls {
+            position: fixed; /* Fixiert die Steuerleiste oben */
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px 20px;
+            background-color: #111;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            z-index: 1000; /* Sicherstellt, dass die Steuerleiste immer oben bleibt */
+            flex-wrap: wrap; /* Ermöglicht Zeilenumbrüche bei kleinen Bildschirmen */
+        }
+        .controls label {
+            margin-right: 10px;
+            white-space: nowrap;
+        }
+        .controls input, .controls select {
+            margin-right: 20px;
+            padding: 5px;
+            border: none;
+            border-radius: 4px;
+            background-color: #333;
+            color: white;
+            width: 150px;
+            font-size: 14px;
+        }
+        .controls button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            background-color: #555;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .controls button:hover {
+            background-color: #666;
+        }
+
+        /* Container für Canvas */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: calc(100% - 60px); /* Abzug der Steuerleistenhöhe */
+            margin-top: 60px; /* Platz für die fixierte Steuerleiste */
+            overflow: hidden;
+        }
+
+        /* Canvas-Stil ohne Rahmen und volle Größe */
+        canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Unsichtbares, aber selektierbares Text-Overlay */
+        .text-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            color: transparent; /* Unsichtbar */
+            z-index: 2;
+            user-select: text;
+            pointer-events: none; /* Ermöglicht Interaktion mit dem Canvas */
+            font: bold 150px Arial;
+            text-align: center;
+            line-height: 150px;
+        }
+
+        /* Responsive Anpassung für kleinere Bildschirme */
+        @media (max-width: 800px) {
+            .text-overlay {
+                font-size: 80px;
+                line-height: 80px;
+            }
+            .controls input, .controls select {
+                width: 120px;
+                margin-bottom: 10px;
+            }
+            .controls label {
+                margin-right: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <label for="textInput">Text:</label>
+        <input type="text" id="textInput" value="0 ≡ 1 ≡ ∞ ">
+        
+        <label for="pointCount">Punktanzahl pro Zeichen:</label>
+        <input type="number" id="pointCount" value="100" min="0" max="1000" step="1">
+        
+        <label for="pointSize">Punktgröße:</label>
+        <input type="number" id="pointSize" value="1" min="0" max="1000" step="0.1">
+        
+        <label for="fontSelect">Schriftart:</label>
+        <select id="fontSelect">
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier New">Courier New</option>
+            <option value="Verdana" selected>Verdana</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="Impact">Impact</option>
+            <!-- Weitere Schriftarten können hier hinzugefügt werden -->
+        </select>
+    </div>
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+        <div id="textOverlay" class="text-overlay"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const textInput = document.getElementById('textInput');
+        const pointCountInput = document.getElementById('pointCount');
+        const pointSizeInput = document.getElementById('pointSize');
+        const fontSelect = document.getElementById('fontSelect');
+        const textOverlay = document.getElementById('textOverlay');
+
+        // Funktion zur Anpassung der Canvas-Größe an den Container
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            renderPoints();
+        }
+
+        // Event Listener für Fenstergrößenänderungen
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function renderPoints() {
+            const text = textInput.value;
+            const pointCount = parseInt(pointCountInput.value);
+            const pointSize = parseFloat(pointSizeInput.value);
+            const font = fontSelect.value;
+
+            // Aktualisiere das unsichtbare Text-Overlay
+            textOverlay.textContent = text;
+            textOverlay.style.font = `bold 150px ${font}`;
+
+            // Zeichne den Text auf das Canvas, um Pixel-Daten zu erhalten
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = `bold 150px ${font}`;
+            ctx.textBaseline = 'top';
+
+            // Zentriere den Text
+            const textMetrics = ctx.measureText(text);
+            const textWidth = textMetrics.width;
+            const x = (canvas.width - textWidth) / 2;
+            const y = (canvas.height - 150) / 2;
+
+            ctx.fillText(text, x, y);
+
+            // Extrahiere Pixel-Daten
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            // Sammle Positionen der weißen Pixel
+            const pixels = [];
+            for (let i = 0; i < data.length; i += 4) {
+                const alpha = data[i + 3];
+                const red = data[i];
+                const green = data[i + 1];
+                const blue = data[i + 2];
+                if (alpha > 128 && red > 200 && green > 200 && blue > 200) {
+                    const index = i / 4;
+                    const px = index % canvas.width;
+                    const py = Math.floor(index / canvas.width);
+                    pixels.push({x: px, y: py});
+                }
+            }
+
+            // Bestimme Punkte pro Zeichen
+            const chars = text.length;
+            if (chars === 0) return; // Verhindere Division durch Null
+
+            const pointsPerChar = pointCount; // Punktanzahl pro Zeichen
+
+            // Zeichne die Punkte auf das Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+
+            let currentX = x;
+            for (let c = 0; c < chars; c++) {
+                const char = text[c];
+                const charWidth = ctx.measureText(char).width;
+                const charPixels = pixels.filter(p => p.x >= currentX && p.x < currentX + charWidth);
+
+                if (charPixels.length === 0) continue;
+
+                // Zufällige Auswahl der Punkte
+                const shuffledPixels = shuffleArray(charPixels);
+                
+                // Wähle so viele Punkte wie gewünscht oder so viele, wie verfügbar sind
+                const selectedPoints = shuffledPixels.slice(0, Math.min(pointsPerChar, shuffledPixels.length));
+
+                selectedPoints.forEach(p => {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                currentX += charWidth;
+            }
+        }
+
+        // Funktion zum zufälligen Mischen eines Arrays (Fisher-Yates Shuffle)
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // Initiale Darstellung
+        renderPoints();
+
+        // Event Listener für Eingabefelder
+        textInput.addEventListener('input', renderPoints);
+        pointCountInput.addEventListener('input', renderPoints);
+        pointSizeInput.addEventListener('input', renderPoints);
+        fontSelect.addEventListener('change', renderPoints);
+
+        // Direkte Kopierbarkeit durch das Text-Overlay
+        // Keine separate Kopier-Button-Funktion notwendig
+    </script>
+</body>
+</html>
