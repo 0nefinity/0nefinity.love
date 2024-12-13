@@ -104,26 +104,18 @@
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
       ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
-      ctx.scale(scale, scale);
+      ctx.scale(scale, scale); // Skalierung anpassen
   
       lines.forEach((line) => {
-        ctx.fillText(getVisibleText(line.text), 0, line.y);
+        ctx.fillText(line.text, 0, line.y);
       });
   
       ctx.restore();
     }
   
+    // Keine Verkürzung des Textes mehr, sondern immer die volle Länge anzeigen
     function getVisibleText(text) {
-      if (scale < 0.2) {
-        // Bei kleinem Zoom nur Initialen anzeigen
-        return text.split(' ').map(word => word.charAt(0)).join('');
-      } else if (scale < 0.5) {
-        // Abgekürzten Text anzeigen
-        return text.substr(0, Math.floor(text.length / 2)) + '...';
-      } else {
-        // Vollständigen Text anzeigen
-        return text;
-      }
+      return text; // Der Text bleibt immer in voller Länge erhalten
     }
   
     canvas.addEventListener('mousedown', (e) => {
