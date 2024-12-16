@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Drehendes Dreieck mit unbewegten Symbolen</title>
+    <style>
+        /* Container zentrieren */
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: black;
+        }
+
+        /* Symbole */
+        .symbol {
+            font-size: 48px;
+            font-family: Arial, sans-serif;
+            fill: white;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+    </style>
+</head>
+<body>
+
+<svg width="300" height="300" viewBox="0 0 300 300">
+    <!-- Gruppe, die rotiert -->
+    <g>
+        <!-- SMIL-Animation für die Rotation der Gruppe -->
+        <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0 150 150"
+            to="360 150 150"
+            dur="5s"
+            repeatCount="indefinite" />
+        
+        <!-- Symbole im gleichseitigen Dreieck -->
+        <text class="symbol" x="150" y="63.4">0</text>
+        <text class="symbol" x="236.6" y="200">1</text>
+        <text class="symbol" x="63.4" y="200">∞</text>
+    </g>
+
+    <!-- Gruppe für gegenteilige Rotation der Symbole -->
+    <g>
+        <!-- SMIL-Animation für die Gegentransformation der Symbole -->
+        <text class="symbol" x="150" y="63.4">
+            <animateTransform
+                attributeName="transform"
+                type="rotate"
+                from="0 150 63.4"
+                to="-360 150 63.4"
+                dur="5s"
+                repeatCount="indefinite" />
+            0
+        </text>
+        <text class="symbol" x="236.6" y="200">
+            <animateTransform
+                attributeName="transform"
+                type="rotate"
+                from="0 236.6 200"
+                to="-360 236.6 200"
+                dur="5s"
+                repeatCount="indefinite" />
+            1
+        </text>
+        <text class="symbol" x="63.4" y="200">
+            <animateTransform
+                attributeName="transform"
+                type="rotate"
+                from="0 63.4 200"
+                to="-360 63.4 200"
+                dur="5s"
+                repeatCount="indefinite" />
+            ∞
+        </text>
+    </g>
+</svg>
+
+</body>
+</html>
