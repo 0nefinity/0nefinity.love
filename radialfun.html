@@ -145,21 +145,41 @@
         .label {
             position: absolute;
             top: 10px;
-            left: 10px;
+            left: 20px;
             font-size: 16px;
             z-index: 10;
         }
 
+        /* CSS-Text Wrapper Styling */
+        .css-text-wrapper {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap; /* Verhindert Zeilenumbruch */
+        }
+
         /* CSS-Text Styling */
         .css-text {
-            position: absolute;
-            top: 20px; /* Abstand vom unteren Rand */
-            left: 50%;
+            position: relative;
             color: white;
             font-size: 16px;
             text-align: center;
-            pointer-events: none; /* Verhindert, dass der Text Interaktionen blockiert */
+            pointer-events: none; /* Verhindert Interaktionen */
             padding: 0 10px; /* Optional: Etwas Padding für bessere Lesbarkeit */
+        }
+
+        /* Pseudo-Element für den Rand */
+        .css-text::before {
+            content: '';
+            position: absolute;
+            top: -5px; /* Anpassung je nach gewünschter Position */
+            left: 0;
+            width: 200px;
+            height: 30px; /* Höhe des Rands */
+            border: 2px solid white;
+            border-radius: 5px;
+            pointer-events: none; /* Verhindert Interaktionen */
         }
     </style>
 </head>
@@ -220,7 +240,9 @@
                 <div class="circle"></div>
                 <div class="circle"></div>
             </div>
-            <div class="css-text">i now understand why css is awesome</div> <!-- Neuer Text -->
+            <div class="css-text-wrapper">
+                <div class="css-text">now i know why css is awesome</div>
+            </div>
             <div class="label">CSS</div>
         </div>
     </div>
@@ -304,49 +326,49 @@
         updateCSSRotation();
 
         // ===========================
-// Canvas Quadrant
-// ===========================
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+        // Canvas Quadrant
+        // ===========================
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
 
-function resizeCanvas() {
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    // Invertiere die y-Achse und zentriere den Ursprung
-    ctx.setTransform(1, 0, 0, -1, canvas.width / 2, canvas.height / 2);
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            // Invertiere die y-Achse und zentriere den Ursprung
+            ctx.setTransform(1, 0, 0, -1, canvas.width / 2, canvas.height / 2);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
-let canvasAngle = 0;
+        let canvasAngle = 0;
 
-function drawCanvas(angle) {
-    ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
-    const radius = Math.min(canvas.width, canvas.height) * (settings.distance / 100); // Angepasster Radius
-    const pointRadius = Math.min(canvas.width, canvas.height) * (settings.pointSize / 150); // Angepasste Punktgröße
-    for (let i = 0; i < 3; i++) {
-        // Invertiere den Winkel durch Multiplikation mit -1
-        const theta = (settings.rotationDirection * (-angle + i * 120)) * Math.PI / 180;
-        const x = radius * Math.cos(theta);
-        const y = radius * Math.sin(theta);
-        ctx.beginPath();
-        ctx.arc(x, y, pointRadius, 0, 2 * Math.PI); // Verwende die angepasste Punktgröße
-        ctx.fillStyle = "white";
-        ctx.fill();
-    }
-}
+        function drawCanvas(angle) {
+            ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+            const radius = Math.min(canvas.width, canvas.height) * (settings.distance / 100); // Angepasster Radius
+            const pointRadius = Math.min(canvas.width, canvas.height) * (settings.pointSize / 150); // Angepasste Punktgröße
+            for (let i = 0; i < 3; i++) {
+                // Invertiere den Winkel durch Multiplikation mit -1
+                const theta = (settings.rotationDirection * (-angle + i * 120)) * Math.PI / 180;
+                const x = radius * Math.cos(theta);
+                const y = radius * Math.sin(theta);
+                ctx.beginPath();
+                ctx.arc(x, y, pointRadius, 0, 2 * Math.PI); // Verwende die angepasste Punktgröße
+                ctx.fillStyle = "white";
+                ctx.fill();
+            }
+        }
 
-function animateCanvas() {
-    drawCanvas(canvasAngle);
-    canvasAngle += settings.rotationSpeed;
-    requestAnimationFrame(animateCanvas);
-}
+        function animateCanvas() {
+            drawCanvas(canvasAngle);
+            canvasAngle += settings.rotationSpeed;
+            requestAnimationFrame(animateCanvas);
+        }
 
-animateCanvas();
+        animateCanvas();
 
-function updateCanvasPoints() {
-    // Änderungen werden automatisch durch die animateCanvas-Funktion übernommen
-}
+        function updateCanvasPoints() {
+            // Änderungen werden automatisch durch die animateCanvas-Funktion übernommen
+        }
 
 
         // ===========================
