@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Interaktiver Vollbild-Kreis mit Dreiecken</title>
+    <style>
+        /* Entferne Standard-Margen und setze den Hintergrund auf schwarz */
+        body, html {
+            margin: 0;
+            padding: 0;
+            background-color: black;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Verhindert Scrollbalken */
+            position: relative; /* Für die Positionierung der Einstellungsleiste */
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        /* Der Canvas nimmt den gesamten Viewport ein */
+        canvas {
+            display: block; /* Entfernt kleine Abstände um den Canvas */
+        }
+
+        /* Stil für die Einstellungsleiste */
+        .settings-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 20px; /* Mehr Abstand zwischen den Optionen */
+        }
+
+        .settings-bar label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* Stil für die Checkboxen: weiße Rahmen, transparentes Hintergrund */
+        .settings-bar input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: white; /* Setzt die Farbe der Checkbox-Häkchen auf weiß */
+            background-color: transparent;
+            border: 2px solid white;
+            border-radius: 3px;
+        }
+
+        /* Entferne die Standard-Hintergrundfarbe bei deaktivierter Checkbox */
+        .settings-bar input[type="checkbox"]:not(:checked) {
+            background-color: transparent;
+        }
+    </style>
+</head>
+<body>
+    <!-- Einstellungsleiste -->
+    <div class="settings-bar">
+        <!-- Party Checkbox -->
+        <label>
+            <input type="checkbox" id="colorToggle">
+            party
+        </label>
+        <!-- Persist Checkbox -->
+        <label>
+            <input type="checkbox" id="persistToggle">
+            persist
+        </label>
+    </div>
+
+    <canvas id="circleCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('circleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Variablen für die Kreisposition und -größe
+        let centerX, centerY, radius;
+
+        // Variablen zur Steuerung der Farbigkeit und Persistenz
+        let isColorful = false; // Standardmäßig deaktiviert
+        let isPersistent = false; // Standardmäßig deaktiviert
+
+        // Referenzen auf die Checkboxen
+        const colorToggle = document.getElementById('colorToggle');
+        const persistToggle = document.getElementById('persistToggle');
+
+        // Array zur Speicherung der Dreiecke, wenn persist aktiviert ist
+        const triangles = [];
+
+        // Event-Listener für die Farbigkeit-Checkbox
+        colorToggle.addEventListener('change', (event) => {
+            isColorful = event.target.checked;
+        });
+
+        // Event-Listener für die Persistenz-Checkbox
+        persistToggle.addEventListener('change', (event) => {
+            isPersistent = event.target.checked;
+            if (!isPersistent) {
+                // Wenn Persistenz deaktiviert wird, leere die Dreiecke und zeige nur das aktuelle Dreieck
+                triangles.length = 0;
+            }
+        });
+
+        // Funktion zum Anpassen der Canvas-Größe an den Viewport
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
+            radius = Math.min(canvas.width, canvas.height) / 2 - 50; // Abstand vom Rand
+            drawCircle(); // Zeichne den Kreis neu nach dem Resizing
+            redrawTriangles(); // Zeichne vorhandene Dreiecke neu
+        }
+
+        // Initiale Canvas-Größe setzen
+        resizeCanvas();
+
+        // Event-Listener für Fenstergrößenänderung
+        window.addEventListener('resize', resizeCanvas);
+
+        // Zeichne den weißen Kreis
+        function drawCircle() {
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Generiere drei zufällige Punkte auf dem Kreis
+        function getRandomPoints() {
+            const points = [];
+            for (let i = 0; i < 3; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+                points.push({x, y});
+            }
+            return points;
+        }
+
+        // Zeichne ein Dreieck zwischen den gegebenen Punkten
+        function drawTriangle(points) {
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[1].x, points[1].y);
+            ctx.lineTo(points[2].x, points[2].y);
+            ctx.closePath();
+
+            if (isColorful) {
+                // Farbiges Dreieck mit Transparenz
+                ctx.strokeStyle = getRandomColor();
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = getRandomColorWithAlpha();
+                ctx.fill();
+            } else {
+                // Weißes, nicht ausgefülltes Dreieck mit gleicher Liniendicke wie der Kreis
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2; // Gleiche Breite wie der Kreis
+                ctx.stroke();
+                // Kein Füllen
+            }
+        }
+
+        // Funktion, um eine zufällige Farbe zu erzeugen
+        function getRandomColor() {
+            const r = Math.floor(Math.random() * 256);
+            const g = Math.floor(Math.random() * 256);
+            const b = Math.floor(Math.random() * 256);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        // Funktion, um eine zufällige Farbe mit Transparenz zu erzeugen
+        function getRandomColorWithAlpha() {
+            const r = Math.floor(Math.random() * 256);
+            const g = Math.floor(Math.random() * 256);
+            const b = Math.floor(Math.random() * 256);
+            const a = Math.random() * 0.5; // Transparenz bis zu 50%
+            return `rgba(${r},${g},${b},${a})`;
+        }
+
+        // Funktion zum Zeichnen des Kreises und aller Dreiecke
+        function redrawTriangles() {
+            // Zeichne den Kreis
+            drawCircle();
+
+            // Zeichne alle gespeicherten Dreiecke
+            triangles.forEach(triangle => {
+                drawTriangle(triangle);
+            });
+        }
+
+        // Initiales Zeichnen des Kreises
+        drawCircle();
+
+        // Aktualisiere alle 200ms
+        setInterval(() => {
+            const points = getRandomPoints();
+
+            if (isPersistent) {
+                // Wenn persist aktiviert ist, speichere das Dreieck
+                triangles.push(points);
+            } else {
+                // Wenn persist deaktiviert ist, leere die Dreiecke und speichere nur das aktuelle
+                triangles.length = 0;
+                triangles.push(points);
+            }
+
+            // Zeichne alle Dreiecke
+            redrawTriangles();
+        }, 10);
+    </script>
+</body>
+</html>

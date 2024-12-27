@@ -13,6 +13,7 @@
             margin: 0;
             overflow: hidden;
             background-color: black;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
         }
         canvas {
             display: block;
@@ -30,15 +31,15 @@
             position: fixed;
             top: 10px;
             right: 10px;
-            width: 50px; /* Festgelegte Breite für quadratischen Button */
-            height: 50px; /* Festgelegte Höhe für quadratischen Button */
+            width: 50px;
+            height: 50px;
             background-color: var(--bg-color);
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-size: 24px;
             z-index: 10;
-            color: var(--object-color); /* Gleiche Farbe wie body */
+            color: var(--object-color);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -49,21 +50,18 @@
         #downloadButton:hover {
             opacity: 0.8;
         }
-        /* Stil für das Mini-Fenster */
         #downloadOptions {
             position: fixed;
-            top: 70px; /* Position unter dem Button */
+            top: 70px;
             right: 10px;
             background-color: var(--bg-color);
             color: var(--object-color);
             padding: 10px;
             border: 1px solid var(--object-color);
             border-radius: 5px;
-            display: none; /* Anfangs versteckt */
+            display: none;
             z-index: 11;
-            /* Entfernt das doppelte display: flex; */
         }
-        /* Container für Breite und Höhe nebeneinander */
         .size-inputs {
             display: flex;
             align-items: center;
@@ -81,12 +79,10 @@
         .size-inputs label {
             margin-left: 5px;
         }
-        /* Stil für das 'x' zwischen Breite und Höhe */
         .size-inputs .separator {
             margin: 0 10px;
             font-size: 16px;
         }
-        /* Container für die Zentrierungsoption */
         .center-option {
             display: flex;
             align-items: center;
@@ -96,7 +92,6 @@
             margin-right: 5px;
         }
         .center-option label {
-
             margin-right: 15px;
         }
         #downloadOptions button {
@@ -120,9 +115,7 @@
     <button id="downloadButton">
         <span>&#11123;</span>
     </button>
-    <!-- Mini-Fenster für Download-Einstellungen -->
     <div id="downloadOptions">
-        <!-- Breite und Höhe nebeneinander mit 'x' und 'px' -->
         <div class="size-inputs">
             <input type="number" id="widthInput" value="1000" min="1">
             <label for="widthInput">px</label>
@@ -130,7 +123,6 @@
             <input type="number" id="heightInput" value="1000" min="1">
             <label for="heightInput">px</label>
         </div>
-        <!-- Zentrierungsoption -->
         <div class="center-option">
             <input type="radio" id="centered" name="centerOption" value="centered" checked>
             <label for="centered">centered</label>
@@ -175,7 +167,10 @@
 
             let radius = initialRadius;
             for (let i = 0; i < numberOfCircles; i++) {
-                if ((radius * zoomLevel) > (Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) / 2 + Math.max(Math.abs(offsetX), Math.abs(offsetY)))) {
+                // Angepasste maximale Radiusgrenze: doppelte Fläche
+                const maxRadius = Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) + 2 * Math.max(Math.abs(offsetX), Math.abs(offsetY));
+
+                if ((radius * zoomLevel) > maxRadius) {
                     break;
                 }
                 ctx.beginPath();
@@ -187,7 +182,6 @@
         }
 
         canvas.addEventListener('mouseout', () => {
-            // Entfernt das Referenzieren von hoverTimeout, da es nicht definiert ist
             tooltip.style.display = 'none';
         });
 
@@ -223,9 +217,8 @@
             window.addEventListener('mouseup', onMouseUp);
         });
 
-        // Toggle des Mini-Fensters beim Klicken des Download-Buttons
         downloadButton.addEventListener('click', (event) => {
-            event.stopPropagation(); // Verhindert das sofortige Schließen des Fensters
+            event.stopPropagation();
             if (downloadOptions.style.display === 'none' || downloadOptions.style.display === '') {
                 downloadOptions.style.display = 'block';
             } else {
@@ -233,7 +226,6 @@
             }
         });
 
-        // Schließen des Mini-Fensters beim Klicken außerhalb
         window.addEventListener('click', (event) => {
             if (!downloadButton.contains(event.target) && !downloadOptions.contains(event.target)) {
                 downloadOptions.style.display = 'none';
@@ -249,7 +241,6 @@
                 return;
             }
 
-            // Überprüfen, ob das Bild zentriert werden soll
             const centerOption = document.querySelector('input[name="centerOption"]:checked').value;
 
             let downloadOffsetX = 0;
@@ -272,7 +263,7 @@
 
             let radius = 1;
             let spacingFactor = 1.01;
-            const maxRadius = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2)) / 2;
+            const maxRadius = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2)) + 2 * Math.max(Math.abs(downloadOffsetX), Math.abs(downloadOffsetY));
 
             while (radius * zoomLevel < maxRadius) {
                 downloadCtx.beginPath();
@@ -292,7 +283,6 @@
             link.download = 'justcircles.png';
             link.click();
 
-            // Optional: Schließen des Mini-Fensters nach dem Download
             downloadOptions.style.display = 'none';
         });
     </script>
