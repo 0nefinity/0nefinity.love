@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Nothing</title>
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            text-align: center;
+            overflow: hidden;
+        }
+        .big-zero {
+            font-size: 4rem;
+        }
+        .blink {
+            animation: blink 0.2s ease-in-out;
+        }
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.2; }
+            100% { opacity: 1; }
+        }
+        .counter {
+            font-size: 1.5rem;
+            margin-top: 20px;
+        }
+        .add-machine-btn, .add-advanced-machine-btn {
+            display: none;
+            margin-top: 20px;
+            padding: 10px 20px;
+            border: 1px solid white;
+            background-color: transparent;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .add-machine-btn:hover, .add-advanced-machine-btn:hover {
+            background-color: white;
+            color: black;
+        }
+        .popup {
+            position: absolute;
+            color: white;
+            animation: fadeOut 1s ease forwards;
+            pointer-events: none;
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: translateY(-10px); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="big-zero">0</div>
+    <div class="counter">
+        <div id="manual-count">Du hast 0 Nullen durch Klicken addiert</div>
+        <div id="machine-count">Du hast 0 Nullmaschine(n)</div>
+        <div id="production-rate">Produktion: 0 Nullen/Sekunde</div> <!-- Neue Anzeige für Produktionsrate -->
+        <div id="total-count">Du hast insgesamt 0 Nullen addiert</div>
+    </div>
+    <button class="add-machine-btn">Add Nothing Machine kaufen (20 Nullen)</button>
+    <button class="add-advanced-machine-btn">Add Nothing Machine Maschine kaufen (1e44 Nullen)</button>
+
+    <script>
+        let manualNulls = 0;
+        let machines = 0;
+        let advancedMachines = 0;
+        let totalNulls = 0;
+
+        const bigZero = document.querySelector('.big-zero');
+        const manualCount = document.getElementById('manual-count');
+        const machineCount = document.getElementById('machine-count');
+        const productionRateDisplay = document.getElementById('production-rate'); // Referenz zur neuen Anzeige
+        const totalCount = document.getElementById('total-count');
+        const addMachineBtn = document.querySelector('.add-machine-btn');
+        const addAdvancedMachineBtn = document.querySelector('.add-advanced-machine-btn');
+
+        // Funktion zur Formatierung der Zahlen
+        function formatNumber(num) {
+            if (num >= 1e15) {
+                return num.toExponential(2);
+            } else {
+                return Math.floor(num).toLocaleString();
+            }
+        }
+
+        // Funktion zur Aktualisierung des Zählers und der Produktionsrate
+        function updateCounter() {
+            manualCount.textContent = `Du hast ${formatNumber(manualNulls)} Nullen durch Klicken addiert`;
+            machineCount.textContent = `Du hast ${formatNumber(machines)} Nullmaschine(n) <i>produktion/s</i>`;
+            totalCount.textContent = `Du hast insgesamt ${formatNumber(totalNulls)} Nullen addiert`;
+
+            // Berechnung der aktuellen Produktionsrate
+            const productionRate = machines * productionRatePerMachine;
+            productionRateDisplay.textContent = `Produktion: ${formatNumber(productionRate)} Nullen/Sekunde`;
+        }
+
+        // Funktion zum Hinzufügen eines Popups
+        function addPopup(x, y, text) {
+            const popup = document.createElement('div');
+            popup.className = 'popup';
+            popup.textContent = text;
+            popup.style.left = `${x}px`;
+            popup.style.top = `${y}px`;
+            document.body.appendChild(popup);
+            setTimeout(() => popup.remove(), 1000);
+        }
+
+        // Funktion zum Hinzufügen von manuellen Nulls
+        function addManualNull(e) {
+            manualNulls++;
+            totalNulls++;
+            updateCounter();
+            bigZero.textContent = '0';
+            bigZero.classList.add('blink');
+            setTimeout(() => bigZero.classList.remove('blink'), 200);
+            addPopup(e.clientX, e.clientY, '+0');
+
+            // Zeige den Button für die erste Maschine, wenn mindestens 10 manuelle Nullen vorhanden sind
+            if (manualNulls >= 10 && getComputedStyle(addMachineBtn).display === 'none') {
+                addMachineBtn.style.display = 'inline-block';
+            }
+
+            // Zeige den Button für die fortgeschrittene Maschine, wenn mindestens 1e44 Nullen vorhanden sind
+            if (totalNulls >= 1e44 && getComputedStyle(addAdvancedMachineBtn).display === 'none') {
+                addAdvancedMachineBtn.style.display = 'inline-block';
+            }
+        }
+
+        // Event Listener für den Kauf der ersten Maschine
+        addMachineBtn.addEventListener('click', () => {
+            if (manualNulls >= 20) { // Kaufkosten auf 20 Nullen gesetzt
+                if (machines < 1) { // Nur eine Maschine kaufen
+                    machines++;
+                    // Entferne den Abzug der Kosten
+                    // manualNulls -= 20; // << Entfernt
+                    updateCounter();
+                    addPopup(bigZero.getBoundingClientRect().left + bigZero.getBoundingClientRect().width / 2,
+                             bigZero.getBoundingClientRect().top, '+1 Maschine');
+                    // Optional: Deaktiviere den Button nach dem Kauf
+                    addMachineBtn.disabled = true;
+                    addMachineBtn.style.opacity = '0.5';
+                }
+            } else {
+                alert('Nicht genügend Nullen zum Kauf der Maschine.');
+            }
+        });
+
+        // Event Listener für den Kauf der fortgeschrittenen Maschine
+        addAdvancedMachineBtn.addEventListener('click', () => {
+            if (totalNulls >= 1e44) { // Kaufkosten auf 1e44 Nullen gesetzt
+                if (advancedMachines < 1) { // Nur eine fortgeschrittene Maschine kaufen
+                    advancedMachines++;
+                    // Entferne den Abzug der Kosten
+                    // totalNulls -= 1e44; // << Entfernt
+                    updateCounter();
+                    addPopup(bigZero.getBoundingClientRect().left + bigZero.getBoundingClientRect().width / 2,
+                             bigZero.getBoundingClientRect().top, '+1 Nullmaschinen Maschine');
+                    // Deaktiviere den Button nach dem Kauf
+                    addAdvancedMachineBtn.disabled = true;
+                    addAdvancedMachineBtn.style.opacity = '0.5';
+                }
+            } else {
+                alert('Nicht genügend Nullen zum Kauf der Nullmaschinen Maschine.');
+            }
+        });
+
+        // Event Listener für das Hinzufügen von manuellen Nullen
+        document.body.addEventListener('click', addManualNull);
+
+        // Variable zur Verfolgung der verstrichenen Zeit
+        let lastUpdateTime = Date.now();
+
+        // Produktionsrate pro Nullmaschine (Nullen pro Sekunde)
+        const productionRatePerMachine = 1.85e43; // 1 / Planck-Sekunde
+
+        // Produktionsrate pro Nullmaschinen Maschine (Nullmaschinen pro Sekunde)
+        const productionRatePerAdvancedMachine = 1.85e43; // Jede Planck-Sekunde eine Nullmaschine hinzufügen
+
+        // Haupt-Update-Loop
+        function gameLoop() {
+            const now = Date.now();
+            const delta = (now - lastUpdateTime) / 1000; // delta in Sekunden
+            lastUpdateTime = now;
+
+            // Produktion durch Nullmaschinen
+            if (machines > 0) {
+                totalNulls += machines * productionRatePerMachine * delta;
+            }
+
+            // Produktion durch Nullmaschinen Maschinen
+            if (advancedMachines > 0) {
+                // Jede fortgeschrittene Maschine fügt jede Planck-Sekunde eine neue Nullmaschine hinzu
+                // Berechne die Anzahl der neu hinzugefügten Maschinen basierend auf der verstrichenen Zeit
+                const newMachines = advancedMachines * productionRatePerAdvancedMachine * delta;
+                machines += newMachines;
+            }
+
+            updateCounter();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Starte die Spielschleife
+        gameLoop();
+    </script>
+</body>
+</html>

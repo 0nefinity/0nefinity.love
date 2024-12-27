@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Infinity Zeros Game</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+        #heading {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 32px; /* Größerer Text */
+            text-align: center;
+            pointer-events: none; /* Klicks passieren durch den Text hindurch */
+        }
+        #center-zero {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 200px; /* Größere Null */
+            transition: opacity 0.3s;
+            pointer-events: none; /* Klicks passieren durch den Text hindurch */
+        }
+        .blink {
+            opacity: 0;
+        }
+        #counters {
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 24px; /* Größere Schrift */
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        #counters.visible {
+            opacity: 1;
+        }
+        .counter {
+            margin: 10px 0; /* Größerer Abstand */
+        }
+        .infinite-zero {
+            position: absolute;
+            color: white;
+            font-size: 32px; /* Größere animierte Texte */
+            opacity: 1;
+            animation: fadeOut 1s forwards;
+            pointer-events: none; /* Klicks passieren durch die animierten Texte hindurch */
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-60px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="heading">click to add infinite zeros</div>
+
+    <div id="center-zero">0</div>
+
+    <div id="counters">
+        <div class="counter" id="count-container">Number of ∞ zeros added: <span id="count">0</span> ∞</div>
+        <div class="counter" id="sum-container">Sum of all zeros added: ∞</div>
+        <div class="counter" id="total-container">Total number of zeros: 1</div>
+    </div>
+
+    <script>
+        let count = 0;
+        const countElement = document.getElementById('count');
+        const centerZero = document.getElementById('center-zero');
+        const counters = document.getElementById('counters');
+        const sumContainer = document.getElementById('sum-container');
+        const totalContainer = document.getElementById('total-container');
+
+        // Anfangszustand: Verstecke die zusätzlichen Zähler
+        sumContainer.style.display = 'none';
+        totalContainer.style.display = 'none';
+
+        document.addEventListener('click', function(event) {
+            // Aktualisiere den Zähler
+            count += 1;
+            countElement.textContent = count;
+
+            // Anzeige der Zähler nach bestimmten Klicks
+            if (count === 10) {
+                counters.classList.add('visible');
+            }
+            if (count === 20) {
+                sumContainer.style.display = 'block';
+            }
+            if (count === 30) {
+                totalContainer.style.display = 'block';
+            }
+
+            // Erzeuge das +∞0 an der Klickposition
+            const infZero = document.createElement('div');
+            infZero.classList.add('infinite-zero');
+            infZero.textContent = '+∞0';
+            infZero.style.left = `${event.clientX}px`;
+            infZero.style.top = `${event.clientY}px`;
+            document.body.appendChild(infZero);
+
+            // Entferne das Element nach der Animation
+            infZero.addEventListener('animationend', () => {
+                infZero.remove();
+            });
+
+            // Blinke die große Null
+            centerZero.classList.add('blink');
+            setTimeout(() => {
+                centerZero.classList.remove('blink');
+            }, 300);
+        });
+    </script>
+
+</body>
+</html>

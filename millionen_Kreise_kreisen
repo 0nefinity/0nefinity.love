@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Konzentrische Kreise mit Zoom</title>
+    <title>Konzentrische Kreise mit Zoom und Kreisen-Modus</title>
     <style>
         body {
             --bg-color: black;
@@ -27,7 +27,7 @@
             pointer-events: none;
             display: none;
         }
-        #downloadButton {
+        .control-button {
             position: fixed;
             top: 10px;
             right: 10px;
@@ -43,14 +43,21 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            margin-bottom: 10px;
         }
-        #downloadButton span {
+        #downloadButton {
+            right: 10px;
+        }
+        #circlingButton {
+            right: 70px; /* Position neben dem Download-Button */
+        }
+        .control-button span {
             display: inline-block;
         }
-        #downloadButton:hover {
+        .control-button:hover {
             opacity: 0.8;
         }
-        #downloadOptions {
+        .options-panel {
             position: fixed;
             top: 70px;
             right: 10px;
@@ -61,6 +68,9 @@
             border-radius: 5px;
             display: none;
             z-index: 11;
+        }
+        #downloadOptions, #circlingOptions {
+            /* Gemeinsame Stile für beide Optionspanels */
         }
         .size-inputs {
             display: flex;
@@ -94,7 +104,7 @@
         .center-option label {
             margin-right: 15px;
         }
-        #downloadOptions button {
+        #downloadOptions button, #circlingOptions button {
             align-self: center;
             padding: 5px 10px;
             background-color: var(--object-color);
@@ -104,7 +114,7 @@
             cursor: pointer;
             font-size: 14px;
         }
-        #downloadOptions button:hover {
+        #downloadOptions button:hover, #circlingOptions button:hover {
             opacity: 0.8;
         }
     </style>
@@ -112,10 +122,12 @@
 <body>
     <canvas id="circleCanvas"></canvas>
     <div id="tooltip"></div>
-    <button id="downloadButton">
+    
+    <!-- Download Button -->
+    <button id="downloadButton" class="control-button" title="Download">
         <span>&#11123;</span>
     </button>
-    <div id="downloadOptions">
+    <div id="downloadOptions" class="options-panel">
         <div class="size-inputs">
             <input type="number" id="widthInput" value="1000" min="1">
             <label for="widthInput">px</label>
@@ -125,12 +137,25 @@
         </div>
         <div class="center-option">
             <input type="radio" id="centered" name="centerOption" value="centered" checked>
-            <label for="centered">centered</label>
+            <label for="centered">zentriert</label>
             <input type="radio" id="currentView" name="centerOption" value="currentView">
-            <label for="currentView">currentView</label>
+            <label for="currentView">aktuelle Ansicht</label>
         </div>
         <button id="confirmDownload">Download</button>
     </div>
+    
+    <!-- Circling Mode Button -->
+    <button id="circlingButton" class="control-button" title="Kreisen-Modus">
+        <span>&#8635;</span> <!-- Unicode Symbol für Kreisen -->
+    </button>
+    <div id="circlingOptions" class="options-panel">
+        <div class="size-inputs">
+            <input type="number" id="circlingRadiusInput" value="100" min="1">
+            <label for="circlingRadiusInput">Radius px</label>
+        </div>
+        <button id="confirmCircling">Start Kreisen</button>
+    </div>
+
     <script>
         const canvas = document.getElementById('circleCanvas');
         const ctx = canvas.getContext('2d');
@@ -140,10 +165,22 @@
         const confirmDownload = document.getElementById('confirmDownload');
         const widthInput = document.getElementById('widthInput');
         const heightInput = document.getElementById('heightInput');
+        
+        const circlingButton = document.getElementById('circlingButton');
+        const circlingOptions = document.getElementById('circlingOptions');
+        const confirmCircling = document.getElementById('confirmCircling');
+        const circlingRadiusInput = document.getElementById('circlingRadiusInput');
+        
         let circles = [];
         let zoomLevel = 1;
         let offsetX = 0;
         let offsetY = 0;
+
+        // Variablen für Kreisen-Modus
+        let isCircling = false;
+        let circlingRadius = 100;
+        let circlingAngle = 0;
+        let circlingAnimationFrame;
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -160,23 +197,18 @@
             let initialRadius = 1;
             let spacingFactor = 1.01;
             let lineWidth = 0.6;
-            let numberOfCircles = 100000;
 
             ctx.strokeStyle = 'white';
             ctx.lineWidth = lineWidth;
 
             let radius = initialRadius;
-            for (let i = 0; i < numberOfCircles; i++) {
-                // Angepasste maximale Radiusgrenze: doppelte Fläche
-                const maxRadius = Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) + 2 * Math.max(Math.abs(offsetX), Math.abs(offsetY));
+            const maxRadius = Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) + 2 * Math.max(Math.abs(offsetX), Math.abs(offsetY));
 
-                if ((radius * zoomLevel) > maxRadius) {
-                    break;
-                }
+            while (radius * zoomLevel < maxRadius) {
                 ctx.beginPath();
                 ctx.arc(canvas.width / 2 + offsetX, canvas.height / 2 + offsetY, radius * zoomLevel, 0, Math.PI * 2);
                 ctx.stroke();
-                circles.push({ radius: radius, index: i + 1 });
+                circles.push({ radius: radius, index: circles.length + 1 });
                 radius *= spacingFactor;
             }
         }
@@ -217,6 +249,7 @@
             window.addEventListener('mouseup', onMouseUp);
         });
 
+        // Download Button Funktionalität
         downloadButton.addEventListener('click', (event) => {
             event.stopPropagation();
             if (downloadOptions.style.display === 'none' || downloadOptions.style.display === '') {
@@ -229,6 +262,9 @@
         window.addEventListener('click', (event) => {
             if (!downloadButton.contains(event.target) && !downloadOptions.contains(event.target)) {
                 downloadOptions.style.display = 'none';
+            }
+            if (!circlingButton.contains(event.target) && !circlingOptions.contains(event.target)) {
+                circlingOptions.style.display = 'none';
             }
         });
 
@@ -285,6 +321,52 @@
 
             downloadOptions.style.display = 'none';
         });
+
+        // Kreisen-Modus Button Funktionalität
+        circlingButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (circlingOptions.style.display === 'none' || circlingOptions.style.display === '') {
+                circlingOptions.style.display = 'block';
+            } else {
+                circlingOptions.style.display = 'none';
+            }
+        });
+
+        confirmCircling.addEventListener('click', () => {
+            const inputRadius = parseInt(circlingRadiusInput.value);
+            if (isNaN(inputRadius) || inputRadius < 1) {
+                alert('Bitte geben Sie einen gültigen Wert für den Radius ein.');
+                return;
+            }
+            circlingRadius = inputRadius;
+
+            if (!isCircling) {
+                startCircling();
+                confirmCircling.textContent = 'Stop Kreisen';
+            } else {
+                stopCircling();
+                confirmCircling.textContent = 'Start Kreisen';
+            }
+        });
+
+        function startCircling() {
+            isCircling = true;
+            circlingAngle = 0;
+            function animate() {
+                if (!isCircling) return;
+                circlingAngle += 0.01; // Geschwindigkeit der Rotation
+                offsetX = circlingRadius * Math.cos(circlingAngle);
+                offsetY = circlingRadius * Math.sin(circlingAngle);
+                drawCircles();
+                circlingAnimationFrame = requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        function stopCircling() {
+            isCircling = false;
+            cancelAnimationFrame(circlingAnimationFrame);
+        }
     </script>
 </body>
 </html>
