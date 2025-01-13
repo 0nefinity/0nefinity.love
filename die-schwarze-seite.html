@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schwarze Seite</title>
+    <title>Die Schwarze Seite</title>
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js" defer></script>
     <style>
         body {
             /* Hintergrundfarbe */
@@ -15,7 +17,10 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            font-family: Arial, sans-serif;
+        }
+
+        .menu-button, .back-button {
+            color: transparent; /* Initial transparent */
         }
     </style>
 </head>
@@ -24,5 +29,36 @@
     <p>Willkommen auf der schwarzen Seite.</p>
     <p>Es gibt hier nichts zu sehen.</p>
     <p>Es ist einfach nur schwarz.</p>  
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('.menu-button, .back-button');
+            let hideTimeout;
+
+            // Funktion zum Anzeigen der Buttons
+            function showButtons() {
+                buttons.forEach(button => {
+                    button.style.color = 'var(--text-color)'; // Entfernt das Inline-Style, sodass die CSS-Farbe verwendet wird
+                });
+
+                // Timer zurücksetzen
+                if (hideTimeout) clearTimeout(hideTimeout);
+                hideTimeout = setTimeout(hideButtons, 500); // 2 Sekunden Inaktivität
+            }
+
+            // Funktion zum Verstecken der Buttons
+            function hideButtons() {
+                buttons.forEach(button => {
+                    button.style.color = 'transparent'; // Setzt die Farbe wieder auf transparent
+                });
+            }
+
+            // Event-Listener für Mausbewegungen
+            document.addEventListener('mousemove', showButtons);
+
+            // Optional: Initial die Buttons verstecken nach dem Laden
+            hideButtons();
+        });
+    </script>
 </body>
 </html>

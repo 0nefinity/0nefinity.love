@@ -1,0 +1,59 @@
+{
+  "identitätsoperatoren": [ 
+    {
+      "name": "+0",
+      "description": "x + 0 = x",
+      "mathml": "<mrow><mi>x</mi><mo>+</mo><mn>0</mn></mrow>"
+    },
+    {
+      "name": "0+",
+      "description": "x + 0 = x",
+      "mathml": "<mrow><mn>0</mn><mo>+</mo><mi>x</mi></mrow>"
+    },
+    {
+      "name": "-0",
+      "description": "x - 0 = x",
+      "mathml": "<mrow><mi>x</mi><mo>-</mo><mn>0</mn></mrow>"
+    },
+    {
+      "name": "0-",
+      "description": "x - 0 = x",
+      "mathml": "<mrow><mn>0</mn><mo>-</mo><mi>x</mi></mrow>"
+    },
+    {
+      "name": "*1",
+      "description": "x × 1 = x",
+      "mathml": "<mrow><mi>x</mi><mo>×</mo><mn>1</mn></mrow>"
+    },
+    {
+      "name": "1*",
+      "description": "1 × x = x",
+      "mathml": "<mrow><mn>1</mn><mo>×</mo><mi>x</mi></mrow>"
+    },
+    {
+      "name": "/1",
+      "description": "x ÷ 1 = x",
+      "mathml": "<mrow><mfrac><mi>x</mi><mn>1</mn></mfrac></mrow>"
+    },
+    {
+      "name": "+",
+      "description": "+x = x",
+      "mathml": "<mrow><mo>+</mo><mi>x</mi></mrow>"
+    },
+    {
+      "name": "--",
+      "description": "−(−x) = x",
+      "mathml": "<mrow><mo>−</mo><mo>(</mo><mo>−</mo><mi>x</mi><mo>)</mo></mrow>"
+    },
+    {
+      "name": "¹",
+      "description": "x^1 = x",
+      "mathml": "<mrow><msup><mi>x</mi><mn>1</mn></msup></mrow>"
+    },
+    {
+      "name": "√1",
+      "description": "√(x^1) = x",
+      "mathml": "<mrow><mroot><mrow><mi>x</mi></mrow><mn>1</mn></mroot></mrow>"
+    }    
+  ]
+}

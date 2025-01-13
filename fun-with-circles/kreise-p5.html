@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concentric Circles with p5.js</title>
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js" defer></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 80px;
+            z-index: 10;
+        }
+        label {
+            margin-bottom: 10px;
+            display: block;
+        }
+        input[type="number"], input[type="range"] {
+            background: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--text-color);
+        }
+        input[type="number"]:focus, input[type="range"]:focus {
+            outline: 1px solid var(--text-color);
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>
+            Number of Circles: 
+            <input type="range" id="circleCount" min="0" max="20000" value="100">
+            <input type="number" id="circleCountNumber" min="0" max="20000" value="100">
+        </label>
+        <label>
+            Distance Between Circles: 
+            <input type="range" id="circleSpacing" min="0" max="10000" value="0" step="0.1">
+            <input type="number" id="circleSpacingNumber" min="0" max="10000" value="0" step="0.1">
+        </label>
+        <label>
+            Line Thickness: 
+            <input type="range" id="lineThickness" min="0" max="100" value="1" step="0.1">
+            <input type="number" id="lineThicknessNumber" min="0" max="100" value="1" step="0.1">
+        </label>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script>
+        let circleCountInput, circleCountNumber;
+        let circleSpacingInput, circleSpacingNumber;
+        let lineThicknessInput, lineThicknessNumber;
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            noFill();
+
+            const rootStyle = getComputedStyle(document.documentElement);
+            const textColor = rootStyle.getPropertyValue('--text-color').trim();
+            const bgColor = rootStyle.getPropertyValue('--bg-color').trim();
+
+            stroke(textColor);
+
+            circleCountInput = select('#circleCount');
+            circleCountNumber = select('#circleCountNumber');
+            circleSpacingInput = select('#circleSpacing');
+            circleSpacingNumber = select('#circleSpacingNumber');
+            lineThicknessInput = select('#lineThickness');
+            lineThicknessNumber = select('#lineThicknessNumber');
+
+            syncInputs(circleCountInput, circleCountNumber);
+            syncInputs(circleSpacingInput, circleSpacingNumber);
+            syncInputs(lineThicknessInput, lineThicknessNumber);
+        }
+
+        function draw() {
+            const rootStyle = getComputedStyle(document.documentElement);
+            const textColor = rootStyle.getPropertyValue('--text-color').trim();
+            const bgColor = rootStyle.getPropertyValue('--bg-color').trim();
+
+            background(bgColor);
+            stroke(textColor);
+            strokeWeight(parseFloat(lineThicknessInput.value()));
+
+            let numberOfCircles = int(circleCountInput.value());
+            let spacing = float(circleSpacingInput.value());
+
+            let centerX = width / 2;
+            let centerY = height / 2;
+
+            for (let i = 0; i < numberOfCircles; i++) {
+                let radius = spacing * (i + 1);
+                ellipse(centerX, centerY, radius * 2, radius * 2);
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+
+        function syncInputs(rangeInput, numberInput) {
+            rangeInput.input(() => {
+                numberInput.value(rangeInput.value());
+            });
+
+            numberInput.input(() => {
+                rangeInput.value(numberInput.value());
+            });
+        }
+    </script>
+</body>
+</html>

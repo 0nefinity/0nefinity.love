@@ -4,65 +4,67 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>radial mechanics</title>
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         /* Grundlegendes Styling */
         body {
-    --bg-color: black;
-    --text-color: white;
-    background: var(--bg-color);
-    color: var(--text-color);
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
-}
-
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+        }
 
         /* Top Bar Styling */
         .top-bar {
             background: transparent;
-            padding: 10px;
+            height: 70px;
             display: flex;
+            justify-content: center;
             align-items: center;
             gap: 20px;
+            flex-wrap: wrap; /* Ermöglicht Zeilenumbruch bei kleineren Bildschirmen */
         }
 
         .top-bar label {
             display: flex;
             align-items: center;
             gap: 10px;
-            font-size: 14px;
         }
 
-        .top-bar input[type="number"] {
-            width: 100px;
-            padding: 5px;
-            font-size: 14px;
-            border: none;
-            border-radius: 4px;
-            text-align: right;
-            background: transparent;
-            color: white;
-        }
-
+        /* Aktualisierte Input- und Select-Stile */
+        .top-bar input[type="number"],
         .top-bar select {
+            width: 60px; /* Für Input-Felder, bei Select-Elementen ggf. anpassen */
             padding: 5px;
-            font-size: 14px;
-            border: none;
+            border: 1px solid var(--text-color); /* Setzt den Rahmen auf die Textfarbe */
             border-radius: 4px;
-            background: transparent;
-            color: white;
+            text-align: right; /* Nur für Input-Felder relevant */
+            background: var(--bg-color);
+            color: var(--text-color);
+            outline: none; /* Entfernt den Standard-Fokusrahmen */
+            box-sizing: border-box; /* Stellt sicher, dass Padding und Border in der Breite enthalten sind */
+        }
+
+        /* Optional: Hinzufügen eines visuellen Fokus-Indikators */
+        .top-bar input[type="number"]:focus,
+        .top-bar select:focus {
+            border-color: var(--text-color);
+            box-shadow: 0 0 5px var(--text-color); /* Optional: fügt einen leichten Schimmer hinzu */
         }
 
         /* Quadranten Container */
         .quadrants {
+            width: 100% !important;
             display: grid;
             grid-template-columns: 1fr 1fr;
             grid-template-rows: 1fr 1fr;
             flex: 1;
-            height: calc(100vh - 60px); /* Anpassung für Top Bar */
+            height: calc(100vh - 160px); /* Anpassung für Top Bar */
         }
 
         /* Gemeinsames Quadrant Styling */
@@ -121,13 +123,8 @@
             border-radius: 50%;
             top: 50%;
             left: 50%;
+            transform: translate(-50%, -50%);
         }
-
-        .circle:nth-child(1) {
-            transform: rotate(0deg) translate(var(--distance)) rotate(0deg);
-        }
-
-        
 
         @keyframes rotateContainer {
             from {
@@ -159,11 +156,11 @@
         /* CSS-Text Styling */
         .css-text {
             position: relative;
-            color: white;
+            color: var(--text-color);
             font-size: 16px;
             text-align: center;
             pointer-events: none; /* Verhindert Interaktionen */
-            padding: 0 10px; /* Optional: Etwas Padding für bessere Lesbarkeit */
+            padding: 0 10px; 
         }
 
         /* Pseudo-Element für den Rand */
@@ -172,19 +169,29 @@
             position: absolute;
             top: -5px; /* Anpassung je nach gewünschter Position */
             left: 0;
-            width: 200px;
+            width: 110px;
             height: 30px; /* Höhe des Rands */
-            border: 2px solid white;
+            border: 2px solid var(--text-color);
             border-radius: 5px;
             pointer-events: none; /* Verhindert Interaktionen */
         }
 
         button#rotationDirectionButton {
-    background: transparent; /* Hintergrund transparent */
-    color: white; /* Weiße Schrift */
-    padding: 5px 10px; /* Abstand im Button */
-    font-size: 16px; /* Schriftgröße */
-}
+            background: transparent; /* Hintergrund transparent */
+            color: var(--text-color);
+            padding: 5px 10px; /* Abstand im Button */
+            font-size: 16px; /* Schriftgröße */
+            cursor: pointer; /* Zeigt einen Zeiger-Cursor an */
+            border: 1px solid var(--text-color); /* Rahmen auf Textfarbe setzen */
+            border-radius: 4px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        /* Optional: Fokus-Stil für den Button */
+        button#rotationDirectionButton:focus {
+            box-shadow: 0 0 5px var(--text-color);
+        }
     </style>
 </head>
 <body>
@@ -198,7 +205,6 @@
         <label>
             <button id="rotationDirectionButton">↻</button>
         </label>
-        
         <label>
             speed (°/frame):
             <input type="number" id="rotationSpeed" min="0" step="0.1" value="1">
@@ -206,6 +212,10 @@
         <label>
             radius:
             <input type="number" id="distance" min="0" value="20">
+        </label>
+        <label>
+            Anzahl der Punkte:
+            <input type="number" id="pointCount" min="0" value="1">
         </label>
     </div>
 
@@ -221,9 +231,7 @@
         <div class="quadrant">
             <svg id="svg" viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg">
                 <g transform="scale(1, -1)">
-                    <circle cx="0" cy="0" r="2" fill="white" id="svg-circle1"/>
-                    <circle cx="0" cy="0" r="2" fill="white" id="svg-circle2"/>
-                    <circle cx="0" cy="0" r="2" fill="white" id="svg-circle3"/>
+                    <!-- Dynamische Kreise werden hier hinzugefügt -->
                 </g>
             </svg>
             <div class="label">SVG</div>
@@ -237,98 +245,108 @@
         <!-- CSS Quadrant -->
         <div class="quadrant css-container">
             <div class="circle-container">
-                <div class="circle"></div>
-                <div class="circle"></div>
-                <div class="circle"></div>
+                <!-- Dynamische Kreise werden hier hinzugefügt -->
             </div>
             <div class="css-text-wrapper">
-                <div class="css-text">now i know why css is awesome</div>
+                <div class="css-text">css is awesome</div>
             </div>
             <div class="label">CSS</div>
         </div>
     </div>
 
     <script>
-        // 
-        // mir ist am arbeiten hier dran schon zwei mal schlecht geworden, weil die Speedfunktion so spannend ist
-        // 
-        // 
-        // 
         // Gemeinsame Einstellungen
         const settings = {
             pointSize: 3, // Prozent
             rotationDirection: 1, // 1 für Uhrzeigersinn, -1 für Gegen den Uhrzeigersinn
             rotationSpeed: 1, // Grad pro Frame
-            distance: 20 // Prozent
+            distance: 20, // Prozent
+            pointCount: 1 // Anzahl der Punkte
         };
-
+    
         // Top Bar Elemente
         const pointSizeInput = document.getElementById('pointSize');
-        const rotationDirectionSelect = document.getElementById('rotationDirection');
+        const rotationDirectionButton = document.getElementById('rotationDirectionButton');
         const rotationSpeedInput = document.getElementById('rotationSpeed');
         const distanceInput = document.getElementById('distance');
-
+        const pointCountInput = document.getElementById('pointCount');
+    
+        // Funktion zum Abrufen der CSS-Variable '--text-color'
+        function getCSSVariable(variable) {
+            const value = getComputedStyle(document.body).getPropertyValue(variable).trim();
+            console.log(`CSS Variable ${variable}: ${value}`); // Debugging
+            return value;
+        }
+    
         // Event Listener für Punktgröße
         pointSizeInput.addEventListener('input', (e) => {
             let value = parseFloat(e.target.value);
             if (isNaN(value) || value < 0) value = 0;
             settings.pointSize = value;
             pointSizeInput.value = value; // Aktualisiere das Eingabefeld, falls die Eingabe angepasst wurde
-            updateCSSPoints();
-            updateCanvasPoints();
-            updateSVGPoints();
-            updateThreeJSPoints();
+            updateAllQuadrants();
         });
-
-        // Referenz auf den Button
-const rotationDirectionButton = document.getElementById('rotationDirectionButton');
-
-// Event-Listener für den Button
-rotationDirectionButton.addEventListener('click', () => {
-    // Umdrehen der Rotationsrichtung
-    settings.rotationDirection *= -1;
-
-    // Aktualisieren des Button-Textes
-    rotationDirectionButton.textContent = settings.rotationDirection === 1 ? '↻' : '↺';
-
-    // Aktualisieren der CSS-Rotation
-    updateCSSRotation();
-});
-
-
+    
+        // Event-Listener für den Rotationsrichtungs-Button
+        rotationDirectionButton.addEventListener('click', () => {
+            // Umdrehen der Rotationsrichtung
+            settings.rotationDirection *= -1;
+    
+            // Aktualisieren des Button-Textes
+            rotationDirectionButton.textContent = settings.rotationDirection === 1 ? '↻' : '↺';
+    
+            // Aktualisieren der Quadranten
+            updateAllQuadrants();
+        });
+    
         // Event Listener für Rotationsgeschwindigkeit
         rotationSpeedInput.addEventListener('input', (e) => {
             let value = parseFloat(e.target.value);
             if (isNaN(value) || value < 0) value = 0;
             settings.rotationSpeed = value;
             rotationSpeedInput.value = value; // Aktualisiere das Eingabefeld, falls die Eingabe angepasst wurde
-            updateCSSRotation();
+            updateAllQuadrants();
         });
-
+    
         // Event Listener für Abstand vom Mittelpunkt
         distanceInput.addEventListener('input', (e) => {
             let value = parseFloat(e.target.value);
             if (isNaN(value) || value < 0) value = 0;
             settings.distance = value;
             distanceInput.value = value; // Aktualisiere das Eingabefeld, falls die Eingabe angepasst wurde
-            updateCSSPoints();
-            updateCanvasPoints();
-            updateSVGPoints();
-            updateThreeJSPoints();
+            updateAllQuadrants();
         });
-
+    
+        // Event Listener für Punktanzahl
+        pointCountInput.addEventListener('input', (e) => {
+            let value = parseInt(e.target.value);
+            if (isNaN(value) || value < 0) value = 0; // Erlaube 0
+            settings.pointCount = value;
+            pointCountInput.value = value; // Aktualisiere das Eingabefeld, falls die Eingabe angepasst wurde
+            updateAllQuadrants();
+        });
+    
         // ===========================
         // CSS Quadrant Aktualisierung
         // ===========================
         const cssContainer = document.querySelector('.css-container');
         const cssCircleContainer = cssContainer.querySelector('.circle-container');
-        const cssCircles = cssContainer.querySelectorAll('.circle');
-
+    
         function updateCSSPoints() {
             cssContainer.style.setProperty('--point-size', `${settings.pointSize}%`);
             cssContainer.style.setProperty('--distance', `${settings.distance}%`);
+            
+            // Entfernen vorhandener Kreise
+            cssCircleContainer.innerHTML = '';
+            
+            // Erstellen neuer Kreise basierend auf pointCount
+            for (let i = 0; i < settings.pointCount; i++) {
+                const circle = document.createElement('div');
+                circle.classList.add('circle');
+                cssCircleContainer.appendChild(circle);
+            }
         }
-
+    
         function updateCSSRotation() {
             // Vermeiden von Division durch Null
             const speed = settings.rotationSpeed > 0 ? settings.rotationSpeed : 1;
@@ -336,17 +354,18 @@ rotationDirectionButton.addEventListener('click', () => {
             cssCircleContainer.style.animationDuration = `${newDuration}s`;
             cssCircleContainer.style.animationDirection = settings.rotationDirection === 1 ? 'normal' : 'reverse';
         }
-
-        // Initiale Aktualisierung
-        updateCSSPoints();
-        updateCSSRotation();
-
+    
+        function updateCSSAll() {
+            updateCSSPoints();
+            updateCSSRotation();
+        }
+    
         // ===========================
         // Canvas Quadrant
         // ===========================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-
+    
         function resizeCanvas() {
             canvas.width = canvas.offsetWidth;
             canvas.height = canvas.offsetHeight;
@@ -355,79 +374,86 @@ rotationDirectionButton.addEventListener('click', () => {
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
-
+    
         let canvasAngle = 0;
-
+    
         function drawCanvas(angle) {
             ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
             const radius = Math.min(canvas.width, canvas.height) * (settings.distance / 100); // Angepasster Radius
             const pointRadius = Math.min(canvas.width, canvas.height) * (settings.pointSize / 150); // Angepasste Punktgröße
-            for (let i = 0; i < 3; i++) {
-                // Invertiere den Winkel durch Multiplikation mit -1
-                const theta = (settings.rotationDirection * (-angle + i * 120)) * Math.PI / 180;
+            const textColor = getCSSVariable('--text-color'); // Farbe aus CSS-Variable
+    
+            ctx.fillStyle = textColor; // Setze die Füllfarbe dynamisch
+    
+            for (let i = 0; i < settings.pointCount; i++) {
+                // Berechnung der gleichmäßig verteilten Winkel
+                const theta = (settings.rotationDirection * (-angle + i * (360 / settings.pointCount))) * Math.PI / 180;
                 const x = radius * Math.cos(theta);
                 const y = radius * Math.sin(theta);
                 ctx.beginPath();
                 ctx.arc(x, y, pointRadius, 0, 2 * Math.PI); // Verwende die angepasste Punktgröße
-                ctx.fillStyle = "white";
                 ctx.fill();
             }
         }
-
+    
         function animateCanvas() {
             drawCanvas(canvasAngle);
             canvasAngle += settings.rotationSpeed;
             requestAnimationFrame(animateCanvas);
         }
-
+    
         animateCanvas();
-
+    
         function updateCanvasPoints() {
             // Änderungen werden automatisch durch die animateCanvas-Funktion übernommen
         }
-
-
+    
         // ===========================
         // SVG Quadrant
         // ===========================
-        const svgCircles = [
-            document.getElementById('svg-circle1'),
-            document.getElementById('svg-circle2'),
-            document.getElementById('svg-circle3')
-        ];
-
+        const svg = document.getElementById('svg');
+        const svgContainer = svg.querySelector('g');
+    
         function updateSVGPoints() {
-            svgCircles.forEach((circle, index) => {
-                // Aktualisieren der Punktgröße
+            // Entfernen vorhandener Kreise
+            svgContainer.innerHTML = '';
+            
+            const textColor = getCSSVariable('--text-color'); // Farbe aus CSS-Variable
+    
+            // Erstellen neuer Kreise basierend auf pointCount
+            for (let i = 0; i < settings.pointCount; i++) {
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
                 circle.setAttribute('r', settings.pointSize / 1.5);
-            });
-        }
-
-        function updateSVG(angle) {
-            const radius = settings.distance;
-            for (let i = 0; i < svgCircles.length; i++) {
-                // Invertiere den Winkel durch Multiplikation mit -1
-                const theta = settings.rotationDirection * (-angle + i * 120) * Math.PI / 180;
-                const x = radius * Math.cos(theta);
-                const y = radius * Math.sin(theta);
-                svgCircles[i].setAttribute('cx', x);
-                svgCircles[i].setAttribute('cy', y);
+                circle.setAttribute('fill', textColor); // Setze die Füllfarbe dynamisch
+                svgContainer.appendChild(circle);
             }
         }
-
+    
+        function updateSVG(angle) {
+            if (settings.pointCount === 0) return; // Kein Update notwendig bei 0 Punkten
+    
+            const radius = settings.distance;
+            const svgCircles = svgContainer.querySelectorAll('circle');
+            svgCircles.forEach((circle, index) => {
+                // Berechnung der gleichmäßig verteilten Winkel
+                const theta = settings.rotationDirection * (-angle + index * (360 / settings.pointCount)) * Math.PI / 180;
+                const x = radius * Math.cos(theta);
+                const y = radius * Math.sin(theta);
+                circle.setAttribute('cx', x);
+                circle.setAttribute('cy', y);
+            });
+        }
+    
         let svgAngle = 0;
-
+    
         function animateSVG() {
             updateSVG(svgAngle);
             svgAngle += settings.rotationSpeed;
             requestAnimationFrame(animateSVG);
         }
-
+    
         animateSVG();
-
-        // Initiale Aktualisierung
-        updateSVGPoints();
-
+    
         // ===========================
         // Three.js Quadrant
         // ===========================
@@ -438,46 +464,106 @@ rotationDirectionButton.addEventListener('click', () => {
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(threeContainer.offsetWidth, threeContainer.offsetHeight);
         threeContainer.appendChild(renderer.domElement);
-
+    
         // Anpassung bei Größenänderung
         window.addEventListener('resize', () => {
             camera.aspect = threeContainer.offsetWidth / threeContainer.offsetHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(threeContainer.offsetWidth, threeContainer.offsetHeight);
         });
-
-        const points = [];
+    
+        // Dynamische Punkte erstellen
+        let points = [];
         const geometry = new THREE.CircleGeometry(3, 32);
-        const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-        for (let i = 0; i < 3; i++) {
-            const circle = new THREE.Mesh(geometry, material);
-            scene.add(circle);
-            points.push(circle);
+        let material = new THREE.MeshBasicMaterial({ color: 0xffffff }); // Initiale Farbe, wird später aktualisiert
+    
+        function createThreeJSPoints() {
+            // Entfernen vorhandener Punkte aus der Szene
+            points.forEach(point => {
+                scene.remove(point);
+            });
+            points = [];
+            
+            const textColor = getCSSVariable('--text-color'); // Farbe aus CSS-Variable
+    
+            // Aktualisiere das Material mit der neuen Farbe direkt
+            material = new THREE.MeshBasicMaterial({ color: textColor });
+    
+            // Erstellen neuer Punkte basierend auf pointCount
+            for (let i = 0; i < settings.pointCount; i++) {
+                const circle = new THREE.Mesh(geometry, material.clone()); // Verwende eine Kopie des Materials
+                scene.add(circle);
+                points.push(circle);
+            }
         }
-
+    
         function updateThreeJSPoints() {
+            if (settings.pointCount === 0) return; // Kein Update notwendig bei 0 Punkten
+    
             const radius = settings.distance * 1.5; // Skalierung für Three.js
+            const textColor = getCSSVariable('--text-color'); // Farbe aus CSS-Variable
+    
+            // Aktualisiere das Material für alle Punkte
             points.forEach((point, index) => {
-                // Invertiere den Winkel durch Multiplikation mit -1
-                const theta = (settings.rotationDirection * (-threeAngle + index * 120)) * Math.PI / 180;
+                point.material.color.set(textColor);
+                
+                // Berechnung der gleichmäßig verteilten Winkel
+                const theta = (settings.rotationDirection * (-threeAngle + index * (360 / settings.pointCount))) * Math.PI / 180;
                 point.position.x = radius * Math.cos(theta);
                 point.position.y = radius * Math.sin(theta);
                 point.scale.set(settings.pointSize / 3, settings.pointSize / 3, 1); // Anpassung der Punktgröße
             });
         }
-
+    
         let threeAngle = 0;
-
+    
         function animateThreeJS() {
             threeAngle += settings.rotationSpeed;
             updateThreeJSPoints();
             renderer.render(scene, camera);
             requestAnimationFrame(animateThreeJS);
         }
-
+    
+        createThreeJSPoints();
         animateThreeJS();
-
+    
+        // ===========================
+        // Update Funktion für alle Quadranten
+        // ===========================
+        function updateAllQuadrants() {
+            updateCSSAll();
+            updateCanvasPoints();
+            updateSVGPoints();
+            createThreeJSPoints();
+            updateThreeJSPoints();
+        }
+    
+        // ===========================
+        // Beobachten von Änderungen der CSS-Variable '--text-color'
+        // ===========================
+        // Funktion zum Aktualisieren der Farbe in allen Quadranten
+        function updatePointColors() {
+            const textColor = getCSSVariable('--text-color');
+            // Canvas wird automatisch aktualisiert durch drawCanvas
+            // SVG: Aktualisiere alle Kreise
+            const svgCircles = svgContainer.querySelectorAll('circle');
+            svgCircles.forEach(circle => {
+                circle.setAttribute('fill', textColor);
+            });
+            // Three.js: Aktualisiere die Farbe der Materialien
+            points.forEach(point => {
+                point.material.color.set(textColor);
+            });
+        }
+    
+        // Beobachte Änderungen am Style-Attribut des Body
+        const observer = new MutationObserver(updatePointColors);
+        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+    
+        // Initiale Aktualisierung
+        updateAllQuadrants();
     </script>
+    
+    
 </body>
 </html>

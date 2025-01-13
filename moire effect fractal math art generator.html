@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>0nefinity - Erster Prototyp</title>
+    <title>Linienfraktale</title>
+    
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js" defer></script>
     <style>
         body, html {
             height: 100%;
             margin: 0;
             display: flex;
             flex-direction: column;
-            font-family: Arial, sans-serif;
-            background-color: black;
-            color: white;
         }
         #container {
             display: flex;
@@ -25,26 +25,38 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            border: 1px solid #ccc;
             overflow: hidden;
         }
         canvas {
             width: 100%;
             height: 100%;
-            background-color: black;
         }
         #toolbar {
-            padding: 10px;
-            background-color: #333;
-            color: white;
-            border-bottom: 1px solid #ccc;
+            top: 0;
+            width: 100%;
+            height: 80px;
+            position: fixed;
+            color: transparent;
+            display: flex;
+            align-items: center;
+            
+            z-index: 1000;
         }
+        #toolbar button {
+            margin-right: auto;
+            margin-left: 120px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: transparent;
+            color: var(--text-color);
+            
+        }
+
         .line-settings {
             position: absolute;
-            background: #444;
-            color: white;
             padding: 10px;
-            border: 1px solid #ccc;
             z-index: 10;
             display: none;
         }
@@ -71,9 +83,6 @@
                 <button onclick="closeLineSettings()">Schließen</button>
             </div>
         </div>
-        <div id="viewpointContainer">
-            <div id="viewpoint">Viewpoint-Bereich (Noch in Arbeit)</div>
-        </div>
     </div>
 
     <script>
@@ -88,6 +97,11 @@
         let lines = [];
         let panning = false;
         let selectedLine = null;
+
+        // Funktion zum Abrufen der CSS-Variable
+        function getCSSVariable(variable) {
+            return getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+        }
 
         canvas.width = canvas.offsetWidth;
         canvas.height = canvas.offsetHeight;
@@ -150,7 +164,7 @@
         function updateLine(event) {
             if (!drawing) return;
             redraw();
-            ctx.strokeStyle = 'white';
+            ctx.strokeStyle = getCSSVariable('--text-color') || 'white';
             ctx.lineWidth = 2 / scale;
             ctx.beginPath();
             ctx.moveTo(startX, startY);
@@ -176,14 +190,14 @@
             const extendedX2 = line.startX + tMax * dx;
             const extendedY2 = line.startY + tMax * dy;
 
-            ctx.strokeStyle = 'white';
+            ctx.strokeStyle = getCSSVariable('--text-color') || 'white';
             ctx.lineWidth = line.lineWidth / scale;
             ctx.beginPath();
             ctx.moveTo(extendedX1, extendedY1);
             ctx.lineTo(extendedX2, extendedY2);
             ctx.stroke();
 
-            // Draw Fractal Copies if enabled
+            // Zeichne Fraktale, falls aktiviert
             if (line.fractalEnabled && line.spacing > 0) {
                 let spacing = line.spacing;
                 let offset = 1;
@@ -242,6 +256,7 @@
             offsetY = 0;
             scale = 1;
             lines = [];
+            redraw();
         }
 
         function isNearLine(x, y, line) {
@@ -291,6 +306,11 @@
                 fractalSettingsDiv.style.display = 'none';
             }
         }
+
+        // Initiales Zeichnen nach Laden der Seite
+        window.addEventListener('DOMContentLoaded', () => {
+            redraw();
+        });
     </script>
 </body>
 </html>

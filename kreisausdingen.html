@@ -1,0 +1,123 @@
+<!-- kreisausdingen.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kreis aus Dingen mit Musterpotenzial</title>
+
+    <!-- Die Eingabe von sehr vielen Zeichen macht das ganze ziemlich verrückt. Und dann die Leertaste ‒ crazy -->
+
+    
+    <link href="/meta.css" rel="stylesheet" /> 
+    <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
+    <script src="/meta.js" defer></script>
+    <!-- meta.js regelt das Menü und den Zurückbutton und evt. sonstige zukünftige Metafunktionen -->
+
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 80px;
+        }
+        input[type="range"], input[type="text"], input[type="number"] {
+            margin: 5px;
+        }
+        input[type="range"] {
+            width: 300px;
+        }
+        input[type="number"] {
+            width: 80px;
+            text-align: center;
+        }
+        input[type="text"] {
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="count">Anzahl:</label>
+        <input type="range" id="count" min="0" max="10000" value="50">
+        <input type="number" id="countNumber" min="0" max="10000" value="50">
+        <label for="character">Zeichen:</label>
+        <input type="text" id="character" value="1">
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const countSlider = document.getElementById('count');
+        const countNumber = document.getElementById('countNumber');
+        const characterInput = document.getElementById('character');
+
+        // Canvas Größe an Bildschirm anpassen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function draw() {
+            const count = parseInt(countSlider.value);
+            const character = characterInput.value || " "; // Standard ist ein Leerzeichen
+            countNumber.value = count;
+
+            // Mittelpunkt berechnen
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 50;
+
+            // Canvas löschen
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Zeichen
+            ctx.font = "30px Arial";
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * 2 * Math.PI - Math.PI / 2; // Startwinkel um 90° gegen den Uhrzeigersinn
+
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle + Math.PI / 2);
+                ctx.fillText(character, 0, 0);
+                ctx.restore();
+            }
+        }
+
+        // Synchronisierung der Eingabefelder und des Sliders
+        function updateCount(value) {
+            countSlider.value = value;
+            countNumber.value = value;
+            draw();
+        }
+
+        // Event-Listener für Änderungen
+        countSlider.addEventListener('input', () => updateCount(countSlider.value));
+        countNumber.addEventListener('input', () => updateCount(countNumber.value));
+        characterInput.addEventListener('input', draw);
+    </script>
+</body>
+</html>

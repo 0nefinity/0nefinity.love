@@ -3,38 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <title>Infinity Zeros Game</title>
+    <link href="/meta.css" rel="stylesheet" /> 
+    <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
+    <script src="/meta.js" defer></script>
+    <!-- meta.js regelt das Menü und den Zurückbutton und evt. sonstige zukünftige Metafunktionen -->
+    
     <style>
-        body, html {
+        body {
             margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: black;
-            color: white;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
+            overflow: hidden; /* Verhindert Scrollen bei vielen absoluten Elementen */
             position: relative;
+            height: 100vh;
+            width: 100vw;
+            cursor: pointer;
+            
+            user-select: none;  
         }
         #heading {
             position: absolute;
             top: 15%;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 32px; /* Größerer Text */
+            font-size: 32px;
+            z-index: 1;
             text-align: center;
-            pointer-events: none; /* Klicks passieren durch den Text hindurch */
         }
-        #center-zero {
+        /* Wrapper für die zentrale Null */
+        #center-zero-wrapper {
             position: absolute;
+            user-select: none;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 200px; /* Größere Null */
-            transition: opacity 0.3s;
-            pointer-events: none; /* Klicks passieren durch den Text hindurch */
+            transform: translate(-50%, -50%) scale(1);
+            transition: transform 0.2s ease-in-out;
+            will-change: transform;
         }
-        .blink {
-            opacity: 0;
+        #center-zero {
+            font-size: 200px;
+            pointer-events: none;
         }
         #counters {
             position: absolute;
@@ -42,7 +48,7 @@
             left: 50%;
             transform: translateX(-50%);
             text-align: center;
-            font-size: 24px; /* Größere Schrift */
+            font-size: 24px;
             opacity: 0;
             transition: opacity 0.5s;
         }
@@ -50,48 +56,60 @@
             opacity: 1;
         }
         .counter {
-            margin: 10px 0; /* Größerer Abstand */
+            margin: 10px 0;
         }
         .infinite-zero {
             position: absolute;
-            color: white;
-            font-size: 32px; /* Größere animierte Texte */
+            font-size: 32px;
             opacity: 1;
+            transform: translateY(0);
             animation: fadeOut 1s forwards;
-            pointer-events: none; /* Klicks passieren durch die animierten Texte hindurch */
+            pointer-events: none;
+            will-change: opacity, transform;
         }
         @keyframes fadeOut {
-            0% { opacity: 1; transform: translateY(0); }
-            100% { opacity: 0; transform: translateY(-60px); }
+            to {
+                opacity: 0;
+                transform: translateY(-60px);
+            }
         }
     </style>
 </head>
 <body>
 
-    <div id="heading">click to add infinite zeros</div>
+    <div id="heading">Klicke, um unendlich Nullen zu addieren</div>
 
-    <div id="center-zero">0</div>
+    <!-- Wrapper um die zentrale Null -->
+    <div id="center-zero-wrapper">
+        <div id="center-zero">0</div>
+    </div>
 
     <div id="counters">
-        <div class="counter" id="count-container">Number of ∞ zeros added: <span id="count">0</span> ∞</div>
-        <div class="counter" id="sum-container">Sum of all zeros added: ∞</div>
-        <div class="counter" id="total-container">Total number of zeros: 1</div>
+        <div class="counter" id="count-container">Anzahl aller addierten ∞ Nullen: <span id="count">0</span> ∞</div>
+        <div class="counter" id="sum-container">Summe aller addierten Nullen: ∞</div>
+        <div class="counter" id="total-container">Anzahl der vorhandenen Nullen: 1</div>
+        <div class="counter" id="value-container">Wert: 0</div>
     </div>
 
     <script>
         let count = 0;
+        let baseScale = 1; // Basis-Skalierung der Null
+        const scaleIncrement = 0.05; // Inkrement pro Klick
+        const scaleAnimationDelta = 0.2; // Temporäre Skalierung für die Animation
+
         const countElement = document.getElementById('count');
-        const centerZero = document.getElementById('center-zero');
+        const centerZeroWrapper = document.getElementById('center-zero-wrapper');
         const counters = document.getElementById('counters');
         const sumContainer = document.getElementById('sum-container');
         const totalContainer = document.getElementById('total-container');
+        const valueContainer = document.getElementById('value-container');
 
         // Anfangszustand: Verstecke die zusätzlichen Zähler
         sumContainer.style.display = 'none';
         totalContainer.style.display = 'none';
+        valueContainer.style.display = 'none';
 
         document.addEventListener('click', function(event) {
-            // Aktualisiere den Zähler
             count += 1;
             countElement.textContent = count;
 
@@ -104,6 +122,9 @@
             }
             if (count === 30) {
                 totalContainer.style.display = 'block';
+            }
+            if (count === 40) {
+                valueContainer.style.display = 'block';
             }
 
             // Erzeuge das +∞0 an der Klickposition
@@ -119,12 +140,28 @@
                 infZero.remove();
             });
 
-            // Blinke die große Null
-            centerZero.classList.add('blink');
-            setTimeout(() => {
-                centerZero.classList.remove('blink');
-            }, 300);
+            // Animationslogik für die zentrale Null
+            // 1. Temporär skalieren
+            centerZeroWrapper.style.transform = `translate(-50%, -50%) scale(${baseScale + scaleAnimationDelta})`;
+
+            // 2. Nach der Animation die Basis-Skalierung erhöhen und zurücksetzen
+            centerZeroWrapper.addEventListener('transitionend', function handler() {
+                // Entferne den Event-Listener, um Mehrfachauslösungen zu vermeiden
+                centerZeroWrapper.removeEventListener('transitionend', handler);
+                
+                // Erhöhe die Basis-Skalierung
+                baseScale += scaleIncrement;
+
+                // Setze die Skalierung auf die neue Basis zurück
+                centerZeroWrapper.style.transform = `translate(-50%, -50%) scale(${baseScale})`;
+            });
         });
+
+        // hinzufügen: einen Button der heißt -∞0 und verkleinert beim drauf klicken die 0 wieder im selben maße, während immer kurz statt '+∞0' nun '-∞0' aufploppt.
+        
+        // hinzufügen: einen "invert" button. Wenn man drauf klickt wird er aktiviert, bis man wieder drauf klickt. 
+        // Die Richtung soll sich dann umkehren, sodass man beim klicken auf '+∞0' die Null nun verkleinert und beim klicken auf '-∞0' die Null nun vergrößert 
+        // Und die Schrift des Buttons soll sich während er aktiviert ist einmal gespiegelt darstellen.
     </script>
 
 </body>
