@@ -1,0 +1,347 @@
+<!-- pointfont.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Punktbasierter Textgenerator</title>
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js" defer></script>
+    <style>
+
+        /* Basisstile für Body und HTML, um volle Höhe und Breite zu nutzen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            overflow-x: hidden; /* Verhindert horizontales Scrollen */
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        /* Stil für die Steuerungselemente */
+        .controls {
+            position: fixed; /* Fixiert die Steuerleiste oben */
+            height: 70px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100; /* Sicherstellt, dass die Steuerleiste immer oben bleibt */
+            flex-wrap: wrap; /* Ermöglicht Zeilenumbrüche bei kleinen Bildschirmen */
+            gap: 20px;
+            background: var(--bg-color); /* Hintergrundfarbe der Steuerleiste */
+        }
+        .controls label {
+            margin-right: 10px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        /* Aktualisierte Input- und Select-Stile */
+        .controls input,
+        .controls select {
+            width: 60px;
+            padding: 5px;
+            border: 1px solid var(--text-color); /* Rahmenfarbe auf Textfarbe setzen */
+            border-radius: 4px;
+            text-align: right;
+            background: var(--bg-color);
+            color: var(--text-color);
+            outline: none; /* Entfernt den Standard-Fokusrahmen */
+            box-sizing: border-box; /* Stellt sicher, dass Padding und Border in der Breite enthalten sind */
+        }
+
+        /* Aktualisierte Button-Stile */
+        .controls button {
+            padding: 5px 10px;
+            border: 1px solid var(--text-color); /* Rahmenfarbe auf Textfarbe setzen */
+            border-radius: 4px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            cursor: pointer;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        /* Optional: Fokus-Stile für Eingaben und Buttons */
+        .controls input:focus,
+        .controls select:focus,
+        .controls button:focus {
+            border-color: var(--text-color);
+            box-shadow: 0 0 5px var(--text-color); /* Optional: fügt einen leichten Schimmer hinzu */
+        }
+
+        /* Container für Canvas */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: calc(100% - 70px); /* Abzug der Steuerleistenhöhe */
+            margin-top: 70px; /* Platz für die fixierte Steuerleiste */
+            overflow: hidden;
+            background: var(--bg-color); /* Hintergrundfarbe des Canvas-Containers */
+        }
+
+        /* Canvas-Stil ohne Rahmen und volle Größe */
+        canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Unsichtbares, aber selektierbares Text-Overlay */
+        .text-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            color: transparent !important; /* Unsichtbar */
+            background-color: transparent; /* Sicherstellen, dass kein Hintergrundfarbe gesetzt ist */
+            opacity: 0; /* Unsichtbar, aber selektierbar */
+            z-index: 2;
+            user-select: text;  
+            display: flex; /* Flexbox für Zentrierung */
+            justify-content: center; /* Horizontal zentrieren */
+            align-items: center; /* Vertikal zentrieren */
+            text-align: center; /* Text zentrieren */
+            font-weight: bold;
+            
+            /* Die Schriftgröße wird über JavaScript gesteuert */
+
+            /* Pointer-Ereignisse deaktivieren */
+            pointer-events: none;
+        }
+
+        /* Optionaler innerer Text für selektierbare Bereiche */
+        .overlay-text {
+            pointer-events: auto;
+            color: transparent; /* Text weiterhin unsichtbar */
+        }
+
+        /* Responsive Anpassung für kleinere Bildschirme */
+        @media (max-width: 800px) {
+            /* Entferne Schriftgrößenanpassungen aus CSS */
+            .controls input, .controls select, .controls button {
+                width: 120px;
+                margin-bottom: 10px;
+            }
+            .controls label {
+                margin-right: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <label for="textInput">Text:</label>
+        <input type="text" id="textInput" value="0 ≡ 1 ≡ ∞ ">
+        
+        <label for="pointCount">Punktanzahl pro Zeichen:</label>
+        <input type="number" id="pointCount" value="100" min="0" max="1000" step="1">
+        
+        <label for="pointSize">Punktgröße:</label>
+        <input type="number" id="pointSize" value="1" min="0" max="1000" step="0.1">
+        
+        <label for="fontSelect">Schriftart:</label>
+        <select id="fontSelect">
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier New">Courier New</option>
+            <option value="Verdana" selected>Verdana</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="Impact">Impact</option>
+            <!-- Weitere Schriftarten können hier hinzugefügt werden -->
+        </select>
+    </div>
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+        <div id="textOverlay" class="text-overlay">
+            <span class="overlay-text"></span>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const textInput = document.getElementById('textInput');
+        const pointCountInput = document.getElementById('pointCount');
+        const pointSizeInput = document.getElementById('pointSize');
+        const fontSelect = document.getElementById('fontSelect');
+        const textOverlay = document.getElementById('textOverlay');
+        const overlayText = document.querySelector('.overlay-text');
+
+        // Funktion zum Abrufen der CSS-Variable
+        function getCSSVariable(variable) {
+            return getComputedStyle(document.body).getPropertyValue(variable).trim();
+        }
+
+        // Funktion zur Anpassung der Canvas-Größe an den Container
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            determineFontSize();
+            renderPoints();
+        }
+
+        // Bestimme die Schriftgröße basierend auf der Fensterbreite
+        function determineFontSize() {
+            const width = window.innerWidth;
+            let fontSize;
+            if (width <= 800) {
+                fontSize = 80;
+            } else {
+                fontSize = 150;
+            }
+            // Setze die Schriftgröße sowohl für das Overlay
+            overlayText.style.fontSize = `${fontSize}px`;
+            overlayText.style.lineHeight = `${fontSize}px`;
+        }
+
+        // Event Listener für Fenstergrößenänderungen
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function renderPoints() {
+            const text = textInput.value;
+            const pointCount = parseInt(pointCountInput.value, 10);
+            const pointSize = parseFloat(pointSizeInput.value);
+            const font = fontSelect.value;
+
+            if (isNaN(pointCount) || pointCount <= 0) {
+                alert("Bitte geben Sie eine gültige Punktanzahl ein.");
+                return;
+            }
+
+            if (isNaN(pointSize) || pointSize <= 0) {
+                alert("Bitte geben Sie eine gültige Punktgröße ein.");
+                return;
+            }
+
+            // Bestimme die aktuelle Schriftgröße
+            const width = window.innerWidth;
+            let fontSize;
+            if (width <= 800) {
+                fontSize = 80;
+            } else {
+                fontSize = 150;
+            }
+
+            // Aktualisiere das unsichtbare Text-Overlay
+            overlayText.textContent = text;
+            overlayText.style.font = `bold ${fontSize}px ${font}`;
+
+            // Zeichne den Text auf das Canvas, um Pixel-Daten zu erhalten
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${fontSize}px ${font}`;
+            ctx.textBaseline = 'top';
+
+            // Zentriere den Text
+            const textMetrics = ctx.measureText(text);
+            const textWidth = textMetrics.width;
+            const x = (canvas.width - textWidth) / 2;
+            const y = (canvas.height - fontSize) / 2;
+
+            ctx.fillText(text, x, y);
+
+            // Extrahiere Pixel-Daten
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            // Sammle Positionen der weißen Pixel
+            const pixels = [];
+            for (let i = 0; i < data.length; i += 4) {
+                const alpha = data[i + 3];
+                const red = data[i];
+                const green = data[i + 1];
+                const blue = data[i + 2];
+                if (alpha > 128 && red > 200 && green > 200 && blue > 200) {
+                    const index = i / 4;
+                    const px = index % canvas.width;
+                    const py = Math.floor(index / canvas.width);
+                    pixels.push({ x: px, y: py });
+                }
+            }
+
+            // Bestimme Punkte pro Zeichen
+            const chars = text.length;
+            if (chars === 0) return; // Verhindere Division durch Null
+
+            const pointsPerChar = pointCount; // Punktanzahl pro Zeichen
+
+            // Zeichne die Punkte auf das Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Setze die Punktfarbe basierend auf der CSS-Variable
+            const pointColor = getCSSVariable('--text-color') || '#FFFFFF'; // Fallback auf Weiß
+            ctx.fillStyle = pointColor; // Setze die Füllfarbe dynamisch
+
+            let currentX = x;
+            for (let c = 0; c < chars; c++) {
+                const char = text[c];
+                const charWidth = ctx.measureText(char).width;
+                const charPixels = pixels.filter(p => p.x >= currentX && p.x < currentX + charWidth);
+
+                if (charPixels.length === 0) continue;
+
+                // Zufällige Auswahl der Punkte
+                const shuffledPixels = shuffleArray(charPixels);
+
+                // Wähle so viele Punkte wie gewünscht oder so viele, wie verfügbar sind
+                const selectedPoints = shuffledPixels.slice(0, Math.min(pointsPerChar, shuffledPixels.length));
+
+                selectedPoints.forEach(p => {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                currentX += charWidth;
+            }
+        }
+
+        // Funktion zum zufälligen Mischen eines Arrays (Fisher-Yates Shuffle)
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // Initiale Darstellung
+        renderPoints();
+
+        // Event Listener für Eingabefelder
+        textInput.addEventListener('input', renderPoints);
+        pointCountInput.addEventListener('input', renderPoints);
+        pointSizeInput.addEventListener('input', renderPoints);
+        fontSelect.addEventListener('change', renderPoints);
+
+        // Beobachten von Änderungen der CSS-Variable '--text-color'
+        const observer = new MutationObserver(renderPoints);
+        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+
+        // Optional: Funktion zum Aktualisieren der Punkte, wenn '--text-color' sich ändert
+        function updatePointColor() {
+            renderPoints();
+        }
+
+        // Erweiterung des Beobachters, um Änderungen an CSS-Variablen zu erkennen
+        observer.disconnect(); // Entferne vorherige Beobachtungen
+        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+
+    </script>
+</body>
+</html>

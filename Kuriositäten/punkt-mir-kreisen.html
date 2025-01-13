@@ -1,0 +1,65 @@
+<!-- punkt-mir-kreisen.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="/meta.css" rel = "stylesheet">
+    <script src="/meta.js" defer></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .center-dot {
+            position: relative;
+            width: 10px;
+            height: 10px;
+            background-color: var(--text-color);
+            border-radius: 50%;
+        }
+
+        .circle {
+            position: absolute;
+            border: 1px solid var(--text-color);
+            border-radius: 50%;
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="center-dot"></div>
+
+    <script>
+        const numCircles = 100;
+        const centerDot = document.querySelector('.center-dot');
+
+        for (let i = 1; i <= numCircles; i++) {
+            const circle = document.createElement('div');
+            circle.classList.add('circle');
+            const size = 50 + i * 10; // Der Abstand der Kreise wächst mit jeder Iteration
+            circle.style.width = `${size}px`;
+            circle.style.height = `${size}px`;
+            centerDot.appendChild(circle);
+        }
+    </script>
+
+</body>
+</html>

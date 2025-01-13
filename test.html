@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Fraktaler Baum</title>
+  <style>
+    canvas { 
+      border: 1px solid #000; 
+      display: block; 
+      margin: 0 auto; 
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="800" height="600"></canvas>
+  <script>
+    class FraktalerBaum {
+      constructor(ctx, startX, startY, length, angle, depth) {
+        this.ctx = ctx;
+        this.startX = startX;
+        this.startY = startY;
+        this.length = length;
+        this.angle = angle;
+        this.depth = depth;
+      }
+
+      zeichnen() {
+        this._zweigZeichnen(this.startX, this.startY, this.length, this.angle, this.depth);
+      }
+
+      _zweigZeichnen(x, y, length, angle, depth) {
+        if (depth === 0) return;
+
+        // Berechne die Endkoordinaten des aktuellen Zweiges
+        const rad = angle * Math.PI / 180;
+        const xEnd = x + length * Math.cos(rad);
+        const yEnd = y - length * Math.sin(rad);
+
+        // Zeichne den Zweig
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(xEnd, yEnd);
+        this.ctx.stroke();
+
+        // Warte kurz und zeichne dann die nächsten Zweige rekursiv
+        setTimeout(() => {
+          // Erzeuge zwei neue Zweige: links und rechts vom aktuellen Zweig
+          const neuerLänge = length * 0.7;  // verkürze die Länge
+          const abweichung = 30;            // Winkelabweichung für neue Zweige
+
+          // Linker Zweig
+          this._zweigZeichnen(xEnd, yEnd, neuerLänge, angle - abweichung, depth - 1);
+          // Rechter Zweig
+          this._zweigZeichnen(xEnd, yEnd, neuerLänge, angle + abweichung, depth - 1);
+        }, 100);  // Verzögerung für schrittweises Zeichnen (100ms)
+      }
+    }
+
+    // Setup des Canvas und Startwerte
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 2;
+
+    // Erzeuge und zeichne den fraktalen Baum
+    const startX = canvas.width / 2;
+    const startY = canvas.height - 20;
+    const startLänge = 100;
+    const startWinkel = 90;  // Startend nach oben gerichtet
+    const maximaleTiefe = 8;
+
+    const baum = new FraktalerBaum(ctx, startX, startY, startLänge, startWinkel, maximaleTiefe);
+    baum.zeichnen();
+  </script>
+</body>
+</html>

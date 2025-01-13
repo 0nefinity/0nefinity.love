@@ -1,9 +1,12 @@
+<!-- choose_nothing.html -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>choose nothing</title>
+  <link href="/meta.css" rel="stylesheet">
+  <script src="/meta.js" defer></script>
   <style>
     body {
       margin: 0;
@@ -11,11 +14,8 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      background-color: #ffffff;
       position: relative;
       flex-direction: column;
-      text-align: center;
-      font-family: Arial, sans-serif;
     }
 
     .container {
@@ -124,8 +124,8 @@
   </div>
 
   <div class="container">
-    <div class="square black" onclick="changeBackground('black')"></div>
     <div class="square white" onclick="changeBackground('white')"></div>
+    <div class="square black" onclick="changeBackground('black')"></div>
     <div class="square grey" onclick="changeBackground('grey')"></div>
     <div class="square transparent-grid" onclick="changeBackground('transparent')"></div>
     <div class="square custom-color" onclick="openColorPicker(event)"></div>

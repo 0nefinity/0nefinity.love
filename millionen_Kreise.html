@@ -1,26 +1,32 @@
+<!-- millionen_Kreise.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Concentric Circles with Zoom</title>
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js" defer></script>
+
     <style>
+
         body {
             margin: 0;
             overflow: hidden;
-            background-color: black;
+            background-color: var(--bg-color); /* Setzt den Hintergrund */
         }
         canvas {
             display: block;
         }
         #tooltip {
             position: absolute;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 5px;
-            border-radius: 3px;
-            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 4px;
             pointer-events: none;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            font-size: 14px;
             display: none;
+            z-index: 1000;
         }
     </style>
 </head>
@@ -28,6 +34,13 @@
     <canvas id="circleCanvas"></canvas>
     <div id="tooltip"></div>
     <script>
+        // Funktion zum Abrufen der CSS-Variable
+        function getCSSVariable(variable) {
+            const value = getComputedStyle(document.body).getPropertyValue(variable).trim();
+            console.log(`CSS Variable ${variable}: ${value}`); // Debugging
+            return value;
+        }
+
         const canvas = document.getElementById('circleCanvas');
         const ctx = canvas.getContext('2d');
         const tooltip = document.getElementById('tooltip');
@@ -52,12 +65,20 @@
             let spacingFactor = 1.01;
             let lineWidth = 0.6;
             let numberOfCircles = 100000;
+            const textColor = getCSSVariable('--text-color');
 
-            ctx.strokeStyle = 'white';
+            // Überprüfe, ob textColor definiert ist
+            if (!textColor) {
+                console.error("CSS Variable '--text-color' ist nicht definiert.");
+                return;
+            }
+
+            ctx.strokeStyle = textColor;
             ctx.lineWidth = lineWidth;
 
             let radius = initialRadius;
             for (let i = 0; i < numberOfCircles; i++) {
+                // Berechne den maximalen Radius basierend auf der Zoomstufe und Canvasgröße
                 if (radius * zoomLevel > Math.sqrt(Math.pow(canvas.width, 2) + Math.pow(canvas.height, 2)) / 2) {
                     break;
                 }

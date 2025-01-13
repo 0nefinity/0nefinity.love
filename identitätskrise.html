@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Zufällige Identitätsoperator-Gleichungen</title>
+  
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
+  
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: Verdana, Geneva, Tahoma, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      position: relative;
+      overflow: hidden;
+    }
+    #math-container {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-grow: 1;
+      width: 100%;
+      text-align: center;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #formula-math {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform-origin: center center;
+      transform: translate(-50%, -50%) scale(1);
+      margin: 0 !important;
+      padding: 0 !important;
+      line-height: 1;
+      font-family: serif;
+      color: var(--text-color);
+    }
+    #math-container * {
+      margin: 0;
+      padding: 0;
+    }
+    .controls {
+      text-align: center;
+      margin: 1em 0;
+    }
+    label, input, .toggle-button {
+      margin: 0.5em;
+      font-size: 1em;
+      color: var(--text-color);
+      background: var(--bg-color);
+      border: 1px solid var(--text-color);
+      padding: 0.5em;
+      border-radius: 4px;
+    }
+    .toggle-button {
+      cursor: pointer;
+    }
+    .operator-list {
+      display: none;
+      position: absolute;
+      top: 3em;
+      right: 1em;
+      background: var(--bg-color);
+      border: 1px solid var(--text-color);
+      padding: 1em;
+      max-height: 70vh;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .operator-item {
+      margin: 0.5em 0;
+    }
+    #math-container, #formula-math {
+      box-sizing: border-box !important;
+    }
+    #formula-math {
+      font-size: initial !important;
+    }
+  </style>
+</head>
+<body>
+  
+    <div class="controls">
+        <label for="operatorCount">Anzahl der Operatoren:</label>
+        <input type="number" id="operatorCount" value="20" min="0" />
+        <button class="toggle-button" id="toggleListBtn">Operatoren</button>
+      </div>
+      
+      <div class="operator-list" id="operatorList">
+        <!-- Checkboxen werden hier eingefügt -->
+      </div>
+      
+      <div id="math-container">
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="block" id="formula-math">
+          <mi id="center-point">irgendwas</mi>
+        </math>
+      </div>
+      
+      <div class="mathml-display">
+        <textarea id="mathml-code" readonly></textarea>
+        <button id="copyMathMLBtn">MathML kopieren</button>
+      </div>
+      
+      <script>
+        let allOperators = [];
+        let selectedOperators = [];
+        let zoomFactor = 1;
+      
+        async function loadOperators() {
+          try {
+            const response = await fetch('/identities.json');
+            if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
+            const data = await response.json();
+            return data.identitätsoperatoren;
+          } catch (error) {
+            console.error('Fehler beim Laden der Operatoren:', error);
+            return [];
+          }
+        }
+      
+        function generateMathMLFormula(operators, operatorCount) {
+          let currentFormula = `<mi id="center-point">irgendwas</mi>`;
+          for (let i = 0; i < operatorCount; i++) {
+            if (operators.length === 0) break;
+            const chosenOperator = operators[Math.floor(Math.random() * operators.length)];
+            currentFormula = chosenOperator.mathml.replace('<mi>x</mi>', currentFormula);
+          }
+          return currentFormula;
+        }
+      
+        function updateFormula(mathMLContent) {
+          const container = document.getElementById('formula-math');
+          container.innerHTML = mathMLContent;
+          container.style.transform = `translate(-50%, -50%) scale(${zoomFactor})`;
+      
+          // MathML-Code aktualisieren
+          document.getElementById('mathml-code').value = mathMLContent;
+        }
+      
+        function refreshFormula() {
+          const count = parseInt(document.getElementById('operatorCount').value) || 0;
+          const mathMLContent = generateMathMLFormula(selectedOperators, count);
+          updateFormula(mathMLContent);
+        }
+      
+        function createOperatorList(operators) {
+          const listContainer = document.getElementById('operatorList');
+          listContainer.innerHTML = '';
+      
+          operators.forEach(op => {
+            const item = document.createElement('div');
+            item.className = 'operator-item';
+      
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `op-${op.name}`;
+            checkbox.checked = true;
+            checkbox.addEventListener('change', () => {
+              selectedOperators = operators.filter(o =>
+                document.getElementById(`op-${o.name}`).checked
+              );
+              refreshFormula();
+            });
+      
+            const label = document.createElement('label');
+            label.htmlFor = `op-${op.name}`;
+            label.textContent = op.name;
+      
+            item.appendChild(checkbox);
+            item.appendChild(label);
+            listContainer.appendChild(item);
+          });
+      
+          selectedOperators = [...operators];
+        }
+      
+        function copyToClipboard(text) {
+          navigator.clipboard.writeText(text).then(
+            () => {
+              alert('MathML-Code wurde in die Zwischenablage kopiert!');
+            },
+            err => {
+              console.error('Fehler beim Kopieren:', err);
+            }
+          );
+        }
+      
+        function onWheelZoom(event) {
+          event.preventDefault();
+          const zoomSensitivity = 0.001;
+          zoomFactor += event.deltaY * -zoomSensitivity;
+          zoomFactor = Math.min(Math.max(zoomFactor, 0.1), 10);
+          document.getElementById('formula-math').style.transform = `translate(-50%, -50%) scale(${zoomFactor})`;
+        }
+      
+        window.addEventListener('DOMContentLoaded', async () => {
+          allOperators = await loadOperators();
+          createOperatorList(allOperators);
+      
+          document.getElementById('operatorCount').addEventListener('input', refreshFormula);
+      
+          document.getElementById('copyMathMLBtn').addEventListener('click', () => {
+            const mathMLContent = document.getElementById('mathml-code').value;
+            copyToClipboard(mathMLContent);
+          });
+      
+          const toggleBtn = document.getElementById('toggleListBtn');
+          const operatorList = document.getElementById('operatorList');
+          toggleBtn.addEventListener('click', () => {
+            if (operatorList.style.display === 'none' || !operatorList.style.display) {
+              operatorList.style.display = 'block';
+            } else {
+              operatorList.style.display = 'none';
+            }
+          });
+      
+          document.getElementById('math-container').addEventListener('wheel', onWheelZoom, { passive: false });
+      
+          refreshFormula();
+        });
+      </script>
+      
+</body>
+</html>

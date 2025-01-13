@@ -3,11 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>Bibeltext-Visualisierung</title>
+
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
+
   <style>
     body {
       margin: 0;
       overflow: hidden;
-      background-color: black;
     }
     canvas {
       display: block;
@@ -19,10 +22,10 @@
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-  
+
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-  
+
     let textData = '';
     let lines = [];
     let radius = Math.min(canvas.width, canvas.height) / 2 - 50;
@@ -33,7 +36,7 @@
     let panX = 0;
     let panY = 0;
     let scale = 1;
-  
+
     fetch('bibel.txt')
       .then(response => response.text())
       .then(data => {
@@ -41,20 +44,19 @@
         init();
       })
       .catch(error => console.error(error));
-  
+
     function init() {
       adjustFontSize();
       generateLines();
       draw();
     }
-  
+
     function adjustFontSize() {
       ctx.font = `${fontSize}px monospace`;
       let charWidth = ctx.measureText('M').width;
       let lineHeight = fontSize * 1.2;
       let capacity = recalculateCapacity(radius, lineHeight, charWidth);
-  
-      // Dynamische Anpassung der Schriftgröße
+
       while (textData.length > capacity && fontSize > 1) {
         fontSize -= 0.5;
         ctx.font = `${fontSize}px monospace`;
@@ -63,29 +65,29 @@
         capacity = recalculateCapacity(radius, lineHeight, charWidth);
       }
     }
-  
+
     function generateLines() {
       const lineHeight = fontSize * 1.2;
       const charWidth = ctx.measureText('M').width;
       lines = [];
       let textIndex = 0;
-  
+
       for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
         const lineRadius = Math.sqrt(radius * radius - yPos * yPos);
         const maxLineWidth = lineRadius * 2;
         const maxChars = Math.floor(maxLineWidth / charWidth);
-  
+
         const remainingChars = textData.length - textIndex;
         const charsInLine = Math.min(maxChars, remainingChars);
         const lineText = textData.substr(textIndex, charsInLine);
         textIndex += charsInLine;
-  
+
         if (lineText.length > 0) {
           lines.push({ text: lineText, y: yPos });
         }
       }
     }
-  
+
     function recalculateCapacity(radius, lineHeight, charWidth) {
       let capacity = 0;
       for (let yPos = -radius + lineHeight / 2; yPos <= radius - lineHeight / 2; yPos += lineHeight) {
@@ -96,34 +98,33 @@
       }
       return capacity;
     }
-  
+
     function draw() {
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'white';
+
+      // Dynamische Schriftfarbe aus der CSS-Variable übernehmen
+      const textColor = getComputedStyle(document.body).getPropertyValue('--text-color').trim();
+      ctx.fillStyle = textColor || 'white'; // Fallback auf 'white', falls die Variable nicht gesetzt ist
+
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
       ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
-      ctx.scale(scale, scale); // Skalierung anpassen
-  
+      ctx.scale(scale, scale);
+
       lines.forEach((line) => {
         ctx.fillText(line.text, 0, line.y);
       });
-  
+
       ctx.restore();
     }
-  
-    // Keine Verkürzung des Textes mehr, sondern immer die volle Länge anzeigen
-    function getVisibleText(text) {
-      return text; // Der Text bleibt immer in voller Länge erhalten
-    }
-  
+
     canvas.addEventListener('mousedown', (e) => {
       isDragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
     });
-  
+
     canvas.addEventListener('mousemove', (e) => {
       if (isDragging) {
         const dx = e.clientX - lastX;
@@ -135,15 +136,15 @@
         draw();
       }
     });
-  
+
     canvas.addEventListener('mouseup', () => {
       isDragging = false;
     });
-  
+
     canvas.addEventListener('mouseleave', () => {
       isDragging = false;
     });
-  
+
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomIntensity = 0.001;
@@ -151,7 +152,7 @@
       scale = Math.min(Math.max(0.05, scale), 10);
       draw();
     });
-  
+
     window.addEventListener('resize', () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
