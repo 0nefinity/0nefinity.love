@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Punkt im Kreis</title>
+  
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
+   
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      text-align: center; 
+    }
+    canvas { 
+      border: 1px solid #ccc; 
+      display: block; 
+      margin: 0 auto; 
+    }
+    #toggle, #moreSpeed {
+      position: fixed;
+      top: 10px;
+      z-index: 100;
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Positioniere die Buttons nebeneinander */
+    #toggle {
+      left: 50%;
+      transform: translateX(-140%);
+    }
+    #moreSpeed {
+      left: 50%;
+      transform: translateX(-20%);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button id="toggle">Mit Faden</button>
+  <button id="moreSpeed">more speed</button>
+
+  <script>
+    // Die Pfade werden nicht als kreis gezeichnet, sondern zwischen den Punkten, wodurch sich interessante Muster ergeben
+    // UUUND zwischendurch glicht das, da der Computer offenbar in seinen Berechnungen schwankt, vor allem bei höheren Geschwindigkeiten
+    // glitch art
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const toggleBtn = document.getElementById('toggle');
+    const moreSpeedBtn = document.getElementById('moreSpeed');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      centerX = canvas.width / 2;
+      centerY = canvas.height / 2;
+    }
+
+    let centerX, centerY;
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const computedStyles = getComputedStyle(document.documentElement);
+    let pointColor = computedStyles.getPropertyValue('--text-color').trim() || 'red';
+
+    const radius = 150;
+    let angle = 0;
+    let speed = 0.02;
+    let drawTrail = false;
+
+    // Definiere den Radius des Punktes
+    const pointRadius = 5;
+    // Variablen zum Speichern der letzten Position
+    let lastX = centerX + radius * Math.cos(angle);
+    let lastY = centerY + radius * Math.sin(angle);
+
+    toggleBtn.addEventListener('click', () => {
+      drawTrail = !drawTrail;
+      toggleBtn.textContent = drawTrail ? 'Ohne Faden' : 'Mit Faden';
+
+      // Wenn der Faden deaktiviert wird, lösche den Canvas
+      if (!drawTrail) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Setze den Startpunkt zurück
+        angle = 0;
+        lastX = centerX + radius * Math.cos(angle);
+        lastY = centerY + radius * Math.sin(angle);
+      }
+    });
+
+    moreSpeedBtn.addEventListener('click', () => {
+      speed *= 10;
+      moreSpeedBtn.textContent = `Speed: ${speed.toFixed(4)}`;
+    });
+
+    function animate() {
+      // Lösche den Canvas nur, wenn kein Faden gewünscht ist
+      if (!drawTrail) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      const currentX = centerX + radius * Math.cos(angle);
+      const currentY = centerY + radius * Math.sin(angle);
+
+      // Wenn drawTrail aktiviert ist, zeichne eine Linie vom letzten zum aktuellen Punkt
+      if (drawTrail) {
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(currentX, currentY);
+        ctx.strokeStyle = pointColor;
+        // Verwende eine Strichbreite, die dem Durchmesser des Punktes entspricht
+        ctx.lineWidth = pointRadius * 2;
+        ctx.stroke();
+        ctx.closePath();
+      }
+
+      // Zeichne den aktuellen Punkt
+      ctx.beginPath();
+      ctx.arc(currentX, currentY, pointRadius, 0, Math.PI * 2);
+      ctx.fillStyle = pointColor;
+      ctx.fill();
+      ctx.closePath();
+
+      // Aktualisiere die letzte Position
+      lastX = currentX;
+      lastY = currentY;
+
+      angle += speed;
+      if (angle > Math.PI * 2) {
+        angle -= Math.PI * 2;
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

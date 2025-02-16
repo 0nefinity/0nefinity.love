@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Zufällige Identitätsoperator-Gleichungen</title>
+  <!-- Mathematische Identitätsoperatoren sind ein schönes Beispiel für 0nefinity. 
+       Jeder Operator ist 1 Operator. 
+       Mathematisch gesehen hat er 0 Einfluss.
+       Jeder dieser Operatoren lässt sich ∞-fach anwenden.
+       Man munkelt, dass sie allerdings sogar alle permanent überall vorhanden sind, unsichtbar zwar, aber abrufbereit -->
   
   <link href="/meta.css" rel="stylesheet" />
   <script src="/meta.js" defer></script>
@@ -41,6 +46,7 @@
       left: 50%;
       top: 50%;
       transform-origin: center center;
+      /* Wir setzen hier zunächst keine feste Skalierung – diese übernimmt adjustFormulaScale() */
       transform: translate(-50%, -50%) scale(1);
       margin: 0 !important;
       padding: 0 !important;
@@ -57,6 +63,7 @@
       margin: 1em 0;
     }
     label, input, .toggle-button {
+      field-sizing: content;
       margin: 0.5em;
       font-size: 1em;
       color: var(--text-color);
@@ -68,173 +75,196 @@
     .toggle-button {
       cursor: pointer;
     }
+    /* Container für Toggle-Schaltfläche und Liste */
+    .operator-container {
+      position: relative;
+      display: inline-block;
+    }
+    /* Operatorenliste direkt unterhalb der Toggle-Schaltfläche */
     .operator-list {
       display: none;
       position: absolute;
-      top: 3em;
-      right: 1em;
+      top: 100%; /* direkt unterhalb der Schaltfläche */
+      left: 0;
+      width: 120px; /* feste Breite, damit alle Einträge gleich groß sind */
       background: var(--bg-color);
       border: 1px solid var(--text-color);
-      padding: 1em;
+      padding: 0.5em;
       max-height: 70vh;
       overflow-y: auto;
       z-index: 100;
       box-shadow: 0 0 10px rgba(0,0,0,0.5);
-      flex-direction: column;
-      align-items: flex-start;
     }
+    /* Einheitliches Layout für die einzelnen Operator-Einträge */
     .operator-item {
-      margin: 0.5em 0;
+      display: flex;
+      align-items: center;
+    }
+    .operator-item input[type="checkbox"] {
+      width: 1.2em;
+      height: 1.2em;
+      margin-right: 0.5em;
+      flex-shrink: 0;
+    }
+    .operator-item label {
+      flex-grow: 1;
     }
     #math-container, #formula-math {
       box-sizing: border-box !important;
     }
+    /* Wir entfernen die feste font-size, damit die Skalierung über CSS nicht interferiert */
     #formula-math {
-      font-size: initial !important;
+      font-size: initial;
     }
   </style>
 </head>
 <body>
   
-    <div class="controls">
-        <label for="operatorCount">Anzahl der Operatoren:</label>
-        <input type="number" id="operatorCount" value="20" min="0" />
-        <button class="toggle-button" id="toggleListBtn">Operatoren</button>
-      </div>
-      
+  <div class="controls">
+    <label for="operatorCount">Anzahl der Operatoren:</label>
+    <input type="number" id="operatorCount" value="1" min="0" />
+    <div class="operator-container">
+      <button class="toggle-button" id="toggleListBtn">Operatoren</button>
       <div class="operator-list" id="operatorList">
         <!-- Checkboxen werden hier eingefügt -->
       </div>
+    </div>
+  </div>
+  
+  <h2>nothing happens here</h2>
+  <div id="math-container">
+    <math xmlns="http://www.w3.org/1998/Math/MathML" display="block" id="formula-math">
+      <mi id="center-point">irgendwas</mi>
+    </math>
+  </div>
+  
+  <script>
+    let allOperators = [];
+    let selectedOperators = [];
+    let userZoomFactor = 1; 
+
+    async function loadOperators() {
+      try {
+        const response = await fetch('/identities.json');
+        if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
+        const data = await response.json();
+        return data.identitätsoperatoren;
+      } catch (error) {
+        console.error('Fehler beim Laden der Operatoren:', error);
+        return [];
+      }
+    }
+  
+    function generateMathMLFormula(operators, operatorCount) {
+      let currentFormula = `<mi id="center-point">irgendwas</mi>`;
+      for (let i = 0; i < operatorCount; i++) {
+        if (operators.length === 0) break;
+        const chosenOperator = operators[Math.floor(Math.random() * operators.length)];
+        currentFormula = chosenOperator.mathml.replace('<mi>x</mi>', currentFormula);
+      }
+      return currentFormula;
+    }
+  
+    // Diese Funktion passt die Skalierung der Formel dynamisch an den verfügbaren Platz an
+    function adjustFormulaScale() {
+      const container = document.getElementById('math-container');
+      const formula = document.getElementById('formula-math');
       
-      <div id="math-container">
-        <math xmlns="http://www.w3.org/1998/Math/MathML" display="block" id="formula-math">
-          <mi id="center-point">irgendwas</mi>
-        </math>
-      </div>
+      // Setze die Skalierung vorübergehend auf 1, um die "intrinsische" Größe der Formel zu ermitteln
+      formula.style.transform = 'translate(-50%, -50%) scale(1)';
       
-      <div class="mathml-display">
-        <textarea id="mathml-code" readonly></textarea>
-        <button id="copyMathMLBtn">MathML kopieren</button>
-      </div>
+      const containerRect = container.getBoundingClientRect();
+      const formulaRect = formula.getBoundingClientRect();
       
-      <script>
-        let allOperators = [];
-        let selectedOperators = [];
-        let zoomFactor = 1;
+      // Berechne die Skalierungsfaktoren in x- und y-Richtung
+      const scaleX = containerRect.width / formulaRect.width;
+      const scaleY = containerRect.height / formulaRect.height;
       
-        async function loadOperators() {
-          try {
-            const response = await fetch('/identities.json');
-            if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
-            const data = await response.json();
-            return data.identitätsoperatoren;
-          } catch (error) {
-            console.error('Fehler beim Laden der Operatoren:', error);
-            return [];
-          }
-        }
+      // Wähle den kleineren Faktor, damit die Formel komplett in den Container passt
+      // Multipliziere mit 0.9, um einen kleinen Rand zu lassen
+      const baseScale = Math.min(scaleX, scaleY) * 0.9;
       
-        function generateMathMLFormula(operators, operatorCount) {
-          let currentFormula = `<mi id="center-point">irgendwas</mi>`;
-          for (let i = 0; i < operatorCount; i++) {
-            if (operators.length === 0) break;
-            const chosenOperator = operators[Math.floor(Math.random() * operators.length)];
-            currentFormula = chosenOperator.mathml.replace('<mi>x</mi>', currentFormula);
-          }
-          return currentFormula;
-        }
+      // Die endgültige Skalierung ist der Basiswert multipliziert mit der Benutzeranpassung
+      const newScale = baseScale * userZoomFactor;
+      formula.style.transform = `translate(-50%, -50%) scale(${newScale})`;
+    }
+  
+    function updateFormula(mathMLContent) {
+      const container = document.getElementById('formula-math');
+      container.innerHTML = mathMLContent;
       
-        function updateFormula(mathMLContent) {
-          const container = document.getElementById('formula-math');
-          container.innerHTML = mathMLContent;
-          container.style.transform = `translate(-50%, -50%) scale(${zoomFactor})`;
-      
-          // MathML-Code aktualisieren
-          document.getElementById('mathml-code').value = mathMLContent;
-        }
-      
-        function refreshFormula() {
-          const count = parseInt(document.getElementById('operatorCount').value) || 0;
-          const mathMLContent = generateMathMLFormula(selectedOperators, count);
-          updateFormula(mathMLContent);
-        }
-      
-        function createOperatorList(operators) {
-          const listContainer = document.getElementById('operatorList');
-          listContainer.innerHTML = '';
-      
-          operators.forEach(op => {
-            const item = document.createElement('div');
-            item.className = 'operator-item';
-      
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `op-${op.name}`;
-            checkbox.checked = true;
-            checkbox.addEventListener('change', () => {
-              selectedOperators = operators.filter(o =>
-                document.getElementById(`op-${o.name}`).checked
-              );
-              refreshFormula();
-            });
-      
-            const label = document.createElement('label');
-            label.htmlFor = `op-${op.name}`;
-            label.textContent = op.name;
-      
-            item.appendChild(checkbox);
-            item.appendChild(label);
-            listContainer.appendChild(item);
-          });
-      
-          selectedOperators = [...operators];
-        }
-      
-        function copyToClipboard(text) {
-          navigator.clipboard.writeText(text).then(
-            () => {
-              alert('MathML-Code wurde in die Zwischenablage kopiert!');
-            },
-            err => {
-              console.error('Fehler beim Kopieren:', err);
-            }
+      // Nach dem Rendern die Größe anpassen
+      adjustFormulaScale();
+    }
+  
+    function refreshFormula() {
+      const count = parseInt(document.getElementById('operatorCount').value) || 0;
+      const mathMLContent = generateMathMLFormula(selectedOperators, count);
+      updateFormula(mathMLContent);
+    }
+  
+    function createOperatorList(operators) {
+      const listContainer = document.getElementById('operatorList');
+      listContainer.innerHTML = '';
+  
+      operators.forEach(op => {
+        const item = document.createElement('div');
+        item.className = 'operator-item';
+  
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `op-${op.name}`;
+        checkbox.checked = true;
+        checkbox.addEventListener('change', () => {
+          selectedOperators = operators.filter(o =>
+            document.getElementById(`op-${o.name}`).checked
           );
-        }
-      
-        function onWheelZoom(event) {
-          event.preventDefault();
-          const zoomSensitivity = 0.001;
-          zoomFactor += event.deltaY * -zoomSensitivity;
-          zoomFactor = Math.min(Math.max(zoomFactor, 0.1), 10);
-          document.getElementById('formula-math').style.transform = `translate(-50%, -50%) scale(${zoomFactor})`;
-        }
-      
-        window.addEventListener('DOMContentLoaded', async () => {
-          allOperators = await loadOperators();
-          createOperatorList(allOperators);
-      
-          document.getElementById('operatorCount').addEventListener('input', refreshFormula);
-      
-          document.getElementById('copyMathMLBtn').addEventListener('click', () => {
-            const mathMLContent = document.getElementById('mathml-code').value;
-            copyToClipboard(mathMLContent);
-          });
-      
-          const toggleBtn = document.getElementById('toggleListBtn');
-          const operatorList = document.getElementById('operatorList');
-          toggleBtn.addEventListener('click', () => {
-            if (operatorList.style.display === 'none' || !operatorList.style.display) {
-              operatorList.style.display = 'block';
-            } else {
-              operatorList.style.display = 'none';
-            }
-          });
-      
-          document.getElementById('math-container').addEventListener('wheel', onWheelZoom, { passive: false });
-      
           refreshFormula();
         });
-      </script>
-      
+  
+        const label = document.createElement('label');
+        label.htmlFor = `op-${op.name}`;
+        label.textContent = op.name;
+  
+        item.appendChild(checkbox);
+        item.appendChild(label);
+        listContainer.appendChild(item);
+      });
+  
+      selectedOperators = [...operators];
+    }
+  
+    // Benutzer-Zoom per Mausrad
+    function onWheelZoom(event) {
+      event.preventDefault();
+      const zoomSensitivity = 0.001;
+      userZoomFactor += event.deltaY * -zoomSensitivity;
+      userZoomFactor = Math.min(Math.max(userZoomFactor, 0.1), 10);
+      adjustFormulaScale();
+    }
+  
+    window.addEventListener('DOMContentLoaded', async () => {
+      allOperators = await loadOperators();
+      createOperatorList(allOperators);
+  
+      document.getElementById('operatorCount').addEventListener('input', refreshFormula);
+  
+      const toggleBtn = document.getElementById('toggleListBtn');
+      const operatorList = document.getElementById('operatorList');
+      toggleBtn.addEventListener('click', () => {
+        operatorList.style.display = (operatorList.style.display === 'none' || operatorList.style.display === '') 
+          ? 'block' 
+          : 'none';
+      });
+  
+      document.getElementById('math-container').addEventListener('wheel', onWheelZoom, { passive: false });
+  
+      // Bei Fenstergrößenänderungen die Formel neu skalieren
+      window.addEventListener('resize', adjustFormulaScale);
+  
+      refreshFormula();
+    });
+  </script>
+  
 </body>
 </html>

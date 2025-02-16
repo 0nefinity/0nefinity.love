@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
     <title>Infinity Zeros Game</title>
     <link href="/meta.css" rel="stylesheet" /> 
     <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
@@ -11,7 +12,7 @@
     <style>
         body {
             margin: 0;
-            overflow: hidden; /* Verhindert Scrollen bei vielen absoluten Elementen */
+            overflow: hidden;
             position: relative;
             height: 100vh;
             width: 100vw;
@@ -28,7 +29,6 @@
             z-index: 1;
             text-align: center;
         }
-        /* Wrapper für die zentrale Null */
         #center-zero-wrapper {
             position: absolute;
             user-select: none;
@@ -48,7 +48,8 @@
             left: 50%;
             transform: translateX(-50%);
             text-align: center;
-            font-size: 24px;
+            font-size: 20px;
+            white-space: nowrap;
             opacity: 0;
             transition: opacity 0.5s;
         }
@@ -79,7 +80,6 @@
 
     <div id="heading">Klicke, um unendlich Nullen zu addieren</div>
 
-    <!-- Wrapper um die zentrale Null -->
     <div id="center-zero-wrapper">
         <div id="center-zero">0</div>
     </div>
@@ -156,12 +156,6 @@
                 centerZeroWrapper.style.transform = `translate(-50%, -50%) scale(${baseScale})`;
             });
         });
-
-        // hinzufügen: einen Button der heißt -∞0 und verkleinert beim drauf klicken die 0 wieder im selben maße, während immer kurz statt '+∞0' nun '-∞0' aufploppt.
-        
-        // hinzufügen: einen "invert" button. Wenn man drauf klickt wird er aktiviert, bis man wieder drauf klickt. 
-        // Die Richtung soll sich dann umkehren, sodass man beim klicken auf '+∞0' die Null nun verkleinert und beim klicken auf '-∞0' die Null nun vergrößert 
-        // Und die Schrift des Buttons soll sich während er aktiviert ist einmal gespiegelt darstellen.
     </script>
 
 </body>

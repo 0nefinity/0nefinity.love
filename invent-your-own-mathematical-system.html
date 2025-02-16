@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>invent your own mathematical system (or whatever you want)</title>
+
+  <link href="/meta.css" rel="stylesheet"/>
+  <script src="/meta.js" defer></script>
+
+  <style>
+    /* Canvas füllt den ganzen Viewport */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    #canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+    }
+
+    /* Overlay für Header & Toolbar */
+    .topOverlay {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      user-select: none;
+      pointer-events: auto;
+    }
+    .header-container {
+      text-align: center;
+      margin-bottom: 10px;
+      padding: 10px 70px;
+    }
+    .header-container h3 {
+      margin: 0;
+      font-size: clamp(1.5rem, 5vw, 2.5rem);
+    }
+    .header-container div {
+      margin: 0;
+      font-size: clamp(1rem, 4vw, 1.8rem);
+    }
+
+    /* Toolbar – eine Zeile, kein Umbruch */
+    .toolbar {
+      display: flex;
+      flex-wrap: nowrap; /* kein Zeilenumbruch */
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+    }
+
+    .toolbar-group {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Einheitliche Button-/Input-Gestaltung */
+    .pen-settings input,
+    .pen-settings button,
+    .toolbar-button,
+    .brush-button {
+      font-size: 1em;
+      background: transparent;
+      border: 1px solid var(--text-color, #000);
+      color: var(--text-color, #000);
+      padding: 0.5em;
+      border-radius: 4px;
+      user-select: none;
+      height: 2.5em;
+      box-sizing: border-box;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    /* Farbpicker minimal angleichen */
+    .color-picker {
+      width: 2.5em;
+      min-width: 2.5em;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    /* +/- Buttons */
+    .brush-button {
+      width: 40px;
+      text-align: center;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    .brush-button:hover {
+      opacity: 0.9;
+    }
+    .brush-button:active {
+      transform: scale(0.95);
+    }
+
+    /* Container für Eingabefeld + +/- Buttons */
+    .brush-size-container {
+      display: inline-flex;
+      align-items: center;
+      margin: 0;
+    }
+    .brush-size-container > * {
+      margin: 0 !important;
+      border-radius: 0;
+    }
+    .brush-size-container > button:first-child {
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+    }
+    .brush-size-container > input[type="number"] {
+      width: 70px;
+      text-align: center;
+      padding: 0.5em;
+      border-left: none;
+      border-right: none;
+    }
+    .brush-size-container > button:last-child {
+      border-top-right-radius: 4px;
+      border-bottom-right-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div class="topOverlay" id="topOverlay">
+    <div class="header-container">
+      <h3>invent your own mathematical system</h3>
+      <div>(or whatever you want)</div>
+    </div>
+
+    <!-- Toolbar: alles in einer Zeile, ohne Rahmen -->
+    <div class="toolbar">
+      <!-- Pen-Settings und "another one" in einer Gruppe -->
+      <div class="toolbar-group">
+        <div id="penSettings" class="pen-settings">
+          <input type="color" id="colorPicker" class="color-picker" title="Farbe wählen">
+          <div class="brush-size-container">
+            <button id="decreaseBtn" class="brush-button" title="Pinselgröße verringern">-</button>
+            <input type="number" id="brushSize" class="number-picker" min="0" value="1" step="any" title="Pinselgröße">
+            <button id="increaseBtn" class="brush-button" title="Pinselgröße erhöhen">+</button>
+          </div>
+        </div>
+        <button id="clearBtn" class="toolbar-button" title="Leinwand löschen">another one</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* Deins: Canvas-Setup, Pointer-Events usw. */
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const topOverlay = document.getElementById('topOverlay');
+    const colorPicker = document.getElementById('colorPicker');
+    const brushSize = document.getElementById('brushSize');
+    const clearBtn = document.getElementById('clearBtn');
+    const decreaseBtn = document.getElementById('decreaseBtn');
+    const increaseBtn = document.getElementById('increaseBtn');
+
+    const paths = [];
+    let currentPath = null;
+    let drawing = false;
+    let pendingDrawing = false;
+    let startX = 0, startY = 0;
+    const movementThreshold = 5;
+
+    let currentColor = getComputedStyle(document.documentElement)
+                      .getPropertyValue('--text-color').trim() || '#000000';
+    let backgroundColor = getComputedStyle(document.documentElement)
+                      .getPropertyValue('--bg-color').trim() || '#FFFFFF';
+    let currentBrushSize = parseFloat(brushSize.value);
+
+    let lastX = 0, lastY = 0;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      renderCanvas();
+    }
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      fillCanvasWithBackground();
+      renderCanvas();
+    });
+
+    function startDrawing(x, y) {
+      drawing = true;
+      lastX = x;
+      lastY = y;
+      currentPath = { color: currentColor, brushSize: currentBrushSize, points: [{ x, y }] };
+      paths.push(currentPath);
+    }
+    function stopDrawing() {
+      drawing = false;
+      currentPath = null;
+      ctx.beginPath();
+    }
+    function draw(x, y) {
+      if (!drawing || !currentPath) return;
+      currentPath.points.push({ x, y });
+      ctx.strokeStyle = currentPath.color;
+      ctx.lineWidth = currentPath.brushSize;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      [lastX, lastY] = [x, y];
+    }
+    function getCanvasCoordinates(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      return [clientX - rect.left, clientY - rect.top];
+    }
+
+    window.addEventListener('pointerdown', (e) => {
+      const interactiveTags = ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'];
+      if (interactiveTags.includes(e.target.tagName)) {
+        pendingDrawing = false;
+        return;
+      }
+      pendingDrawing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+    }, { capture: true });
+    window.addEventListener('pointermove', (e) => {
+      if (drawing) {
+        const [x, y] = getCanvasCoordinates(e.clientX, e.clientY);
+        draw(x, y);
+      } else if (pendingDrawing) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.sqrt(dx*dx + dy*dy) > movementThreshold) {
+          topOverlay.style.pointerEvents = 'none';
+          pendingDrawing = false;
+          const [nx, ny] = getCanvasCoordinates(e.clientX, e.clientY);
+          startDrawing(nx, ny);
+          draw(nx, ny);
+        }
+      }
+    }, { capture: true });
+    window.addEventListener('pointerup', () => {
+      if (drawing) stopDrawing();
+      topOverlay.style.pointerEvents = 'auto';
+      pendingDrawing = false;
+    }, { capture: true });
+    window.addEventListener('pointercancel', () => {
+      if (drawing) stopDrawing();
+      topOverlay.style.pointerEvents = 'auto';
+      pendingDrawing = false;
+    }, { capture: true });
+
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (e.touches.length > 0) {
+        const t = e.touches[0];
+        pendingDrawing = true;
+        startX = t.clientX;
+        startY = t.clientY;
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (drawing) {
+        const t = e.touches[0];
+        const [x, y] = getCanvasCoordinates(t.clientX, t.clientY);
+        draw(x, y);
+      } else if (pendingDrawing) {
+        const t = e.touches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (Math.sqrt(dx*dx + dy*dy) > movementThreshold) {
+          topOverlay.style.pointerEvents = 'none';
+          pendingDrawing = false;
+          const [nx, ny] = getCanvasCoordinates(t.clientX, t.clientY);
+          startDrawing(nx, ny);
+          draw(nx, ny);
+        }
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchend', e => {
+      e.preventDefault();
+      if (drawing) stopDrawing();
+      topOverlay.style.pointerEvents = 'auto';
+      pendingDrawing = false;
+    }, { passive: false });
+
+    colorPicker.value = rgbToHex(currentColor);
+    colorPicker.addEventListener('change', e => {
+      currentColor = e.target.value;
+    });
+    brushSize.addEventListener('input', e => {
+      let val = parseFloat(e.target.value);
+      if (isNaN(val) || val < 0) {
+        val = 0;
+        brushSize.value = val;
+      }
+      currentBrushSize = val;
+      renderCanvas();
+    });
+    clearBtn.addEventListener('click', () => {
+      fillCanvasWithBackground();
+      paths.length = 0;
+    });
+    decreaseBtn.addEventListener('click', () => {
+      if (currentBrushSize === 0) return;
+      currentBrushSize /= 10;
+      currentBrushSize = Math.round(currentBrushSize * 1e6) / 1e6;
+      brushSize.value = (currentBrushSize < 1e-3 && currentBrushSize > 0)
+        ? currentBrushSize.toExponential()
+        : currentBrushSize;
+      renderCanvas();
+    });
+    increaseBtn.addEventListener('click', () => {
+      currentBrushSize *= 10;
+      currentBrushSize = Math.round(currentBrushSize * 1e6) / 1e6;
+      brushSize.value = (currentBrushSize < 1e-3 && currentBrushSize > 0)
+        ? currentBrushSize.toExponential()
+        : currentBrushSize;
+      renderCanvas();
+    });
+
+    function fillCanvasWithBackground() {
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    function renderCanvas() {
+      fillCanvasWithBackground();
+      for (const path of paths) {
+        if (path.brushSize > 0) {
+          ctx.strokeStyle = path.color;
+          ctx.lineWidth = path.brushSize;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          for (let i = 0; i < path.points.length - 1; i++) {
+            const from = path.points[i];
+            const to = path.points[i + 1];
+            ctx.moveTo(from.x, from.y);
+            ctx.lineTo(to.x, to.y);
+          }
+          ctx.stroke();
+        }
+      }
+    }
+
+    const observer = new MutationObserver(() => {
+      currentColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--text-color').trim() || currentColor;
+      backgroundColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--bg-color').trim() || backgroundColor;
+      if (!colorPicker.value || colorPicker.value === "#000000") {
+        colorPicker.value = rgbToHex(currentColor);
+      }
+      renderCanvas();
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+
+    function rgbToHex(rgb) {
+      const ctx2 = document.createElement("canvas").getContext("2d");
+      ctx2.fillStyle = rgb;
+      return ctx2.fillStyle;
+    }
+  </script>
+</body>
+</html>
