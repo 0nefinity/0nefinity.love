@@ -614,11 +614,6 @@ etwas Wirrwarr
 Allerlei Köstlichkeiten
 
 
-## Dinge, um die es hier nicht geht
-
-spießiges konservatives (und einfach falsches weil unvollständiges) Mathematikertum
-
-
 
 # Danke
 
