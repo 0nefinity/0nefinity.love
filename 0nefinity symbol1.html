@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Rotierendes Dreieck mit Zahlen</title>
+  <style>
+    body {
+      background-color: black;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    svg {
+      width: 300px;
+      height: 300px;
+    }
+    /* Optional: Schriftgröße und -art anpassen */
+    text {
+      font-family: sans-serif;
+      font-size: 12px;
+      fill: white;
+    }
+    polygon {
+      fill: white;
+    }
+  </style>
+</head>
+<body>
+  <svg viewBox="0 0 200 200">
+    <!-- Alle Elemente werden in dieser Gruppe rotiert -->
+    <g id="rotatingGroup">
+      <!-- Animation: Das ganze Dreieck dreht sich um den Punkt (100,100) -->
+      <animateTransform attributeName="transform"
+                        attributeType="XML"
+                        type="rotate"
+                        from="0 100 100" to="360 100 100"
+                        dur="5s"
+                        repeatCount="indefinite"/>
+      
+      <!-- Gleichseitiges Dreieck -->
+      <polygon points="100,13.4 25,143.3 175,143.3"/>
+      
+      <!-- Die Text-Elemente folgen der Position, sollen aber nicht zusätzlich
+           um die eigene Achse rotieren. Deshalb wird jeweils eine inverse Rotation
+           eingebunden, die die Drehung des übergeordneten Elements kompensiert. -->
+      
+      <!-- Oberer Scheitelpunkt (100, 13.4) mit "0" -->
+      <text x="100" y="13.4" text-anchor="middle" dominant-baseline="middle">
+        0
+        <animateTransform attributeName="transform"
+                          attributeType="XML"
+                          type="rotate"
+                          from="0 100 100" to="-360 100 100"
+                          dur="5s"
+                          repeatCount="indefinite"/>
+      </text>
+      
+      <!-- Linker Scheitelpunkt (25, 143.3) mit "1" -->
+      <text x="25" y="143.3" text-anchor="middle" dominant-baseline="middle">
+        1
+        <animateTransform attributeName="transform"
+                          attributeType="XML"
+                          type="rotate"
+                          from="0 100 100" to="-360 100 100"
+                          dur="5s"
+                          repeatCount="indefinite"/>
+      </text>
+      
+      <!-- Rechter Scheitelpunkt (175, 143.3) mit "∞" -->
+      <text x="175" y="143.3" text-anchor="middle" dominant-baseline="middle">
+        ∞
+        <animateTransform attributeName="transform"
+                          attributeType="XML"
+                          type="rotate"
+                          from="0 100 100" to="-360 100 100"
+                          dur="5s"
+                          repeatCount="indefinite"/>
+      </text>
+    </g>
+  </svg>
+</body>
+</html>
