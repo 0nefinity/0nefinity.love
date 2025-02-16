@@ -1,8 +1,8 @@
 /* meta.css */
-
 :root {
     --bg-color: black;
     --text-color: white;
+    font-size: 16px; /* Basisgröße; wird über Media Query auf mobilen Geräten angepasst */
     background: var(--bg-color);
     color: var(--text-color);
 }
@@ -13,11 +13,10 @@ body {
     justify-content: center;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     line-height: 1.5;
-    font-size: 18px;
-    text-shadow: 
-        1px 1px 2px rgba(0, 0, 0, 0.7);
-        
+    font-size: 1rem;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
     text-align: center;
+    touch-action: manipulation;
 }
 
 *,
@@ -28,21 +27,29 @@ body {
 
 .container {
     width: 100%;
-    max-width: 800px;
-    padding-top: 120px;
-    padding-bottom: 120px;
+    max-width: 50rem; /* 800px / 16 */
+    padding-bottom: 7.5rem; /* 120px / 16 */
+    white-space: pre-line;
 }
 
 section {
-    margin: 15px 0;
+    margin: 0.9375rem 0; /* ca. 15px / 16 */
+}
+
+h1 {
+    font-size: 2.5rem;
 }
 
 h2 {
-    margin: 50px 0;
+    font-size: 2rem;
+}
+
+h3 {
+    font-size: 1.75rem;
 }
 
 p {
-    margin: 20px 0;
+    margin: 1.25rem 0; /* ca. 20px / 16 */
 }
 
 a {
@@ -50,16 +57,17 @@ a {
     text-decoration: underline;
 }
 
-.menu-button, .back-button {
+.menu-button,
+.back-button {
     position: fixed;
     top: 0;
-    width: 70px;
-    height: 70px;
+    width: 4.375rem; /* ca. 70px */
+    height: 4.375rem;
     display: flex;
     justify-content: center;
     align-items: center;
     color: var(--text-color);
-    font-size: 57px;
+    font-size: 3.5625rem; /* ca. 57px */
     cursor: pointer;
     z-index: 1000;
     transform-origin: center;
@@ -68,8 +76,8 @@ a {
 
 .menu-button {
     right: 0;
-    min-width: 70px;
-    max-width: 500px;
+    min-width: 4.375rem;
+    max-width: 31.25rem; /* ca. 500px / 16 */
 }
 
 .menu-button:hover {
@@ -85,8 +93,8 @@ a {
 }
 
 .menu-button.expanded {
-    right: 20px;
-    width: 300px; 
+    right: 1.25rem; /* ca. 20px / 16 */
+    width: 18.75rem; /* ca. 300px / 16 */
 }
 
 .menu-button.expanded:hover {
@@ -95,9 +103,9 @@ a {
 
 .menu {
     position: fixed;
-    top: 80px;
-    right: 20px;
-    width: 300px;
+    top: 5rem; /* ca. 80px / 16 */
+    right: 1.25rem; /* ca. 20px / 16 */
+    width: 18.75rem; /* ca. 300px / 16 */
     max-height: 90%;
     box-sizing: border-box;
     overflow-y: auto;
@@ -117,7 +125,7 @@ a {
 }
 
 .menu ul li {
-    margin: 10px 0;
+    margin: 0.625rem 0; /* ca. 10px / 16 */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -125,10 +133,10 @@ a {
 
 .menu ul li a {
     display: block;
-    padding-bottom: 5px;
+    padding-bottom: 0.3125rem; /* ca. 5px / 16 */
     color: var(--text-color);
     text-decoration: none;
-    font-size: 18px;
+    font-size: 1rem;
     border-bottom: 1px solid transparent;
 }
 
@@ -136,60 +144,41 @@ a {
     border-bottom: 1px solid var(--text-color);
 }
 
-@media (max-width: 600px) {
-    body {
-        margin-top: 60px;
-        font-size: 16px;
-    }
-
-    .menu-button, .back-button {
-        width: 60px;
-        height: 60px;
-        font-size: 45px;
-    }
-
-    .menu {
-        width: 80%;
-        right: 10px;
-    }
-}
-
 /* Globale Scrollleisten-Stile für Webkit-basierte Browser */
-
-/* Festlegen der Scrollleistenbreite auf 4px, um Platz zu reservieren */
 *::-webkit-scrollbar {
-    width: 4px;
+    width: 0.25rem; /* ca. 4px / 16 */
     transition: background 0.3s ease, opacity 0.3s ease;
 }
 
 *::-webkit-scrollbar-thumb {
     background: var(--text-color);
     opacity: 0.5;
-    border-radius: 5px;
+    border-radius: 0.3125rem; /* ca. 5px / 16 */
     transition: background 0.3s ease, opacity 0.3s ease;
 }
 
-/* Änderung der Scrollleisten-Darstellung beim Hover */
 *:hover::-webkit-scrollbar-thumb {
     background: var(--text-color);
     opacity: 1;
 }
 
-/* Optional: Scrollleisten-Tracks können ebenfalls gestylt werden */
 *::-webkit-scrollbar-track {
-    background: transparent; /* Hintergrund der Scrollleiste transparent */
-    margin: 12px 0;
+    background: transparent;
+    margin: 0.75rem 0; /* ca. 12px / 16 */
 }
 
-/* Scrollleisten im Menü nur bei Hover sichtbar */
-
-/* Standard: Scrollleisten im Menü sind unsichtbar */
 .menu::-webkit-scrollbar-thumb {
     opacity: 0;
     transition: opacity 0.3s ease;
 }
 
-/* Beim Hover über das Menü werden die Scrollleisten sichtbar */
 .menu:hover::-webkit-scrollbar-thumb {
     opacity: 1;
+}
+
+/* Media Query für kleinere Geräte */
+@media (max-width: 480px) {
+    :root {
+        font-size: 18px; /* Erhöht die Basis-Schriftgröße, sodass alle Elemente größer wirken */
+    }
 }

@@ -6,29 +6,14 @@
       "mathml": "<mrow><mi>x</mi><mo>+</mo><mn>0</mn></mrow>"
     },
     {
-      "name": "0+",
-      "description": "x + 0 = x",
-      "mathml": "<mrow><mn>0</mn><mo>+</mo><mi>x</mi></mrow>"
-    },
-    {
       "name": "-0",
       "description": "x - 0 = x",
       "mathml": "<mrow><mi>x</mi><mo>-</mo><mn>0</mn></mrow>"
     },
     {
-      "name": "0-",
-      "description": "x - 0 = x",
-      "mathml": "<mrow><mn>0</mn><mo>-</mo><mi>x</mi></mrow>"
-    },
-    {
       "name": "*1",
       "description": "x × 1 = x",
       "mathml": "<mrow><mi>x</mi><mo>×</mo><mn>1</mn></mrow>"
-    },
-    {
-      "name": "1*",
-      "description": "1 × x = x",
-      "mathml": "<mrow><mn>1</mn><mo>×</mo><mi>x</mi></mrow>"
     },
     {
       "name": "/1",

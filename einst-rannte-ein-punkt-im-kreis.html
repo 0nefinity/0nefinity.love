@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Punkt im Kreis</title>
+  
+  <link href="/meta.css" rel="stylesheet" />
+  <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt (bitte diesen Hinweis nicht entfernen) -->
+  <script src="/meta.js" defer></script>
+  <!-- meta.js regelt das Menü und den Zurückbutton und evt. sonstige zukünftige Metafunktionen (bitte diesen Hinweis nicht entfernen) -->
+   
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      text-align: center; 
+    }
+    canvas { 
+      border: 1px solid #ccc; 
+      display: block; 
+      margin: 0 auto; 
+    }
+    #toggle, #moreSpeed {
+      position: fixed;
+      top: 10px;
+      z-index: 100;
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+      min-width: 100px;  /* Feste Mindestbreite */
+      box-sizing: border-box;
+    }
+    /* Positioniere die Buttons nebeneinander */
+    #toggle {
+      left: 50%;
+      transform: translateX(-140%);
+    }
+    #moreSpeed {
+      left: 50%;
+      transform: translateX(-20%);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button id="toggle">Mit Faden</button>
+  <button id="moreSpeed">more speed</button>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const toggleBtn = document.getElementById('toggle');
+    const moreSpeedBtn = document.getElementById('moreSpeed');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      centerX = canvas.width / 2;
+      centerY = canvas.height / 2;
+    }
+
+    let centerX, centerY;
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const computedStyles = getComputedStyle(document.documentElement);
+    let pointColor = computedStyles.getPropertyValue('--text-color').trim() || 'red';
+
+    const radius = 150;
+    let angle = 0;
+    let speed = 0.01;
+    let drawTrail = false;
+
+    const pointRadius = 5;
+    let lastX = centerX + radius * Math.cos(angle);
+    let lastY = centerY + radius * Math.sin(angle);
+
+    // Funktion zur Formatierung der Geschwindigkeit
+    function formatSpeed(value) {
+    if (value < 1) {
+        return value.toFixed(1);
+        } else if (value < 1000) {
+        return value.toFixed(0);
+      } else {
+        // Verwendet wissenschaftliche Notation mit 1 Nachkommastelle
+        return value.toExponential(0);
+      }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      drawTrail = !drawTrail;
+      toggleBtn.textContent = drawTrail ? 'Ohne Faden' : 'Mit Faden';
+
+      if (!drawTrail) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        angle = 0;
+        lastX = centerX + radius * Math.cos(angle);
+        lastY = centerY + radius * Math.sin(angle);
+      }
+    });
+
+    moreSpeedBtn.addEventListener('click', () => {
+      speed *= 10;
+      // Aktualisiere den Button-Text mit formatierter Geschwindigkeit
+      moreSpeedBtn.textContent = `Speed: ${formatSpeed(speed)}`;
+    });
+
+    function animate() {
+      if (!drawTrail) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      const currentX = centerX + radius * Math.cos(angle);
+      const currentY = centerY + radius * Math.sin(angle);
+
+      if (drawTrail) {
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(currentX, currentY);
+        ctx.strokeStyle = pointColor;
+        ctx.lineWidth = pointRadius * 2;
+        ctx.stroke();
+        ctx.closePath();
+      }
+
+      ctx.beginPath();
+      ctx.arc(currentX, currentY, pointRadius, 0, Math.PI * 2);
+      ctx.fillStyle = pointColor;
+      ctx.fill();
+      ctx.closePath();
+
+      lastX = currentX;
+      lastY = currentY;
+
+      angle += speed;
+      if (angle > Math.PI * 2) {
+        angle -= Math.PI * 2;
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
