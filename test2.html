@@ -1,26 +1,20 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <link rel="icon" type="image/png" href="/profilbilder/favicon/index/favicon-96x96.png" sizes="96x96" />
-  <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/index/favicon.svg" />
-  <link rel="shortcut icon" href="/profilbilder/favicon/index/favicon.ico" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/profilbilder/favicon/index/apple-touch-icon.png" />
-  <meta name="apple-mobile-web-app-title" content="0nefinity.love" />
-  <link rel="manifest" href="/profilbilder/favicon/index/site.webmanifest" />
-  
-  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese Zeile hier unangetastet lassen) -->
-  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen)-->
-
-  <meta name="description" content="0nefinity 0 ≡ 1 ≡ ∞ nichtduale metamathematik, beschreibt die Mathematik und alles, was daraus hervorgeht (Alles)" />
-  <meta name="keywords" content="0nefinity, nondual math, nichtduale Mathematik, Wissenschaft, Spiritualität, Philosophie, Unendlichkeit, Nichts, Alles, Einheit, Eins Sein" />
-
-  <title>0nefinity.love</title>
-
+  <!-- meta.css und meta.js bleiben unverändert -->
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
+  <title>0nefinity-symbol</title>
   <style>
+    :root {
+      /* Fallback-Farben – können auch in meta.css definiert sein */
+      --bg-color: black;
+      --text-color: white;
+      --text-color-hover: #ccc;
+    }
+    /* Inhalte werden in einer Spalte zentriert */
     body {
       display: flex;
       flex-direction: column;
@@ -30,30 +24,31 @@
       padding: 0;
       overflow-x: hidden;
     }
+    /* Header (Einstellmenü) – fixed oben, immer 70px hoch, mit 70px Rand links und rechts */
     header.controls {
       position: fixed;
       top: 0;
       left: 70px;
       right: 70px;
-      height: auto;
+      height: 70px;
       z-index: 1000;
       background: var(--bg-color);
       color: var(--text-color);
-      display: none;
+      display: none; /* standardmäßig ausgeblendet */
       flex-wrap: wrap;
       align-items: center;
       justify-content: center;
       gap: 5px;
       box-sizing: border-box;
-      padding: 5px;
     }
     header.controls label {
       white-space: nowrap;
       margin: 2px 4px;
       font-size: 12px;
     }
-    header.controls input[type="number"],
-    header.controls input[type="text"] {
+    /* Zahlenfelder: Geschw-Feld 60px, alle anderen 40px */
+    header.controls input[type="number"] {
+      width: 40px;
       margin-left: 3px;
       padding: 2px 4px;
       font-size: 12px;
@@ -68,34 +63,25 @@
       margin-left: 3px;
       box-sizing: content-box;
     }
+    /* Symbolbereich – Container mit fester Höhe (400px) und maximal 400px Breite, zentriert;
+       overflow visible, damit das Canvas (größer als 400x400) auch überragt */
     .symbol-container {
       width: 100vw;
       max-width: 400px;
       height: 400px;
-      margin-top: 70px;
+      margin-top: 70px; /* immer 70px Abstand zum oberen Bildschirmrand */
       margin-bottom: 20px;
       position: relative;
       background: var(--bg-color);
       overflow: visible;
     }
+    /* Das Canvas erhält als interne Auflösung 800×800, wird via CSS aber auf 400×400 skaliert */
     canvas {
       display: block;
-      width: 400px;
-      height: 400px;
+      width: 400px;   /* CSS-Größe */
+      height: 400px;  /* CSS-Größe */
     }
-    /* Speed-Anzeige oben rechts im Canvas */
-    #speedIndicator {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(0, 0, 0, 0.5);
-      color: #fff;
-      padding: 2px 5px;
-      border-radius: 5px;
-      font-family: Verdana, sans-serif;
-      font-size: 12px;
-      pointer-events: none;
-    }
+    /* Container für den alten Index-Inhalt */
     .container {
       width: 100%;
       max-width: 800px;
@@ -106,6 +92,7 @@
       white-space: pre-line;
       text-align: center;
     }
+    /* Toggle-Text wie bisher */
     .toggle-text {
       transition: color 0.3s ease;
       cursor: pointer;
@@ -116,11 +103,11 @@
   </style>
 </head>
 <body>
+  <!-- Header (Einstellmenü) – fixed, oben, wird per Klick ein-/ausgeblendet -->
   <header class="controls" id="controls">
     <label>
-      Auto:
-      <!-- Auto voreingestellt -->
-      <input type="checkbox" id="autoSpeedCheckbox" checked>
+      Auto Geschw:
+      <input type="checkbox" id="autoSpeedCheckbox">
     </label>
     <label>
       Ausrichtung:
@@ -128,8 +115,7 @@
     </label>
     <label>
       Geschw:
-      <!-- Speed startet jetzt bei 0 -->
-      <input type="number" id="rotationSpeed" value="0" step="0.1" min="0">
+      <input type="number" id="rotationSpeed" value="0.2" step="0.1" min="0">
     </label>
     <label>
       Gr. Z(%):
@@ -147,41 +133,18 @@
       ≡L(%):
       <input type="number" id="equivLength" value="100" step="1" min="0">
     </label>
-    <!-- Neues Eingabefeld für speedIncrement -->
-    <label>
-      SpeedInc:
-      <input type="number" id="speedIncrement" value="60" step="1" min="0">
-    </label>
-    <!-- Eingabefelder für die einzelnen Symbole -->
-    <label>
-      Symbol 0:
-      <input type="text" id="label0Input" value="0">
-    </label>
-    <label>
-      Symbol 1:
-      <input type="text" id="label1Input" value="1">
-    </label>
-    <label>
-      Symbol ∞:
-      <input type="text" id="labelInfInput" value="∞">
-    </label>
-    <label>
-      Identisch:
-      <input type="text" id="equivSymbolInput" value="≡">
-    </label>
   </header>
 
+  <!-- Symbolbereich -->
   <div class="symbol-container" id="symbolContainer">
+    <!-- Das Canvas hat als Attribute 800×800, wird aber per CSS auf 400×400 skaliert -->
     <canvas id="canvas" width="800" height="800"></canvas>
-    <!-- Speed-Anzeige -->
-    <div id="speedIndicator">Speed: 0°/Frame</div>
   </div>
 
+  <!-- Alter Index-Inhalt -->
   <div class="container">
     0 1 ∞ are basically the same<br>
-    they embody, point to and conceptualize different fundamental aspects of this singularity called reality<br><br>
-
-    Their absolute unity forms the very foundation upon which all of mathematics is built and reality arises<br><br>
+    they conceptualize different fundamental aspects of this singularity called reality<br><br>
 
     look at something (or at nothing)<br><br>
 
@@ -225,6 +188,7 @@
   </div>
 
   <script>
+    // Beim Klick auf den Symbolbereich (Canvas) wird das Einstellmenü (Header) ein-/ausgeblendet.
     const symbolContainer = document.getElementById('symbolContainer');
     const controls = document.getElementById('controls');
     let menuVisible = false;
@@ -233,21 +197,24 @@
       controls.style.display = menuVisible ? 'flex' : 'none';
     });
 
+    // --- Hilfsscript: URL-Parameter auslesen und Felder setzen ---
     function getURLParam(param, defaultValue) {
       const urlParams = new URLSearchParams(window.location.search);
       return urlParams.has(param) ? urlParams.get(param) : defaultValue;
     }
-    // URL-Parameter überschreiben nicht mehr die voreingestellten Werte
-    // (Auto: true, rotationSpeed: 0)
-    // const autoSpeedParam = getURLParam('autoSpeed', 'false');
-    // const speedParam = getURLParam('speed', '0.2');
-    // document.getElementById('autoSpeedCheckbox').checked = (autoSpeedParam === 'true');
-    // document.getElementById('rotationSpeed').value = speedParam;
+    // Standardwerte aus URL
+    const autoSpeedParam = getURLParam('autoSpeed', 'false');
+    const speedParam = getURLParam('speed', '0.2');
+    document.getElementById('autoSpeedCheckbox').checked = (autoSpeedParam === 'true');
+    document.getElementById('rotationSpeed').value = speedParam;
 
+    // Canvas einrichten
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     function resizeCanvas() {
-      // Optional: Canvas an Fenstergröße anpassen
+      // Wir belassen die interne Auflösung (800x800)
+      // Die CSS-Größe des Canvas wird über das .symbol-container bestimmt
+      // (Der Container ist fix 400x400, overflow visible)
     }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
@@ -261,7 +228,7 @@
     let triangleSize = getParam('triangleSize', 30);
     let equivSize = getParam('equivSize', 25);
     let equivLength = getParam('equivLength', 100);
-    let manualSpeed = getParam('rotationSpeed', 0);
+    let manualSpeed = getParam('rotationSpeed', 0.2);
     let rotationSpeed = manualSpeed;
     let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
     let autoOffset = 0;
@@ -281,7 +248,7 @@
       tangentialMode = e.target.checked;
     });
     document.getElementById('rotationSpeed').addEventListener('input', () => {
-      manualSpeed = getParam('rotationSpeed', 0);
+      manualSpeed = getParam('rotationSpeed', 0.2);
       if (!autoSpeedEnabled) {
         rotationSpeed = manualSpeed;
       } else {
@@ -295,22 +262,17 @@
         rotationSpeed = currentCycleSpeed + autoOffset;
       }
     });
-    // Neues Eingabefeld für speedIncrement auswerten
-    let speedIncrement = getParam('speedIncrement', 60);
-    document.getElementById('speedIncrement').addEventListener('input', () => {
-      speedIncrement = getParam('speedIncrement', 60);
-    });
-
-    let autoSpeedBase = manualSpeed;
-    let autoSpeedTarget = autoSpeedBase + speedIncrement;
+    let autoSpeedBase = 0;
+    let autoSpeedTarget = 0;
     let autoSpeedTimer = 0;
     const rampDuration = 1;
     const holdDuration = 1;
     const cycleDuration = rampDuration + holdDuration;
+    const speedIncrement = 60;
     document.getElementById('autoSpeedCheckbox').addEventListener('change', e => {
       autoSpeedEnabled = e.target.checked;
       if (autoSpeedEnabled) {
-        manualSpeed = getParam('rotationSpeed', 0);
+        manualSpeed = getParam('rotationSpeed', 0.2);
         autoOffset = 0;
         let current = manualSpeed;
         let r = Math.floor(current / speedIncrement);
@@ -330,6 +292,7 @@
     }
     let angle = 0;
     let lastTimestamp = null;
+    const labels = ["0", "1", "∞"];
     function animate(timestamp) {
       if (!lastTimestamp) lastTimestamp = timestamp;
       const dt = (timestamp - lastTimestamp) / 1000;
@@ -359,6 +322,7 @@
       ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
+      // Kein Clipping – die Zeichnung kann über die 400x400 CSS-Größe hinausgehen.
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
       const minDim = Math.min(canvas.width, canvas.height);
@@ -374,13 +338,6 @@
         const y = radius * Math.sin(thetaRad);
         vertices.push({ x, y, thetaRad });
       }
-      // Lese die aktuellen Symboltexte aus den Inputfeldern
-      const labels = [
-        document.getElementById('label0Input').value || "0",
-        document.getElementById('label1Input').value || "1",
-        document.getElementById('labelInfInput').value || "∞"
-      ];
-      const equivSymbol = document.getElementById('equivSymbolInput').value || "≡";
       ctx.font = `bold ${labelFontSize}px Verdana`;
       ctx.fillStyle = textColor;
       ctx.textAlign = "center";
@@ -408,14 +365,11 @@
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.scale(1, equivScaleY);
-        ctx.fillText(equivSymbol, 0, 0);
+        ctx.fillText("≡", 0, 0);
         ctx.restore();
       }
       ctx.restore();
-
-      // Aktualisiere die Speed-Anzeige (gerundet auf ganze Zahlen)
-      document.getElementById('speedIndicator').textContent = 'Speed: ' + Math.round(rotationSpeed) + '°/Frame';
-
+      ctx.restore();
       requestAnimationFrame(animate);
     }
     requestAnimationFrame(animate);

@@ -1,0 +1,290 @@
+<!-- 0nefinity-symbol.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- u. Objektfarben (unverändert) -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt Menü u. Sonstiges (unverändert) -->
+  <title>0nefinity-symbol</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-color);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .controls {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: transparent;
+      color: var(--text-color);
+      font-family: Verdana, sans-serif;
+      font-size: 14px;
+      text-align: center;
+    }
+    .controls label {
+      margin: 0 6px;
+    }
+    .controls input {
+      margin-left: 3px;
+      box-sizing: content-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>
+      Auto Geschw:
+      <input type="checkbox" id="autoSpeedCheckbox">
+    </label>
+    <label>
+      Ausrichtung:
+      <input type="checkbox" id="rotateCheckbox">
+    </label>
+    <label>
+      Geschw:
+      <input type="number" id="rotationSpeed" value="0.2" step="0.1" min="0">
+    </label>
+    <label>
+      Gr. Z(%):
+      <input type="number" id="textSize" value="25" step="1" min="0">
+    </label>
+    <label>
+      Tr.(%):
+      <input type="number" id="triangleSize" value="30" step="1" min="0">
+    </label>
+    <label>
+      ≡G(%):
+      <input type="number" id="equivSize" value="25" step="1" min="0">
+    </label>
+    <label>
+      ≡L(%):
+      <input type="number" id="equivLength" value="100" step="1" min="0">
+    </label>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // --- Hilfsscript: URL-Parameter auslesen und Felder setzen ---
+    function getURLParam(param, defaultValue) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.has(param) ? urlParams.get(param) : defaultValue;
+    }
+
+    // Hole die Parameter "autoSpeed" und "speed" aus der URL
+    const autoSpeedParam = getURLParam('autoSpeed', 'false'); // Standard: false
+    const speedParam = getURLParam('speed', '0.2');             // Standard: 0.2
+
+    // Setze die Input-Felder entsprechend
+    document.getElementById('autoSpeedCheckbox').checked = (autoSpeedParam === 'true');
+    document.getElementById('rotationSpeed').value = speedParam;
+    // ----------------------------------------------------------------
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    
+    function getParam(id, def) {
+      const val = parseFloat(document.getElementById(id).value);
+      return isNaN(val) ? def : val;
+    }
+    
+    let tangentialMode = document.getElementById('rotateCheckbox').checked;
+    let textSizePercentage = getParam('textSize', 25);
+    let triangleSize = getParam('triangleSize', 30);
+    let equivSize = getParam('equivSize', 25);
+    let equivLength = getParam('equivLength', 100);
+    
+    let manualSpeed = getParam('rotationSpeed', 0.2);
+    let rotationSpeed = manualSpeed;
+    
+    let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
+    
+    let autoOffset = 0;
+    
+    document.getElementById('textSize').addEventListener('input', () => {
+      textSizePercentage = getParam('textSize', 25);
+    });
+    document.getElementById('triangleSize').addEventListener('input', () => {
+      triangleSize = getParam('triangleSize', 30);
+    });
+    document.getElementById('equivSize').addEventListener('input', () => {
+      equivSize = getParam('equivSize', 25);
+    });
+    document.getElementById('equivLength').addEventListener('input', () => {
+      equivLength = getParam('equivLength', 100);
+    });
+    document.getElementById('rotateCheckbox').addEventListener('change', e => {
+      tangentialMode = e.target.checked;
+    });
+    
+    document.getElementById('rotationSpeed').addEventListener('input', () => {
+      manualSpeed = getParam('rotationSpeed', 0.2);
+      if (!autoSpeedEnabled) {
+        rotationSpeed = manualSpeed;
+      } else {
+        let currentCycleSpeed;
+        if (autoSpeedTimer < rampDuration) {
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
+        } else {
+          currentCycleSpeed = autoSpeedTarget;
+        }
+        autoOffset = manualSpeed - currentCycleSpeed;
+        rotationSpeed = currentCycleSpeed + autoOffset;
+      }
+    });
+    
+    let autoSpeedBase = 0;
+    let autoSpeedTarget = 0;
+    let autoSpeedTimer = 0;
+    const rampDuration = 1;
+    const holdDuration = 1;
+    const cycleDuration = rampDuration + holdDuration;
+    const speedIncrement = 120;
+    
+    document.getElementById('autoSpeedCheckbox').addEventListener('change', e => {
+      autoSpeedEnabled = e.target.checked;
+      if (autoSpeedEnabled) {
+        manualSpeed = getParam('rotationSpeed', 0.2);
+        autoOffset = 0;
+        let current = manualSpeed;
+        let r = Math.floor(current / 120);
+        let off = current - r * 120;
+        autoSpeedTarget = (r + 1) * 120 + off;
+        autoSpeedBase = current;
+        autoSpeedTimer = 0;
+        rotationSpeed = autoSpeedBase + autoOffset;
+        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
+      }
+    });
+    
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    function ease(t) {
+      return (1 - Math.cos(Math.PI * t)) / 2;
+    }
+    
+    let angle = 0;
+    let lastTimestamp = null;
+    
+    const labels = ["0", "1", "∞"];
+    
+    function animate(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const dt = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      
+      if (autoSpeedEnabled) {
+        autoSpeedTimer += dt;
+        let currentCycleSpeed;
+        if (autoSpeedTimer < rampDuration) {
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
+        } else if (autoSpeedTimer < cycleDuration) {
+          currentCycleSpeed = autoSpeedTarget;
+        } else {
+          autoSpeedTimer -= cycleDuration;
+          autoSpeedBase = autoSpeedTarget;
+          autoSpeedTarget = autoSpeedBase + speedIncrement;
+          currentCycleSpeed = autoSpeedBase;
+        }
+        rotationSpeed = currentCycleSpeed + autoOffset;
+        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
+      }
+      
+      angle += rotationSpeed;
+      
+      const style = getComputedStyle(document.documentElement);
+      const bgColor = style.getPropertyValue('--bg-color').trim() || "#fff";
+      const textColor = style.getPropertyValue('--text-color').trim() || "#000";
+      
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, canvas.width, canvas.height);
+      ctx.rect(0, 0, 70, 70);
+      ctx.rect(canvas.width - 70, 0, 70, 70);
+      ctx.clip('evenodd');
+      
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      
+      const minDim = Math.min(canvas.width, canvas.height);
+      const labelFontSize = minDim * (textSizePercentage / 100);
+      const equivFontSize = minDim * (equivSize / 100);
+      const equivScaleY = equivLength / 100;
+      const radius = minDim * (triangleSize / 100);
+      
+      const vertices = [];
+      for (let i = 0; i < 3; i++) {
+        const thetaDeg = angle + i * 120;
+        const thetaRad = (thetaDeg * Math.PI) / 180;
+        const x = radius * Math.cos(thetaRad);
+        const y = radius * Math.sin(thetaRad);
+        vertices.push({ x, y, thetaRad });
+      }
+      
+      ctx.font = `bold ${labelFontSize}px Verdana`;
+      ctx.fillStyle = textColor;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i < 3; i++) {
+        const { x, y, thetaRad } = vertices[i];
+        ctx.save();
+        ctx.translate(x, y);
+        if (tangentialMode) {
+          ctx.rotate(thetaRad + Math.PI / 2);
+        }
+        ctx.fillText(labels[i], 0, 0);
+        ctx.restore();
+      }
+      
+      for (let i = 0; i < 3; i++) {
+        const p1 = vertices[i];
+        const p2 = vertices[(i + 1) % 3];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const sideAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        ctx.save();
+        ctx.translate(midX, midY);
+        ctx.rotate(sideAngle);
+        ctx.font = `bold ${equivFontSize}px Verdana`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.scale(1, equivScaleY);
+        ctx.fillText("≡", 0, 0);
+        ctx.restore();
+      }
+      
+      ctx.restore();
+      ctx.restore();
+      
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

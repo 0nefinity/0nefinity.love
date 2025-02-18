@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Unlösbares Spiel – Trauma</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #f0f0f0;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .circle {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      font-size: 20px;
+      user-select: none;
+    }
+    #solution {
+      background-color: #8fbc8f;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    #problem {
+      background-color: #f08080;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <div id="solution" class="circle">Solution</div>
+    <div id="problem" class="circle">Problem</div>
+  </div>
+
+  <script>
+    const container = document.getElementById('gameContainer');
+    const solution = document.getElementById('solution');
+    const problem = document.getElementById('problem');
+
+    // Positioniere "Problem" zufällig (nicht zu nahe an der Solution)
+    function setRandomProblemPosition() {
+      const containerRect = container.getBoundingClientRect();
+      const problemSize = 150; // Breite/Höhe
+      const solutionRect = solution.getBoundingClientRect();
+      const sx = solutionRect.left + solutionRect.width / 2;
+      const sy = solutionRect.top + solutionRect.height / 2;
+      let x, y, distance;
+
+      do {
+        x = Math.random() * (containerRect.width - problemSize);
+        y = Math.random() * (containerRect.height - problemSize);
+        // Bestimme das Zentrum von "Problem"
+        const px = x + problemSize / 2;
+        const py = y + problemSize / 2;
+        const dx = px - sx;
+        const dy = py - sy;
+        distance = Math.sqrt(dx * dx + dy * dy);
+      } while (distance < solutionRect.width / 2 + problemSize / 2 + 20);
+      
+      problem.style.left = x + "px";
+      problem.style.top = y + "px";
+    }
+    setRandomProblemPosition();
+
+    // Drag & Drop Logik
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    problem.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      // Abstand zwischen Mauszeiger und Element-Ecke ermitteln
+      const rect = problem.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+
+      // Neuen Positionswert anhand der Mauskoordinaten berechnen
+      let newLeft = e.clientX - offsetX;
+      let newTop = e.clientY - offsetY;
+      problem.style.left = newLeft + "px";
+      problem.style.top = newTop + "px";
+
+      // Während des Ziehens: Falls "Problem" zu nahe an "Solution" kommt,
+      // wendet eine kleine "Trauma"-Abstoßung an.
+      const solutionRect = solution.getBoundingClientRect();
+      const problemRect = problem.getBoundingClientRect();
+      const sx = solutionRect.left + solutionRect.width / 2;
+      const sy = solutionRect.top + solutionRect.height / 2;
+      const px = problemRect.left + problemRect.width / 2;
+      const py = problemRect.top + problemRect.height / 2;
+      const dx = px - sx;
+      const dy = py - sy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Schwellenwert: wenn zu nah, wird "Problem" leicht weggerückt
+      if (dist < solutionRect.width / 2 + 10) {
+        let push = (solutionRect.width / 2 + 10 - dist);
+        // Falls dist == 0 (extrem unwahrscheinlich) wähle eine zufällige Richtung
+        let normX = dist ? dx / dist : Math.random() - 0.5;
+        let normY = dist ? dy / dist : Math.random() - 0.5;
+        const newPx = px + normX * push;
+        const newPy = py + normY * push;
+        problem.style.left = (newPx - problemRect.width / 2) + "px";
+        problem.style.top = (newPy - problemRect.height / 2) + "px";
+      }
+    });
+
+    document.addEventListener('mouseup', function(e) {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Beim Loslassen: Falls "Problem" in "Solution" ist,
+      // simuliert die unsichtbare, glitschige Wolke "Trauma" den Effekt,
+      // dass es wieder herausrutscht.
+      const solutionRect = solution.getBoundingClientRect();
+      const problemRect = problem.getBoundingClientRect();
+      const sx = solutionRect.left + solutionRect.width / 2;
+      const sy = solutionRect.top + solutionRect.height / 2;
+      const px = problemRect.left + problemRect.width / 2;
+      const py = problemRect.top + problemRect.height / 2;
+      const dx = px - sx;
+      const dy = py - sy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < solutionRect.width / 2) {
+        // Zufallschance: manchmal "hakt" es kurz (20% Chance), dann rutscht es nach 1 Sekunde raus
+        if (Math.random() < 0.2) {
+          setTimeout(moveProblemOut, 1000);
+        } else {
+          moveProblemOut();
+        }
+      }
+    });
+
+    // Funktion, um "Problem" aus der "Solution" herauszuschieben
+    function moveProblemOut() {
+      const solutionRect = solution.getBoundingClientRect();
+      const problemRect = problem.getBoundingClientRect();
+      const sx = solutionRect.left + solutionRect.width / 2;
+      const sy = solutionRect.top + solutionRect.height / 2;
+      const px = problemRect.left + problemRect.width / 2;
+      const py = problemRect.top + problemRect.height / 2;
+      let dx = px - sx;
+      let dy = py - sy;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Falls das Problem exakt im Zentrum ist, wähle eine zufällige Richtung
+      if (dist === 0) {
+        dx = Math.random() - 0.5;
+        dy = Math.random() - 0.5;
+        dist = Math.sqrt(dx * dx + dy * dy);
+      }
+      
+      // Ziel: "Problem" soll gerade außerhalb der "Solution" landen
+      const minDistance = solutionRect.width / 2 + 20;
+      const factor = minDistance / dist;
+      const newCenterX = sx + dx * factor;
+      const newCenterY = sy + dy * factor;
+      
+      // Setze die Position (unter Berücksichtigung der Elementgröße)
+      problem.style.transition = "all 0.5s ease-out";
+      problem.style.left = (newCenterX - problemRect.width / 2) + "px";
+      problem.style.top = (newCenterY - problemRect.height / 2) + "px";
+      
+      // Transition nach kurzer Zeit zurücksetzen
+      setTimeout(() => {
+        problem.style.transition = "";
+      }, 600);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!-- 0nefinity-symbol-iframe.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0nefinity-symbol-iframe</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      /* Fallback: schwarzer Hintergrund */
+      background: var(--bg-color, black);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // Hilfsfunktion: URL-Parameter auslesen
+    function getURLParam(param, defaultValue) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.has(param) ? urlParams.get(param) : defaultValue;
+    }
+
+    // Parameter ausschließlich über die URL
+    const autoSpeedEnabled = (getURLParam('autoSpeed', 'false') === 'true');
+    const manualSpeed = parseFloat(getURLParam('speed', '0.2'));
+    const textSizePercentage = parseFloat(getURLParam('textSize', '25'));
+    const triangleSize = parseFloat(getURLParam('triangleSize', '30'));
+    const equivSize = parseFloat(getURLParam('equivSize', '25'));
+    const equivLength = parseFloat(getURLParam('equivLength', '100'));
+    const tangentialMode = (getURLParam('rotate', 'false') === 'true');
+
+    // Canvas einrichten
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Variablen für die Drehgeschwindigkeit
+    let rotationSpeed = manualSpeed;
+    let autoSpeedBase = 0;
+    let autoSpeedTarget = 0;
+    let autoSpeedTimer = 0;
+    const rampDuration = 1;
+    const holdDuration = 1;
+    const cycleDuration = rampDuration + holdDuration;
+    const speedIncrement = 120;
+    let autoOffset = 0;
+    
+    if(autoSpeedEnabled) {
+      autoOffset = 0;
+      let current = manualSpeed;
+      let r = Math.floor(current / 120);
+      let off = current - r * 120;
+      autoSpeedTarget = (r + 1) * 120 + off;
+      autoSpeedBase = current;
+      autoSpeedTimer = 0;
+      rotationSpeed = autoSpeedBase + autoOffset;
+    }
+    
+    // Hilfsfunktionen für Animation
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    function ease(t) {
+      return (1 - Math.cos(Math.PI * t)) / 2;
+    }
+    
+    let angle = 0;
+    let lastTimestamp = null;
+    const labels = ["0", "1", "∞"];
+    
+    function animate(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const dt = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      
+      if (autoSpeedEnabled) {
+        autoSpeedTimer += dt;
+        let currentCycleSpeed;
+        if (autoSpeedTimer < rampDuration) {
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
+        } else if (autoSpeedTimer < cycleDuration) {
+          currentCycleSpeed = autoSpeedTarget;
+        } else {
+          autoSpeedTimer -= cycleDuration;
+          autoSpeedBase = autoSpeedTarget;
+          autoSpeedTarget = autoSpeedBase + speedIncrement;
+          currentCycleSpeed = autoSpeedBase;
+        }
+        rotationSpeed = currentCycleSpeed + autoOffset;
+      }
+      
+      angle += rotationSpeed;
+      
+      const style = getComputedStyle(document.documentElement);
+      // Fallback: bg schwarz, Textfarbe weiß
+      const bgColor = style.getPropertyValue('--bg-color').trim() || "#000";
+      const textColor = style.getPropertyValue('--text-color').trim() || "#fff";
+      
+      // Canvas leeren
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+      
+      // Grafik zeichnen
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      
+      const minDim = Math.min(canvas.width, canvas.height);
+      const labelFontSize = minDim * (textSizePercentage / 100);
+      const equivFontSize = minDim * (equivSize / 100);
+      const equivScaleY = equivLength / 100;
+      const radius = minDim * (triangleSize / 100);
+      
+      const vertices = [];
+      for (let i = 0; i < 3; i++) {
+        const thetaDeg = angle + i * 120;
+        const thetaRad = thetaDeg * Math.PI / 180;
+        const x = radius * Math.cos(thetaRad);
+        const y = radius * Math.sin(thetaRad);
+        vertices.push({ x, y, thetaRad });
+      }
+      
+      // Beschriftung der Eckpunkte
+      ctx.font = `bold ${labelFontSize}px Verdana`;
+      ctx.fillStyle = textColor;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i < 3; i++) {
+        const { x, y, thetaRad } = vertices[i];
+        ctx.save();
+        ctx.translate(x, y);
+        if (tangentialMode) {
+          ctx.rotate(thetaRad + Math.PI / 2);
+        }
+        ctx.fillText(labels[i], 0, 0);
+        ctx.restore();
+      }
+      
+      // Zeichnen der "≡"-Symbole an den Seiten
+      for (let i = 0; i < 3; i++) {
+        const p1 = vertices[i];
+        const p2 = vertices[(i + 1) % 3];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const sideAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        ctx.save();
+        ctx.translate(midX, midY);
+        ctx.rotate(sideAngle);
+        ctx.font = `bold ${equivFontSize}px Verdana`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.scale(1, equivScaleY);
+        ctx.fillText("≡", 0, 0);
+        ctx.restore();
+      }
+      
+      ctx.restore();
+      
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

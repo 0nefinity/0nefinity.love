@@ -109,6 +109,7 @@ a {
     max-height: 90%;
     box-sizing: border-box;
     overflow-y: auto;
+    background: var(--bg-color);
     display: none;
     z-index: 1001;
     text-align: left;
@@ -175,6 +176,22 @@ a {
 .menu:hover::-webkit-scrollbar-thumb {
     opacity: 1;
 }
+
+
+.iframe-container {
+    width: 100vw;
+    max-width: 400px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+    background: transparent;
+  }
+  .iframe-container iframe {
+    border: none;
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: transparent;
+  }
 
 /* Media Query für kleinere Geräte */
 @media (max-width: 480px) {

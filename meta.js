@@ -1,5 +1,4 @@
 // meta.js
-
 const menuButton = document.createElement('div');
 menuButton.classList.add('menu-button');
 menuButton.textContent = '≡';
@@ -12,25 +11,30 @@ fileList.id = 'file-list';
 menu.appendChild(fileList);
 document.body.appendChild(menu);
 
-
 async function loadFileList() {
     try {
-        const response = await fetch('/file-list.json'); // Lade die JSON-Datei
+        const response = await fetch('/file-list.json');
         if (!response.ok) {
             throw new Error(`HTTP-Fehler! Status: ${response.status}`);
         }
         const files = await response.json();
         files.forEach(file => {
             const listItem = document.createElement('li');
-            const link = document.createElement('a');
 
-            // Basis-URL anpassen
-            const basePath = '/'; // Passe diesen Wert an, falls nötig
-            link.href = basePath + file;
+            if (file.includes(':')) {
+                const heading = document.createElement('span');
+                heading.classList.add('menu-heading');
+                heading.textContent = file.replace(/\.[^/.]+$/, '');
+                listItem.appendChild(heading);
+            } else {
+                const link = document.createElement('a');
+                const basePath = '/';
+                link.href = basePath + file;
+                const displayName = file.replace(/\.[^/.]+$/, '');
+                link.textContent = displayName;
+                listItem.appendChild(link);
+            }
 
-            const displayName = file.replace(/\.[^/.]+$/, ''); // Dateiendung entfernen
-            link.textContent = displayName;
-            listItem.appendChild(link);
             fileList.appendChild(listItem);
         });
     } catch (error) {
@@ -38,9 +42,7 @@ async function loadFileList() {
     }
 }
 
-
 loadFileList();
-
 
 menuButton.addEventListener('click', () => {
     menu.classList.toggle('open');
@@ -59,4 +61,9 @@ document.body.appendChild(backButton);
 backButton.addEventListener('click', () => {
     window.location.href = '/index.html';
 });
+
+
+
+
+
 
