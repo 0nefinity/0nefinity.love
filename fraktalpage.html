@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Fraktale Selbst-Einbettung</title>
+  
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese Zeile hier unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen)-->
+
+  <style>
+  
+
+    /* Container: 95% Viewport-Breite/Höhe */
+    .iframe-frame {
+      width: 95vw;
+      height: 95vh;
+      border: 2px solid var(--text-color);
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      /* Falls meta.css z.B. eine max-width setzt, kannst du sie mit !important überschreiben:
+         max-width: none !important; 
+      */
+    }
+
+    /* Das Iframe füllt den Container */
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // Rekursions-Tiefe
+    const urlParams = new URLSearchParams(window.location.search);
+    let depth = parseInt(urlParams.get('depth')) || 0;
+    const maxDepth = 50;
+
+    // Nur, wenn die max. Tiefe noch nicht erreicht ist, binden wir die Seite erneut ein
+    if (depth < maxDepth) {
+      depth++;
+
+      const container = document.createElement('div');
+      container.className = 'iframe-frame';
+
+      const iframe = document.createElement('iframe');
+      iframe.src = window.location.pathname + '?depth=' + depth;
+
+      container.appendChild(iframe);
+      document.body.appendChild(container);
+    }
+  </script>
+</body>
+</html>
