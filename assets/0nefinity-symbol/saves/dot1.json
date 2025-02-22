@@ -1,0 +1,17 @@
+{
+  "autoSpeed": false,
+  "rotate": false,
+  "rotationSpeed": 0,
+  "textSize": 1,
+  "triangleSize": 0,
+  "equivSize": 1,
+  "equivLength": 100,
+  "speedIncrement": 60,
+  "labels": {
+    "symbol0": "0",
+    "symbol1": "1",
+    "symbolInf": "∞"
+  },
+  "equivSymbol": "≡",
+  "duplicateIdentisch": false
+}
