@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -18,6 +17,21 @@
   <meta name="keywords" content="0nefinity, nondual math, nichtduale Mathematik, Wissenschaft, Spiritualität, Philosophie, Unendlichkeit, Nichts, Alles, Einheit, Eins Sein" />
 
   <title>0nefinity.love</title>
+
+  <style>
+    /* Standard-Transition für toggle-text Elemente */
+    .toggle-text {
+      transition: color 0.3s ease;
+      cursor: pointer;
+    }
+    .toggle-text:hover {
+      color: var(--text-color-hover);
+    }
+    /* Mit .no-transition werden Transitionen für toggle-text Elemente deaktiviert */
+    .no-transition .toggle-text {
+      transition: none !important;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -35,7 +49,7 @@
 
     realize its Infinity<br>
     realize its <span class="toggle-text" data-original="0neness" data-alternative="0ness">0neness</span><br>
-    realize its Nothingness<br><br>
+    realize its <span class="toggle-nothingness">Nothingness</span><br><br>
 
     realize how they appear in everything, everywhere, everytime, always together, indivisible<br>
 
@@ -74,5 +88,44 @@
   </div>
 
   <script src="/0nefinity.js" defer></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const toggleElements = document.querySelectorAll('.toggle-text');
+      toggleElements.forEach(element => {
+        const originalText = element.getAttribute('data-original');
+        const alternativeText = element.getAttribute('data-alternative');
+        element.addEventListener('mouseenter', () => {
+          if (alternativeText) {
+            element.textContent = alternativeText;
+          }
+        });
+        element.addEventListener('mouseleave', () => {
+          if (originalText) {
+            element.textContent = originalText;
+          }
+        });
+      });
+
+      const nothingnessElement = document.querySelector('.toggle-nothingness');
+      if (nothingnessElement) {
+        const root = document.documentElement;
+        const originalTextColor = getComputedStyle(root).getPropertyValue('--text-color').trim();
+        
+        nothingnessElement.addEventListener('mouseenter', () => {
+          root.classList.add('no-transition');
+          const bgColor = getComputedStyle(root).getPropertyValue('--bg-color').trim();
+          root.style.setProperty('--text-color', bgColor);
+        });
+        
+        nothingnessElement.addEventListener('mouseleave', () => {
+          root.style.setProperty('--text-color', originalTextColor);
+          setTimeout(() => {
+            root.classList.remove('no-transition');
+          }, 50);
+        });
+      }
+    });
+  </script>
 </body>
 </html>
