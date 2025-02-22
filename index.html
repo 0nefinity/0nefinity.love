@@ -4,7 +4,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <link rel="icon" type="image/png" href="/profilbilder/favicon/index/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/index/favicon.svg" />
   <link rel="shortcut icon" href="/profilbilder/favicon/index/favicon.ico" />
@@ -19,169 +18,18 @@
   <meta name="keywords" content="0nefinity, nondual math, nichtduale Mathematik, Wissenschaft, Spiritualität, Philosophie, Unendlichkeit, Nichts, Alles, Einheit, Eins Sein" />
 
   <title>0nefinity.love</title>
-
-  <style>
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background: var(--bg-color);
-      margin: 0;
-      padding: 0;
-      overflow-x: hidden;
-    }
-    header.controls {
-      position: fixed;
-      top: 0;
-      left: 70px;
-      right: 70px;
-      height: auto;
-      z-index: 1000;
-      background: var(--bg-color);
-      color: var(--text-color);
-      display: none;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      box-sizing: border-box;
-      padding: 5px;
-    }
-    header.controls label {
-      white-space: nowrap;
-      margin: 2px 4px;
-      font-size: 12px;
-    }
-    header.controls input[type="number"],
-    header.controls input[type="text"] {
-      margin-left: 3px;
-      padding: 2px 4px;
-      font-size: 12px;
-      background: var(--bg-color);
-      color: var(--text-color);
-      box-sizing: content-box;
-    }
-    header.controls input#rotationSpeed {
-      width: 60px;
-    }
-    header.controls input[type="checkbox"] {
-      margin-left: 3px;
-      box-sizing: content-box;
-    }
-    .symbol-container {
-      width: 100vw;
-      max-width: 400px;
-      height: 400px;
-      margin-top: 70px;
-      margin-bottom: 20px;
-      position: relative;
-      background: var(--bg-color);
-      overflow: visible;
-    }
-    canvas {
-      display: block;
-      width: 400px;
-      height: 400px;
-    }
-    /* Speed-Anzeige oben rechts im Canvas */
-    #speedIndicator {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(0, 0, 0, 0.5);
-      color: #fff;
-      padding: 2px 5px;
-      border-radius: 5px;
-      font-family: Verdana, sans-serif;
-      font-size: 12px;
-      pointer-events: none;
-    }
-    .container {
-      width: 100%;
-      max-width: 800px;
-      margin: 20px auto;
-      padding: 0 20px;
-      color: var(--text-color);
-      line-height: 1.5;
-      white-space: pre-line;
-      text-align: center;
-    }
-    .toggle-text {
-      transition: color 0.3s ease;
-      cursor: pointer;
-    }
-    .toggle-text:hover {
-      color: var(--text-color-hover);
-    }
-  </style>
 </head>
 <body>
-  <header class="controls" id="controls">
-    <label>
-      Auto:
-      <!-- Auto voreingestellt -->
-      <input type="checkbox" id="autoSpeedCheckbox" checked>
-    </label>
-    <label>
-      Ausrichtung:
-      <input type="checkbox" id="rotateCheckbox">
-    </label>
-    <label>
-      Geschw:
-      <!-- Speed startet jetzt bei 0 -->
-      <input type="number" id="rotationSpeed" value="0" step="0.1" min="0">
-    </label>
-    <label>
-      Gr. Z(%):
-      <input type="number" id="textSize" value="25" step="1" min="0">
-    </label>
-    <label>
-      Tr.(%):
-      <input type="number" id="triangleSize" value="30" step="1" min="0">
-    </label>
-    <label>
-      ≡G(%):
-      <input type="number" id="equivSize" value="25" step="1" min="0">
-    </label>
-    <label>
-      ≡L(%):
-      <input type="number" id="equivLength" value="100" step="1" min="0">
-    </label>
-    <!-- Neues Eingabefeld für speedIncrement -->
-    <label>
-      SpeedInc:
-      <input type="number" id="speedIncrement" value="60" step="1" min="0">
-    </label>
-    <!-- Eingabefelder für die einzelnen Symbole -->
-    <label>
-      Symbol 0:
-      <input type="text" id="label0Input" value="0">
-    </label>
-    <label>
-      Symbol 1:
-      <input type="text" id="label1Input" value="1">
-    </label>
-    <label>
-      Symbol ∞:
-      <input type="text" id="labelInfInput" value="∞">
-    </label>
-    <label>
-      Identisch:
-      <input type="text" id="equivSymbolInput" value="≡">
-    </label>
-  </header>
-
-  <div class="symbol-container" id="symbolContainer">
-    <canvas id="canvas" width="800" height="800"></canvas>
-    <!-- Speed-Anzeige -->
-    <div id="speedIndicator">Speed: 0°/Frame</div>
-  </div>
-
   <div class="container">
     0 1 ∞ are basically the same<br>
-    they embody, point to and conceptualize different fundamental aspects of this singularity called reality<br><br>
+    
+    they embody, point to and conceptualize the most basic fundamental aspects of this singularity called reality and everything in it<br><br>
 
-    Their absolute unity forms the very foundation upon which all of mathematics is built and reality arises<br><br>
+    in their purest form, 0 1 ∞ can be symbolized with a single Point <br>
+
+    they share and are some kind of metaidentity of everything, from the smallest to the whole. From the mathematician to the math he's doing<br>
+
+    Their absolute unity forms the very foundation upon which all of mathematics is built and reality arise<br><br>
 
     look at something (or at nothing)<br><br>
 
@@ -189,12 +37,13 @@
     realize its <span class="toggle-text" data-original="0neness" data-alternative="0ness">0neness</span><br>
     realize its Nothingness<br><br>
 
+    realize how they appear in everything, everywhere, everytime, always together, indivisible<br>
+
     realize the interconnectedness of this aspects<br>
     realize the absolutity in which they arise<br>
     realize everything else as a subset of this<br><br>
 
     realize 0 1 ∞ swirbeling around, forming existence<br>
-    realize how they appear everytime, everywhere, always together<br>
     realize how deep this could go<br>
     realize the eternity of this<br><br>
 
@@ -224,218 +73,6 @@
     Realize absolute 0nefinity
   </div>
 
-  <script>
-    const symbolContainer = document.getElementById('symbolContainer');
-    const controls = document.getElementById('controls');
-    let menuVisible = false;
-    symbolContainer.addEventListener('click', () => {
-      menuVisible = !menuVisible;
-      controls.style.display = menuVisible ? 'flex' : 'none';
-    });
-
-    function getURLParam(param, defaultValue) {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.has(param) ? urlParams.get(param) : defaultValue;
-    }
-    // URL-Parameter überschreiben nicht mehr die voreingestellten Werte
-    // (Auto: true, rotationSpeed: 0)
-    // const autoSpeedParam = getURLParam('autoSpeed', 'false');
-    // const speedParam = getURLParam('speed', '0.2');
-    // document.getElementById('autoSpeedCheckbox').checked = (autoSpeedParam === 'true');
-    // document.getElementById('rotationSpeed').value = speedParam;
-
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    function resizeCanvas() {
-      // Optional: Canvas an Fenstergröße anpassen
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    function getParam(id, def) {
-      const val = parseFloat(document.getElementById(id).value);
-      return isNaN(val) ? def : val;
-    }
-    let tangentialMode = document.getElementById('rotateCheckbox').checked;
-    let textSizePercentage = getParam('textSize', 25);
-    let triangleSize = getParam('triangleSize', 30);
-    let equivSize = getParam('equivSize', 25);
-    let equivLength = getParam('equivLength', 100);
-    let manualSpeed = getParam('rotationSpeed', 0);
-    let rotationSpeed = manualSpeed;
-    let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
-    let autoOffset = 0;
-    document.getElementById('textSize').addEventListener('input', () => {
-      textSizePercentage = getParam('textSize', 25);
-    });
-    document.getElementById('triangleSize').addEventListener('input', () => {
-      triangleSize = getParam('triangleSize', 30);
-    });
-    document.getElementById('equivSize').addEventListener('input', () => {
-      equivSize = getParam('equivSize', 25);
-    });
-    document.getElementById('equivLength').addEventListener('input', () => {
-      equivLength = getParam('equivLength', 100);
-    });
-    document.getElementById('rotateCheckbox').addEventListener('change', e => {
-      tangentialMode = e.target.checked;
-    });
-    document.getElementById('rotationSpeed').addEventListener('input', () => {
-      manualSpeed = getParam('rotationSpeed', 0);
-      if (!autoSpeedEnabled) {
-        rotationSpeed = manualSpeed;
-      } else {
-        let currentCycleSpeed;
-        if (autoSpeedTimer < rampDuration) {
-          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
-        } else {
-          currentCycleSpeed = autoSpeedTarget;
-        }
-        autoOffset = manualSpeed - currentCycleSpeed;
-        rotationSpeed = currentCycleSpeed + autoOffset;
-      }
-    });
-    // Neues Eingabefeld für speedIncrement auswerten
-    let speedIncrement = getParam('speedIncrement', 60);
-    document.getElementById('speedIncrement').addEventListener('input', () => {
-      speedIncrement = getParam('speedIncrement', 60);
-    });
-
-    let autoSpeedBase = manualSpeed;
-    let autoSpeedTarget = autoSpeedBase + speedIncrement;
-    let autoSpeedTimer = 0;
-    const rampDuration = 1;
-    const holdDuration = 1;
-    const cycleDuration = rampDuration + holdDuration;
-    document.getElementById('autoSpeedCheckbox').addEventListener('change', e => {
-      autoSpeedEnabled = e.target.checked;
-      if (autoSpeedEnabled) {
-        manualSpeed = getParam('rotationSpeed', 0);
-        autoOffset = 0;
-        let current = manualSpeed;
-        let r = Math.floor(current / speedIncrement);
-        let off = current - r * speedIncrement;
-        autoSpeedTarget = (r + 1) * speedIncrement + off;
-        autoSpeedBase = current;
-        autoSpeedTimer = 0;
-        rotationSpeed = autoSpeedBase + autoOffset;
-        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
-      }
-    });
-    function lerp(a, b, t) {
-      return a + (b - a) * t;
-    }
-    function ease(t) {
-      return (1 - Math.cos(Math.PI * t)) / 2;
-    }
-    let angle = 0;
-    let lastTimestamp = null;
-    function animate(timestamp) {
-      if (!lastTimestamp) lastTimestamp = timestamp;
-      const dt = (timestamp - lastTimestamp) / 1000;
-      lastTimestamp = timestamp;
-      if (autoSpeedEnabled) {
-        autoSpeedTimer += dt;
-        let currentCycleSpeed;
-        if (autoSpeedTimer < rampDuration) {
-          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
-        } else if (autoSpeedTimer < cycleDuration) {
-          currentCycleSpeed = autoSpeedTarget;
-        } else {
-          autoSpeedTimer -= cycleDuration;
-          autoSpeedBase = autoSpeedTarget;
-          autoSpeedTarget = autoSpeedBase + speedIncrement;
-          currentCycleSpeed = autoSpeedBase;
-        }
-        rotationSpeed = currentCycleSpeed + autoOffset;
-        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
-      }
-      angle += rotationSpeed;
-      const style = getComputedStyle(document.documentElement);
-      const bgColor = style.getPropertyValue('--bg-color').trim() || "#fff";
-      const textColor = style.getPropertyValue('--text-color').trim() || "#000";
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.restore();
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      const minDim = Math.min(canvas.width, canvas.height);
-      const labelFontSize = minDim * (textSizePercentage / 100);
-      const equivFontSize = minDim * (equivSize / 100);
-      const equivScaleY = equivLength / 100;
-      const radius = minDim * (triangleSize / 100);
-      const vertices = [];
-      for (let i = 0; i < 3; i++) {
-        const thetaDeg = angle + i * 120;
-        const thetaRad = (thetaDeg * Math.PI) / 180;
-        const x = radius * Math.cos(thetaRad);
-        const y = radius * Math.sin(thetaRad);
-        vertices.push({ x, y, thetaRad });
-      }
-      // Lese die aktuellen Symboltexte aus den Inputfeldern
-      const labels = [
-        document.getElementById('label0Input').value || "0",
-        document.getElementById('label1Input').value || "1",
-        document.getElementById('labelInfInput').value || "∞"
-      ];
-      const equivSymbol = document.getElementById('equivSymbolInput').value || "≡";
-      ctx.font = `bold ${labelFontSize}px Verdana`;
-      ctx.fillStyle = textColor;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      for (let i = 0; i < 3; i++) {
-        const { x, y, thetaRad } = vertices[i];
-        ctx.save();
-        ctx.translate(x, y);
-        if (tangentialMode) {
-          ctx.rotate(thetaRad + Math.PI / 2);
-        }
-        ctx.fillText(labels[i], 0, 0);
-        ctx.restore();
-      }
-      for (let i = 0; i < 3; i++) {
-        const p1 = vertices[i];
-        const p2 = vertices[(i + 1) % 3];
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-        const sideAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-        ctx.save();
-        ctx.translate(midX, midY);
-        ctx.rotate(sideAngle);
-        ctx.font = `bold ${equivFontSize}px Verdana`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.scale(1, equivScaleY);
-        ctx.fillText(equivSymbol, 0, 0);
-        ctx.restore();
-      }
-      ctx.restore();
-
-      // Aktualisiere die Speed-Anzeige (gerundet auf ganze Zahlen)
-      document.getElementById('speedIndicator').textContent = 'Speed: ' + Math.round(rotationSpeed) + '°/Frame';
-
-      requestAnimationFrame(animate);
-    }
-    requestAnimationFrame(animate);
-    document.addEventListener('DOMContentLoaded', () => {
-      const toggleElements = document.querySelectorAll('.toggle-text');
-      toggleElements.forEach(element => {
-        const originalText = element.getAttribute('data-original');
-        const alternativeText = element.getAttribute('data-alternative');
-        element.addEventListener('mouseenter', () => {
-          if (alternativeText) {
-            element.textContent = alternativeText;
-          }
-        });
-        element.addEventListener('mouseleave', () => {
-          if (originalText) {
-            element.textContent = originalText;
-          }
-        });
-      });
-    });
-  </script>
+  <script src="/0nefinity.js" defer></script>
 </body>
 </html>

@@ -58,12 +58,15 @@ backButton.classList.add('back-button');
 backButton.textContent = '⋅';
 document.body.appendChild(backButton);
 
+// Normaler Klick: Zurück zum Index
 backButton.addEventListener('click', () => {
     window.location.href = '/index.html';
 });
 
-
-
-
-
-
+// Mittelklick (Mausrad): Öffnet den Index in einem neuen Tab
+backButton.addEventListener('auxclick', (event) => {
+    if (event.button === 1) {  // 1 entspricht dem Mittelklick
+        window.open('/index.html', '_blank');
+        event.preventDefault();
+    }
+});

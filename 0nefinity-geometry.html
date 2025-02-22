@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <link rel="icon" type="image/png" href="/profilbilder/favicon/index/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/index/favicon.svg" />
+  <link rel="shortcut icon" href="/profilbilder/favicon/index/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/profilbilder/favicon/index/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="0nefinity.love" />
+  <link rel="manifest" href="/profilbilder/favicon/index/site.webmanifest" />
+  
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen -->
+  
+  <title>Kreis-Animation</title>
+  <style>
+    html, body {
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Passe die Canvas-Größe an den Viewport an
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Farben aus den CSS-Variablen
+    const computedStyle = getComputedStyle(document.documentElement);
+    const textColor = computedStyle.getPropertyValue('--text-color').trim() || '#000';
+    const bgColor   = computedStyle.getPropertyValue('--bg-color').trim() || '#fff';
+
+    const cycleDuration = 2000; // Zyklusdauer in Millisekunden (2 Sekunden)
+
+    function animate(timestamp) {
+      // Mittelpunkt des Canvas
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      
+      // Relativer Radius: (min(width, height) / 3) / 2
+      const radius = Math.min(canvas.width, canvas.height) / 6;
+      const displacement = radius; // Verschiebung entspricht dem Radius
+
+      // Canvas löschen und Hintergrund setzen
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = textColor;
+      ctx.lineWidth = 1;
+
+      // Ersten (statischen) Kreis zeichnen – zentriert
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Berechne den mod-basierten Wert (Dreieckswellen-Verlauf)
+      let t = (timestamp % cycleDuration) / cycleDuration; // normierter Wert 0 ... 1
+      let modVal = t < 0.5 ? (t * 2) : (2 - t * 2);
+
+      // Verschiebung in X-Richtung (nach rechts)
+      let offsetX = modVal * displacement;
+
+      // Zweiten Kreis zeichnen – verschoben in X-Richtung
+      ctx.beginPath();
+      ctx.arc(centerX + offsetX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

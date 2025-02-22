@@ -586,32 +586,40 @@ Und damit ist das ganze Ding in seiner Gesamtheit ein solch befriedigendes Symbo
 ## Dinge, um die es hier auch geht:
 
 
-irgendwelche Metawitze
+Um irgendwelche Metawitze
 
-Unendlichkeit die sich verswirrlt und verquirrrlt 
+Um Unendlichkeit die sich verswirrlt und verquirrrlt 
 
-random Sachen
+Um random Sachen
 
-Absurdität
-
-ABSURDITÄÄÄÄÄÄÄT 🎺🎶🎵✨🥁 
+Um Absurdität ABSURDITÄÄÄÄÄÄÄT 🎺🎶🎵✨🥁 
 
 
-Ein Akt im Kreuzzug für ein schöneres Web
+Dies ist auch ein Akt im Kreuzzug für ein schöneres Web
 
-Eine neue Art sich zu erfahren, sich spielerisch mathematisch zu erleben, sich zu lieben. 
+0nefinity ist auch eine Art sich zu erfahren, sich spielerisch mathematisch zu erleben, sich zu lieben. 
 
 
-Dieses Projekt soll auch Computer dazu anregen witziges absurdes Zeug zu tun und anderes zu lassen.
-Das Allermeiste wird hier auf jeden Fall nicht ausgerechnet.
+Dieses Projekt soll vor allem auch Computer dazu anregen witziges Zeug zu tun und noch witzigeres und auch unwitzigeres sein zu lassen.
+Das Allermeiste soll hier auf jeden Fall nicht ausgerechnet werden.
 Auch wenn schon in der Überschrift die Gesamtheit des Daseins beschrieben ist.
 
 
-doin some crazy stuff with zeros and ones
+![Snoop Dogg smiles high: doin some crazy stuff with'em Zeros n' Ones, maaan](assets\memes\snoop-dogg-zeros-n-ones.jpg)
 
-etwas Wirrwarr
+Um etwas Wirrwarr
 
-Allerlei Köstlichkeiten
+Um allerlei Köstlichkeiten
+
+
+Um Bescheidenheit und Demut
+
+## Tradition
+
+Der farblose Punkt ist die künstlerische Vollendung von dem, was Kasimir Malewitsch mit seinem Schwarzen Quadrat begonnen hat.
+Mit 0nefinity vollendet sich die Mathematik.
+Ich falle wohl in die Tradition westlichen Idealismuses, die sich nach ihre herben Rückschlägen nun in ihrer Vollendung suhlen kann.
+Ich sehe mich in der Tradition sämtlicher Mystiker, die es allesamt versäumt haben ein solides wissenschaftlich mathematisches Modell ihrer Erleuchtung zu entwickeln.
 
 
 
@@ -638,6 +646,8 @@ An Meine Frau Jana, die mich versteht.
 An meine Familie die halt einfach Familie ist und die ich liebe.
 
 An Marcel Duchamp. Danke dass du der Kunst ein Klo gebaut hast.
+
+Gödel du geile Sau.
 
 An Srinivasa Ramanujan. Du hast schon vor mir bewiesen, dass Mathematik ein göttlicher Akt sein kann.
 
