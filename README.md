@@ -129,8 +129,6 @@ Mathematisch gesehen darf man Identitätsoperationen jederzeit und in einer beli
 Schon jede einzelne lässt sich unendlichfach wiederholen. 
 Wenn man diese noch miteinander kombiniert, wie viele Kombinationsmöglichkeiten gäbe es dann?
 Unendlichkeit wird schnell unübersichtlich.
- 
-
 
 irgendwas / sich selbst = 1
 irgendwas * sich selbst = sich selbst selbst

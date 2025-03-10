@@ -8,7 +8,11 @@
        Jeder Operator ist 1 Operator. 
        Mathematisch gesehen hat er 0 Einfluss.
        Jeder dieser Operatoren lässt sich ∞-fach anwenden.
-       Man munkelt, dass sie allerdings sogar alle permanent überall vorhanden sind, unsichtbar zwar, aber abrufbereit -->
+       Man munkelt, dass all diese Identitätsoperatoren permanent überall gleichzeitig vorhanden sind. Ein irres Chaos. 
+       Zum Glück sind sie im default unsichtbar und man muss sie händisch sichtbar machen.
+
+       Dieses Tool hier soll diese Arbeit erleichtern und generiert eine präferierte Anzahl an Lieblings-Identitätsoperatoren.
+      -->
   
   <link href="/meta.css" rel="stylesheet" />
   <script src="/meta.js" defer></script>
@@ -251,10 +255,28 @@
   
       const toggleBtn = document.getElementById('toggleListBtn');
       const operatorList = document.getElementById('operatorList');
-      toggleBtn.addEventListener('click', () => {
+      const operatorContainer = document.querySelector('.operator-container');
+      
+      // Toggle-Button Event
+      toggleBtn.addEventListener('click', (event) => {
         operatorList.style.display = (operatorList.style.display === 'none' || operatorList.style.display === '') 
           ? 'block' 
           : 'none';
+        event.stopPropagation(); // Verhindert, dass das Klick-Event zum Dokument weitergeleitet wird
+      });
+      
+      // Event-Listener für Klicks auf das Dokument hinzufügen
+      document.addEventListener('click', (event) => {
+        // Prüfen, ob der Klick außerhalb des Operator-Containers war
+        if (!operatorContainer.contains(event.target)) {
+          // Wenn ja, die Liste schließen
+          operatorList.style.display = 'none';
+        }
+      });
+      
+      // Verhindern, dass Klicks innerhalb der Liste die Liste schließen
+      operatorList.addEventListener('click', (event) => {
+        event.stopPropagation();
       });
   
       document.getElementById('math-container').addEventListener('wheel', onWheelZoom, { passive: false });
