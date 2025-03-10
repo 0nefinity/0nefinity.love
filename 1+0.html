@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/profilbilder/favicon/index/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/index/favicon.svg" />
+  <link rel="shortcut icon" href="/profilbilder/favicon/index/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/profilbilder/favicon/index/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="0nefinity.love" />
+  <link rel="manifest" href="/profilbilder/favicon/index/site.webmanifest" />
+  
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen -->
+  
+  <title>+0 Spirale</title>
+  
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    // Haupt-Canvas und Kontext
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    
+    // CSS-Farben abrufen (mit Fallback)
+    const styles = getComputedStyle(document.body);
+    const bgColor = styles.getPropertyValue("--bg-color").trim() || "#222";
+    const textColor = styles.getPropertyValue("--text-color").trim() || "#0f0";
+    
+    // Grundeinstellungen
+    const fontSize = 20;
+    ctx.font = `${fontSize}px monospace`;
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = textColor;
+    
+    // Basisformel
+    const baseFormula = "1+0=1";
+    let startX, startY, originX, originY, offset;
+    
+    // Funktion: Hintergrund zeichnen
+    function drawBackground() {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Formelposition und Spiralursprung berechnen
+    function initPositions() {
+      ctx.font = `${fontSize}px monospace`;
+      const textWidth = ctx.measureText(baseFormula).width;
+      startX = (canvas.width - textWidth) / 2;
+      startY = canvas.height / 2;
+      // Der Ursprung der Spirale liegt direkt nach der ersten "1"
+      const firstPart = "1";
+      offset = ctx.measureText(firstPart).width;
+      originX = startX + offset;
+      originY = startY;
+    }
+    
+    // Basisformel zeichnen
+    function drawFormula() {
+      ctx.font = `${fontSize}px monospace`;
+      ctx.fillStyle = textColor;
+      ctx.fillText(baseFormula, startX, startY);
+    }
+    
+    // Offscreen-Canvas für die Spirale (akkumuliert alle "+0")
+    let spiralCanvas = document.createElement("canvas");
+    let spiralCtx = spiralCanvas.getContext("2d");
+    
+    // Pre-rendering: Ein einziges Bild für "+0"
+    const plusZeroText = "+0";
+    let plusZeroCanvas = document.createElement("canvas");
+    let plusZeroCtx = plusZeroCanvas.getContext("2d");
+    plusZeroCtx.font = `${fontSize}px monospace`;
+    const plusZeroWidth = plusZeroCtx.measureText(plusZeroText).width;
+    const plusZeroHeight = fontSize * 1.2; // etwas Puffer für Texthöhe
+    plusZeroCanvas.width = plusZeroWidth;
+    plusZeroCanvas.height = plusZeroHeight;
+    // Zeichne "+0" in die Mitte des Offscreen-Canvas
+    plusZeroCtx.font = `${fontSize}px monospace`;
+    plusZeroCtx.textBaseline = "middle";
+    plusZeroCtx.fillStyle = textColor;
+    plusZeroCtx.fillText(plusZeroText, plusZeroWidth / 2, plusZeroHeight / 2);
+    
+    // Parameter für die Spirale
+    let count = 0;
+    const maxCount = 10000;
+    const spacing = 0.5 * fontSize;   // Abstand zwischen den Einträgen
+    const deltaAngle = Math.PI / 20;   // Winkelinkrement
+    
+    // On-Resize: Canvas-Größe und Positionen neu berechnen, Spiral-Clear
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      // Offscreen-Spiralcanvas ebenfalls anpassen
+      spiralCanvas.width = canvas.width;
+      spiralCanvas.height = canvas.height;
+      initPositions();
+      // Beim Resize wird die Spirale zurückgesetzt
+      resetSpiral();
+      render();
+    }
+    window.addEventListener("resize", resizeCanvas);
+    
+    // Spiral-Daten zurücksetzen
+    function resetSpiral() {
+      count = 0;
+      spiralCtx.clearRect(0, 0, spiralCanvas.width, spiralCanvas.height);
+    }
+    
+    // Render-Funktion: Zeichnet zuerst den akkumulierten Spiralinhalt und dann die Formel
+    function render() {
+      drawBackground();
+      ctx.drawImage(spiralCanvas, 0, 0);
+      drawFormula();
+    }
+    
+    // Spiralenanimation: Fügt iterativ ein "+0" in spiralCanvas hinzu
+    function drawSpiral() {
+      if (count >= maxCount) return;
+      // Da 1+0 stets 1 ist, wird die Bedingung immer erfüllt:
+      if (1 + 0 === 1) {
+        const angle = count * deltaAngle;
+        const radius = count * spacing;
+        const x = originX + radius * Math.cos(angle);
+        const y = originY + radius * Math.sin(angle);
+        // Zeichne das vorgerenderte "+0"
+        // Der y-Wert wird so korrigiert, dass das Bild mittig am Text ausgerichtet ist.
+        spiralCtx.drawImage(plusZeroCanvas, x, y - plusZeroCanvas.height / 2);
+        count++;
+      }
+      render();
+      requestAnimationFrame(drawSpiral);
+    }
+    
+    // Initiale Setup-Aufrufe
+    function init() {
+      resizeCanvas();
+      initPositions();
+      drawBackground();
+      drawFormula();
+    }
+    init();
+    
+    // Formel 3 Sekunden lang anzeigen, dann Spirale starten
+    setTimeout(() => {
+      drawSpiral();
+    }, 3000);
+  </script>
+</body>
+</html>
