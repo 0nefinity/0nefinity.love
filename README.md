@@ -129,8 +129,6 @@ Mathematisch gesehen darf man Identitätsoperationen jederzeit und in einer beli
 Schon jede einzelne lässt sich unendlichfach wiederholen. 
 Wenn man diese noch miteinander kombiniert, wie viele Kombinationsmöglichkeiten gäbe es dann?
 Unendlichkeit wird schnell unübersichtlich.
- 
-
 
 irgendwas / sich selbst = 1
 irgendwas * sich selbst = sich selbst selbst
@@ -619,7 +617,7 @@ Um Bescheidenheit und Demut
 Der farblose Punkt ist die künstlerische Vollendung von dem, was Kasimir Malewitsch mit seinem Schwarzen Quadrat begonnen hat.
 Mit 0nefinity vollendet sich die Mathematik.
 Ich falle wohl in die Tradition westlichen Idealismuses, die sich nach ihre herben Rückschlägen nun in ihrer Vollendung suhlen kann.
-Ich sehe mich in der Tradition sämtlicher Mystiker, die es allesamt versäumt haben ein solides wissenschaftlich mathematisches Modell ihrer Erleuchtung zu entwickeln.
+Mystiker aller Zeiten haben Worte gesucht ihr Erleben zu beschreiben. Nun gibt es ein mathematisches Modell dafür.
 
 
 
@@ -627,28 +625,34 @@ Ich sehe mich in der Tradition sämtlicher Mystiker, die es allesamt versäumt h
 
 An alle die mich staunen lassen, die mit mir den Geist der Faszination für die Wunderlichkeiten der Existenz teilen
 
-An Douglas R. Hofstadter. Dein Brilliantes Werk Gödel, Escher, Bach hat mich zutiefst inspiriert und dazu beigetragen, mich an diese Form der Veröffentlichung von 0nefinity heranzutrauen.
+Douglas R. Hofstadter - Dein brilliantes Werk Gödel, Escher, Bach hat mich zutiefst inspiriert und dazu beigetragen, mich an diese Form der Veröffentlichung von 0nefinity heranzutrauen
 
-An Benjamin Patterson. Das Leben ist eine Performance!
+Benjamin Patterson - Das Leben ist eine Performance
 
-An Ken Wilber. Der integrale Gedanke hat dises hier erst möglich gemacht .
+Ken Wilber - Der integrale Gedanke hat dises hier erst möglich gemacht
 
-An Dieter Lange. Beim durchdenken deiner Gedanken habe ich Erleuchtung gefunden.
+Dieter Lange - Beim durchdenken deiner Gedanken habe ich Erleuchtung gefunden
 
-An Leo Gura von Actualized.org. Wow, just wow!
+Leo Gura von Actualized.org - Wow, just wow!
 
-An Bodo Schäfer. Danke für deine schöne Weltsicht.
+Bodo Schäfer - Danke für deine schöne Weltsicht
 
-An 5-MeO-DMT. Du hast mir das Größte gezeigt. Danke für deine klare nichtduale Erfahrung.
+5-MeO-DMT - Du hast mir das Größte gezeigt
 
-An Meine Frau Jana, die mich versteht.
+Marcel Duchamp - Du hast der Kunst ein Klo gebaut
 
-An meine Familie die halt einfach Familie ist und die ich liebe.
+Srinivasa Ramanujan - Mathematik kann ein göttlicher Akt sein
 
-An Marcel Duchamp. Danke dass du der Kunst ein Klo gebaut hast.
+und nochmal Gödel, du geile Sau
 
-Gödel du geile Sau.
 
-An Srinivasa Ramanujan. Du hast schon vor mir bewiesen, dass Mathematik ein göttlicher Akt sein kann.
 
-An alle ungenannten Seelen, wir sind 0 1 ∞
+Besonders Bedanken möchte ich mich bei dir Jana, du verstehst mich, du begleitest mich
+
+Und bei meiner Familie die einfach meine Familie ist und die mich liebt und die ich liebe und zu lieben habe
+
+An dieser Stelle auch ein außerordentliches Dank an Dich, Lieber Leser. Ich freue mich wenn du etwas inspirierendes finden konntest. 
+
+Allgemeiner Dank gilt selbstverständlich auch all den ungenannten Seelen
+
+wisset, wir sind 0 1 ∞
