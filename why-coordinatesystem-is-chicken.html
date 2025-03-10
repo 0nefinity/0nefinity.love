@@ -1,11 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese Zeile hier unangetastet lassen) -->
-  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen)-->
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
   <link rel="icon" type="image/png" href="/profilbilder/favicon/chicken/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/chicken/favicon.svg" />
   <link rel="shortcut icon" href="/profilbilder/favicon/chicken/favicon.ico" />
@@ -13,52 +12,45 @@
   <meta name="apple-mobile-web-app-title" content="why-coordinatesystem-is-chicken" />
   <link rel="manifest" href="/profilbilder/favicon/chicken/site.webmanifest" />
 
+  <!-- Irgendwas malt irgendwas! Wie viele Dinge einfach wie vieles malen könnten! 
+       1 random Teil malt 1 random Teil und zusmmen genommen ergibt es 1 random Teil
+       Die Beliebigkeit, mit der sich irgenwas verwenden lässt um irgendwas anderes daraus zu machen ist so gewaltig, dass 
+       es wieder komplett nichtig wird sich das auszumalen. Es gibt ja allein schon unendlich Möglichkeiten sich auch nur ein 
+       einziges Objekt zu überlegen. Dann noch ein zweites, puh ∞ mal ∞! Oder ∞ hoch ∞? 
+       Es gibt schließlich auch noch unendlich viele Möglichkeiten wie konkret ein Objekt ein anderes darstellen könnte. 
+       Allein schon wie man welches davon rotiert! Oder anmalt! Oder aus wie vielen Richtungen man das betrachten könnte.
+       Und jedes einzelne Bild, was auf solche Weise potenziell entstehen könnte wäre ja auch wieder eins von zwei möglichen Eingangsbildern. 
+       Ein Koordinatensystem was ein Huhn malt malt ein Ei!
+       Wenn gleichzeitig daneben zusätzlich noch ein anderes Koordinatensystem ein Ei malt und das Huhn malt welches ein Huhn malt, 
+       dann könnte es als ganz schöne Metapher für die Randomness des Henne-Ei-Problems herhalten.
+       Beide Hennen, beide Eier, und beide Koordinatensysteme befinden sich hier in einem Rahmen,
+       Henne, Ei, Koordinatensystem sind 1 (und 0 und ∞).
+
+
+       Und was wir noch gar nicht badacht haben: In dem Koordinatensystem ließe sich ja unabhängig davon zudem auch noch die gesamte 
+       Bandbreite an Koordinatensystem-Mathematik (Und Meta-Koordinatensystem-Mathematik) abbilden, ohne dass sich das Huhn (oder das Ei)
+       daran stören würde. 
+       -->
 
   <title>why coordinate system is chicken</title>
-  <!-- Irgendwas malt irgendwas. Sowohl das Huhn, als auch das Koordinatensystem sind nur beliebige SVGs (das Huhn ist ein einziger geschlossener Pfad). 
-       Die randomness und absurdität, mit der was in sich sinnvolles und abgeschlossenes etwas anderes Sinnvolles und in sich perfektes wie ein Huhn, wie ein Koordinatensystem, in dem sich ganz unabhängig noch 
-       Mathematik machen ließe
-         -->
-
 
   <style>
+    
     /* Vollflächiges Layout */
     html, body {
-      padding: 0;
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: var(--bg-color);
-      color: var(--text-color);
-      display: flex;
-      flex-direction: column;
-    }
-    /* Überschrift */
-    h1 {
-      margin: 0.5rem 0;
-      text-align: center;
-      margin: 10px 70px;
+      align-items: normal;
     }
     /* Flex-Container für das SVG */
     .svgContainer {
-      flex: 1;
-      display: flex;
       min-height: 0;
     }
     .svgContainer svg {
       margin: auto;
       max-width: 100%;
       max-height: 100%;
-      width: auto;
-      height: auto;
-      display: block;
-      overflow: visible;
-    }
-    /* Style für den gezeichneten Hühnerpfad */
-    #chickenPath {
-      stroke: var(--text-color);
-      stroke-width: 2;
-      fill: none;
     }
   </style>
 </head>
@@ -69,108 +61,91 @@
       <defs>
         <!-- Marker, der auch im Koordinatensystem verwendet wird -->
         <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--text-color)" />
+          <path d="M0,0 L10,5 L0,10 z" fill="white" />
         </marker>
       </defs>
-      <!-- Das Koordinatensystem wird dynamisch geladen -->
+
+      <!-- Koordinatensystem direkt eingebettet -->
+      <g id="coordinateSystem" fill="none" stroke="white" stroke-width="1" style="visibility: hidden;">
+        <!-- X-Achse -->
+        <line x1="-35" y1="0" x2="35" y2="0" marker-end="url(#arrow)"/>
+        <!-- Y-Achse -->
+        <line x1="0" y1="35" x2="0" y2="-35" marker-end="url(#arrow)"/>
+        <!-- Ticks für die X-Achse -->
+        <line x1="-30" y1="-1" x2="-30" y2="1"/>
+        <line x1="-20" y1="-1" x2="-20" y2="1"/>
+        <line x1="-10" y1="-1" x2="-10" y2="1"/>
+        <line x1="10"  y1="-1" x2="10"  y2="1"/>
+        <line x1="20"  y1="-1" x2="20"  y2="1"/>
+        <line x1="30"  y1="-1" x2="30"  y2="1"/>
+        <!-- Ticks für die Y-Achse -->
+        <line x1="-1" y1="-30" x2="1" y2="-30"/>
+        <line x1="-1" y1="-20" x2="1" y2="-20"/>
+        <line x1="-1" y1="-10" x2="1" y2="-10"/>
+        <line x1="-1" y1="10"  x2="1" y2="10"/>
+        <line x1="-1" y1="20"  x2="1" y2="20"/>
+        <line x1="-1" y1="30"  x2="1" y2="30"/>
+        <!-- Achsenbeschriftungen -->
+        <text x="35" y="5" text-anchor="middle" fill="white" stroke="none" font-size="3px">X</text>
+        <text x="-3" y="-33" text-anchor="end" fill="white" stroke="none" font-size="3px">Y</text>
+      </g>
+
+      <!-- Hühnerpfad direkt eingebettet -->
+      <path id="chickenPath" 
+        d="m 135.31112,141.92182 c 0,0 21.85541,-7.41839 30.65598,-22.26826 2.1882,-3.69232 5.65922,-12.00059 5.9976,-13.40243 0.74131,-3.07113 3.25123,-12.208254 0.337,-8.362088 -1.53955,2.031881 0.0991,-6.250044 1.51517,-8.935592 3.41736,-6.481126 1.52712,-7.459933 -0.0912,-5.103957 -2.13513,3.108441 1.37707,-15.271118 -0.30102,-10.861541 -1.31509,3.455715 -3.04235,-16.031676 -4.44961,-11.171565 -0.73139,2.52594 -2.42341,0.354478 -6.26269,-5.100222 -2.86161,-4.065658 -7.60433,-8.053382 -8.89853,-9.137715 -3.03058,-2.539131 -5.62169,-6.923997 -6.19505,-7.988794 -0.57335,-1.064797 -3.21597,-7.096138 0.63368,-9.143824 3.84965,-2.047686 5.46007,1.150457 5.46007,1.150457 1.33209,1.563767 1.10042,3.475038 -1.91127,3.996293 -3.01172,0.521256 -4.51756,-2.374609 -3.06962,-4.865052 1.44793,-2.490446 5.56006,-3.532958 7.23966,-1.042514 1.6796,2.490446 12.39431,8.687599 14.01599,8.571764 1.62169,-0.115834 4.05421,-1.042511 -1.04251,-3.47504 -5.09672,-2.432526 -6.71841,0.926677 -8.10842,2.664198 -1.39002,1.737519 4.57546,15.811426 -3.35921,12.568058 -7.93467,-3.243371 -4.17004,-8.745517 -0.3475,-13.263065 3.82254,-4.517552 7.47133,-4.633386 8.6876,-11.87305 1.21626,-7.239667 -2.49045,-10.077614 -7.41342,-7.703005 -4.92297,2.374611 -4.40172,3.880461 -4.11213,5.733814 0.28959,1.853356 4.57547,1.216266 2.95378,-3.532955 -1.62168,-4.74922 -5.67589,-5.502145 -8.10842,-5.502145 -2.43253,0 -6.89216,1.447933 -7.23967,5.328394 -0.3475,3.880458 2.25878,5.38631 2.78004,5.849649 0.52125,0.463338 1.79543,0.347503 2.78003,-0.521256 0.98459,-0.868762 -6.37091,-4.227966 -12.45222,3.706706 -0.65616,0.856129 -2.31249,9.068776 -2.24162,3.031098 0.0643,-5.476537 -3.35898,11.686639 -3.51743,8.067748 -0.38852,-8.873148 -0.80853,2.371835 -1.31371,3.960133 -0.45549,1.432051 0.58355,9.598859 -1.61353,5.121213 -0.78151,-1.592725 -1.14376,3.617486 -1.85467,5.824683 -6.08132,18.881047 -10.13553,19.749807 -32.31786,26.294463 -22.182333,6.544657 -43.78549,-20.213146 -49.924726,-32.83912 -3.191213,-6.56306 -6.801619,-7.221695 -8.588036,-2.068131 -0.333285,0.961478 2.862305,9.339474 -0.397225,5.406455 -1.503115,-1.813691 2.710205,14.091286 -0.861651,8.306006 -1.534259,-2.485016 0.624752,5.544422 1.333067,8.568815 3.648791,15.579757 11.627898,19.338205 14.945148,21.017307 3.317254,1.679101 11.835628,3.931549 14.82525,2.784845 2.989622,-1.146694 4.668724,-3.112473 -4.545864,-7.617383 -9.214589,-4.504912 -20.149233,-2.989622 -21.541661,-1.638149 -1.392425,1.35147 -5.652063,2.567945 -0.410546,13.195751 5.241518,10.627793 17.222052,16.946133 19.413077,17.703783 2.191023,0.75764 4.279664,1.47433 3.071529,-0.59383 -1.208135,-2.06817 -4.013467,-2.70295 -6.163537,-2.80533 -2.15007,-0.10239 -2.436746,2.51865 -2.436746,2.51865 0,0 -3.372329,21.63379 17.246234,38.77732 20.618564,17.14352 46.333857,2.08502 46.333857,2.08502 0,0 21.54524,-6.7184 35.44539,-25.02028 13.90016,-18.30187 12.0468,-24.0936 11.81514,-27.56864 -0.23167,-3.475022 -3.82255,-21.776858 -33.47621,-18.765157 -29.653668,3.011699 -43.669658,18.417657 -43.669658,18.417657 0,0 -12.973479,14.47932 7.181747,18.64937 20.155221,4.17005 25.599451,1.85335 35.445401,-2.08502 9.84594,-3.93838 14.13182,-15.40601 14.13182,-15.40601 0,0 3.24337,-18.64932 -19.57605,-22.008523 -22.819425,-3.359205 -38.524226,12.979848 -38.524226,12.979848 0,0 -17.364382,16.463355 -14.088083,37.185935 3.276298,20.72259 16.327396,29.33023 16.327396,29.33023 0,0 32.694033,17.0521 44.625003,-3.10313 11.93096,-20.15522 0.41486,-21.57485 0.41486,-21.57485 0,0 -19.75924,-5.93587 -24.27679,18.09981 -4.51755,24.03569 32.83912,46.04427 25.13611,34.22914 -7.703,-11.81514 -25.88904,0.98459 -25.88904,0.98459 0,0 -4.88508,3.21908 2.15897,1.90856 7.04404,-1.31052 8.10883,-3.76774 9.74698,-5.32398 1.63815,-1.55624 3.68583,-1.88387 0,0 -3.68584,1.88387 -2.0107,14.89045 0.90099,7.12595 0.98289,-2.62104 1.83086,-5.87213 1.74895,-8.32935 -0.0819,-2.45722 -6.26845,-4.76169 -9.79047,-11.80573 -1.60558,-3.21117 -5.07098,-13.43819 -5.00055,-15.23082 0.0907,-2.30898 0.60082,-8.81199 -1.05768,-6.72156 -3.49706,4.4078 7.07427,-8.66889 2.43044,-5.31942 -4.14108,2.98686 7.91116,-6.76101 9.15372,-7.72924 6.30688,-4.91444 21.5453,-3.16808 19.55234,5.66401"
+        stroke="white"
+        stroke-width="2"
+        fill="none">
+      </path>
     </svg>
   </div>
 
   <script>
     // Variablen für den Hühnerpfad
-    let chickenPath;
-    let pathLength = 0;
-    let startTime  = null;
+    let chickenPath = document.getElementById("chickenPath");
+    let pathLength = chickenPath.getTotalLength();
+    let startTime = null;
 
-    // Neue Animationsphasen (in ms)
-    // Der Zyklus startet jetzt mit "coordinateSystem" (früher vanishDuration)
-    const coordinateSystem = 1000; // Phase 1: Pfad ausblenden (Vanish)
-    const drawsChicken     = 2000; // Phase 2: Hühnerpfad zeichnen
-    const tadaa            = 1000; // Phase 3: Hühnerpfad komplett sichtbar
-    const cycleLength      = coordinateSystem + drawsChicken + tadaa;
+    // Sicherstellen, dass der Pfad anfangs unsichtbar ist
+    chickenPath.style.strokeDasharray = pathLength;
+    chickenPath.style.strokeDashoffset = pathLength;
 
-    // Easing-Funktion
+    // Animation 
+    const coordinateSystem = 1000; // Phase 1
+    const drawsChicken = 2000;     // Phase 2
+    const tadaa = 1000;            // Phase 3
+    const cycleLength = coordinateSystem + drawsChicken + tadaa;
+
+    // Easing-Funktion für weichere Animation
     function easeInOutQuad(t) {
       return t < 0.5
         ? 2 * t * t
         : 1 - Math.pow(-2 * t + 2, 2) / 2;
     }
 
-    // Zuerst das Koordinatensystem laden
-    fetch('assets/coordinate-system.svg')
-      .then(response => response.text())
-      .then(svgText => {
-        const parser = new DOMParser();
-        const externalSVG = parser.parseFromString(svgText, "image/svg+xml");
-        const externalGroup = externalSVG.getElementById("coordinateSystem");
-        if (!externalGroup) {
-          console.error("Kein <g id='coordinateSystem'> in coordinate-system.svg gefunden!");
-          return;
-        }
-        // Importiere die Gruppe und füge sie ins Haupt-SVG ein
-        const mainSVG = document.getElementById("mainSVG");
-        const importedGroup = document.importNode(externalGroup, true);
-        importedGroup.setAttribute("id", "coordinateSystem"); // Sicherstellen
-        // Zunächst unsichtbar machen
-        importedGroup.style.visibility = "hidden";
-        mainSVG.appendChild(importedGroup);
-        // Nach dem Laden des Koordinatensystems den Hühnerpfad laden
-        loadChickenPath();
-      })
-      .catch(err => console.error("Fehler beim Laden des Koordinatensystems:", err));
-
-    // Funktion zum Laden des Hühnerpfads
-    function loadChickenPath() {
-      const pathUrl = "assets/chicken-path.svg";
-      const mainSVG = document.getElementById("mainSVG");
-      fetch(pathUrl)
-        .then(response => response.text())
-        .then(svgText => {
-          const parser = new DOMParser();
-          const externalSVG = parser.parseFromString(svgText, "image/svg+xml");
-          const externalPath = externalSVG.getElementById("path1");
-          if (!externalPath) {
-            console.error("Kein <path id='path1'> in chicken-path.svg gefunden!");
-            return;
-          }
-          chickenPath = document.importNode(externalPath, true);
-          chickenPath.setAttribute("id", "chickenPath");
-          chickenPath.removeAttribute("style"); // Entferne ggf. externe Stile
-          mainSVG.appendChild(chickenPath);
-          // Ermittele die Pfadlänge und mache ihn initial unsichtbar
-          pathLength = chickenPath.getTotalLength();
-          chickenPath.style.strokeDasharray = pathLength;
-          chickenPath.style.strokeDashoffset = pathLength;
-
-          // Setze das Koordinatensystem bereits an den Startpunkt, bevor die Animation startet
-          const axis = document.getElementById("coordinateSystem");
-          if (axis) {
-            const startPoint = chickenPath.getPointAtLength(0);
-            axis.setAttribute("transform", `translate(${startPoint.x}, ${startPoint.y})`);
-            // Jetzt sichtbar machen
-            axis.style.visibility = "visible";
-          }
-          // Animation starten
-          requestAnimationFrame(animate);
-        })
-        .catch(err => console.error("Fehler beim Laden des chicken-path SVG:", err));
-    }
+    // Koordinatensystem referenzieren
+    const axis = document.getElementById("coordinateSystem");
+    
+    // Startpunkt setzen
+    const startPoint = chickenPath.getPointAtLength(0);
+    axis.setAttribute("transform", `translate(${startPoint.x}, ${startPoint.y})`);
+    
+    // Koordinatensystem sichtbar machen
+    axis.style.visibility = "visible";
 
     // Animationsfunktion
     function animate(timestamp) {
       if (!startTime) startTime = timestamp;
-      const elapsed   = timestamp - startTime;
+      const elapsed = timestamp - startTime;
       const cycleTime = elapsed % cycleLength;
-      const axis = document.getElementById("coordinateSystem");
-      if (!axis) return;
 
       if (cycleTime < coordinateSystem) {
-        // Phase 1: Pfad ausblenden (Vanish)
+        // Phase 1: Pfad ausblenden
         chickenPath.style.strokeDashoffset = pathLength;
         const startPoint = chickenPath.getPointAtLength(0);
         axis.setAttribute("transform", `translate(${startPoint.x}, ${startPoint.y})`);
       } else if (cycleTime < coordinateSystem + drawsChicken) {
-        // Phase 2: Hühnerpfad zeichnen (drawsChicken)
+        // Phase 2: Hühnerpfad zeichnen
         let t = (cycleTime - coordinateSystem) / drawsChicken;
         t = easeInOutQuad(t);
         const dist = pathLength * t;
@@ -178,13 +153,17 @@
         const point = chickenPath.getPointAtLength(dist);
         axis.setAttribute("transform", `translate(${point.x}, ${point.y})`);
       } else {
-        // Phase 3: Hühnerpfad komplett sichtbar (tadaa)
+        // Phase 3: Hühnerpfad komplett sichtbar
         chickenPath.style.strokeDashoffset = 0;
         const endPoint = chickenPath.getPointAtLength(pathLength);
         axis.setAttribute("transform", `translate(${endPoint.x}, ${endPoint.y})`);
       }
+      
       requestAnimationFrame(animate);
     }
+
+    // Animation starten
+    requestAnimationFrame(animate);
   </script>
 </body>
 </html>

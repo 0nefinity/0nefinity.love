@@ -200,6 +200,6 @@ a {
 /* Media Query für kleinere Geräte */
 @media (max-width: 480px) {
     :root {
-        font-size: 18px; /* Erhöht die Basis-Schriftgröße, sodass alle Elemente größer wirken */
+        font-size: 14px; /* Erhöht die Basis-Schriftgröße, sodass alle Elemente größer wirken */
     }
 }

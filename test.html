@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>why coordinate system is chicken</title>
+  
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese Zeile hier unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen)-->
+
+  <style>
+    /* Vollflächiges Layout */
+    html, body {
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+    }
+    /* Überschrift */
+    h1 {
+      margin: 0.5rem 0;
+      text-align: center;
+      margin: 10px 70px;
+    }
+    /* Flex-Container für das SVG */
+    .svgContainer {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    .svgContainer svg {
+      margin: auto;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+    /* Style für den gezeichneten Hühnerpfad */
+    #chickenPath {
+      stroke: var(--text-color);
+      stroke-width: 2;
+      fill: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>why coordinate system is chicken</h1>
+  <div class="svgContainer">
+    <svg id="mainSVG" viewBox="0 0 210 210" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <!-- Marker, der auch im Koordinatensystem verwendet wird -->
+        <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--text-color)" />
+        </marker>
+      </defs>
+      <!-- Das Koordinatensystem wird dynamisch geladen -->
+    </svg>
+  </div>
+
+  <script>
+    // Variablen für den Hühnerpfad
+    let chickenPath;
+    let pathLength = 0;
+    let startTime  = null;
+
+    // Neue Animationsphasen (in ms)
+    // Der Zyklus startet jetzt mit "coordinateSystem" (früher vanishDuration)
+    const coordinateSystem = 1000; // Phase 1: Pfad ausblenden (Vanish)
+    const drawsChicken     = 2000; // Phase 2: Hühnerpfad zeichnen
+    const tadaa            = 1000; // Phase 3: Hühnerpfad komplett sichtbar
+    const cycleLength      = coordinateSystem + drawsChicken + tadaa;
+
+    // Easing-Funktion
+    function easeInOutQuad(t) {
+      return t < 0.5
+        ? 2 * t * t
+        : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    // Zuerst das Koordinatensystem laden
+    fetch('assets/coordinate-system.svg')
+      .then(response => response.text())
+      .then(svgText => {
+        const parser = new DOMParser();
+        const externalSVG = parser.parseFromString(svgText, "image/svg+xml");
+        const externalGroup = externalSVG.getElementById("coordinateSystem");
+        if (!externalGroup) {
+          console.error("Kein <g id='coordinateSystem'> in coordinate-system.svg gefunden!");
+          return;
+        }
+        // Importiere die Gruppe und füge sie ins Haupt-SVG ein
+        const mainSVG = document.getElementById("mainSVG");
+        const importedGroup = document.importNode(externalGroup, true);
+        importedGroup.setAttribute("id", "coordinateSystem"); // Sicherstellen
+        // Zunächst unsichtbar machen
+        importedGroup.style.visibility = "hidden";
+        mainSVG.appendChild(importedGroup);
+        // Nach dem Laden des Koordinatensystems den Hühnerpfad laden
+        loadChickenPath();
+      })
+      .catch(err => console.error("Fehler beim Laden des Koordinatensystems:", err));
+
+    // Funktion zum Laden des Hühnerpfads
+    function loadChickenPath() {
+      const pathUrl = "assets/chicken-path.svg";
+      const mainSVG = document.getElementById("mainSVG");
+      fetch(pathUrl)
+        .then(response => response.text())
+        .then(svgText => {
+          const parser = new DOMParser();
+          const externalSVG = parser.parseFromString(svgText, "image/svg+xml");
+          const externalPath = externalSVG.getElementById("path1");
+          if (!externalPath) {
+            console.error("Kein <path id='path1'> in chicken-path.svg gefunden!");
+            return;
+          }
+          chickenPath = document.importNode(externalPath, true);
+          chickenPath.setAttribute("id", "chickenPath");
+          chickenPath.removeAttribute("style"); // Entferne ggf. externe Stile
+          mainSVG.appendChild(chickenPath);
+          // Ermittele die Pfadlänge und mache ihn initial unsichtbar
+          pathLength = chickenPath.getTotalLength();
+          chickenPath.style.strokeDasharray = pathLength;
+          chickenPath.style.strokeDashoffset = pathLength;
+
+          // Setze das Koordinatensystem bereits an den Startpunkt, bevor die Animation startet
+          const axis = document.getElementById("coordinateSystem");
+          if (axis) {
+            const startPoint = chickenPath.getPointAtLength(0);
+            axis.setAttribute("transform", `translate(${startPoint.x}, ${startPoint.y})`);
+            // Jetzt sichtbar machen
+            axis.style.visibility = "visible";
+          }
+          // Animation starten
+          requestAnimationFrame(animate);
+        })
+        .catch(err => console.error("Fehler beim Laden des chicken-path SVG:", err));
+    }
+
+    // Animationsfunktion
+    function animate(timestamp) {
+      if (!startTime) startTime = timestamp;
+      const elapsed   = timestamp - startTime;
+      const cycleTime = elapsed % cycleLength;
+      const axis = document.getElementById("coordinateSystem");
+      if (!axis) return;
+
+      if (cycleTime < coordinateSystem) {
+        // Phase 1: Pfad ausblenden (Vanish)
+        chickenPath.style.strokeDashoffset = pathLength;
+        const startPoint = chickenPath.getPointAtLength(0);
+        axis.setAttribute("transform", `translate(${startPoint.x}, ${startPoint.y})`);
+      } else if (cycleTime < coordinateSystem + drawsChicken) {
+        // Phase 2: Hühnerpfad zeichnen (drawsChicken)
+        let t = (cycleTime - coordinateSystem) / drawsChicken;
+        t = easeInOutQuad(t);
+        const dist = pathLength * t;
+        chickenPath.style.strokeDashoffset = pathLength - dist;
+        const point = chickenPath.getPointAtLength(dist);
+        axis.setAttribute("transform", `translate(${point.x}, ${point.y})`);
+      } else {
+        // Phase 3: Hühnerpfad komplett sichtbar (tadaa)
+        chickenPath.style.strokeDashoffset = 0;
+        const endPoint = chickenPath.getPointAtLength(pathLength);
+        axis.setAttribute("transform", `translate(${endPoint.x}, ${endPoint.y})`);
+      }
+      requestAnimationFrame(animate);
+    }
+  </script>
+</body>
+</html>
