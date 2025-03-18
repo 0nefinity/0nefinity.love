@@ -40,7 +40,11 @@ header.controls input[type="checkbox"] {
   margin-left: 3px;
   box-sizing: content-box;
 }
+<<<<<<< HEAD
 header.controls button {
+=======
+header.controls button#takePhotoButton {
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
   margin: 2px 4px;
   padding: 2px 8px;
   font-size: 12px;
@@ -50,7 +54,11 @@ header.controls button {
   border-radius: 3px;
   cursor: pointer;
 }
+<<<<<<< HEAD
 header.controls button:hover {
+=======
+header.controls button#takePhotoButton:hover {
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
   background: rgba(128, 128, 128, 0.2);
 }
 .symbol-container {
@@ -80,6 +88,7 @@ canvas {
   pointer-events: none;
 }
 
+<<<<<<< HEAD
 /* Info Popup Stil */
 .info-popup {
   position: relative;
@@ -129,11 +138,23 @@ canvas {
   z-index: 50;
   transform-origin: center center;
 }
+=======
+/* Styles für die editierbaren Fotos */
+.editable-photo {
+  position: absolute;
+  z-index: 50;
+  transform-origin: center center;
+}
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
 .editable-photo.selected {
   outline: 2px dashed rgba(0, 128, 255, 0.8);
   z-index: 51;
 }
+<<<<<<< HEAD
 .editable-photo img, .editable-photo video {
+=======
+.editable-photo img {
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
   display: block;
   pointer-events: none;
 }
@@ -226,11 +247,14 @@ canvas {
       <label>Identisch: <input type="text" id="equivSymbolInput" value="≡"></label>
       <label>Dupl. Identisch: <input type="checkbox" id="duplicateIdentisch"></label>
       <button id="takePhotoButton">Foto machen</button>
+<<<<<<< HEAD
       <div class="info-popup">
         <div class="info-icon">i</div>
         <div class="info-text">Die Muster, die 0nefinity formt, resultieren nur aus der Bewegung. Zu jedem Zeitpunkt ist es jedoch lediglich das ursprüngliche Ding. Ein Foto vermag das Muster deshalb nicht einzufangen.</div>
       </div>
       <button id="createGifButton">GIF erstellen</button>
+=======
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
     `;
     document.body.insertBefore(controls, document.body.firstChild);
 
@@ -281,7 +305,11 @@ canvas {
     });
 
     // Erstelle ein editierbares Foto-Element
+<<<<<<< HEAD
     function createEditablePhoto(mediaUrl, originalWidth, originalHeight, isGif = false) {
+=======
+    function createEditablePhoto(photoUrl, originalWidth, originalHeight) {
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
       const photo = document.createElement('div');
       photo.className = 'editable-photo';
       photo.id = 'editable-photo-' + photoCounter++;
@@ -296,6 +324,7 @@ canvas {
       photo.style.transform = 'rotate(0deg)'; // Keine Skalierung, um Originalgröße zu behalten
       photo.dataset.rotation = '0';
       
+<<<<<<< HEAD
       // Erstelle entweder ein Bild oder ein Video-Element
       let mediaElement;
       if (isGif) {
@@ -320,6 +349,14 @@ canvas {
         };
       }
       
+=======
+      const img = document.createElement('img');
+      img.src = photoUrl;
+      img.onload = function() {
+        addControlPoints(photo, originalWidth, originalHeight);
+      };
+      
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
       const closeBtn = document.createElement('button');
       closeBtn.className = 'close-btn';
       closeBtn.innerHTML = '×';
@@ -339,7 +376,11 @@ canvas {
       rotationHandle.className = 'rotation-handle';
       rotationHandle.title = 'Drehen';
       
+<<<<<<< HEAD
       photo.appendChild(mediaElement);
+=======
+      photo.appendChild(img);
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
       photo.appendChild(closeBtn);
       photo.appendChild(rotationLine);
       photo.appendChild(rotationHandle);
@@ -347,7 +388,11 @@ canvas {
       
       // Klick-Handler für die Auswahl
       photo.addEventListener('mousedown', function(e) {
+<<<<<<< HEAD
         if (e.target === photo || e.target === mediaElement) {
+=======
+        if (e.target === photo || e.target === img) {
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
           // Vorherige Auswahl entfernen
           if (selectedPhoto && selectedPhoto !== photo) {
             selectedPhoto.classList.remove('selected');
@@ -431,7 +476,11 @@ canvas {
     function startResizing(e, element, position) {
       e.preventDefault();
       
+<<<<<<< HEAD
       const mediaElement = element.querySelector('img') || element.querySelector('video');
+=======
+      const img = element.querySelector('img');
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
       const rect = element.getBoundingClientRect();
       const startX = e.clientX;
       const startY = e.clientY;
@@ -502,8 +551,13 @@ canvas {
         if (newWidth > 30 && newHeight > 30) {
           element.style.left = newLeft + 'px';
           element.style.top = newTop + 'px';
+<<<<<<< HEAD
           mediaElement.style.width = newWidth + 'px';
           mediaElement.style.height = newHeight + 'px';
+=======
+          img.style.width = newWidth + 'px';
+          img.style.height = newHeight + 'px';
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
         }
       }
       
@@ -559,6 +613,7 @@ canvas {
       createEditablePhoto(dataURL, width, height);
     });
 
+<<<<<<< HEAD
     // GIF-Erstellungsfunktion
     document.getElementById('createGifButton').addEventListener('click', async () => {
       // Anzahl der Frames für eine Sekunde GIF
@@ -757,6 +812,8 @@ canvas {
       context.restore();
     }
 
+=======
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
     // Funktion zum Zuschneiden transparenter Ränder eines Canvas
     function trimTransparentEdges(canvas) {
       const ctx = canvas.getContext('2d');
@@ -816,6 +873,7 @@ canvas {
 
     // Event-Listener für die Steuerelemente
     document.getElementById('textSize').addEventListener('input', () => {
+<<<<<<< HEAD
       textSizePercentage = parseFloat(document.getElementById('textSize').value) || 0;
       resizeCanvasToFitContent();
     });
@@ -829,6 +887,21 @@ canvas {
     });
     document.getElementById('equivLength').addEventListener('input', () => {
       equivLength = parseFloat(document.getElementById('equivLength').value) || 0;
+=======
+      textSizePercentage = parseFloat(document.getElementById('textSize').value) || 25;
+      resizeCanvasToFitContent();
+    });
+    document.getElementById('triangleSize').addEventListener('input', () => {
+      triangleSize = parseFloat(document.getElementById('triangleSize').value) || 30;
+      resizeCanvasToFitContent();
+    });
+    document.getElementById('equivSize').addEventListener('input', () => {
+      equivSize = parseFloat(document.getElementById('equivSize').value) || 25;
+      resizeCanvasToFitContent();
+    });
+    document.getElementById('equivLength').addEventListener('input', () => {
+      equivLength = parseFloat(document.getElementById('equivLength').value) || 100;
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
       resizeCanvasToFitContent();
     });
     document.getElementById('rotateCheckbox').addEventListener('change', e => {
@@ -907,10 +980,101 @@ canvas {
       photoCanvas.height = canvasSize;
     }
 
+<<<<<<< HEAD
     // Zeichenfunktion für das Dreieck-Symbol (aktualisiert für 0-Werte)
     function drawTriangleOnCanvas(context, targetCanvas, forPhoto = false) {
       // Nutze die frameAngle-Version mit dem aktuellen Winkel
       drawFrameWithAngle(context, targetCanvas, angle, forPhoto);
+=======
+    // Zeichenfunktion für das Dreieck-Symbol
+    function drawTriangleOnCanvas(context, targetCanvas, forPhoto = false) {
+      const style = getComputedStyle(document.documentElement);
+      const bgColor = style.getPropertyValue('--bg-color').trim() || "#fff";
+      const textColor = style.getPropertyValue('--text-color').trim() || "#000";
+      
+      // Lösche den Canvas und setze Hintergrund, wenn nicht für Foto
+      if (!forPhoto) {
+        context.save();
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+        context.restore();
+      }
+      
+      context.save();
+      context.translate(targetCanvas.width / 2, targetCanvas.height / 2);
+      const minDim = Math.min(targetCanvas.width, targetCanvas.height);
+      // Größere Schriftgröße für bessere Sichtbarkeit
+      const labelFontSize = minDim * (textSizePercentage / 100);
+      const equivFontSize = minDim * (equivSize / 100);
+      const radius = minDim * (triangleSize / 100);
+      
+      const vertices = [];
+      for (let i = 0; i < 3; i++) {
+        const thetaDeg = angle + i * 120;
+        const thetaRad = (thetaDeg * Math.PI) / 180;
+        const x = radius * Math.cos(thetaRad);
+        const y = radius * Math.sin(thetaRad);
+        vertices.push({ x, y, thetaRad });
+      }
+      
+      const labels = [
+        document.getElementById('label0Input').value || "0",
+        document.getElementById('label1Input').value || "1",
+        document.getElementById('labelInfInput').value || "∞"
+      ];
+      
+      const equivSymbol = document.getElementById('equivSymbolInput').value || "≡";
+      
+      context.font = `bold ${labelFontSize}px Verdana`;
+      context.fillStyle = textColor;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      
+      // Zeichne Symbole an den Ecken
+      for (let i = 0; i < 3; i++) {
+        const { x, y, thetaRad } = vertices[i];
+        context.save();
+        context.translate(x, y);
+        if (tangentialMode) {
+          context.rotate(thetaRad + Math.PI / 2);
+        }
+        context.fillText(labels[i], 0, 0);
+        context.restore();
+      }
+      
+      // Zeichne Äquivalenzsymbole an den Kanten
+      for (let i = 0; i < 3; i++) {
+        const p1 = vertices[i];
+        const p2 = vertices[(i + 1) % 3];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const sideAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        
+        context.save();
+        context.translate(midX, midY);
+        context.rotate(sideAngle);
+        context.font = `bold ${equivFontSize}px Verdana`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        
+        const duplicateEnabled = document.getElementById('duplicateIdentisch').checked;
+        if (duplicateEnabled) {
+          const originalText = equivSymbol;
+          const desiredSpacing = equivFontSize * 1.2;
+          const offset = desiredSpacing / (equivLength / 100);
+          context.scale(1, equivLength / 100);
+          context.fillText(originalText, 0, -offset);
+          context.fillText(originalText, 0, 0);
+          context.fillText(originalText, 0, offset);
+        } else {
+          context.scale(1, equivLength / 100);
+          context.fillText(equivSymbol, 0, 0);
+        }
+        context.restore();
+      }
+      
+      context.restore();
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
     }
 
     // Animationsschleife
@@ -968,6 +1132,7 @@ canvas {
     }
     window.resizeTimeout = setTimeout(() => {
       if (document.getElementById('canvas')) {
+<<<<<<< HEAD
         const resizeCanvasToFitContent = function() {
           const canvas = document.getElementById('canvas');
           const photoCanvas = document.querySelector('canvas[style="display: none;"]');
@@ -988,6 +1153,8 @@ canvas {
           }
         };
         
+=======
+>>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
         resizeCanvasToFitContent();
       }
     }, 250);
