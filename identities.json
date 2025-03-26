@@ -38,7 +38,7 @@
     {
       "name": "√1",
       "description": "√(x^1) = x",
-      "mathml": "<mrow><mroot><mrow><mi>x</mi></mrow><mn>1</mn></mroot></mrow>"
+      "mathml": "<msqrt><mi>x</mi></msqrt>"
     }    
   ]
 }

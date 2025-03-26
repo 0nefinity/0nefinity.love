@@ -333,12 +333,11 @@ Wer entscheidet wie viele und welche Dinge damit geschehen werden?
 Menschen sind gewohnt Limitierung als ein gegebenes Faktum hinzunehmen. 
 Doch sie wissen nicht wie groß sie sind, wie unendlich sie sind.
 wie viele Möglichkeiten sie haben.
-Wer sie sein können.
-Sein KÖNNTEN (Ausdruck um auf DAS POTENZIAL zu verweisen)
+Wer sie sein könnten.
 
-Sie wissen nicht, dass sie unmittelbar in ihrem Bewusstsein jeden Ton, jedes Bild kreieren könnten.
+Sie wissen nicht, dass sie unmittelbar in ihrem Bewusstsein alles kreieren können, jeden Ton, jedes Bild, Konzepte, etc.
 
-Es gibt zwei arten von Menschen:
+Es gibt zwei Arten von Menschen:
 Die, die beim Fahrstuhl fahren einen mittelmäßigen Popsong hören und
 die, die sich diesen zum reinen Vergnügen im Geiste mithilfe eines eigens kreierten Orchesterfraktals veredeln.
 
@@ -353,16 +352,16 @@ Ein Erleuchteter wird womöglich von 0nefinity amüsiert sein. Ein nicht Erleuch
 Ein Mathematisches System, welches so viel Freiheit und Potenzial für Ausdruck irgendeiner Art erlaubt wie eben die Natur selbst und gar darüber hinaus.
 
 0nefinity beschreibt die gesamtheit des mathematischen Daseins. 
-Jede mathematische Erkenntnis der vergangengen, sowie auch der zukünftigen Geschichte ist Ausdruck von 0nefinity. 
+Jede mathematische Erkenntnis der vergangengen, sowie auch der zukünftigen Geschichte ist ein Ausdruck von 0nefinity. 
 Jeder mathematische Gedanke wurde auf einer Leerheit kreiert, oder aus der Leerheit differenzeirt, die immer schon 0nefinity war und ist selbst 0nefinity. 
 
-0nefinity ist ein Mix aus Mathematik, Kunst, Philosophie, Metaphysik, Spiritualität und Religion.
+0nefinity erlaubt vereintes Sein von Mathematik, Wissenschaft, Kunst, Philosophie, Metaphysik, Spiritualität, Religion...
 
-0nefinity ist die ultimative Provokation an gängige mathematische Glaubenssysteme a la irgendwas/0 sei nicht definierbar (tatsächlich ist es unendlichfach definierbar, ich kann ja einfach sagen irgendwas/0 ist was ich will, ich bin doch mächtiger als dieses scheiß Ding).
+0nefinity ist die ultimative Provokation an gängige mathematische Glaubenssysteme a la irgendwas/0 sei nicht definierbar (tatsächlich ist es unendlichfach definierbar, ich kann ja einfach sagen irgendwas/0 ist was ich will, ich bin doch mächtiger als dieses komische Teil).
 
 0nefinity beantwortet die Frage, warum man irgendwas mathematisches wie 1+1 überhaupt hinschreiben kann.
 
-0nefinity ist der mathematische Weg, das ausdrücken zu wollen, was andere meinen, wenn sie von Gott sprechen.
+0nefinity ist ein mathematischer Weg, das ausdrücken zu wollen, was andere meinen, wenn sie von <Gott, Allah, Brahmann, dem Höchsten, der Quelle, LIEBE, KOSMOS, Dem Bewusstsein.... an dieser Stelle sollen sich diese Wörter aus dieser Liste abwechseln. Allerdings verborgen hinter punkten wie bei Passwörtern, unmöglich das im browser zu sehen. Soll nur im Code sichtbar sein> sprechen.
 
 0nefinity ist der Mikrokosmos und der Makrokosmos.
 
@@ -563,8 +562,12 @@ Wenn hier nur einer verweilt und schmunzelt und begreift und erkennt und sagt OM
 
 Dann sah ich, dass es gut war
 
+## warum 0nefinity?
 
-## über die Seite 0nefinity.love
+Es mangelte halt auch einfach irgendwie an einem soliden mathemathischen Modell mit dem sich wirklich die gesamte Wirklichkeit inkl. diesem ganzen erleuchtungsscheiß beschreiben lässt?
+
+
+## warum diese Form der Veröffentlichung als 0nefinity.love?
 
 Warum dieser Weg der Veröffentlichung von 0nefinity als Webprojekt unter dem Namen 0nefinity.love?
 
@@ -576,13 +579,15 @@ Als jemand mit einem Faible für Symbolik bietet mir die Dynamik und vielfältig
 Allein der Domainname, 0nefinity.love
 Ein  Festmahl, ein Feuerwerk an symbolischer Tiefe und Reichhaltigkeit.
 
-Dann natürlich die unbestreitbare Tatsache, dass unabhängig vom dargestellten Inhalt, das ganze Ding selbst überhaupt erst aus einer verrückten und verrückter werdenden Anzahl und Kombinationen aus Nullen und Einsen besteht.
-Allein diese Tatsache an sich ist bereits ein viel schönerer und tieferer Beweis für 0nefinity als sich hier überhaupt darstellen lässt.  
+Dann natürlich die unbestreitbare Tatsache, dass unabhängig vom dargestellten Inhalt, das ganze Ding selbst überhaupt erst aus einer verrückten und verrückter werdenden Anzahl und Kombination aus Nullen und Einsen besteht.
+Allein diese Tatsache an sich ist bereits ein viel schönerer und tieferer Beweis für 0nefinity als sich hier überhaupt darstellen ließe.  
 Und damit ist das ganze Ding in seiner Gesamtheit ein solch befriedigendes Symbol für alles was es aussagen soll.
 
 
 ## Dinge, um die es hier auch geht:
 
+
+![Snoop Dogg smiles high: doin some crazy stuff with'em Zeros n' Ones, maaan](assets\memes\snoop-dogg-zeros-n-ones.jpg)
 
 Um irgendwelche Metawitze
 
@@ -603,7 +608,6 @@ Das Allermeiste soll hier auf jeden Fall nicht ausgerechnet werden.
 Auch wenn schon in der Überschrift die Gesamtheit des Daseins beschrieben ist.
 
 
-![Snoop Dogg smiles high: doin some crazy stuff with'em Zeros n' Ones, maaan](assets\memes\snoop-dogg-zeros-n-ones.jpg)
 
 Um etwas Wirrwarr
 

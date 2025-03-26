@@ -12,10 +12,7 @@
        Zum Glück sind sie im default unsichtbar und man muss sie händisch sichtbar machen.
 
        Dieses Tool hier soll diese Arbeit erleichtern und generiert eine präferierte Anzahl an Lieblings-Identitätsoperatoren.
-<<<<<<< HEAD
        Weiterführend könnte man identitätsoperatoren kreativ anordnen, Bilder malen, etc.
-=======
->>>>>>> 434db711f309ea3efc8b7b402209bc9ebf23682b
       -->
   
   <link href="/meta.css" rel="stylesheet" />
@@ -151,11 +148,73 @@
     let selectedOperators = [];
     let userZoomFactor = 1; 
 
+    // Funktion zum Parsen der URL-Parameter
+    function parseURLParams() {
+      // Ausschließlich kompaktes URL-Format: ?ANZAHL*OPERATOR1,OPERATOR2,...
+      const url = window.location.href;
+      let count = 1; // Standardwert
+      const activeOps = []; // Leere Liste für aktivierte Operatoren
+      
+      // Kompaktes Format: ?ANZAHL*OPERATOR1,OPERATOR2,...
+      const compactMatch = url.match(/\?(\d+)\*(.*?)(?=$|&)/);
+      
+      if (compactMatch) {
+        // Anzahl der Operatoren
+        const parsedCount = parseInt(compactMatch[1]);
+        if (!isNaN(parsedCount) && parsedCount >= 0) {
+          count = parsedCount;
+        }
+        
+        // Operatoren
+        const opsRaw = compactMatch[2];
+        if (opsRaw) {
+          opsRaw.split(',').forEach(op => {
+            // Dekodiere jeden Operator ohne spezielle URL-Kodierung
+            const decodedOp = op;
+            activeOps.push(decodedOp);
+          });
+        }
+      }
+      
+      console.log("Anzahl:", count, "Aktive Operatoren:", activeOps);
+      return { count, activeOps };
+    }
+    
+    // Funktion zum Aktualisieren der URL entsprechend dem aktuellen Zustand
+    function updateURL() {
+      const count = parseInt(document.getElementById('operatorCount').value) || 0;
+      const activeOps = selectedOperators.map(op => op.name);
+      
+      // Wir erstellen die kompakte URL: ?ANZAHL*OPERATOR1,OPERATOR2,...
+      let newUrl = window.location.pathname + '?' + count + '*';
+      
+      if (activeOps.length > 0) {
+        // Erzeuge eine Liste mit speziell formatierten Operatoren
+        const formattedOps = activeOps.map(op => {
+          // Spezielle Normalisierungen direkt beim Namen vornehmen
+          if (op === '¹') return '^1';  // ¹ durch ^1 ersetzen
+          if (op.includes('√')) return op.replace(/√/g, 'sqrt');
+          return op;
+        });
+        
+        // Direktes Zusammenfügen ohne weitere Kodierung
+        newUrl += formattedOps.join(',');
+      }
+      
+      // Aktualisiere die URL
+      window.history.pushState({}, '', newUrl);
+      console.log("Neue URL:", newUrl);
+    }
+
     async function loadOperators() {
       try {
         const response = await fetch('/identities.json');
         if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
         const data = await response.json();
+        
+        // Debug: Die geladenen Operatoren ausgeben
+        console.log("Geladene Operatoren:", data.identitätsoperatoren);
+        
         return data.identitätsoperatoren;
       } catch (error) {
         console.error('Fehler beim Laden der Operatoren:', error);
@@ -163,13 +222,34 @@
       }
     }
   
+    // KOMPLETT ÜBERARBEITETE FUNKTION
     function generateMathMLFormula(operators, operatorCount) {
+      // Beginne mit dem Startelement
       let currentFormula = `<mi id="center-point">irgendwas</mi>`;
+      
+      // Array von zu wählenden Operatoren erstellen
+      const operatorsToUse = [];
       for (let i = 0; i < operatorCount; i++) {
         if (operators.length === 0) break;
-        const chosenOperator = operators[Math.floor(Math.random() * operators.length)];
-        currentFormula = chosenOperator.mathml.replace('<mi>x</mi>', currentFormula);
+        // Zufälligen Operator auswählen
+        const randomIndex = Math.floor(Math.random() * operators.length);
+        operatorsToUse.push(operators[randomIndex]);
       }
+      
+      // Operatoren von hinten nach vorne verarbeiten für korrekte Verschachtelung
+      for (let i = operatorsToUse.length - 1; i >= 0; i--) {
+        const operator = operatorsToUse[i];
+        
+        // Spezielle Behandlung für Wurzeloperator
+        if (operator.name === "√1") {
+          // Wurzeln mit dem Index 1 erstellen, ähnlich wie im guten Beispiel
+          currentFormula = `<mroot>${currentFormula}<mn>1</mn></mroot>`;
+        } else {
+          // Standard-Ersetzung für andere Operatoren
+          currentFormula = operator.mathml.replace('<mi>x</mi>', currentFormula);
+        }
+      }
+      
       return currentFormula;
     }
   
@@ -209,11 +289,21 @@
       const count = parseInt(document.getElementById('operatorCount').value) || 0;
       const mathMLContent = generateMathMLFormula(selectedOperators, count);
       updateFormula(mathMLContent);
+      // URL aktualisieren
+      updateURL();
     }
   
     function createOperatorList(operators) {
       const listContainer = document.getElementById('operatorList');
       listContainer.innerHTML = '';
+      
+      // URL-Parameter auslesen
+      const { activeOps } = parseURLParams();
+      const useSpecificOps = activeOps.length > 0;
+      
+      // Debug-Ausgabe mit allen Details
+      console.log("Verfügbare Operatoren mit Details:", operators);
+      console.log("Aktive Operatoren aus URL:", activeOps);
   
       operators.forEach(op => {
         const item = document.createElement('div');
@@ -222,7 +312,23 @@
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.id = `op-${op.name}`;
-        checkbox.checked = true;
+        
+        // Checkbox-Status basierend auf URL-Parametern setzen
+        if (useSpecificOps) {
+          // Direkte Prüfung ohne Normalisierung
+          checkbox.checked = activeOps.includes(op.name);
+          
+          // Spezielle Prüfung für ^1
+          if (!checkbox.checked && op.name === '¹' && activeOps.includes('^1')) {
+            checkbox.checked = true;
+            console.log("Spezialfall: ^1 in URL entspricht ¹ im Operator");
+          }
+          
+          console.log(`Operator: ${op.name}, Aktiv: ${checkbox.checked}`);
+        } else {
+          checkbox.checked = true; // Standardmäßig alle aktivieren, wenn keine Parameter vorhanden sind
+        }
+        
         checkbox.addEventListener('change', () => {
           selectedOperators = operators.filter(o =>
             document.getElementById(`op-${o.name}`).checked
@@ -239,7 +345,10 @@
         listContainer.appendChild(item);
       });
   
-      selectedOperators = [...operators];
+      // Setze die ausgewählten Operatoren basierend auf den Checkbox-Zuständen
+      selectedOperators = operators.filter(op => 
+        document.getElementById(`op-${op.name}`).checked
+      );
     }
   
     // Benutzer-Zoom per Mausrad
@@ -252,8 +361,17 @@
     }
   
     window.addEventListener('DOMContentLoaded', async () => {
+      // URL-Parameter auslesen
+      const { count, activeOps } = parseURLParams();
+      
+      // Operatoren laden
       allOperators = await loadOperators();
+      
+      // Operatorliste erstellen (wird anhand von URL-Parametern initialisiert)
       createOperatorList(allOperators);
+      
+      // Anzahl der Operatoren gemäß URL-Parameter setzen
+      document.getElementById('operatorCount').value = count;
   
       document.getElementById('operatorCount').addEventListener('input', refreshFormula);
   
