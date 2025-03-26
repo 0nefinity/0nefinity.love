@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verschachtelte Wurzelstruktur mit MathML</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        .math-container {
+            font-size: 24px;
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+        }
+        math {
+            font-size: 1.5em;
+        }
+    </style>
+</head>
+<body>
+    <div class="math-container">
+        <h2>Verschachtelte Wurzelstruktur mit Index 1</h2>
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+            <mroot>
+                <mroot>
+                    <mroot>
+                        <mroot>
+                            <mn>16</mn>
+                            <mn>1</mn>
+                        </mroot>
+                        <mn>1</mn>
+                    </mroot>
+                    <mn>1</mn>
+                </mroot>
+                <mn>1</mn>
+            </mroot>
+        </math>
+    </div>
+</body>
+</html>

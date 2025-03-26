@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese Zeile hier unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen)-->
+  
+  <title>Bibeltext-Visualisierung</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+    .controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 5px;
+      color: white;
+      font-family: sans-serif;
+      z-index: 100;
+    }
+    .control-group {
+      margin-bottom: 10px;
+    }
+    .control-label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+    }
+    .slider {
+      flex: 1;
+      margin-right: 10px;
+    }
+    .value-display {
+      min-width: 40px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <div class="controls">
+    <div class="control-group">
+      <label class="control-label" for="pixel-mode-threshold">Pixel Mode Threshold:</label>
+      <div class="slider-container">
+        <input type="range" id="pixel-mode-threshold" class="slider" min="0.1" max="5" step="0.1" value="1">
+        <span class="value-display" id="threshold-value">1.0</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label class="control-label" for="pixel-density">Pixel Density:</label>
+      <div class="slider-container">
+        <input type="range" id="pixel-density" class="slider" min="0.5" max="5" step="0.1" value="1">
+        <span class="value-display" id="density-value">1.0</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label class="control-label" for="transition-smoothness">Transition Smoothness:</label>
+      <div class="slider-container">
+        <input type="range" id="transition-smoothness" class="slider" min="0" max="1" step="0.05" value="0">
+        <span class="value-display" id="smoothness-value">0.0</span>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let textData = '';
+    let characterCount = 0;
+    let lines = [];
+    let radius = Math.min(canvas.width, canvas.height) / 2 - 50;
+    let fontSize = 12;
+    let minFontSize = 0.5;
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let panX = 0;
+    let panY = 0;
+    let scale = 1;
+    let renderRequested = false;
+    
+    // Rendering parameters that can be adjusted
+    let pixelModeThreshold = 1.0;  // When to switch to pixel mode
+    let pixelDensity = 1.0;        // Controls pixel size in pixel mode
+    let transitionSmoothness = 0;  // Blend between text and pixel modes
+
+    // Load the Bible text
+    fetch('bibel.txt')
+      .then(response => response.text())
+      .then(data => {
+        // Normalize text by removing excess whitespace
+        textData = data.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        characterCount = textData.length;
+        console.log(`Loaded text with ${characterCount} characters`);
+        
+        init();
+      })
+      .catch(error => console.error('Error loading text:', error));
+
+    function init() {
+      // Find the best font size to fit all text
+      findOptimalFontSize();
+      
+      // Generate the text layout
+      generateLines();
+      
+      // Render
+      requestRender();
+    }
+    
+    function findOptimalFontSize() {
+      let low = minFontSize;
+      let high = 20;
+      let bestSize = low;
+      let iterations = 0;
+      const maxIterations = 20;
+      
+      // Binary search for the best font size
+      while (high - low > 0.1 && iterations < maxIterations) {
+        iterations++;
+        const mid = (low + high) / 2;
+        fontSize = mid;
+        
+        ctx.font = `${fontSize}px monospace`;
+        const charWidth = ctx.measureText('M').width;
+        const lineHeight = fontSize * 1.2;
+        
+        const capacity = calculateCapacity(radius, lineHeight, charWidth);
+        
+        if (capacity >= textData.length) {
+          bestSize = mid;
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      
+      // Set final font size slightly smaller to ensure fit
+      fontSize = bestSize * 0.95;
+      ctx.font = `${fontSize}px monospace`;
+      console.log(`Optimal font size: ${fontSize}px`);
+    }
+    
+    function calculateCapacity(radius, lineHeight, charWidth) {
+      let capacity = 0;
+      
+      for (let y = -radius + lineHeight / 2; y <= radius - lineHeight / 2; y += lineHeight) {
+        // Calculate width at this y-position using circle equation
+        const lineWidth = 2 * Math.sqrt(Math.max(0, radius * radius - y * y));
+        const charsPerLine = Math.floor(lineWidth / charWidth);
+        capacity += charsPerLine;
+      }
+      
+      return capacity;
+    }
+
+    function generateLines() {
+      const lineHeight = fontSize * 1.2;
+      const charWidth = ctx.measureText('M').width;
+      
+      lines = [];
+      let textIndex = 0;
+      
+      for (let y = -radius + lineHeight / 2; y <= radius - lineHeight / 2; y += lineHeight) {
+        // Calculate width at this y-position
+        const lineWidth = 2 * Math.sqrt(Math.max(0, radius * radius - y * y));
+        const charsPerLine = Math.floor(lineWidth / charWidth);
+        
+        if (charsPerLine <= 0) continue;
+        
+        // Get text for this line
+        const remainingChars = textData.length - textIndex;
+        const charsInLine = Math.min(charsPerLine, remainingChars);
+        const lineText = textData.substr(textIndex, charsInLine);
+        textIndex += charsInLine;
+        
+        if (lineText.length > 0) {
+          lines.push({
+            text: lineText,
+            y: y,
+            width: lineWidth
+          });
+        }
+        
+        // Break if we've used all text
+        if (textIndex >= textData.length) break;
+      }
+      
+      // Check if all text was used
+      if (textIndex < textData.length) {
+        console.warn(`Not all text fits: ${textIndex}/${textData.length} characters used.`);
+      } else {
+        console.log(`All text fits: ${textIndex}/${textData.length} characters used.`);
+      }
+    }
+
+    function requestRender() {
+      if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(render);
+      }
+    }
+
+    function render() {
+      renderRequested = false;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.save();
+      
+      // Get text color from CSS variable
+      const textColor = getComputedStyle(document.body).getPropertyValue('--text-color').trim() || 'white';
+      ctx.fillStyle = textColor;
+      
+      // Setup transformations
+      ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+      ctx.scale(scale, scale);
+      
+      // Configure text
+      ctx.font = `${fontSize}px monospace`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      
+      // Determine rendering mode based on scale and threshold
+      const effectiveFontSize = fontSize * scale;
+      
+      if (effectiveFontSize < pixelModeThreshold) {
+        if (transitionSmoothness > 0 && effectiveFontSize > pixelModeThreshold * (1 - transitionSmoothness)) {
+          // Blend between text and pixel modes for smooth transition
+          const blendFactor = (effectiveFontSize - pixelModeThreshold * (1 - transitionSmoothness)) / 
+                              (pixelModeThreshold * transitionSmoothness);
+          
+          // First render pixels with partial opacity
+          ctx.globalAlpha = 1 - blendFactor;
+          renderPixelAveraged();
+          
+          // Then render text with partial opacity
+          ctx.globalAlpha = blendFactor;
+          renderText();
+          
+          // Reset opacity
+          ctx.globalAlpha = 1;
+        } else {
+          // Use pixel averaging when text is too small
+          renderPixelAveraged();
+        }
+      } else {
+        // Render normal text
+        renderText();
+      }
+      
+      ctx.restore();
+    }
+    
+    function renderText() {
+      // Calculate visible area
+      const visibleLeft = (-panX / scale) - (canvas.width / 2 / scale);
+      const visibleRight = (-panX / scale) + (canvas.width / 2 / scale);
+      const visibleTop = (-panY / scale) - (canvas.height / 2 / scale);
+      const visibleBottom = (-panY / scale) + (canvas.height / 2 / scale);
+      
+      // Render only visible lines for better performance
+      for (const line of lines) {
+        if (line.y < visibleTop - fontSize || line.y > visibleBottom + fontSize) {
+          continue; // Skip lines outside visible area
+        }
+        
+        ctx.fillText(line.text, 0, line.y);
+      }
+    }
+    
+    function renderPixelAveraged() {
+      // Calculate pixel size in world coordinates
+      const pixelSize = 1 / scale;
+      const step = Math.max(1, Math.floor(pixelSize));
+      
+      // Calculate visible area
+      const visibleLeft = (-panX / scale) - (canvas.width / 2 / scale);
+      const visibleRight = (-panX / scale) + (canvas.width / 2 / scale);
+      const visibleTop = (-panY / scale) - (canvas.height / 2 / scale);
+      const visibleBottom = (-panY / scale) + (canvas.height / 2 / scale);
+      
+      // Render pixels only in visible area
+      for (let y = Math.max(-radius, visibleTop); y <= Math.min(radius, visibleBottom); y += step) {
+        for (let x = Math.max(-radius, visibleLeft); x <= Math.min(radius, visibleRight); x += step) {
+          // Check if point is within circle
+          if (x*x + y*y <= radius*radius) {
+            // Find the nearest line
+            const lineIndex = Math.floor((y + radius) / (fontSize * 1.2));
+            
+            if (lineIndex >= 0 && lineIndex < lines.length) {
+              const line = lines[lineIndex];
+              if (Math.abs(x) <= line.width / 2) {
+                // Render a pixel for text
+                ctx.fillRect(x - step/2, y - step/2, step, step);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Event handlers
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        panX += dx;
+        panY += dy;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        
+        requestRender();
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      
+      // Calculate point under mouse before zoom
+      const mouseX = e.clientX - canvas.width / 2 - panX;
+      const mouseY = e.clientY - canvas.height / 2 - panY;
+      
+      // Apply zoom
+      const zoomIntensity = 0.001;
+      const deltaScale = 1 + e.deltaY * -zoomIntensity;
+      const newScale = Math.min(Math.max(0.01, scale * deltaScale), 100);
+      
+      // Adjust pan to keep point under mouse
+      if (newScale !== scale) {
+        const scaleRatio = newScale / scale;
+        panX -= mouseX * (scaleRatio - 1);
+        panY -= mouseY * (scaleRatio - 1);
+        scale = newScale;
+        
+        requestRender();
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      radius = Math.min(canvas.width, canvas.height) / 2 - 50;
+      
+      init();
+    });
+  </script>
+</body>
+</html>
