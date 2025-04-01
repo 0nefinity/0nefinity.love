@@ -8,5 +8,41 @@
   <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen) -->
   
   <title>Die 0</title>
-
   
+  <style>
+    main {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    
+    .sichtbar {
+      color: var(--text-color);
+    }
+    
+    .unsichtbar {
+      color: var(--bg-color);
+    }
+    
+    .wirklich-unsichtbar {
+      color: var(--bg-color);
+      user-select: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="sichtbar">Die 0 steht auch für die eine unendlich große Leere um alles Einzelne, um das Ganze und all das drum herum</p>
+    
+    <p class="unsichtbar">Die 0 steht auch für das eine unsichtbare weitaus sehr viel unendlich größere Nichts um all die sichtbare Leere</p>
+    
+    <p class="wirklich-unsichtbar">Und die 0 steht auch für das wirklich unsichtbare und auch mit allen gewöhnlichen Mitteln nicht sichtbar zu machende weit aus gigantischere Nichts</p>
+  
+    <p class="wirklich-wirklich-unsichtbar-weil-wieder-gelöscht">Die 0 steht auch für alles was mal war aber nicht mehr ist</p>
+  </main>
+</body>
+</html>
