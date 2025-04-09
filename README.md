@@ -5,8 +5,41 @@
 
 # 0nefinity
 
-0nefinity ist eine Wortneuschöpfung aus einer Null und den englischen Bezeichnungen für Eins und Unendlich.
-Es symbolisiert das nichtduale vereinigt Sein der drei fundamentalen natürlichen Konstanten 0 1 und ∞ als Grundlage des Daseins.
+0nefinity ist eine Wortneuschöpfung aus einer Transfusion der Zahl Null und den englischen Bezeichnungen für Eins und Unendlich.
+Es symbolisiert das fundamentale vereinigt Sein dieser drei fundamentalen natürlichen Konstanten 0 1 und ∞ 
+
+0 ≡ 1 ≡ ∞ (Null ist identisch mit Eins ist identisch mit Unendlich)
+
+0 1 und ∞ lassen sich überall und in allem entdecken
+Ihr permanentes Vorhandensein in allem, im größten wie im kleinsten, erscheint bei genauerem Hinsehen dabei in einer immer umfassender werdenden Tiefe
+
+So trivial die Betrachtung von etwas als 1 oder 0 oder ∞ auch scheinen mag, so erschütternd offenbart sich beim tieferen Studium der, ich nenne sie nichtduale Mathematik, dass es hier um mehr als um irgendwelche Mathematik geht
+Es geht um etwas ganz grundlegend fundamentales
+Etwas, was den Mathematiker (und dazu zählt mindestens jede*r der bis 2 Zählen kann (eigentlich jeder, der 0 1 ∞ ist)) zu einem Schöpfer erhebt, der er aber  immer schon war
+Dazu zählt natürlich das Einlassen auf konkrete Gesetzmäßigkeiten, wie in der Schule gerne gelebt.
+Aber auch um das Erschaffen ganzer Dimensionen
+Um an die Tafel gemalte, aber auch um gelebte Unendlichkeit 
+
+Es geht um das Eine mathematische System, welches Generationen von Mathematikern erzeugt, und dabei sich selbst immer tiefer begreift
+
+
+Letztendlich kann 0nefinity wie die Grundlage von dem betrachtet werden, auf dem das gesamte Dasein ruht (natürlich auch das Undasein sowie das Daunsein)
+
+
+Sind 0 1 und ∞ nicht eigentlich voll unterschiedlich? (mathemathisch: 0 ≠ 1 ≠ ∞) 
+Ja!! ist das nicht wunderschön?
+0 1 ∞ sind nicht nur unterschiedlich sondern unendlichfach unterschiedlich. 
+Alle Unterschiede weisen dabei unzählige Aspekte von 0 1 ∞ auf. 
+Jede Unterschiedlichkeit ist 1 Unterschiedlichkeit. Man beachte auch den Raum dazwischen und drumherum.
+Schriebe man all die Unterschiedlichkeiten auf, so stünden sie alle auf dem selben einen Blatt.
+Schriebe man sie auf unendlich viele Blätter, dann wäre das ein ziemliches Chaos, aber wir würden dennoch nur ein Wort benötigen um jedes einzelne davon zu Beschreiben: Blatt
+
+Was sollen diese sinnlos scheinenden Wortmasturbationen, möge man sich fragen?
+Genau das ist ein Aspekt, der die 0 so schön repräsentiert.
+Mit 0nefinity lässt sich etwas, was bereits 0 Gehalt hat unendlichfach Aufblasen, ohne dass es welches dazugewinnt.
+
+
+
 
 
 
@@ -14,31 +47,30 @@ Das Dasein ist Nichtdual.
 Die Mathematik beschreibt das Dasein.
 
 
-Die Meta-Theorie von 0nefinity beschreibt die nichtdualen Aspekte der Mathematik und wie daraus die gesamte bereits entdeckte und auch die noch unetdeckte gewöhnliche (und auch die ungewöhnliche) Mathematik hervorgeht.
+Die Meta-Theorie von 0nefinity beschreibt die nichtdualen Aspekte der Mathematik und wie daraus die gesamte bereits entdeckte und auch die noch unetdeckte gewöhnliche (und auch die ungewöhnliche) Mathematik und die Meta-Mathematik hervorgeht.
 
 
 
-0nefinity bietet einen kreativen Handlungsrahmen Mathematik nichtdual und Nichtdualität mathematisch zu Verstehen.
-
-
-
-
-0nefinity soll über das mathematische hinausgehend (übrigens ein Widerspruch in sich) auch einen logisch rationalen mathematischen Ansatz bieten, die verschiedenen Arten und Dimensionen von spirituellen Gipfelerfahrungen zu verstehen.
+0nefinity bietet einen kreativen Handlungsrahmen Mathematik und sich selbst zu Verstehen.
 
 
 
 
+0nefinity geht auch über das mathematische hinaus (was eigentlich ein Widerspruch in sich ist).
+
+Es geht auch um Erleuchtung. Darum, spirituelle, mystische Erfahrungen zu verstehen. Viele berichten von Einheit, von einem unendlich hellen Licht, von dem einen Bewusstsein, von einer alles durchdringenden Leerheit oder Stille, oder dem einen Jetzt, dem Ewig unendlichem Moment, Eins werden mit der Quelle, mit der Pracht Gottes, unendlicher Frieden, Auflösung der Getrenntheit, sich auflösen in die unendliche Liebe, Singularität, 0 1 ∞, 0nefinity
 
 
-Nichtduale Einsichten können sehr vielfältig sein. 
 
-Die Gesamtheit des hier vorliegenden Werkes soll nur an der Oberfläche von dem kratzen, was nur durch direktes erleben von 0nefinity greifbar wird.
+
+Die Gesamtheit des hier vorliegenden Werkes kann nur an der Oberfläche von 0nefinity kratzen
+
 
 math is doin some metastuff on reality. 0nefinity is doin some metastuff on math. 0nefinity is also the bridge between nature and math. You can calculate one thing cause its one thing and cause you can do infinite things with things.
 
 
 0nefinity zeigt sich bereits bevor man damit startet mathematisch zu operieren. 
-Wie auch immer Mathematik geschieht. Auf einem Blatt Papier, auf einer Tafel, in einem leeren Geist, oder sei es ein Universum, welches sich mathematisch ausdrückt. Zu Beginn waltet dort eine Leerheit. Ein Raum für Mathematik. Ein blankes Ding. Freiheit sich dort mathematisch zu entfalten. Ein Unendliches Canvas. Eine Leerheit, selbst unbedeutend und Unendliches Potenzial.
+Wie auch immer Mathematik geschieht. Auf einem Blatt Papier, auf einer Tafel, in einem leeren Geist, oder sei es ein Universum, welches sich mathematisch ausdrückt. Zu Beginn waltet dort eine Leerheit. Ein Raum für Mathematik. Ein blankes Ding. Freiheit sich dort zu entfalten. Ein Unendliches Canvas. Etwas was selbst eigentlich unbedeutend ist und sich vor allem dadurch auszueichnet, dass es Raum bietet alles mögliche auf oder in ihm zu kreieren.
 
 0nefintiy zeigt sich zb. in dem Gleichzeitig Unendlichfachen Vorhandensein aller mathematischen Identitätsoperatoren bei allem.
 <pre>
@@ -56,24 +88,26 @@ irgendwas + 0 * 1 - 0 / 1¹
 
 irgendwas +∞0 *∞1¹ -∞0 /∞1
 
-Mathematisch gesehen dürfen diese sogenanten Identitätsoperationen jederzeit und in einer beliebigen Anzahl und Variation auf alles beliebig angewendet werden, da sie mathematisch gesehen nichts verändern.
+Mathematisch gesehen dürfen diese sogenanten Identitätsoperationen jederzeit und in einer beliebigen Anzahl und Variation auf alles beliebig angewendet werden, da sie mathematisch gesehen nichts verändern. Häufig wird dies benutzt um in bestimmten mathematischen Methoden irgendwie zu tricksen.
+Es lässt sich aber auch bei wiederholter Anwendung beliebiger Variationen von Identitätsoperationen ganz außerordenliche Kunst Vollbringen. Man möge sich alleine ausmalen, wie viele Hühner sich aus Nullen zeichnen ließen. 
 
 
-Wenn man eine Identitätsoperation hinschreibt ist es als hätte man sie nicht hingeschrieben.
+Mathematisch gesehen ist wenn man eine Identitätsoperation hinschreibt nichts geschehen. Es ist es als hätte man sie nicht hingeschrieben.
+Ich addiere irgendwo 0 aber es ist, als hätte ich es nicht getan.
 
-Ich schreibe +0 hin und es ist, als hätte ich es nicht getan.
+Und dennoch habe ich was getan? Oder ja oder nein?
 
 
 
-Das führt zu Fragen, die Mathematiklehrer nicht beantworten wollen:
+Das führt zu Fragen, die Mathematiklehrer nicht so gerne beantworten:
 
-Wenn ich Identitäts0perationen permanent überall hinschreiben darf, dann dürfte ich ja z.B. solche Dinge beliebig hinschreiben
+Wenn ich Identitäts0perationen permanent überall hinschreiben darf, dann dürfte ich neben den korrekt beantworteten Aufgaben in der Matheklausur ja z.B. solche Dinge beliebig tun:
 
 <pre>
-irgendwas + 0
-           + 0¹
-            + 0
-             + 0        
+richtiges Ergebnis + 0
+                    + 0¹
+                     + 0
+                      + 0        
 </pre>
 
 Oder sowas?
@@ -121,25 +155,26 @@ Was ließe sich alles Formen?
 Ließen sich hier auch Grüße hinterlegen?
 
 Wenn du nicht willst, dass eine Nachricht an deinen Mathematiklehrer gültig ist, so schreibe sie in einen logarithmus zur Basis 0.
-Alternativ kannst du sie auch einfach in Klammern setzen und mal Null rechnen, damit bist du immer auf der sicheren Seite.
-Oder du definierst es als 1, dann kannst du einfach -1 rechnen und es ist weg.
+Alternativ kannst du sie auch einfach in Klammern setzen und mal Null rechnen, damit ist man immer auf der sicheren Seite.
+Oder man definierst es als 1, dann lässt sich einfach -1 rechnen und es ist weg.
 
 
 Mathematisch gesehen darf man Identitätsoperationen jederzeit und in einer beliebigen Anzahl und Variation auf alles beliebig anwenden.
 Schon jede einzelne lässt sich unendlichfach wiederholen. 
-Wenn man diese noch miteinander kombiniert, wie viele Kombinationsmöglichkeiten gäbe es dann?
-Unendlichkeit wird schnell unübersichtlich.
+Wenn man diese noch miteinander kombinierte, wie viele Kombinationsmöglichkeiten gäbe es dann?
+Unendlichkeit wird auf jeden Fall schnell unübersichtlich.
 
 irgendwas / sich selbst = 1
 irgendwas * sich selbst = sich selbst selbst
 irgendwas - sich selbst = 0
-      +(sich selbst - sich selbst)
+irgendwas + (sich selbst - sich selbst) = sich selbst
 irgendwas + sich selbst = 2 sich selbst
 irgendwas + sich selbst + sich selbst = 3 sich selbst 
 irgendwas + ∞ sich selbst = ∞ sich selbst
+irgendwas * ∞ sich selbst = sich ∞ selbst
 
 
-Jedes Zeichen hier auf dieser Seite ist einmal vorhanden. Diese 1 ist einfach überall. Dies ist nur eine von beliebig vielen möglichen Aussagen ohne Inhalt.
+Jedes Zeichen hier auf dieser Seite ist einmal vorhanden. Diese 1 ist einfach überall. Dies ist nur eine von beliebig vielen möglichen Aussagen mit 0 Inhalt.
 
 
 Eigentlich könnte sogar immer und überall Alles*0
@@ -175,13 +210,17 @@ Eine mathematische Singularität, die ihren reinsten Ausdruck und ihre Vollendun
 0 1 ∞ ist sowas wie die Metaidentität der Mathematik selbst.
 0nefinity ist sogar die eigentliche Identität des Mathematikers.
 
+1 Mathematiker
+unendliches Schaffenspotenzial
+0 Relevanz im wirklich großen Spiel des Seins
+
 0nefinity ist 0
 0nefinity ist 1
 0nefinity ist ∞
 
 0 ist 1 ist ∞ ist 01∞ ist 0nefinity ist alles 
 
-Nehme irgendeinen mathematischen Ausdruck.
+Nehme irgendeinen mathematischen Ausdruck (oder generell irgendwas).
 Erkenne, dass er Eins ist.
 Erkenne, dass er Nichts ist.
 Erkenne, dass er Unendlich ist.
@@ -203,22 +242,21 @@ Erkenne du bist Nichts, Leere, Stille,
 Erkenne du bist Eins, Einheit, Das Eine
 Erkenne du bist Unendlich, Unendlichkeit, Alles
 
-Du bist Ein Unendiches Bewusstsein - Nichts.
+Du bist Ein Unendiches Bewusstsein - Nichts
 
 
 
-Bewusstsein ist 0nefinity.
+Bewusstsein ist 0nefinity ist Bewusstsein
 
 
 Alles enthät Einheit, Alles enthält Unendlichkeit, Alles enthält Nichts
 
-Nichts ist Ein Nichts, Nichts ist Unendlich. Nichts ist. Unendlich Nichts.
+Nichts ist Ein Nichts, Nichts unendlichfach Nichts
 
-0nefinity ist die ultimative Identität von allem, von 0, 1, ∞, 23971(random number), e(some random natural-constant) die wiederum Identität sind von sich selbst und Allem und von 0nefinity.
+0nefinity ist die ultimative Identität von allem, von 0, 1, ∞, 23971(random number), e(random natural-constant) die wiederum Identität sind von sich selbst und Allem und von 0nefinity.
 
 
 0nefinity ist die Absurdität, in die sich die ganzen mathematischen und meta-mathematischen und alle sonstigen Paradoxien hineinentspannen können. 
-
 
 
 
@@ -227,24 +265,24 @@ Nichts ist Ein Nichts, Nichts ist Unendlich. Nichts ist. Unendlich Nichts.
 0nefinity zeigt die unendliche Fraktalität auf, die in allem liegt.
 0nefinity beschreibt selbst sowas wie das Metafraktal welches dieses Universum kreiert.
 
-0nefinity vollendet die Mathematik
+0nefinity ist der Kern hinter allen Kernen
 
 Ein paar Beispiele/Fragen:
 
-Man nehme irgendwas, sagen wir, eine 1 oder irgendein Ding.
+Man nehme etwas, irgendetwas, sagen wir, eine 1 oder irgend1 anderes Ding.
 
-Wie viele Nullen könnte ich addieren? 
+Wie viele Nullen könnte ich addieren? Wie viele Subtrahieren?
 Wie oft könnte ich diese mal 1 rechnen, oder dadurch teilen? 
 Auf wie viele Arten könnte ich diese 1 hinschreiben? 
 Könnte ich sie Anmalen? Mit wie vielen Farben? 
 Mit wie vielen Mustern? 
-Könnte ich sie nicht sogar auch drehen? In Wie viele Richtungen könnte ich sie drehen? 
-Mit wie vielen unterschiedlichen Symbolen könnte ich die 1 represäntieren? 
-Welche Bedeutungen könnten diese jeweils für andere haben? 
+Könnte ich sie auch drehen? In Wie viele Richtungen könnte ich sie drehen? 
+Mit wie vielen unterschiedlichen Symbolen könnte ich die 1 repräsentieren? 
+Welche Bedeutungen könnten diese ganzen Symbole jeweils noch für jemand andere haben? 
 Wie viele andere könnte es geben die sich potenziell mit anderen darüber austauschen könnten?
 Was kann 1 überhaupt bedeuteten?
 Was könnte 1 bedeuten wenn ich mir Wesen ausdenken würde, die beständig verschiedene Bedeutungen dazu generieren? 
-Von wo könnte ich alles auf jede einzelne dieser verschiedenen Möglichkeiten die 1 zu gestalten schauen? 
+Aus wie vielen Perspektiven könnte ich selbst darauf schauen?
 Wer könnte ich in diesem Prozess werden?
 Was ist eigentlich außerhalb von dem was ich 1 nenne? 
 Gegen was grenze ich das überhaupt ab? 
@@ -254,23 +292,24 @@ Gegen Nichts?
 Die 1 einfach für sich? 
 Was passiert eigentlich bevor ich die 1 hinschreibe? 
 Wo schreibe ich die da eigentlich drauf? 
-Ist das nicht sogar eigentlich egal und ich könnte sie auf alles schreiben? 
+Ist das nicht sogar eigentlich egal und ich könnte sie auch auf alles schreiben? 
+Müsste ich sie überhaupt hinschreiben?
 Auf wie viele Dinge könnte ich sie schreiben? 
 Wie viele Dinge könnte ich mir vorstellen auf die man sie schreiben könnte?
 Was ist eigentlich mit den ganzen Nullen, die wir seit beginn dieses Textes addieren? 
-Könnten diese ganzen Nullen nicht dabei auch Muster bilden und sich mit den ganzen Einsen verswirlen? 
-Welche Muster könnten sie bilden? 
-Könnten sie beabsichtigt oder unbeabsichtigt nicht sogar ganze Bibliotheken aus Computerprogrammen erzeugen?  
+Was, wenn diese Nullen Muster formen und sich zusätzlich noch mit den ganzen Einsen verswirlen? 
+Welche Meta-Muster könnten die potenziellen Muster formen? 
+Könnten die ganzen Nullen und Einsen nicht sogar beabsichtigt oder unbeabsichtigt ganze Bibliotheken aus Computerprogrammen erzeugen? 
 Könnten sie ein Bild von einem Huhn formen? 
 Könnten sie ein ganzes 3D Abbild von einem Huhn formen? 
 Könnten sie das Huhn nicht sogar in einer viel größeren Auflösung abbilden, als es tatsächlich da wäre? 
-Könnten sie nicht in jedem Huhn-Atom ein eigenes Universum abbilden, welches wiederum Herdenweise Hühner enthält? 
+Könnten sie nicht in jedem Huhn-Atom ein eigenes Universum abbilden, welches wiederum Herdenweise Hühner enthielte? 
 Wie viele verscheiedene Universen könnten man in jedem Atom dieser Unterhühner aus den Subuniversen abbilden?
 
 
-Und kann ich nicht auch noch jede dieser unendlich Nullen und Einsen mal 1 oder +0 rechnen und das undlich mal? Und zu jeder multiplizierten 1 wieder Null addieren?
+Und kann ich nicht auch noch jede dieser unendlich Nullen und Einsen wieder mal 1 oder +0 rechnen und das undlich mal? Und zu jeder multiplizierten 1 wieder Null addieren?
 
-Wie Absurd groß kann Unendlichkeit eigentlich werden, wenn man es ihr erlaubt? 
+Wie Absurd groß kann Unendlichkeit eigentlich werden, wenn man es ihr erlaubte? 
 
 
 0 1 ∞ sind untrennbar miteinander verwoben
@@ -279,13 +318,13 @@ Kein Ding existiert ohne dass es nicht *ein* Ding ist und ohne dass es sich nich
 
 0 1 ∞ sind so sehr eins, dass es schon absurd ist ihr Identisch-SEIN durch eine Formel wie 0 ≡ 1 ≡ ∞ ausdrücken zu wollen. Geeigneter wäre eher sowas wie ein Punkt, oder PUNKT. 
 Dieser wäre aber wieder nur ein Abbild von etwas eigentlich unbeschreiblichen.
-Ein Punkt bietet sehr umfassende Symbolik.
+Ein Punkt kann hier evtl. sehr umfassende Symbolik bieten.
 
 PUNKT ist wenn man einen Punkt hinmalt, ihn wegwischt und PUNKT realisiert.
 
-Ein Punkt bietet nicht nur nulldimensionalität und damit die einzige Basis von allem Höherdimensionalen. Man kann ihn auch hin und her bewegen und daraus so ziemlich alles kreieren. 
+Ein Punkt bietet nicht nur nulldimensionalität und damit die ursprünglichste Basis von allem Höherdimensionalen. Man könnte ihn auch hin und her bewegen und daraus so ziemlich alles kreieren. 
 
-Wie dass wenn man etwas malt, z.B. mit einem Kugelschreiber, dass man zu jedem Zeitpunkt immer nur genau einen Punkt gemalt hat. Erst in der Summe ergibt die gesamtheit der Punkte etwas, worüber etwas anderes wiederrum z.B. nachdenken kann.
+Wenn man einen Kugelschreiber nimmt und etwas aufmalt, dann hat man zu jedem Zeitpunkt immer nur genau einen Punkt gemalt. Erst in der Summe ergibt die gesamtheit der Punkte, bzw. des Punktes etwas, worüber etwas anderes wiederrum z.B. nachdenken kann.
 
 Alles Höherdimensionale lässt sich auf einen Punkt zurückfalten.
 
@@ -296,17 +335,24 @@ Aus einem Punkt lässt sich alles höher dimensionale auffalten.
 Jegliche Darstellungen von 0nefinity müssen methaphorisch verstanden werden. 
 Dessen Größe ist nicht darstellbar und offenbart sich gemächlich dem, der sich neugierig öffnet. 
 0nefinity kann sehr oberflächlich verstanden bereits enorme Einsichten bieten.
-Wirklich juicy wird es wenn es um spirituelle Erfahrungen geht. Diese haben in der Regel einen tiefen Charakter von 0 1 oder ∞ bzw. von 0nefinity und offenbaren die beindruckende Tiefe des eigenen Bewusstseins.
+Juicy wird es, wenn es um spirituelle Erfahrungen geht. Diese haben häufig einen tiefen Charakter von 0 1 und ∞ bzw. von 0nefinity und offenbaren die beindruckende Tiefe des eigenen Bewusstseins, welches erstaunliche Qualitäten von 0 1 und ∞ aufweißt.
 
 Dem Spirituell begabten brauche ich wohl von Einheit nichts zu erzählen. 
 Der gemeine Durchschnittsrando ist in der Regel allerdings wohl leider nicht so sehr mit spirituellen Erfahrungen gesegnet und weiß jetzt auch nicht unbedingt wie er auf Knopfdruck eine herstellen soll. 
-Jedem interessiertem sei hier 5-MeO-DMT angeraten, eine Möglichkeit solche Erfahrungen auf Knopfdruck zu erzeugen und ein unverzichtbares Werkzeug um 0nefinity in seiner Größe zu erleben.
+Um hier Chancengleichheit zu ermöglichen, kann ich allein aus moralischen Gründen nicht vorhenthalten, was es an dieser Stelle bereits für Technologien gibt, um solches, was sonst den Gurus vorbehalten bleibt. 
+Auch wenn die Gefahr reht groß ist, dass der ein oder andere Kleingeist an seiner Schnappatmung ersticken könnte:
+Nach dem aktuellsten Stand der Forschung hat wohl 5-MeO-DMT das höchste Potenzial eine außerordentlich pure, ungefilterte und die womöglich umfangreichste und tiefste Einsicht in 0nefinity zu bieten.
+Eine kurzzeitige Deaktivierung des sogenannten Default Mode Network (DMN) des Gehirns nimmt förmlich das "ICH" (bzw. das, wofür man sich womöglich hält) aus der Gleichung. Übrig bleibt die Purheit des gesamten Rest. Man selbst ist dieser Rest. Übrig bleibt 0nefinity.
 
+Zutiefst beeindruckend ist die klare Einsicht in die tatsächliche unlimitierte unendliche Unendlichkeit des zutiefst eigenen Wesens. 
+Zutiefst beeindruckend ist auch wie klar es keine Unterscheidung gibt zwischen mir und dem Rest. Dass alle gefühlte Trennung keine Substanz hat in der tatsächlichen Wirklichkeit.
+
+Worte können diese Erfahrung nicht beschreiben, was nicht bedeutet, dass es nicht würdig wäre zu versuchen, alle dafür zu finden.
 
 
 Gerüchten zu Folge haben womöglich Jesus und Buddah und andere in solche Dimensionen wohl bereits reingeglipmst.
 Womöglich hätten sie sich über ein mathematisches Modell gefreut, welches adäquat, ihren Zustand beschreiben zu vermag. Wer weiß.
-Womöglich hätten sie sich auch über 5-MeO-DMT gefreut, nicht nur um womöglich ihre eigenen Erfahrungen zu vertiefen, sondern auch um ihren Anhängern etwas begreifbar zu machen, was Worte nicht beschreiben können.
+Womöglich hätten sie sich auch über 5-MeO-DMT gefreut, nicht nur um womöglich ihre eigenen Erfahrungen potenziell zu vertiefen, sondern auch um ihren Anhängern etwas begreifbar machen zu können, wofür sie versucht haben Worte zu finden, Worte, die wie die Geschichte häufig zeigt, bei vielen bis heute lediglich zu Verwirrung, zu Ideologie, zu Spaltung geführt haben.
 
 
 
@@ -562,6 +608,12 @@ Wenn hier nur einer verweilt und schmunzelt und begreift und erkennt und sagt OM
 
 Dann sah ich, dass es gut war
 
+## warum was was?
+viele Sätze schreibe ich glaube ich auch ohne Punkt weil das gesagt gewollte unvollständig geschrieben steht. 
+vielleicht ein Thema von Haltung den Rest nicht auszuschließen wenn man was einschließt
+
+Punktsätze für letzgültige Aussagen? Schnörkelpunkt (was sonst ist wohl ein Fragezeichen?)
+
 ## warum 0nefinity?
 
 Es mangelte halt auch einfach irgendwie an einem soliden mathemathischen Modell mit dem sich wirklich die gesamte Wirklichkeit inkl. diesem ganzen erleuchtungsscheiß beschreiben lässt?
@@ -569,19 +621,19 @@ Es mangelte halt auch einfach irgendwie an einem soliden mathemathischen Modell 
 
 ## warum diese Form der Veröffentlichung als 0nefinity.love?
 
-Warum dieser Weg der Veröffentlichung von 0nefinity als Webprojekt unter dem Namen 0nefinity.love?
+Warum dieser Weg der Veröffentlichung von 0nefinity als Webprojekt und warum die Domain 0nefinity.love?
 
-Zum einen sind natürlich die einfache und unmittelbare Zugänglichkeit für jeden mit einem Internetanschluss als unbeschreiblicher Vorteil zu nennen.
+Zum einen sind natürlich die einfache und unmittelbare Zugänglichkeit für jeden mit einem Internetanschluss als unbeschreiblicher Vorteil vong Accessibilty her zu benennen.
 
 
-Als jemand mit einem Faible für Symbolik bietet mir die Dynamik und vielfältige Reichhaltigkeit, mit der sich ein Webprojekt gestalten, entwickeln und weiterentwickeln lässt, Möglichkeiten, so gewaltig, dass wohl nur 0nefinity ihren Umfang beschreiben zu vermag.
+Als jemand mit einem Faible für Symbolik bietet die Dynamik und vielfältige Reichhaltigkeit, mit der sich ein Webprojekt gestalten, entwickeln und weiterentwickeln lässt, solch unfassbar atemberaubend gewaltige Möglichkeiten kreativen Ausdrucks, dass dessen Umfang sich wohl am wohlschmeckendsten mit 0nefinity selbst beschreiben ließe.
 
 Allein der Domainname, 0nefinity.love
-Ein  Festmahl, ein Feuerwerk an symbolischer Tiefe und Reichhaltigkeit.
+Welch Festmahl, welch Feuerwerk symbolischer Tiefe und Reichhaltigkeit.
 
 Dann natürlich die unbestreitbare Tatsache, dass unabhängig vom dargestellten Inhalt, das ganze Ding selbst überhaupt erst aus einer verrückten und verrückter werdenden Anzahl und Kombination aus Nullen und Einsen besteht.
-Allein diese Tatsache an sich ist bereits ein viel schönerer und tieferer Beweis für 0nefinity als sich hier überhaupt darstellen ließe.  
-Und damit ist das ganze Ding in seiner Gesamtheit ein solch befriedigendes Symbol für alles was es aussagen soll.
+Allein diese Tatsache an sich ist bereits ein viel schönerer und tieferer Beweis für 0nefinity als ich hier bereit und fähig bin zu Vermitteln.  
+Und damit ist das ganze Ding, bereits bevor der Inhalt gerendert ist bereits ein solch befriedigendes Symbol für 0nefinty.
 
 
 ## Dinge, um die es hier auch geht:
@@ -595,33 +647,39 @@ Um Unendlichkeit die sich verswirrlt und verquirrrlt
 
 Um random Sachen
 
+
 Um Absurdität ABSURDITÄÄÄÄÄÄÄT 🎺🎶🎵✨🥁 
 
 
 Dies ist auch ein Akt im Kreuzzug für ein schöneres Web
 
+Hä und einfach auch darum ein Beispiel zu sein wie man sich ausdrücken kann
+
 0nefinity ist auch eine Art sich zu erfahren, sich spielerisch mathematisch zu erleben, sich zu lieben. 
 
 
-Dieses Projekt soll vor allem auch Computer dazu anregen witziges Zeug zu tun und noch witzigeres und auch unwitzigeres sein zu lassen.
+Dieses Projekt soll vor allem auch Computer dazu anregen witziges Zeug zu tun und noch witzigeres und aber auch unwitzigeres zu unterlassen.
 Das Allermeiste soll hier auf jeden Fall nicht ausgerechnet werden.
-Auch wenn schon in der Überschrift die Gesamtheit des Daseins beschrieben ist.
+Auch wenn schon die Überschrift die Gesamtheit des Daseins beschreibt.
 
 
 
-Um etwas Wirrwarr
+Es geht auch um etwas Wirrwarr
 
 Um allerlei Köstlichkeiten
 
 
-Um Bescheidenheit und Demut
+Und vor allem um Bescheidenheit und Demut
 
 ## Tradition
 
-Der farblose Punkt ist die künstlerische Vollendung von dem, was Kasimir Malewitsch mit seinem Schwarzen Quadrat begonnen hat.
-Mit 0nefinity vollendet sich die Mathematik.
-Ich falle wohl in die Tradition westlichen Idealismuses, die sich nach ihre herben Rückschlägen nun in ihrer Vollendung suhlen kann.
-Mystiker aller Zeiten haben Worte gesucht ihr Erleben zu beschreiben. Nun gibt es ein mathematisches Modell dafür.
+Der farblose Punkt ist wohl die künstlerische Vollendung von dem, was Kasimir Malewitsch mit seinem Schwarzen Quadrat begonnen hat.
+Mit 0nefinity vollendet sich letztendlich dann auch die Mathematik an sich (und die meta-Mathematik vor allem teilweise).
+Der westliche Idealismuses kann sich nach herben Rückschlägen nun in seiner Vollendung suhlen.
+Mystiker aller Zeiten haben Worte gesucht ihr Erleben zu beschreiben. Nun gibt es endlich ein solides mathematisches Modell dafür.
+Die Brücken aller Traditionen sind mathematisch gesehen überwunden. Die Mathematik und mit ihr die gesamte Wissenschaft hat ihr widerborstiges Dasein endlich im geschmeidigen Nest der Realität eingekuschelt.
+Die Religion findet endlich eine Repräsentation in hard science. 
+Kunst und Mathemathik sind von nun auf ewig vereint und dürfen nun ganz viele Babys miteinander machen.
 
 
 
@@ -629,7 +687,7 @@ Mystiker aller Zeiten haben Worte gesucht ihr Erleben zu beschreiben. Nun gibt e
 
 An alle die mich staunen lassen, die mit mir den Geist der Faszination für die Wunderlichkeiten der Existenz teilen
 
-Douglas R. Hofstadter - Dein brilliantes Werk Gödel, Escher, Bach hat mich zutiefst inspiriert und dazu beigetragen, mich an diese Form der Veröffentlichung von 0nefinity heranzutrauen
+Douglas R. Hofstadter - Dein brilliantes Werk Gödel, Escher, Bach hat mich zutiefst inspiriert und maßgeblich dazu beigetragen, mich an diese Form der Veröffentlichung von 0nefinity heranzutrauen
 
 Benjamin Patterson - Das Leben ist eine Performance
 
