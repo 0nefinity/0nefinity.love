@@ -44,14 +44,11 @@ header.controls button {
   margin: 2px 4px;
   padding: 2px 8px;
   font-size: 12px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--bg-color);
   color: var(--text-color);
   border: 1px solid var(--text-color);
   border-radius: 3px;
   cursor: pointer;
-}
-header.controls button:hover {
-  background: rgba(128, 128, 128, 0.2);
 }
 .symbol-container {
   position: relative;
@@ -71,13 +68,12 @@ canvas {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: rgba(0, 0, 0, 0.5);
   color: #fff;
   padding: 2px 5px;
   border-radius: 5px;
-  font-family: Verdana, sans-serif;
   font-size: 12px;
   pointer-events: none;
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 /* Info Popup Stil */
@@ -269,7 +265,7 @@ canvas {
     // Grafikeditor-Variablen und -Funktionen
     let selectedPhoto = null;
     let photoCounter = 0;
-    
+
     // Handler, der die Auswahl zurücksetzt, wenn außerhalb geklickt wird
     document.addEventListener('click', function(e) {
       if (!e.target.closest('.editable-photo') && !e.target.closest('.control-point') && !e.target.closest('.rotation-handle')) {
@@ -285,17 +281,17 @@ canvas {
       const photo = document.createElement('div');
       photo.className = 'editable-photo';
       photo.id = 'editable-photo-' + photoCounter++;
-      
+
       // Zufällige Position im sichtbaren Bereich des Fensters
       const randomX = Math.random() * (window.innerWidth - Math.min(originalWidth, window.innerWidth * 0.3));
-      const randomY = Math.max(window.innerHeight * 0.1, 
+      const randomY = Math.max(window.innerHeight * 0.1,
                          Math.random() * (window.innerHeight - Math.min(originalHeight, window.innerHeight * 0.3)));
-      
+
       photo.style.left = randomX + 'px';
       photo.style.top = randomY + 'px';
       photo.style.transform = 'rotate(0deg)'; // Keine Skalierung, um Originalgröße zu behalten
       photo.dataset.rotation = '0';
-      
+
       // Erstelle entweder ein Bild oder ein Video-Element
       let mediaElement;
       if (isGif) {
@@ -309,17 +305,17 @@ canvas {
         mediaElement = document.createElement('img');
         mediaElement.src = mediaUrl;
       }
-      
+
       mediaElement.onload = function() {
         addControlPoints(photo, originalWidth, originalHeight);
       };
-      
+
       if (isGif) {
         mediaElement.onloadedmetadata = function() {
           addControlPoints(photo, originalWidth, originalHeight);
         };
       }
-      
+
       const closeBtn = document.createElement('button');
       closeBtn.className = 'close-btn';
       closeBtn.innerHTML = '×';
@@ -330,21 +326,21 @@ canvas {
           selectedPhoto = null;
         }
       });
-      
+
       // Rotations-Handle und Linie hinzufügen
       const rotationLine = document.createElement('div');
       rotationLine.className = 'rotation-line';
-      
+
       const rotationHandle = document.createElement('div');
       rotationHandle.className = 'rotation-handle';
       rotationHandle.title = 'Drehen';
-      
+
       photo.appendChild(mediaElement);
       photo.appendChild(closeBtn);
       photo.appendChild(rotationLine);
       photo.appendChild(rotationHandle);
       document.body.appendChild(photo);
-      
+
       // Klick-Handler für die Auswahl
       photo.addEventListener('mousedown', function(e) {
         if (e.target === photo || e.target === mediaElement) {
@@ -354,21 +350,21 @@ canvas {
           }
           photo.classList.add('selected');
           selectedPhoto = photo;
-          
+
           // Starte das Verschieben nur, wenn auf das Foto selbst geklickt wurde
           startDragging(e, photo);
         }
       });
-      
+
       // Rotations-Handler
       rotationHandle.addEventListener('mousedown', function(e) {
         e.stopPropagation();
         startRotation(e, photo);
       });
-      
+
       return photo;
     }
-    
+
     // Kontrollpunkte für die Größenänderung hinzufügen
     function addControlPoints(photo, width, height) {
       const positions = [
@@ -381,7 +377,7 @@ canvas {
         { x: 50, y: 100, cursor: 'ns-resize', position: 'bottom-center' },
         { x: 100, y: 100, cursor: 'nwse-resize', position: 'bottom-right' }
       ];
-      
+
       positions.forEach(pos => {
         const controlPoint = document.createElement('div');
         controlPoint.className = 'control-point';
@@ -389,48 +385,48 @@ canvas {
         controlPoint.style.top = pos.y + '%';
         controlPoint.style.cursor = pos.cursor;
         controlPoint.dataset.position = pos.position;
-        
+
         controlPoint.addEventListener('mousedown', function(e) {
           e.stopPropagation();
           startResizing(e, photo, pos.position);
         });
-        
+
         photo.appendChild(controlPoint);
       });
     }
-    
+
     // Verschieben eines Fotos starten
     function startDragging(e, element) {
       e.preventDefault();
-      
+
       // Elemente im Vordergrund bleiben im Vordergrund, aber ausgewählte kommen nach vorne
       element.classList.add('selected');
-      
+
       let startX = e.clientX;
       let startY = e.clientY;
       let startLeft = parseInt(element.style.left) || 0;
       let startTop = parseInt(element.style.top) || 0;
-      
+
       function moveElement(e) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         element.style.left = (startLeft + dx) + 'px';
         element.style.top = (startTop + dy) + 'px';
       }
-      
+
       function stopDragging() {
         document.removeEventListener('mousemove', moveElement);
         document.removeEventListener('mouseup', stopDragging);
       }
-      
+
       document.addEventListener('mousemove', moveElement);
       document.addEventListener('mouseup', stopDragging);
     }
-    
+
     // Größenänderung eines Fotos starten
     function startResizing(e, element, position) {
       e.preventDefault();
-      
+
       const mediaElement = element.querySelector('img') || element.querySelector('video');
       const rect = element.getBoundingClientRect();
       const startX = e.clientX;
@@ -441,12 +437,12 @@ canvas {
       const startTop = parseInt(element.style.top) || 0;
       const aspectRatio = startWidth / startHeight;
       const rotation = parseInt(element.dataset.rotation) || 0;
-      
+
       function resizeElement(e) {
         let newWidth, newHeight, newLeft, newTop;
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        
+
         // Je nach Position des Control Points verschiedene Größenänderungen
         switch (position) {
           case 'top-left':
@@ -498,7 +494,7 @@ canvas {
             newTop = startTop;
             break;
         }
-        
+
         if (newWidth > 30 && newHeight > 30) {
           element.style.left = newLeft + 'px';
           element.style.top = newTop + 'px';
@@ -506,38 +502,38 @@ canvas {
           mediaElement.style.height = newHeight + 'px';
         }
       }
-      
+
       function stopResizing() {
         document.removeEventListener('mousemove', resizeElement);
         document.removeEventListener('mouseup', stopResizing);
       }
-      
+
       document.addEventListener('mousemove', resizeElement);
       document.addEventListener('mouseup', stopResizing);
     }
-    
+
     // Rotation eines Fotos starten
     function startRotation(e, element) {
       e.preventDefault();
-      
+
       const rect = element.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
       const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
       const currentRotation = parseInt(element.dataset.rotation) || 0;
-      
+
       function rotateElement(e) {
         const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
         const newRotation = currentRotation + (angle - startAngle);
         element.dataset.rotation = newRotation;
         element.style.transform = `rotate(${newRotation}deg)`;
       }
-      
+
       function stopRotation() {
         document.removeEventListener('mousemove', rotateElement);
         document.removeEventListener('mouseup', stopRotation);
       }
-      
+
       document.addEventListener('mousemove', rotateElement);
       document.addEventListener('mouseup', stopRotation);
     }
@@ -545,16 +541,16 @@ canvas {
     // Implementierung der Foto-Funktion
     document.getElementById('takePhotoButton').addEventListener('click', () => {
       const photoCtx = photoCanvas.getContext('2d');
-      
+
       // Erstelle ein Foto mit transparentem Hintergrund
       photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
-      
+
       // Zeichne die aktuelle Animation auf das photoCanvas
       drawTriangleOnCanvas(photoCtx, photoCanvas, true);
-      
+
       // Schneide das Bild zu, um unnötige transparente Flächen zu entfernen
       const { dataURL, width, height } = trimTransparentEdges(photoCanvas);
-      
+
       // Erstelle ein haftendes Foto-Element mit dem zugeschnittenen Bild
       createEditablePhoto(dataURL, width, height);
     });
@@ -565,46 +561,46 @@ canvas {
       const frameCount = 30; // 30 FPS
       const frames = [];
       const frameDelay = 1000 / frameCount;
-      
+
       // Aktuelle Rotationsgeschwindigkeit und Winkel speichern
       const originalSpeed = rotationSpeed;
       const originalAngle = angle;
-      
+
       // Temporärer Canvas für die Frames
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
       const tempCtx = tempCanvas.getContext('2d');
-      
+
       // Frames erstellen
       for (let i = 0; i < frameCount; i++) {
         // Winkel für diesen Frame berechnen
         const frameAngle = originalAngle + (i * originalSpeed / frameCount);
-        
+
         tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
-        
+
         // Spezieller Draw-Aufruf mit festem Winkel für jeden Frame
         drawFrameWithAngle(tempCtx, tempCanvas, frameAngle, true);
-        
+
         // Bild als Blob speichern
         const blob = await new Promise(resolve => {
           tempCanvas.toBlob(resolve, 'image/png');
         });
-        
+
         frames.push(blob);
       }
-      
+
       // Wieder originalen Winkel setzen
       angle = originalAngle;
-      
+
       // Frames zu einem Video zusammenfügen
       createVideoFromFrames(frames, frameDelay).then(videoBlob => {
         const videoUrl = URL.createObjectURL(videoBlob);
-        
+
         // Größe des GIFs ermitteln (basierend auf dem Canvas)
         const width = canvas.width;
         const height = canvas.height;
-        
+
         // GIF als editierbares Element hinzufügen
         createEditablePhoto(videoUrl, width, height, true);
       });
@@ -615,19 +611,19 @@ canvas {
       // MediaRecorder verwenden, um ein Video zu erstellen
       const stream = canvas.captureStream();
       const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      
+
       const chunks = [];
       recorder.ondataavailable = e => chunks.push(e.data);
-      
+
       const recordingPromise = new Promise(resolve => {
         recorder.onstop = () => {
           const blob = new Blob(chunks, { type: 'video/webm' });
           resolve(blob);
         };
       });
-      
+
       recorder.start();
-      
+
       // Frames nacheinander zeichnen
       const ctx = canvas.getContext('2d');
       for (const frame of frames) {
@@ -643,7 +639,7 @@ canvas {
         });
         await new Promise(resolve => setTimeout(resolve, frameDelay));
       }
-      
+
       recorder.stop();
       return recordingPromise;
     }
@@ -652,7 +648,7 @@ canvas {
     function drawFrameWithAngle(context, targetCanvas, frameAngle, forExport = false) {
       const style = getComputedStyle(document.documentElement);
       const textColor = style.getPropertyValue('--text-color').trim() || "#000";
-      
+
       // Lösche den Canvas
       if (!forExport) {
         context.save();
@@ -662,28 +658,28 @@ canvas {
       } else {
         context.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
       }
-      
+
       context.save();
       context.translate(targetCanvas.width / 2, targetCanvas.height / 2);
       const minDim = Math.min(targetCanvas.width, targetCanvas.height);
-      
+
       // Parameter abrufen, bei 0 nicht zeichnen
       const textSizePercentage = parseFloat(document.getElementById('textSize').value) || 0;
       const triangleSize = parseFloat(document.getElementById('triangleSize').value) || 0;
       const equivSize = parseFloat(document.getElementById('equivSize').value) || 0;
       const equivLength = parseFloat(document.getElementById('equivLength').value) || 0;
-      
+
       // Größen berechnen
       const labelFontSize = minDim * (textSizePercentage / 100);
       const equivFontSize = minDim * (equivSize / 100);
       const radius = minDim * (triangleSize / 100);
-      
+
       // Wenn Dreieckgröße 0 ist, nichts zeichnen
       if (triangleSize <= 0) {
         context.restore();
         return;
       }
-      
+
       const vertices = [];
       for (let i = 0; i < 3; i++) {
         const thetaDeg = frameAngle + i * 120;
@@ -692,23 +688,23 @@ canvas {
         const y = radius * Math.sin(thetaRad);
         vertices.push({ x, y, thetaRad });
       }
-      
+
       const labels = [
         document.getElementById('label0Input').value || "0",
         document.getElementById('label1Input').value || "1",
         document.getElementById('labelInfInput').value || "∞"
       ];
-      
+
       const equivSymbol = document.getElementById('equivSymbolInput').value || "≡";
       const tangentialMode = document.getElementById('rotateCheckbox').checked;
-      
+
       // Zeichne Symbole an den Ecken nur wenn textSize > 0
       if (textSizePercentage > 0) {
         context.font = `bold ${labelFontSize}px Verdana`;
         context.fillStyle = textColor;
         context.textAlign = "center";
         context.textBaseline = "middle";
-        
+
         for (let i = 0; i < 3; i++) {
           const { x, y, thetaRad } = vertices[i];
           context.save();
@@ -720,7 +716,7 @@ canvas {
           context.restore();
         }
       }
-      
+
       // Zeichne Äquivalenzsymbole an den Kanten nur wenn equivSize > 0
       if (equivSize > 0 && equivLength > 0) {
         for (let i = 0; i < 3; i++) {
@@ -729,14 +725,14 @@ canvas {
           const midX = (p1.x + p2.x) / 2;
           const midY = (p1.y + p2.y) / 2;
           const sideAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-          
+
           context.save();
           context.translate(midX, midY);
           context.rotate(sideAngle);
           context.font = `bold ${equivFontSize}px Verdana`;
           context.textAlign = "center";
           context.textBaseline = "middle";
-          
+
           const duplicateEnabled = document.getElementById('duplicateIdentisch').checked;
           if (duplicateEnabled) {
             const originalText = equivSymbol;
@@ -753,7 +749,7 @@ canvas {
           context.restore();
         }
       }
-      
+
       context.restore();
     }
 
@@ -763,7 +759,7 @@ canvas {
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = pixels.data;
       let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-      
+
       // Finde den tatsächlichen Inhaltsbereich (ohne transparenten Rand)
       for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
@@ -776,27 +772,27 @@ canvas {
           }
         }
       }
-      
+
       // Füge einen kleinen Rand hinzu (proportional zur Größe), um etwas Platz zu haben
       const padding = Math.max(2, Math.floor(canvas.width * 0.01)); // 1% der Größe, mindestens 2px
       minX = Math.max(0, minX - padding);
       minY = Math.max(0, minY - padding);
       maxX = Math.min(canvas.width, maxX + padding);
       maxY = Math.min(canvas.height, maxY + padding);
-      
+
       // Berechne die neuen Dimensionen
       const width = maxX - minX;
       const height = maxY - minY;
-      
+
       // Erstelle ein neues Canvas mit den zugeschnittenen Dimensionen
       const trimmedCanvas = document.createElement('canvas');
       trimmedCanvas.width = width;
       trimmedCanvas.height = height;
-      
+
       // Kopiere den relevanten Bereich
       const trimmedCtx = trimmedCanvas.getContext('2d');
       trimmedCtx.drawImage(canvas, minX, minY, width, height, 0, 0, width, height);
-      
+
       return {
         dataURL: trimmedCanvas.toDataURL('image/png'),
         width: width,
@@ -894,18 +890,18 @@ const startupDuration = 2.0;
     let lastTimestamp = null;
     const ctx = canvas.getContext('2d');
     let tangentialMode = document.getElementById('rotateCheckbox').checked;
-    
+
     // Funktion zum dynamischen Anpassen der Canvasgröße
     function resizeCanvasToFitContent() {
       // Viewport-relative Größen verwenden
       const viewportSize = Math.min(window.innerWidth, window.innerHeight);
-      
+
       // Canvas-Größe relativ zum Viewport (75% der Fenstergröße)
       const canvasSize = Math.floor(viewportSize * 0.75);
-      
+
       canvas.width = canvasSize;
       canvas.height = canvasSize;
-      
+
       // Aktualisiere auch das Photo-Canvas
       photoCanvas.width = canvasSize;
       photoCanvas.height = canvasSize;
@@ -939,17 +935,17 @@ const startupDuration = 2.0;
         document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
       }
       angle += rotationSpeed;
-      
+
       // Zeichne das Dreieck auf den Hauptcanvas
       drawTriangleOnCanvas(ctx, canvas);
-      
+
       speedIndicator.textContent = 'Speed: ' + Math.round(rotationSpeed) + '°/Frame';
       requestAnimationFrame(animate);
     }
-    
+
     // Starte mit einer passenderen Größe
     resizeCanvasToFitContent();
-    
+
     // Starte die Animation
     requestAnimationFrame(animate);
   }
@@ -975,23 +971,23 @@ const startupDuration = 2.0;
         const resizeCanvasToFitContent = function() {
           const canvas = document.getElementById('canvas');
           const photoCanvas = document.querySelector('canvas[style="display: none;"]');
-          
+
           // Viewport-relative Größen verwenden
           const viewportSize = Math.min(window.innerWidth, window.innerHeight);
-          
+
           // Canvas-Größe relativ zum Viewport (75% der Fenstergröße)
           const canvasSize = Math.floor(viewportSize * 0.75);
-          
+
           canvas.width = canvasSize;
           canvas.height = canvasSize;
-          
+
           // Aktualisiere auch das Photo-Canvas
           if (photoCanvas) {
             photoCanvas.width = canvasSize;
             photoCanvas.height = canvasSize;
           }
         };
-        
+
         resizeCanvasToFitContent();
       }
     }, 250);
