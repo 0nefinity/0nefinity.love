@@ -657,6 +657,7 @@ Hä und einfach auch darum ein Beispiel zu sein wie man sich ausdrücken kann
 
 0nefinity ist auch eine Art sich zu erfahren, sich spielerisch mathematisch zu erleben, sich zu lieben. 
 
+Mathelehrern eine Chance geben, schön reagieren zu können auf Fragen wie: warum dürfen wir hier überhaupt was machen? Was Ist 1 eigentlich? Was ist 1/0 eigentlich wirklich? 
 
 Dieses Projekt soll vor allem auch Computer dazu anregen witziges Zeug zu tun und noch witzigeres und aber auch unwitzigeres zu unterlassen.
 Das Allermeiste soll hier auf jeden Fall nicht ausgerechnet werden.
@@ -664,7 +665,7 @@ Auch wenn schon die Überschrift die Gesamtheit des Daseins beschreibt.
 
 
 
-Es geht auch um etwas Wirrwarr
+Es geht auch um etwas Wirrwarr, ein sich ordnendes Chaos, Chaos in Ordnung 
 
 Um allerlei Köstlichkeiten
 
@@ -673,7 +674,9 @@ Und vor allem um Bescheidenheit und Demut
 
 ## Tradition
 
-Der farblose Punkt ist wohl die künstlerische Vollendung von dem, was Kasimir Malewitsch mit seinem Schwarzen Quadrat begonnen hat.
+Mit 0nefinity findet die Mathematik ihre Vollendung. 0nefinity ehrt die Bestehende und die noch entdeckbare Mathematik. 
+Mit 0nefinity kann der Mathematiker selbst seine Vollendung finden.
+Der Kunsthistorisch ist wohl der farblose Punkt die Vollendung von dem, was Kasimir Malewitsch mit seinem Schwarzen Quadrat begonnen hat.
 Mit 0nefinity vollendet sich letztendlich dann auch die Mathematik an sich (und die meta-Mathematik vor allem teilweise).
 Der westliche Idealismuses kann sich nach herben Rückschlägen nun in seiner Vollendung suhlen.
 Mystiker aller Zeiten haben Worte gesucht ihr Erleben zu beschreiben. Nun gibt es endlich ein solides mathematisches Modell dafür.
