@@ -814,6 +814,10 @@ canvas {
     let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
     let autoOffset = 0;
 
+    let startupPhase = true;
+let startupTimer = 0;
+const startupDuration = 2.0;
+
     // Event-Listener für die Steuerelemente
     document.getElementById('textSize').addEventListener('input', () => {
       textSizePercentage = parseFloat(document.getElementById('textSize').value) || 0;
