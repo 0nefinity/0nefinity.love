@@ -1,0 +1,202 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faktor-Anzeige-Spiel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #factorDisplay {
+            font-family: "Courier New", monospace;
+            font-size: 24px;
+            margin: 20px auto;
+            border: 1px solid black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 5px;
+            height: 28px;
+            width: 200px;
+            box-sizing: border-box;
+            position: relative;
+            line-height: 1;
+        }
+
+
+            #factorDisplay span {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+            }
+
+        button {
+            font-size: 18px;
+            padding: 10px 20px;
+        }
+
+        table {
+            margin: 0 auto;
+        }
+
+        input[type="number"],
+        select {
+            width: 100%;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <h1></h1>
+    <br>
+    <div id="factorDisplay"><span>1</span></div>
+    <br>
+    <br>
+    <table>
+        <tr>
+            <td><label for="minValue">min: </label></td>
+            <td><input id="minValue" type="number" value="1"></td>
+        </tr>
+        <tr>
+            <td><label for="maxValue">max: </label></td>
+            <td><input id="maxValue" type="number" value="1e308"></td>
+        </tr>
+        <tr>
+            <td><label for="boxWidth">box: </label></td>
+            <td><input id="boxWidth" type="number" value="200"></td>
+        </tr>
+        <tr>
+            <td><label for="pressTime">s↑: </label></td>
+            <td><input id="pressTime" type="number" value="3"></td>
+        </tr>
+        <tr>
+            <td><label for="releaseTime">s↓: </label></td>
+            <td><input id="releaseTime" type="number" value="1"></td>
+        </tr>
+        <tr>
+            <td><label for="infinitySize">∞ size: </label></td>
+            <td><input id="infinitySize" type="number" value="250"></td>
+        </tr>
+
+    </table>
+    <br>
+    <button id="button">Drücken und halten</button>
+
+    <script>
+        const factorDisplay = document.getElementById('factorDisplay');
+        const button = document.getElementById('button');
+        const minValueInput = document.getElementById('minValue');
+        const maxValueInput = document.getElementById('maxValue');
+        const boxWidthInput = document.getElementById('boxWidth');
+        const pressTimeInput = document.getElementById('pressTime');
+        const releaseTimeInput = document.getElementById('releaseTime');
+        const infinitySizeInput = document.getElementById('infinitySize');
+
+        let factor = 1;
+        let interval;
+
+        function updateFactorDisplay() {
+            const displayValue = factor >= parseFloat(maxValueInput.value) ? '∞' : formatLargeNumber(factor);
+            factorDisplay.innerHTML = '<span>' + displayValue + '</span>';
+            factorDisplay.style.width = boxWidthInput.value + 'px';
+            factorDisplay.style.fontSize = displayValue === '∞' ? infinitySizeInput.value + 'px' : '24px';
+
+
+            let fontSize = parseFloat(factorDisplay.style.fontSize);
+            while (factorDisplay.scrollWidth > factorDisplay.clientWidth) {
+                fontSize -= 0.5;
+                factorDisplay.style.fontSize = fontSize + 'px';
+            }
+            if (displayValue === '∞') {
+                factorDisplay.querySelector('span').style.transform = `translate(-50%, calc(-50% + 10px))`;
+            } else {
+                factorDisplay.querySelector('span').style.transform = `translate(-50%, -50%)`;
+            }
+
+        }
+
+        function formatLargeNumber(number) {
+            const strNumber = BigInt(Math.floor(number)).toString();
+            return strNumber;
+        }
+
+
+        function changeFactor() {
+            const elapsedTime = Date.now() - startTime;
+            const targetTime = increasing ? timeToMaxFactor : timeToMinFactor;
+            const progress = elapsedTime / targetTime;
+
+            if (increasing) {
+                factor = factorStart * Math.pow(factorEnd / factorStart, progress);
+            } else {
+                factor = factorStart / Math.pow(factorStart / factorEnd, progress);
+            }
+
+            updateFactorDisplay();
+
+            if (progress >= 1) {
+                clearInterval(interval);
+                factor = increasing ? factorEnd : factorEnd;
+                updateFactorDisplay();
+            }
+        }
+
+        let startTime;
+        let increasing = true;
+        let factorStart = 1;
+        let factorEnd = 1000;
+        let timeToMaxFactor = 10 * 1000;
+        let timeToMinFactor = 2 * 1000;
+
+        function startIncreasingFactor() {
+            increasing = true;
+            clearInterval(interval);
+            factorStart = factor;
+            factorEnd = parseFloat(maxValueInput.value);
+            timeToMaxFactor = parseFloat(pressTimeInput.value) * 1000;
+            startTime = Date.now();
+            interval = setInterval(changeFactor, 100);
+        }
+
+        function startDecreasingFactor() {
+            increasing = false;
+            clearInterval(interval);
+            factorStart = factor;
+            factorEnd = parseFloat(minValueInput.value);
+            timeToMinFactor = parseFloat(releaseTimeInput.value) * 1000;
+            startTime = Date.now();
+            interval = setInterval(changeFactor, 100);
+        }
+
+        button.addEventListener('mousedown', startIncreasingFactor);
+        button.addEventListener('mouseup', startDecreasingFactor);
+        button.addEventListener('mouseleave', startDecreasingFactor);
+        button.addEventListener('touchstart', (event) => {
+            event.preventDefault();
+            startIncreasingFactor();
+        });
+        button.addEventListener('touchend', (event) => {
+            event.preventDefault();
+            startDecreasingFactor();
+        });
+
+        function resizeFactorDisplay() {
+            boxWidthInput.value = window.innerWidth * 0.9;
+            updateFactorDisplay();
+        }
+
+        function changeFont() {
+            const selectedFont = fontSelect.value;
+            factorDisplay.style.fontFamily = selectedFont;
+        }
+
+
+        window.addEventListener('resize', resizeFactorDisplay);
+        resizeFactorDisplay();
+    </script>
+</body>
+</html>
