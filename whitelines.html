@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+      body { margin: 0; }
+      .checkbox-label {
+        color: rgb(0, 0, 0);    
+        font-family: Verdana, Geneva, Tahoma, sans-serif;   
+        text-shadow:         /* Erzeugt eine Umrandung mit Schatten */
+          -1px -1px 0 #ffffff,
+          1px -1px 0 #ffffff,
+          -1px 1px 0 #ffffff,
+          1px 1px 0 #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      let lines = [];
+      let changeAnglesCheckbox;
+      let preventNewLinesCheckbox;
+      let linesPerFrameSlider;
+      let strokeWeightSlider;
+
+      function setup() {
+        createCanvas(windowWidth, windowHeight);
+        background(0);
+        angleMode(DEGREES);
+
+        // Checkbox zum Ändern der Winkel
+        changeAnglesCheckbox = createCheckbox('Winkel ändern', false);
+        changeAnglesCheckbox.position(10, 10);
+        changeAnglesCheckbox.class('checkbox-label'); // Füge die Klasse hinzu
+
+        // Checkbox zum Verhindern neuer Linien
+        preventNewLinesCheckbox = createCheckbox('Keine neuen Linien', false);
+        preventNewLinesCheckbox.position(10, 30);
+        preventNewLinesCheckbox.class('checkbox-label'); // Füge die Klasse hinzu
+
+        // Slider für die Anzahl der Linien pro Frame
+        linesPerFrameSlider = createSlider(1, 100, 10);
+        linesPerFrameSlider.position(10, 50);
+
+        // Slider für die Strichstärke
+        strokeWeightSlider = createSlider(0, 1, 0.001, 0.001);
+        strokeWeightSlider.position(10, 70);
+      }
+
+      function draw() {
+        if (!preventNewLinesCheckbox.checked()) {
+          for (let i = 0; i < linesPerFrameSlider.value(); i++) {
+            let angle = random(360);
+            lines.push(angle);
+          }
+        }
+
+        if (changeAnglesCheckbox.checked()) {
+          lines = lines.map(() => random(360));
+        }
+
+        background(0);
+        translate(width / 2, height / 2);
+        stroke(255);
+        strokeWeight(strokeWeightSlider.value());
+        lines.forEach(angle => {
+          line(0, 0, cos(angle) * 1000, sin(angle) * 1000);
+        });
+      }
+    </script>
+  </body>
+</html>
