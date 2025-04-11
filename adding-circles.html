@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>p5.js Kreis in der Mitte</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        let goldenRatio = (1 + Math.sqrt(5)) / 2;
+let circles = [];
+let growthSlider;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  let initialRadius = min(width, height) / 2;
+  circles.push(new Circle(width/2, height/2, initialRadius));
+  
+  // Erstelle einen Schieberegler
+  growthSlider = createSlider(-10, 10, 0, 0.01);
+  growthSlider.position(10, 10);
+}
+
+function draw() {
+  background(255);
+  for (let i = 0; i < circles.length; i++) {
+    circles[i].display();
+    circles[i].grow(growthSlider.value());
+  }
+  
+  if (frameCount % 10 == 0) {
+    let newRadius = circles[circles.length-1].radius / goldenRatio;
+    circles.push(new Circle(width/2, height/2, newRadius));
+  }
+}
+
+class Circle {
+  constructor(x, y, r) {
+    this.x = x;
+    this.y = y;
+    this.radius = r;
+  }
+  
+  display() {
+    noFill();
+    stroke(0);
+    ellipse(this.x, this.y, this.radius * 2, this.radius * 2);
+  }
+  
+  grow(rate) {
+    this.radius += rate;
+  }
+}
+
+    </script>
+</body>
+</html>
