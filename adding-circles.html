@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>p5.js Kreis in der Mitte</title>
+    <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+    <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
     <style>
         body {
@@ -25,19 +28,23 @@ function setup() {
   createCanvas(windowWidth, windowHeight);
   let initialRadius = min(width, height) / 2;
   circles.push(new Circle(width/2, height/2, initialRadius));
-  
+
   // Erstelle einen Schieberegler
   growthSlider = createSlider(-10, 10, 0, 0.01);
   growthSlider.position(10, 10);
 }
 
 function draw() {
-  background(255);
+  // CSS-Farben verwenden
+  const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || 'black';
+  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+
+  background(bgColor);
   for (let i = 0; i < circles.length; i++) {
-    circles[i].display();
+    circles[i].display(textColor);
     circles[i].grow(growthSlider.value());
   }
-  
+
   if (frameCount % 10 == 0) {
     let newRadius = circles[circles.length-1].radius / goldenRatio;
     circles.push(new Circle(width/2, height/2, newRadius));
@@ -50,13 +57,13 @@ class Circle {
     this.y = y;
     this.radius = r;
   }
-  
-  display() {
+
+  display(color = 'white') {
     noFill();
-    stroke(0);
+    stroke(color);
     ellipse(this.x, this.y, this.radius * 2, this.radius * 2);
   }
-  
+
   grow(rate) {
     this.radius += rate;
   }

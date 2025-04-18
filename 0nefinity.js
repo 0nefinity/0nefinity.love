@@ -73,7 +73,6 @@ canvas {
   border-radius: 5px;
   font-size: 12px;
   pointer-events: none;
-  background-color: rgba(0, 0, 0, 0.5);
 }
 
 /* Info Popup Stil */
@@ -90,7 +89,6 @@ canvas {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: rgba(128, 128, 128, 0.3);
   color: var(--text-color);
   font-size: 12px;
   font-weight: bold;
@@ -126,7 +124,7 @@ canvas {
   transform-origin: center center;
 }
 .editable-photo.selected {
-  outline: 2px dashed rgba(0, 128, 255, 0.8);
+  outline: 2px dashed var(--text-color);
   z-index: 51;
 }
 .editable-photo img, .editable-photo video {
@@ -139,7 +137,6 @@ canvas {
   right: -10px;
   width: 22px;
   height: 22px;
-  background-color: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
   border-radius: 50%;
@@ -155,8 +152,7 @@ canvas {
   position: absolute;
   width: 12px;
   height: 12px;
-  background-color: white;
-  border: 2px solid rgba(0, 128, 255, 0.8);
+  border: 2px solid var(--text-color);
   border-radius: 50%;
   cursor: pointer;
   z-index: 5;
@@ -172,7 +168,7 @@ canvas {
   left: 50%;
   width: 14px;
   height: 14px;
-  background-color: rgba(0, 128, 255, 0.8);
+  background-color: var(--text-color);
   border: 2px solid white;
   border-radius: 50%;
   cursor: pointer;
@@ -186,7 +182,7 @@ canvas {
   left: 50%;
   height: 30px;
   width: 2px;
-  background-color: rgba(0, 128, 255, 0.8);
+  background-color: var(--text-color);
   transform: translateX(-50%);
   transform-origin: bottom center;
   visibility: hidden;
@@ -224,7 +220,7 @@ canvas {
       <button id="takePhotoButton">Foto machen</button>
       <div class="info-popup">
         <div class="info-icon">i</div>
-        <div class="info-text">Die Muster, die 0nefinity formt, resultieren nur aus der Bewegung. Zu jedem Zeitpunkt ist es jedoch lediglich das ursprüngliche Ding. Ein Foto vermag das Muster deshalb nicht einzufangen.</div>
+        <div class="info-text">Diese Muster, die das Teil augenscheinlich formt, resultieren nur aus der Bewegung. Zu jedem einzelnen Zeitpunkt ist das ursprüngliche Objekt nur genau einmal in seiner ursprünglichen Form (lediglich anders gedreht) sichtbar. Ein Foto vermag das Muster deshalb nicht einzufangen und wird immer nur das ursprüngliche Objekt in einer Ruheposition zeigen.</div>
       </div>
       <button id="createGifButton">GIF erstellen</button>
     `;
