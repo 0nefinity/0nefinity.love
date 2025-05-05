@@ -56,7 +56,7 @@ Die Meta-Theorie von 0nefinity beschreibt die nichtdualen Aspekte der Mathematik
 
 
 
-0nefinity geht auch über das mathematische hinaus (was eigentlich ein Widerspruch in sich ist).
+0nefinity geht auch über das mathematische hinaus (was eigentlich ein Widerspruch in sich ist, da Mathematik so umfassend verstanden werden kann, dass letztendlich das gesamte Dasein sich als eine einzige mathematische Maschine offenbart).
 
 Es geht auch um Erleuchtung. Darum, spirituelle, mystische Erfahrungen zu verstehen. Viele berichten von Einheit, von einem unendlich hellen Licht, von dem einen Bewusstsein, von einer alles durchdringenden Leerheit oder Stille, oder dem einen Jetzt, dem Ewig unendlichem Moment, Eins werden mit der Quelle, mit der Pracht Gottes, unendlicher Frieden, Auflösung der Getrenntheit, sich auflösen in die unendliche Liebe, Singularität, 0 1 ∞, 0nefinity
 
@@ -612,7 +612,7 @@ Dann sah ich, dass es gut war
 viele Sätze schreibe ich glaube ich auch ohne Punkt weil das gesagt gewollte unvollständig geschrieben steht. 
 vielleicht ein Thema von Haltung den Rest nicht auszuschließen wenn man was einschließt
 
-Punktsätze für letzgültige Aussagen? Schnörkelpunkt (was sonst ist wohl ein Fragezeichen?)
+Punktsätze für letzgültige Aussagen? (Schnörkelpunkt (was sonst ist wohl ein Fragezeichen?))
 
 ## warum 0nefinity?
 
@@ -632,9 +632,7 @@ Allein der Domainname, 0nefinity.love
 Welch Festmahl, welch Feuerwerk symbolischer Tiefe und Reichhaltigkeit.
 
 Dann natürlich die unbestreitbare Tatsache, dass unabhängig vom dargestellten Inhalt, das ganze Ding selbst überhaupt erst aus einer verrückten und verrückter werdenden Anzahl und Kombination aus Nullen und Einsen besteht.
-Allein diese Tatsache an sich ist bereits ein viel schönerer und tieferer Beweis für 0nefinity als ich hier bereit und fähig bin zu Vermitteln.  
-Und damit ist das ganze Ding, bereits bevor der Inhalt gerendert ist bereits ein solch befriedigendes Symbol für 0nefinty.
-
+Allein diese Tatsache an sich ist bereits ein solch befriedigendes Symbol für 0nefinity und gleichzeitig ein solch viel schönerer und tieferer Beweis und Hinweis für dessen Gültigkeit, als es hier inhaltlich zu vermitteln möglich wäre.  
 
 ## Dinge, um die es hier auch geht:
 
@@ -655,9 +653,22 @@ Dies ist auch ein Akt im Kreuzzug für ein schöneres Web
 
 Hä und einfach auch darum ein Beispiel zu sein wie man sich ausdrücken kann
 
+
+
 0nefinity ist auch eine Art sich zu erfahren, sich spielerisch mathematisch zu erleben, sich zu lieben. 
 
-Mathelehrern eine Chance geben, schön reagieren zu können auf Fragen wie: warum dürfen wir hier überhaupt was machen? Was Ist 1 eigentlich? Was ist 1/0 eigentlich wirklich? 
+mathematische 0nanation
+
+0nefinity ist, wenn das Universums mathematisch 0rgasmiert 
+
+mathematisch gesehen ist das Universum wohl die größt mögliche 0rgie mit sich selbst
+
+
+Es geht auch um das Gebären einer neuen Generation von Mathematikern 
+Mathematik eine spielerisch kreative Leichtigkeit zu geben
+Eine Veredelung der ihr einstehrwürdigen 
+
+Mathelehrern eine Chance geben, schön reagieren zu können auf Fragen wie: warum dürfen wir hier überhaupt was machen? Was Ist 1 eigentlich? Was ist 1/0 wirklich? 
 
 Dieses Projekt soll vor allem auch Computer dazu anregen witziges Zeug zu tun und noch witzigeres und aber auch unwitzigeres zu unterlassen.
 Das Allermeiste soll hier auf jeden Fall nicht ausgerechnet werden.
@@ -708,7 +719,7 @@ Marcel Duchamp - Du hast der Kunst ein Klo gebaut
 
 Srinivasa Ramanujan - Mathematik kann ein göttlicher Akt sein
 
-und nochmal Gödel, du geile Sau
+Kurt Gödel - was auch immer man zu dir sagen möge, es wäre wohl <i>unvollständig</i>
 
 
 
