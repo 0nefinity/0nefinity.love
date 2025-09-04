@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geometry | 0nefinity.love</title>
+  
+  <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese Zeile hier unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese Zeile hier unangetastet lassen)-->
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      background: var(--text-color);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .white-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--text-color);
+      z-index: 1;
+    }
+
+    .black-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg-color);
+      z-index: 2;
+      mask: url(#holeMask);
+      -webkit-mask: url(#holeMask);
+    }
+
+    .controls {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: var(--text-color);
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 12px;
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    .control-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+
+    .slider {
+      width: 150px;
+      margin-bottom: 5px;
+    }
+
+    .mode-buttons {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    .mode-btn {
+      background: var(--bg-color);
+      color: var(--text-color);
+      border: 1px solid var(--text-color);
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 5px;
+      font-size: 10px;
+      transition: all 0.2s ease;
+    }
+
+    .mode-btn.active {
+      background: var(--text-color);
+      color: var(--bg-color);
+    }
+
+    .mode-btn:hover {
+      transform: scale(1.05);
+    }
+
+    .reset-btn {
+      background: #ff3333;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      cursor: pointer;
+      border-radius: 5px;
+      font-size: 12px;
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .info-text {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: var(--text-color);
+      font-size: 14px;
+      font-style: italic;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      border-radius: 5px;
+      backdrop-filter: blur(5px);
+    }
+
+    .hole-counter {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: var(--text-color);
+      font-size: 16px;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      border-radius: 5px;
+      backdrop-filter: blur(5px);
+    }
+
+    svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="canvas-container">
+    <div class="white-layer"></div>
+    <div class="black-layer" id="blackLayer"></div>
+    
+    <svg width="100%" height="100%">
+      <defs>
+        <mask id="holeMask">
+          <rect width="100%" height="100%" fill="white"/>
+          <g id="holes"></g>
+        </mask>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="hole-counter">
+    <div>löcher: <span id="holeCount">0</span></div>
+    <div>0 1 ∞</div>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>lochgröße</label>
+      <input type="range" id="holeSize" class="slider" min="0" max="999" value="30">
+      <span id="holeSizeValue">30px</span>
+    </div>
+
+    <div class="control-group">
+      <label>modus</label>
+      <div class="mode-buttons">
+        <button class="mode-btn active" data-mode="click">klick</button>
+        <button class="mode-btn" data-mode="auto">auto</button>
+        <button class="mode-btn" data-mode="random">random</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>frequenz (löcher/sek)</label>
+      <input type="range" id="frequency" class="slider" min="0" max="999" value="5">
+      <span id="frequencyValue">5</span>
+    </div>
+
+    <div class="control-group">
+      <label>lebensdauer</label>
+      <select id="lifetime">
+        <option value="permanent">permanent</option>
+        <option value="1000">1 sekunde</option>
+        <option value="2000">2 sekunden</option>
+        <option value="5000">5 sekunden</option>
+        <option value="10000">10 sekunden</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>
+        <input type="checkbox" id="liveUpdate" style="margin-right: 8px;">
+        live-update bestehender löcher
+      </label>
+    </div>
+
+    <button class="reset-btn" id="resetBtn">alles zurücksetzen</button>
+  </div>
+
+  <div class="info-text">
+    steche löcher in die realität<br>
+    entdecke was dahinter liegt<br>
+    0 ≡ 1 ≡ ∞
+  </div>
+
+  <script>
+    class Hole {
+      constructor(x, y, size, lifetime = null) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.lifetime = lifetime;
+        this.created = Date.now();
+        this.id = Math.random().toString(36).substr(2, 9);
+        this.element = null;
+        this.createSVGElement();
+      }
+
+      createSVGElement() {
+        this.element = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        this.element.setAttribute('cx', this.x);
+        this.element.setAttribute('cy', this.y);
+        this.element.setAttribute('r', this.size);
+        this.element.setAttribute('fill', 'black');
+        this.element.setAttribute('data-hole-id', this.id);
+        
+        // Smooth entrance animation
+        this.element.style.opacity = '0';
+        this.element.style.transition = 'opacity 0.3s ease, r 0.3s ease';
+        
+        document.getElementById('holes').appendChild(this.element);
+        
+        // Trigger animation
+        setTimeout(() => {
+          this.element.style.opacity = '1';
+        }, 10);
+      }
+
+      isExpired() {
+        if (this.lifetime === null) return false;
+        return Date.now() - this.created > this.lifetime;
+      }
+
+      remove() {
+        if (this.element && this.element.parentNode) {
+          // Smooth exit animation
+          this.element.style.opacity = '0';
+          this.element.style.transform = 'scale(1.2)';
+          
+          setTimeout(() => {
+            if (this.element && this.element.parentNode) {
+              this.element.parentNode.removeChild(this.element);
+            }
+          }, 300);
+        }
+      }
+
+      updateSize(newSize) {
+        this.size = newSize;
+        if (this.element) {
+          this.element.setAttribute('r', newSize);
+        }
+      }
+    }
+
+    class HoleManager {
+      constructor() {
+        this.holes = [];
+        this.currentMode = 'click';
+        this.autoInterval = null;
+        this.randomInterval = null;
+        this.mouseX = window.innerWidth / 2;
+        this.mouseY = window.innerHeight / 2;
+        
+        this.setupEventListeners();
+        this.startAnimationLoop();
+      }
+
+      setupEventListeners() {
+        // Mouse tracking
+        document.addEventListener('mousemove', (e) => {
+          this.mouseX = e.clientX;
+          this.mouseY = e.clientY;
+        });
+
+        // Touch tracking
+        document.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+          if (e.touches.length > 0) {
+            this.mouseX = e.touches[0].clientX;
+            this.mouseY = e.touches[0].clientY;
+          }
+        }, { passive: false });
+
+        // Click mode
+        document.addEventListener('click', (e) => {
+          if (this.currentMode === 'click' && !e.target.closest('.controls')) {
+            this.addHole(e.clientX, e.clientY);
+          }
+        });
+
+        // Touch support for creating holes
+        let touchStartTime = 0;
+        let isDrawing = false;
+
+        document.addEventListener('touchstart', (e) => {
+          if (!e.target.closest('.controls')) {
+            touchStartTime = Date.now();
+            isDrawing = true;
+            const touch = e.touches[0];
+            if (this.currentMode === 'click') {
+              this.addHole(touch.clientX, touch.clientY);
+            }
+          }
+        });
+
+        document.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+          if (isDrawing && this.currentMode === 'click' && !e.target.closest('.controls')) {
+            const touch = e.touches[0];
+            const frequency = parseInt(document.getElementById('frequency').value);
+            const interval = Math.max(10, 1000 / frequency);
+            
+            // Add holes while dragging with user-defined frequency
+            if (Date.now() - touchStartTime > interval) {
+              this.addHole(touch.clientX, touch.clientY);
+              touchStartTime = Date.now();
+            }
+          }
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => {
+          isDrawing = false;
+        });
+
+        // Mouse drag support
+        let mouseDown = false;
+        let lastMouseHole = 0;
+
+        document.addEventListener('mousedown', (e) => {
+          if (!e.target.closest('.controls')) {
+            mouseDown = true;
+          }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+          if (mouseDown && this.currentMode === 'click' && !e.target.closest('.controls')) {
+            const frequency = parseInt(document.getElementById('frequency').value);
+            const interval = Math.max(10, 1000 / frequency);
+            
+            // Add holes while dragging with user-defined frequency
+            if (Date.now() - lastMouseHole > interval) {
+              this.addHole(e.clientX, e.clientY);
+              lastMouseHole = Date.now();
+            }
+          }
+        });
+
+        document.addEventListener('mouseup', () => {
+          mouseDown = false;
+        });
+
+        // Mode buttons
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            this.setMode(btn.dataset.mode);
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+          });
+        });
+
+        // Controls
+        document.getElementById('holeSize').addEventListener('input', (e) => {
+          document.getElementById('holeSizeValue').textContent = e.target.value + 'px';
+          this.updateExistingHoles();
+        });
+
+        document.getElementById('frequency').addEventListener('input', (e) => {
+          document.getElementById('frequencyValue').textContent = e.target.value;
+          this.updateAutoMode();
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+          this.reset();
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+          switch(e.key) {
+            case ' ':
+              e.preventDefault();
+              this.addHole(this.mouseX, this.mouseY);
+              break;
+            case 'r':
+            case 'R':
+              this.reset();
+              break;
+            case '1':
+              this.setMode('click');
+              this.updateModeButtons();
+              break;
+            case '2':
+              this.setMode('auto');
+              this.updateModeButtons();
+              break;
+            case '3':
+              this.setMode('random');
+              this.updateModeButtons();
+              break;
+          }
+        });
+      }
+
+      updateExistingHoles() {
+        const liveUpdateCheckbox = document.getElementById('liveUpdate');
+        if (liveUpdateCheckbox && liveUpdateCheckbox.checked) {
+          const newSize = parseInt(document.getElementById('holeSize').value);
+          this.holes.forEach(hole => {
+            hole.updateSize(newSize);
+          });
+        }
+      }
+
+      updateModeButtons() {
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.mode === this.currentMode);
+        });
+      }
+
+      setMode(mode) {
+        this.currentMode = mode;
+        this.stopAutoModes();
+
+        if (mode === 'auto') {
+          this.startAutoMode();
+        } else if (mode === 'random') {
+          this.startRandomMode();
+        }
+      }
+
+      startAutoMode() {
+        const frequency = parseInt(document.getElementById('frequency').value);
+        const interval = Math.max(10, 1000 / frequency); // Minimum 10ms (100Hz) für stabile Performance
+        
+        this.autoInterval = setInterval(() => {
+          this.addHole(this.mouseX, this.mouseY);
+        }, interval);
+      }
+
+      startRandomMode() {
+        const frequency = parseInt(document.getElementById('frequency').value);
+        const interval = Math.max(10, 1000 / frequency); // Minimum 10ms (100Hz) für stabile Performance
+        
+        this.randomInterval = setInterval(() => {
+          const x = Math.random() * window.innerWidth;
+          const y = Math.random() * window.innerHeight;
+          this.addHole(x, y);
+        }, interval);
+      }
+
+      updateAutoMode() {
+        if (this.currentMode === 'auto') {
+          this.stopAutoModes();
+          this.startAutoMode();
+        } else if (this.currentMode === 'random') {
+          this.stopAutoModes();
+          this.startRandomMode();
+        }
+      }
+
+      stopAutoModes() {
+        if (this.autoInterval) {
+          clearInterval(this.autoInterval);
+          this.autoInterval = null;
+        }
+        if (this.randomInterval) {
+          clearInterval(this.randomInterval);
+          this.randomInterval = null;
+        }
+      }
+
+      addHole(x, y) {
+        const size = parseInt(document.getElementById('holeSize').value);
+        const lifetimeSelect = document.getElementById('lifetime').value;
+        const lifetime = lifetimeSelect === 'permanent' ? null : parseInt(lifetimeSelect);
+        
+        const hole = new Hole(x, y, size, lifetime);
+        this.holes.push(hole);
+        this.updateCounter();
+      }
+
+      removeExpiredHoles() {
+        const expiredHoles = this.holes.filter(hole => hole.isExpired());
+        
+        expiredHoles.forEach(hole => {
+          hole.remove();
+          const index = this.holes.indexOf(hole);
+          if (index > -1) {
+            this.holes.splice(index, 1);
+          }
+        });
+
+        if (expiredHoles.length > 0) {
+          this.updateCounter();
+        }
+      }
+
+      updateCounter() {
+        document.getElementById('holeCount').textContent = this.holes.length;
+      }
+
+      reset() {
+        this.holes.forEach(hole => hole.remove());
+        this.holes = [];
+        
+        // Clear SVG holes container
+        setTimeout(() => {
+          const holesContainer = document.getElementById('holes');
+          while (holesContainer.firstChild) {
+            holesContainer.removeChild(holesContainer.firstChild);
+          }
+          this.updateCounter();
+        }, 350);
+      }
+
+      startAnimationLoop() {
+        const animate = () => {
+          this.removeExpiredHoles();
+          requestAnimationFrame(animate);
+        };
+        animate();
+      }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      new HoleManager();
+    });
+
+    // Prevent context menu
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      // Update SVG viewBox if needed
+      const svg = document.querySelector('svg');
+      svg.setAttribute('width', '100%');
+      svg.setAttribute('height', '100%');
+    });
+  </script>
+
+</body>
+</html>

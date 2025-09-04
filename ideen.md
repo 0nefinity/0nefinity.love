@@ -1,0 +1,1 @@
+nicht funktionierender Code kann auch ein Stilmittel sein
