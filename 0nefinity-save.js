@@ -209,9 +209,9 @@ canvas {
       <label>Geschw: <input type="number" id="rotationSpeed" value="0" step="0.1" min="0"></label>
       <label>Gr. Z(%): <input type="number" id="textSize" value="25" step="1" min="0"></label>
       <label>Tr.(%): <input type="number" id="triangleSize" value="30" step="1" min="0"></label>
-      <label>≡G(%): <input type="number" id="equivSize" value="23" step="1" min="0"></label>
+      <label>≡G(%): <input type="number" id="equivSize" value="25" step="1" min="0"></label>
       <label>≡L(%): <input type="number" id="equivLength" value="100" step="1" min="0"></label>
-
+      <label>SpeedInc: <input type="number" id="speedIncrement" value="60" step="1" min="0"></label>
       <label>Symbol 0: <input type="text" id="label0Input" value="0"></label>
       <label>Symbol 1: <input type="text" id="label1Input" value="1"></label>
       <label>Symbol ∞: <input type="text" id="labelInfInput" value="∞"></label>
@@ -796,21 +796,6 @@ canvas {
       };
     }
 
-    // === ZENTRALE KONFIGURATION ===
-    const AUTO_SPEED_CONFIG = {
-      // Startphase - läuft einmal am Anfang
-      START_PHASE: {
-        speed: 0.0,
-        duration: 2.5
-      },
-      // Hauptsequenz - läuft nach der Startphase in Schleife
-      SPEED_STEPS: [
-        { increment: 120, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 60, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 180, rampDuration: 1.0, holdDuration: 2.5 }
-      ]
-    };
-
     // Animationsparameter initialisieren
     let textSizePercentage = parseFloat(document.getElementById('textSize').value) || 25;
     let triangleSize = parseFloat(document.getElementById('triangleSize').value) || 30;
@@ -821,7 +806,9 @@ canvas {
     let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
     let autoOffset = 0;
 
-
+    let startupPhase = true;
+let startupTimer = 0;
+const startupDuration = 2.0;
 
     // Event-Listener für die Steuerelemente
     document.getElementById('textSize').addEventListener('input', () => {
@@ -840,18 +827,17 @@ canvas {
       equivLength = parseFloat(document.getElementById('equivLength').value) || 0;
       resizeCanvasToFitContent();
     });
-
+    document.getElementById('rotateCheckbox').addEventListener('change', e => {
+      tangentialMode = e.target.checked;
+    });
     document.getElementById('rotationSpeed').addEventListener('input', () => {
       manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
       if (!autoSpeedEnabled) {
         rotationSpeed = manualSpeed;
       } else {
         let currentCycleSpeed;
-        if (isInStartPhase) {
-          currentCycleSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed;
-        } else if (autoSpeedTimer < currentStep.rampDuration) {
-          // Komplett exponentieller Ramp-up
-          currentCycleSpeed = exponentialRamp(autoSpeedBase, autoSpeedTarget, autoSpeedTimer / currentStep.rampDuration);
+        if (autoSpeedTimer < rampDuration) {
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
         } else {
           currentCycleSpeed = autoSpeedTarget;
         }
@@ -859,51 +845,47 @@ canvas {
         rotationSpeed = currentCycleSpeed + autoOffset;
       }
     });
-
+    let speedIncrement = parseFloat(document.getElementById('speedIncrement').value) || 60;
+    document.getElementById('speedIncrement').addEventListener('input', () => {
+      speedIncrement = parseFloat(document.getElementById('speedIncrement').value) || 60;
+    });
     document.getElementById('autoSpeedCheckbox').addEventListener('change', e => {
       autoSpeedEnabled = e.target.checked;
       if (autoSpeedEnabled) {
         manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
         autoOffset = 0;
-
-        // Starte mit der Startphase
-        isInStartPhase = true;
-        stepIndex = 0;
-        currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
-        autoSpeedBase = manualSpeed;
-        autoSpeedTarget = autoSpeedBase + currentStep.increment;
+        let current = manualSpeed;
+        let r = Math.floor(current / speedIncrement);
+        let off = current - r * speedIncrement;
+        autoSpeedTarget = (r + 1) * speedIncrement + off;
+        autoSpeedBase = current;
         autoSpeedTimer = 0;
-        cycleDuration = AUTO_SPEED_CONFIG.START_PHASE.duration;
-
-        rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed + autoOffset;
+        rotationSpeed = autoSpeedBase + autoOffset;
         document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
       }
     });
 
-    // Geschwindigkeitsparameter für automatischen Modus
-    let isInStartPhase = true;
-    let stepIndex = 0;
-    let currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
+    // Geschwindigkeitsparameter
     let autoSpeedBase = manualSpeed;
-    let autoSpeedTarget = autoSpeedBase + currentStep.increment;
+    let autoSpeedTarget = autoSpeedBase + speedIncrement;
     let autoSpeedTimer = 0;
-    let cycleDuration = isInStartPhase ? AUTO_SPEED_CONFIG.START_PHASE.duration :
-                       (currentStep.rampDuration + currentStep.holdDuration);
+    const rampDuration = 1;
+    const holdDuration = 1;
+    const cycleDuration = rampDuration + holdDuration;
 
-
-
-    // Hilfsfunktion
+    // Hilfsfunktionen
     function lerp(a, b, t) {
       return a + (b - a) * t;
     }
-
-
+    function ease(t) {
+      return (1 - Math.cos(Math.PI * t)) / 2;
+    }
 
     // Animationsparameter
     let angle = 0;
     let lastTimestamp = null;
     const ctx = canvas.getContext('2d');
-
+    let tangentialMode = document.getElementById('rotateCheckbox').checked;
 
     // Funktion zum dynamischen Anpassen der Canvasgröße
     function resizeCanvasToFitContent() {
@@ -935,45 +917,16 @@ canvas {
       if (autoSpeedEnabled) {
         autoSpeedTimer += dt;
         let currentCycleSpeed;
-
-        if (isInStartPhase) {
-          // Startphase - konstante niedrige Geschwindigkeit
-          currentCycleSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed;
-
-          if (autoSpeedTimer >= AUTO_SPEED_CONFIG.START_PHASE.duration) {
-            // Startphase beendet - zur Hauptsequenz wechseln
-            isInStartPhase = false;
-            autoSpeedTimer = 0;
-            autoSpeedBase = currentCycleSpeed;
-            autoSpeedTarget = autoSpeedBase + currentStep.increment;
-            cycleDuration = currentStep.rampDuration + currentStep.holdDuration;
-          }
+        if (autoSpeedTimer < rampDuration) {
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / rampDuration));
+        } else if (autoSpeedTimer < cycleDuration) {
+          currentCycleSpeed = autoSpeedTarget;
         } else {
-          // Hauptsequenz
-          if (autoSpeedTimer < currentStep.rampDuration) {
-            // Einfache Ramp: lerp + ease (sanfter Start, sanftes Ende)
-            const t = autoSpeedTimer / currentStep.rampDuration;
-            currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, (1 - Math.cos(Math.PI * t)) / 2);
-          } else if (autoSpeedTimer < cycleDuration) {
-            // Hold Phase - konstante Geschwindigkeit
-            currentCycleSpeed = autoSpeedTarget;
-          } else {
-            // Zyklus abgeschlossen - nächsten Step starten
-            autoSpeedTimer -= cycleDuration;
-            autoSpeedBase = autoSpeedTarget;
-
-            // Nächsten Step auswählen
-            stepIndex = (stepIndex + 1) % AUTO_SPEED_CONFIG.SPEED_STEPS.length;
-            currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
-
-            // Neue Zielgeschwindigkeit und Zyklusdauer berechnen
-            autoSpeedTarget = autoSpeedBase + currentStep.increment;
-            cycleDuration = currentStep.rampDuration + currentStep.holdDuration;
-
-            currentCycleSpeed = autoSpeedBase;
-          }
+          autoSpeedTimer -= cycleDuration;
+          autoSpeedBase = autoSpeedTarget;
+          autoSpeedTarget = autoSpeedBase + speedIncrement;
+          currentCycleSpeed = autoSpeedBase;
         }
-
         rotationSpeed = currentCycleSpeed + autoOffset;
         document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
       }
@@ -1006,10 +959,10 @@ canvas {
   // Fenster-Größenänderung behandeln
   window.addEventListener('resize', () => {
     // Nach kurzer Verzögerung die Canvas-Größe neu berechnen (Debounce)
-    if (window.__resizeTimeoutId) {
-      clearTimeout(window.__resizeTimeoutId);
+    if (window.resizeTimeout) {
+      clearTimeout(window.resizeTimeout);
     }
-    window.__resizeTimeoutId = setTimeout(() => {
+    window.resizeTimeout = setTimeout(() => {
       if (document.getElementById('canvas')) {
         const resizeCanvasToFitContent = function() {
           const canvas = document.getElementById('canvas');

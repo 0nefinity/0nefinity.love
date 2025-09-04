@@ -800,14 +800,17 @@ canvas {
     const AUTO_SPEED_CONFIG = {
       // Startphase - läuft einmal am Anfang
       START_PHASE: {
-        speed: 0.0,
-        duration: 2.5
+        speed: 0.0,           // Feste Geschwindigkeit für Startphase
+        duration: 2.5         // Dauer der Startphase in Sekunden
       },
+
       // Hauptsequenz - läuft nach der Startphase in Schleife
       SPEED_STEPS: [
         { increment: 120, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 60, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 180, rampDuration: 1.0, holdDuration: 2.5 }
+        { increment: 240, rampDuration: 1.0, holdDuration: 2.5 }
+        // Einfach weitere Steps hinzufügen:
+        // { increment: 360, rampDuration: 0.8, holdDuration: 1.2 },
+        // { increment: 60,  rampDuration: 2.0, holdDuration: 0.3 }
       ]
     };
 
@@ -840,7 +843,9 @@ canvas {
       equivLength = parseFloat(document.getElementById('equivLength').value) || 0;
       resizeCanvasToFitContent();
     });
-
+    document.getElementById('rotateCheckbox').addEventListener('change', e => {
+      tangentialMode = e.target.checked;
+    });
     document.getElementById('rotationSpeed').addEventListener('input', () => {
       manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
       if (!autoSpeedEnabled) {
@@ -850,8 +855,7 @@ canvas {
         if (isInStartPhase) {
           currentCycleSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed;
         } else if (autoSpeedTimer < currentStep.rampDuration) {
-          // Komplett exponentieller Ramp-up
-          currentCycleSpeed = exponentialRamp(autoSpeedBase, autoSpeedTarget, autoSpeedTimer / currentStep.rampDuration);
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / currentStep.rampDuration));
         } else {
           currentCycleSpeed = autoSpeedTarget;
         }
@@ -890,20 +894,19 @@ canvas {
     let cycleDuration = isInStartPhase ? AUTO_SPEED_CONFIG.START_PHASE.duration :
                        (currentStep.rampDuration + currentStep.holdDuration);
 
-
-
-    // Hilfsfunktion
+    // Hilfsfunktionen
     function lerp(a, b, t) {
       return a + (b - a) * t;
     }
-
-
+    function ease(t) {
+      return (1 - Math.cos(Math.PI * t)) / 2;
+    }
 
     // Animationsparameter
     let angle = 0;
     let lastTimestamp = null;
     const ctx = canvas.getContext('2d');
-
+    let tangentialMode = document.getElementById('rotateCheckbox').checked;
 
     // Funktion zum dynamischen Anpassen der Canvasgröße
     function resizeCanvasToFitContent() {
@@ -951,9 +954,8 @@ canvas {
         } else {
           // Hauptsequenz
           if (autoSpeedTimer < currentStep.rampDuration) {
-            // Einfache Ramp: lerp + ease (sanfter Start, sanftes Ende)
-            const t = autoSpeedTimer / currentStep.rampDuration;
-            currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, (1 - Math.cos(Math.PI * t)) / 2);
+            // Ramp Phase - sanfte Beschleunigung
+            currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, ease(autoSpeedTimer / currentStep.rampDuration));
           } else if (autoSpeedTimer < cycleDuration) {
             // Hold Phase - konstante Geschwindigkeit
             currentCycleSpeed = autoSpeedTarget;
@@ -1006,10 +1008,10 @@ canvas {
   // Fenster-Größenänderung behandeln
   window.addEventListener('resize', () => {
     // Nach kurzer Verzögerung die Canvas-Größe neu berechnen (Debounce)
-    if (window.__resizeTimeoutId) {
-      clearTimeout(window.__resizeTimeoutId);
+    if (window.resizeTimeout) {
+      clearTimeout(window.resizeTimeout);
     }
-    window.__resizeTimeoutId = setTimeout(() => {
+    window.resizeTimeout = setTimeout(() => {
       if (document.getElementById('canvas')) {
         const resizeCanvasToFitContent = function() {
           const canvas = document.getElementById('canvas');

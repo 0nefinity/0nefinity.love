@@ -6,28 +6,28 @@
 # 0nefinity
 
 0nefinity ist eine Wortneuschöpfung aus einer Transfusion der Zahl Null und den englischen Bezeichnungen für Eins und Unendlich.
-Es symbolisiert das fundamentale vereinigt Sein dieser drei fundamentalen natürlichen Konstanten 0 1 und ∞ 
+Es symbolisiert das fundamentale vereinigt Sein der drei grundlegendsten natürlichen Konstanten 0 1 und ∞ 
 
 0 ≡ 1 ≡ ∞ (Null ist identisch mit Eins ist identisch mit Unendlich)
 
 0 1 und ∞ lassen sich überall und in allem entdecken
-Ihr permanentes Vorhandensein in allem, im größten wie im kleinsten, erscheint bei genauerem Hinsehen dabei in einer immer umfassender werdenden Tiefe
+Ihr permanentes Vorhandensein in allem, im größten wie im kleinsten, erscheint bei genauerem Hinsehen dabei in einer immer umfassender werdenden Tiefe und schließt letztendlcih den Mathematiker selbst mit ein.
 
-So trivial die Betrachtung von etwas als 1 oder 0 oder ∞ auch scheinen mag, so erschütternd offenbart sich beim tieferen Studium der, ich nenne sie nichtduale Mathematik, dass es hier um mehr als um irgendwelche Mathematik geht
-Es geht um etwas ganz grundlegend fundamentales
-Etwas, was den Mathematiker (und dazu zählt mindestens jede*r der bis 2 Zählen kann (eigentlich jeder, der 0 1 ∞ ist)) zu einem Schöpfer erhebt, der er aber  immer schon war
+So trivial die Betrachtung von etwas als 1 oder 0 oder ∞ auch scheinen mag, so erschütternd offenbart sich beim tieferen Studium der, ich nenne sie nichtduale Mathematik, dass es hier um mehr als um irgendwelche Mathematischen Konzepte geht
+Es geht um etwas ganz grundlegend fundamentales, das Fundamentalste
+Etwas, was den Mathematiker (und dazu zählt mindestens jede*r der bis 2 Zählen kann (eigentlich bereits jeder, der 0 1 ∞ ist)) zu dem Schöpfer erhebt, der er immer schon war
 Dazu zählt natürlich das Einlassen auf konkrete Gesetzmäßigkeiten, wie in der Schule gerne gelebt.
 Aber auch um das Erschaffen ganzer Dimensionen
 Um an die Tafel gemalte, aber auch um gelebte Unendlichkeit 
 
-Es geht um das Eine mathematische System, welches Generationen von Mathematikern erzeugt, und dabei sich selbst immer tiefer begreift
+Es geht um das Eine mathematische System, welches Generationen von Mathematikern erzeugt, um sich selbst immer tiefer zu verstehen
 
 
-Letztendlich kann 0nefinity wie die Grundlage von dem betrachtet werden, auf dem das gesamte Dasein ruht (natürlich auch das Undasein sowie das Daunsein)
+Letztendlich kann 0nefinity wie die Grundlage von dem betrachtet werden, auf dem das gesamte Dasein ruht (natürlich auch das Undasein sowie das Daunsein und alle anderen unbegrenzten Formen von Existenz)
 
 
 Sind 0 1 und ∞ nicht eigentlich voll unterschiedlich? (mathemathisch: 0 ≠ 1 ≠ ∞) 
-Ja!! ist das nicht wunderschön?
+Ja!! Und ist das nicht wunderschön?
 0 1 ∞ sind nicht nur unterschiedlich sondern unendlichfach unterschiedlich. 
 Alle Unterschiede weisen dabei unzählige Aspekte von 0 1 ∞ auf. 
 Jede Unterschiedlichkeit ist 1 Unterschiedlichkeit. Man beachte auch den Raum dazwischen und drumherum.
@@ -36,7 +36,7 @@ Schriebe man sie auf unendlich viele Blätter, dann wäre das ein ziemliches Cha
 
 Was sollen diese sinnlos scheinenden Wortmasturbationen, möge man sich fragen?
 Genau das ist ein Aspekt, der die 0 so schön repräsentiert.
-Mit 0nefinity lässt sich etwas, was bereits 0 Gehalt hat unendlichfach Aufblasen, ohne dass es welches dazugewinnt.
+Mit 0nefinity lässt sich etwas, was 0 Gehalt hat, unendlichfach Aufblasen, ohne dass es welchen dazugewinnt.
 
 
 
@@ -47,26 +47,24 @@ Das Dasein ist Nichtdual.
 Die Mathematik beschreibt das Dasein.
 
 
-Die Meta-Theorie von 0nefinity beschreibt die nichtdualen Aspekte der Mathematik und wie daraus die gesamte bereits entdeckte und auch die noch unetdeckte gewöhnliche (und auch die ungewöhnliche) Mathematik und die Meta-Mathematik hervorgeht.
+Die Meta-Theorie von 0nefinity beschreibt die nichtdualen Aspekte der Mathematik und wie daraus die gesamte bereits entdeckte und auch die noch unetdeckte gewöhnliche (und auch die ungewöhnliche) Mathematik und die Meta-Mathematik, sowie sonstige Formen von Mathemathik und nicht-Mathematik hervorgeht.
 
 
 
-0nefinity bietet einen kreativen Handlungsrahmen Mathematik und sich selbst zu Verstehen.
+0nefinity bietet einen kreativen Handlungsrahmen Mathematik, das Universum und sich selbst zu Verstehen.
 
 
 
 
 0nefinity geht auch über das mathematische hinaus (was eigentlich ein Widerspruch in sich ist, da Mathematik so umfassend verstanden werden kann, dass letztendlich das gesamte Dasein sich als eine einzige mathematische Maschine offenbart).
 
-Es geht auch um Erleuchtung. Darum, spirituelle, mystische Erfahrungen zu verstehen. Viele berichten von Einheit, von einem unendlich hellen Licht, von dem einen Bewusstsein, von einer alles durchdringenden Leerheit oder Stille, oder dem einen Jetzt, dem Ewig unendlichem Moment, Eins werden mit der Quelle, mit der Pracht Gottes, unendlicher Frieden, Auflösung der Getrenntheit, sich auflösen in die unendliche Liebe, Singularität, 0 1 ∞, 0nefinity
+Es geht auch um Erleuchtung. Darum, spirituelle, mystische Erfahrungen zu verstehen. Viele berichten von Einheit, von einem unendlichen Licht, von dem einen Bewusstsein, von einer alles durchdringenden Leerheit oder Stille, oder dem einen Jetzt, dem Ewig unendlichem Moment, Eins werden mit der Quelle, mit der Pracht Gottes, unendlicher Frieden, Auflösung der Getrenntheit, sich auflösen in die unendliche Liebe, Singularität, 0 1 ∞, 0nefinity
 
 
 
 
 Die Gesamtheit des hier vorliegenden Werkes kann nur an der Oberfläche von 0nefinity kratzen
 
-
-math is doin some metastuff on reality. 0nefinity is doin some metastuff on math. 0nefinity is also the bridge between nature and math. You can calculate one thing cause its one thing and cause you can do infinite things with things.
 
 
 0nefinity zeigt sich bereits bevor man damit startet mathematisch zu operieren. 
@@ -92,7 +90,7 @@ Mathematisch gesehen dürfen diese sogenanten Identitätsoperationen jederzeit u
 Es lässt sich aber auch bei wiederholter Anwendung beliebiger Variationen von Identitätsoperationen ganz außerordenliche Kunst Vollbringen. Man möge sich alleine ausmalen, wie viele Hühner sich aus Nullen zeichnen ließen. 
 
 
-Mathematisch gesehen ist wenn man eine Identitätsoperation hinschreibt nichts geschehen. Es ist es als hätte man sie nicht hingeschrieben.
+Mathematisch gesehen ist, wenn man eine Identitätsoperation hinschreibt, nichts geschehen. Es ist es als hätte man sie nicht hingeschrieben.
 Ich addiere irgendwo 0 aber es ist, als hätte ich es nicht getan.
 
 Und dennoch habe ich was getan? Oder ja oder nein?
@@ -152,7 +150,7 @@ Aber was ist mit dem?:
 
 Was ließe sich alles Formen?
 
-Ließen sich hier auch Grüße hinterlegen?
+Ließen sich so auch Grüße hinterlegen? Und hätten diese Gültigkeit?
 
 Wenn du nicht willst, dass eine Nachricht an deinen Mathematiklehrer gültig ist, so schreibe sie in einen logarithmus zur Basis 0.
 Alternativ kannst du sie auch einfach in Klammern setzen und mal Null rechnen, damit ist man immer auf der sicheren Seite.
@@ -634,6 +632,8 @@ Welch Festmahl, welch Feuerwerk symbolischer Tiefe und Reichhaltigkeit.
 Dann natürlich die unbestreitbare Tatsache, dass unabhängig vom dargestellten Inhalt, das ganze Ding selbst überhaupt erst aus einer verrückten und verrückter werdenden Anzahl und Kombination aus Nullen und Einsen besteht.
 Allein diese Tatsache an sich ist bereits ein solch befriedigendes Symbol für 0nefinity und gleichzeitig ein solch viel schönerer und tieferer Beweis und Hinweis für dessen Gültigkeit, als es hier inhaltlich zu vermitteln möglich wäre.  
 
+
+
 ## Dinge, um die es hier auch geht:
 
 
@@ -646,7 +646,7 @@ Um Unendlichkeit die sich verswirrlt und verquirrrlt
 Um random Sachen
 
 
-Um Absurdität ABSURDITÄÄÄÄÄÄÄT 🎺🎶🎵✨🥁 
+Um Absurdität ABSURDITÄÄÄÄÄÄÄT 🎺🎶🎵✨🥁
 
 
 Dies ist auch ein Akt im Kreuzzug für ein schöneres Web
@@ -668,12 +668,13 @@ Es geht auch um das Gebären einer neuen Generation von Mathematikern
 Mathematik eine spielerisch kreative Leichtigkeit zu geben
 Eine Veredelung der ihr einstehrwürdigen 
 
-Mathelehrern eine Chance geben, schön reagieren zu können auf Fragen wie: warum dürfen wir hier überhaupt was machen? Was Ist 1 eigentlich? Was ist 1/0 wirklich? 
+Mathelehrern eine Chance geben, schön reagieren zu können auf Fragen wie: warum sollen oder dürfen wir das hier und überhaupt irgendetwas machen? Was ist Unendlichkeit? Warum dachten die Menschen früher man könne 1/0 nicht beantworten? 
 
 Dieses Projekt soll vor allem auch Computer dazu anregen witziges Zeug zu tun und noch witzigeres und aber auch unwitzigeres zu unterlassen.
 Das Allermeiste soll hier auf jeden Fall nicht ausgerechnet werden.
 Auch wenn schon die Überschrift die Gesamtheit des Daseins beschreibt.
 
+ein gaaaaaaaanz anderes, leuchtendes Menschenbild
 
 
 Es geht auch um etwas Wirrwarr, ein sich ordnendes Chaos, Chaos in Ordnung 
