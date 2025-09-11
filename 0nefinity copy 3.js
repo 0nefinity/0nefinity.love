@@ -222,10 +222,6 @@ canvas {
         <div class="info-icon">i</div>
         <div class="info-text">Diese Muster, die das Teil augenscheinlich formt, resultieren nur aus der Bewegung. Zu jedem einzelnen Zeitpunkt ist das ursprüngliche Objekt nur genau einmal in seiner ursprünglichen Form (lediglich anders gedreht) sichtbar. Ein Foto vermag das Muster deshalb nicht einzufangen und wird immer nur das ursprüngliche Objekt in einer Ruheposition zeigen.</div>
       </div>
-	      <label>Frames: <input type="number" id="gifFrameCount" value="3" min="0" step="1"></label>
-
-	      <label>∞: <input type="checkbox" id="gifInfinite"></label>
-
       <button id="createGifButton">GIF erstellen</button>
     `;
     document.body.insertBefore(controls, document.body.firstChild);
@@ -301,11 +297,6 @@ canvas {
         mediaElement.loop = true;
         mediaElement.muted = true;
         mediaElement.playbackRate = 1.0;
-        mediaElement.setAttribute('playsinline', '');
-        mediaElement.preload = 'auto';
-        mediaElement.addEventListener('loadeddata', () => { try { mediaElement.play(); } catch(e) {} });
-        // Merke die Blob-URL für späteres Aufräumen
-        photo.dataset.objectUrl = mediaUrl;
       } else {
         mediaElement = document.createElement('img');
         mediaElement.src = mediaUrl;
@@ -326,13 +317,6 @@ canvas {
       closeBtn.innerHTML = '×';
       closeBtn.title = 'Entfernen';
       closeBtn.addEventListener('click', () => {
-        const vid = photo.querySelector('video');
-        if (vid) { try { vid.pause(); } catch(e) {} }
-        const url = photo.dataset.objectUrl;
-        if (url) {
-          try { URL.revokeObjectURL(url); } catch (e) {}
-          delete photo.dataset.objectUrl;
-        }
         document.body.removeChild(photo);
         if (selectedPhoto === photo) {
           selectedPhoto = null;
@@ -568,103 +552,93 @@ canvas {
     });
 
     // GIF-Erstellungsfunktion
-    // GIF-/Video-Erstellung mit EXAKTER Frame-Anzahl (0, 1, ∞ unterstützt)
-    document.getElementById('createGifButton').addEventListener('click', async (ev) => {
-      const btn = ev.currentTarget;
-      const framesInput = document.getElementById('gifFrameCount');
-      const raw = framesInput && String(framesInput.value).trim();
-      const infinite = document.getElementById('gifInfinite')?.checked || raw === '∞' || raw.toLowerCase() === 'infinity';
-      let frameCount = infinite ? Infinity : Math.max(0, parseInt(raw, 10) || 0);
+    document.getElementById('createGifButton').addEventListener('click', async () => {
+      // Anzahl der Frames für eine Sekunde GIF
+      const frameCount = 30; // 30 FPS
+      const frames = [];
+      const frameDelay = 1000 / frameCount;
 
-      const width = canvas.width;
-      const height = canvas.height;
+      // Aktuelle Rotationsgeschwindigkeit und Winkel speichern
+      const originalSpeed = rotationSpeed;
+      const originalAngle = angle;
 
-      // 0 Frames: unsichtbares, verschiebbares Objekt erzeugen
-      if (frameCount === 0) {
-        const phCanvas = document.createElement('canvas');
-        phCanvas.width = width;
-        phCanvas.height = height;
-        const placeholderUrl = phCanvas.toDataURL('image/png');
-        createEditablePhoto(placeholderUrl, width, height, false);
-        return;
+      // Temporärer Canvas für die Frames
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // Frames erstellen
+      for (let i = 0; i < frameCount; i++) {
+        // Winkel für diesen Frame berechnen
+        const frameAngle = originalAngle + (i * originalSpeed / frameCount);
+
+        tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+        // Spezieller Draw-Aufruf mit festem Winkel für jeden Frame
+        drawFrameWithAngle(tempCtx, tempCanvas, frameAngle, true);
+
+        // Bild als Blob speichern
+        const blob = await new Promise(resolve => {
+          tempCanvas.toBlob(resolve, 'image/png');
+        });
+
+        frames.push(blob);
       }
 
-      if (typeof MediaRecorder === 'undefined') {
-        alert('MediaRecorder wird von diesem Browser nicht unterstützt.');
-        return;
-      }
+      // Wieder originalen Winkel setzen
+      angle = originalAngle;
 
-      // Aufnahme direkt vom sichtbaren Canvas (exaktes Live-Bild)
-      const stream = canvas.captureStream(); // ohne Vorgabe: Frames immer wenn Canvas aktualisiert wird
+      // Frames zu einem Video zusammenfügen
+      createVideoFromFrames(frames, frameDelay).then(videoBlob => {
+        const videoUrl = URL.createObjectURL(videoBlob);
 
+        // Größe des GIFs ermitteln (basierend auf dem Canvas)
+        const width = canvas.width;
+        const height = canvas.height;
 
-      // MIME-Type wählen mit Fallback
-      let mimeType = 'video/webm;codecs=vp9';
-      if (!MediaRecorder.isTypeSupported || !MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm;codecs=vp8';
-        if (!MediaRecorder.isTypeSupported || !MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
-        }
-      }
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks = [];
-      recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-
-      let resolveStopped;
-      const stopped = new Promise((resolve) => { resolveStopped = resolve; });
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        resolveStopped(blob);
-      };
-
-      // Button toggelt Aufnahme bei ∞
-      let stopRequested = false;
-      function handleToggle() {
-        stopRequested = true;
-        btn.textContent = 'GIF erstellen';
-        btn.removeEventListener('click', handleToggle);
-      }
-
-      if (frameCount === Infinity) {
-        btn.textContent = 'Stop';
-        btn.addEventListener('click', handleToggle);
-      }
-
-	      // Aufnahme-Kontext registrieren, damit animate() exakte Frame-Zählung hat
-	      currentRecording = {
-	        recorder,
-	        infinite: frameCount === Infinity,
-	        targetFrameCount: frameCount === Infinity ? Number.POSITIVE_INFINITY : frameCount,
-	        framesCaptured: 0,
-	        stopRequested: false,
-	        cleanup: () => { currentRecording = null; }
-	      };
-
-
-      // Start mit kleinem timeslice generiert regelmäßige Blobs
-      recorder.start(100);
-
-      // rAF-Schleife nur für den ∞-Stop-Button
-      function step() {
-        if (stopRequested) {
-          try { recorder.stop(); } catch(e) {}
-          return;
-        }
-        requestAnimationFrame(step);
-      }
-      if (frameCount === Infinity) requestAnimationFrame(step);
-
-      const videoBlob = await stopped;
-
-      // Button zurücksetzen (falls ∞)
-      btn.textContent = 'GIF erstellen';
-      btn.removeEventListener('click', handleToggle);
-
-      const videoUrl = URL.createObjectURL(videoBlob);
-      createEditablePhoto(videoUrl, width, height, true);
+        // GIF als editierbares Element hinzufügen
+        createEditablePhoto(videoUrl, width, height, true);
+      });
     });
 
+    // Frames zu einem Video zusammenfügen
+    async function createVideoFromFrames(frames, frameDelay) {
+      // MediaRecorder verwenden, um ein Video zu erstellen
+      const stream = canvas.captureStream();
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+      const chunks = [];
+      recorder.ondataavailable = e => chunks.push(e.data);
+
+      const recordingPromise = new Promise(resolve => {
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'video/webm' });
+          resolve(blob);
+        };
+      });
+
+      recorder.start();
+
+      // Frames nacheinander zeichnen
+      const ctx = canvas.getContext('2d');
+      for (const frame of frames) {
+        const img = new Image();
+        img.src = URL.createObjectURL(frame);
+        await new Promise(resolve => {
+          img.onload = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(img.src);
+            resolve();
+          };
+        });
+        await new Promise(resolve => setTimeout(resolve, frameDelay));
+      }
+
+      recorder.stop();
+      return recordingPromise;
+    }
 
     // Funktion zum Zeichnen eines einzelnen Frames mit einem bestimmten Winkel
     function drawFrameWithAngle(context, targetCanvas, frameAngle, forExport = false) {
@@ -832,8 +806,7 @@ canvas {
       // Hauptsequenz - läuft nach der Startphase in Schleife
       SPEED_STEPS: [
         { increment: 120, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 240, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 180, rampDuration: 1.0, holdDuration: 2.5 },
+        { increment: 60, rampDuration: 1.0, holdDuration: 2.5 },
         { increment: 180, rampDuration: 1.0, holdDuration: 2.5 }
       ]
     };
@@ -911,10 +884,6 @@ canvas {
     let isInStartPhase = true;
     let stepIndex = 0;
     let currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
-
-	    // Aufnahme-Steuerung (global innerhalb createGraphic)
-	    let currentRecording = null; // { recorder, track, infinite, targetFrameCount, framesCaptured, stopRequested, cleanup }
-
     let autoSpeedBase = manualSpeed;
     let autoSpeedTarget = autoSpeedBase + currentStep.increment;
     let autoSpeedTimer = 0;
@@ -988,17 +957,6 @@ canvas {
           } else if (autoSpeedTimer < cycleDuration) {
             // Hold Phase - konstante Geschwindigkeit
             currentCycleSpeed = autoSpeedTarget;
-
-	      // Wenn Aufnahme läuft: Frame zählen/triggern
-	      if (currentRecording && !currentRecording.stopRequested) {
-	        currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-	        if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-	          try { currentRecording.recorder.stop(); } catch(e) {}
-	          if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch(e) {} }
-	          currentRecording.stopRequested = true;
-	        }
-	      }
-
           } else {
             // Zyklus abgeschlossen - nächsten Step starten
             autoSpeedTimer -= cycleDuration;
@@ -1023,17 +981,6 @@ canvas {
 
       // Zeichne das Dreieck auf den Hauptcanvas
       drawTriangleOnCanvas(ctx, canvas);
-
-	      // Aufnahme-Frame zählen nach dem Zeichnen
-	      if (currentRecording && !currentRecording.stopRequested) {
-	        currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-	        if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-	          try { currentRecording.recorder.stop(); } catch(e) {}
-	          if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch(e) {} }
-	          currentRecording.stopRequested = true;
-	        }
-	      }
-
 
       speedIndicator.textContent = 'Speed: ' + Math.round(rotationSpeed) + '°/Frame';
       requestAnimationFrame(animate);

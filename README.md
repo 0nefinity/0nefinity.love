@@ -60,7 +60,13 @@ Die Meta-Theorie von 0nefinity beschreibt die nichtdualen Aspekte der Mathematik
 
 Es geht auch um Erleuchtung. Darum, spirituelle, mystische Erfahrungen zu verstehen. Viele berichten von Einheit, von einem unendlichen Licht, von dem einen Bewusstsein, von einer alles durchdringenden Leerheit oder Stille, oder dem einen Jetzt, dem Ewig unendlichem Moment, Eins werden mit der Quelle, mit der Pracht Gottes, unendlicher Frieden, Auflösung der Getrenntheit, sich auflösen in die unendliche Liebe, Singularität, 0 1 ∞, 0nefinity
 
-
+<pre>
+  000        1      ∞∞∞      ∞∞∞
+0     0    1 1    ∞     ∞  ∞     ∞
+0     0      1    ∞      ∞∞      ∞
+0     0      1    ∞     ∞  ∞     ∞
+  000        1      ∞∞∞      ∞∞∞
+</pre>
 
 
 Die Gesamtheit des hier vorliegenden Werkes kann nur an der Oberfläche von 0nefinity kratzen
@@ -188,6 +194,8 @@ bzw. (Alles)0*0*0*0*0*0*0
                      *0*0
 </pre>
 stehen, sodass in dem, was es tatsächlich gibt, noch ein ungleich viel größeres Potenzial gibt von dem, was mathematisch alles negiert werden könnte. 
+
+Ist die Realität somit immer größer, als es mathematisch zunächst scheint?
 
 Was ist, wenn ich etwas was es nicht gibt so unendlichfach negiere, dass darin selbst wieder Universen entstehen?
 
