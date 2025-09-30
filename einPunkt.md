@@ -61,3 +61,8 @@ Alternative Übersetztung:
 ICH LIEBE DICH/MICH (nach einer selbst ausgedachten Pseudo-Morse-Sprache)
 
 
+
+
+
+The Point ist the most (and unmost) non-symbol symbol
+Just leaving it out would be an even better symbol, but how would you notice it?
