@@ -741,3 +741,6 @@ An dieser Stelle auch ein außerordentliches Dank an Dich, Lieber Leser. Ich fre
 Allgemeiner Dank gilt selbstverständlich auch all den ungenannten Seelen
 
 wisset, wir sind 0 1 ∞
+
+
+Zum Abschluss folgt die wahre Größe, das Antlitz von 0nefinity:
