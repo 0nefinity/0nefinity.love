@@ -826,8 +826,10 @@ canvas {
     const AUTO_SPEED_CONFIG = {
       // Startphase - läuft einmal am Anfang
       START_PHASE: {
-        speed: 0.0,
-        duration: 2.5
+        startSpeed: 30,
+        rampTo: 0,
+        rampDuration: 1,
+        holdDuration: 2
       },
       // Hauptsequenz - läuft nach der Startphase in Schleife
       SPEED_STEPS: [
@@ -875,11 +877,20 @@ canvas {
       } else {
         let currentCycleSpeed;
         if (isInStartPhase) {
-          currentCycleSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed;
+          const sp = AUTO_SPEED_CONFIG.START_PHASE;
+          if (autoSpeedTimer < sp.rampDuration) {
+            const t = autoSpeedTimer / sp.rampDuration;
+            currentCycleSpeed = lerp(sp.startSpeed, sp.rampTo, (1 - Math.cos(Math.PI * t)) / 2);
+          } else {
+            // Hold-Phase der Startphase
+            currentCycleSpeed = sp.rampTo;
+          }
         } else if (autoSpeedTimer < currentStep.rampDuration) {
-          // Komplett exponentieller Ramp-up
-          currentCycleSpeed = exponentialRamp(autoSpeedBase, autoSpeedTarget, autoSpeedTimer / currentStep.rampDuration);
+          // Ramp der Hauptsequenz (cosine-eased)
+          const t = autoSpeedTimer / currentStep.rampDuration;
+          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, (1 - Math.cos(Math.PI * t)) / 2);
         } else {
+          // Hold der Hauptsequenz
           currentCycleSpeed = autoSpeedTarget;
         }
         autoOffset = manualSpeed - currentCycleSpeed;
@@ -900,9 +911,9 @@ canvas {
         autoSpeedBase = manualSpeed;
         autoSpeedTarget = autoSpeedBase + currentStep.increment;
         autoSpeedTimer = 0;
-        cycleDuration = AUTO_SPEED_CONFIG.START_PHASE.duration;
+        cycleDuration = AUTO_SPEED_CONFIG.START_PHASE.rampDuration + AUTO_SPEED_CONFIG.START_PHASE.holdDuration;
 
-        rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed + autoOffset;
+        rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.startSpeed + autoOffset;
         document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
       }
     });
@@ -918,8 +929,9 @@ canvas {
     let autoSpeedBase = manualSpeed;
     let autoSpeedTarget = autoSpeedBase + currentStep.increment;
     let autoSpeedTimer = 0;
-    let cycleDuration = isInStartPhase ? AUTO_SPEED_CONFIG.START_PHASE.duration :
-                       (currentStep.rampDuration + currentStep.holdDuration);
+    let cycleDuration = isInStartPhase
+      ? (AUTO_SPEED_CONFIG.START_PHASE.rampDuration + AUTO_SPEED_CONFIG.START_PHASE.holdDuration)
+      : (currentStep.rampDuration + currentStep.holdDuration);
 
 
 
@@ -968,16 +980,21 @@ canvas {
         let currentCycleSpeed;
 
         if (isInStartPhase) {
-          // Startphase - konstante niedrige Geschwindigkeit
-          currentCycleSpeed = AUTO_SPEED_CONFIG.START_PHASE.speed;
-
-          if (autoSpeedTimer >= AUTO_SPEED_CONFIG.START_PHASE.duration) {
+          // Startphase: Ramp-down von startSpeed auf 0, dann Hold
+          const sp = AUTO_SPEED_CONFIG.START_PHASE;
+          if (autoSpeedTimer < sp.rampDuration) {
+            const t = autoSpeedTimer / sp.rampDuration;
+            currentCycleSpeed = lerp(sp.startSpeed, sp.rampTo, (1 - Math.cos(Math.PI * t)) / 2);
+          } else if (autoSpeedTimer < sp.rampDuration + sp.holdDuration) {
+            currentCycleSpeed = sp.rampTo;
+          } else {
             // Startphase beendet - zur Hauptsequenz wechseln
             isInStartPhase = false;
             autoSpeedTimer = 0;
-            autoSpeedBase = currentCycleSpeed;
+            autoSpeedBase = sp.rampTo;
             autoSpeedTarget = autoSpeedBase + currentStep.increment;
             cycleDuration = currentStep.rampDuration + currentStep.holdDuration;
+            currentCycleSpeed = autoSpeedBase;
           }
         } else {
           // Hauptsequenz
