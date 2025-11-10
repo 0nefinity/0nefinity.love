@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+  <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+  <title>Realize Infinity</title>
+
+  <style>
+    /* CSS Custom Properties für echte Viewport-Höhe */
+    :root {
+      --vh: 1vh;
+      --real-vh: 1vh;
+    }
+
+    /* rlz8 - Realize Infinity Fullscreen Container */
+    .rlz8 {
+      /* Fullscreen - nutzt echte Viewport-Höhe */
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      height: calc(var(--real-vh, 1vh) * 100);
+      margin: 0;
+      /* Padding: Mehr oben/unten wegen Menu/Back-Button (4.375rem = ca. 70px) */
+      padding: max(calc(var(--real-vh, 1vh) * 8), 5rem) 4vw max(calc(var(--real-vh, 1vh) * 5), 3rem) 4vw;
+
+      /* Flexbox Zentrierung */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: calc(var(--real-vh, 1vh) * 1.2);
+
+      /* Styling */
+      background: black;
+      color: white;
+      font-family: Verdana, Geneva, Tahoma, sans-serif;
+      font-size: calc(var(--real-vh, 1vh) * 2.5);
+      line-height: 1.4;
+      text-align: center;
+
+      /* Text-Formatierung wie O18 - Umbrüche erkennen */
+      white-space: pre-line;
+
+      /* Interaktion */
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+
+      /* Kein Scroll aber sichtbar für overflow */
+      overflow-y: auto;
+      overflow-x: hidden;
+
+      /* Touch */
+      touch-action: manipulation;
+    }
+
+    /* Responsive Anpassungen für sehr kleine Bildschirme */
+    @media (max-height: 600px) {
+      .rlz8 {
+        font-size: calc(var(--real-vh, 1vh) * 2);
+        padding: max(calc(var(--real-vh, 1vh) * 10), 4rem) 4vw max(calc(var(--real-vh, 1vh) * 6), 2rem) 4vw;
+        gap: calc(var(--real-vh, 1vh) * 0.8);
+      }
+    }
+
+    /* Responsive Anpassungen für sehr große Bildschirme */
+    @media (min-height: 900px) {
+      .rlz8 {
+        font-size: calc(var(--real-vh, 1vh) * 2.2);
+        padding: max(calc(var(--real-vh, 1vh) * 7), 5rem) 4vw max(calc(var(--real-vh, 1vh) * 4), 3rem) 4vw;
+      }
+    }
+
+    /* Verhindert Umbrüche in <u> Elementen wie bei O18 */
+    .rlz8 u {
+      white-space: nowrap !important;
+      display: inline-block;
+    }
+
+    #counter {
+      opacity: 0;
+      transition: opacity 0.5s;
+
+      /* EINE ZEILE - kein Umbruch! */
+      white-space: nowrap !important;
+
+      /* Keine Größenbeschränkung */
+      max-width: none !important;
+      width: auto !important;
+
+      /* Overflow für Detection */
+      overflow: visible;
+
+      display: block;
+      text-align: center;
+      box-sizing: border-box;
+      font-size: calc(var(--real-vh, 1vh) * 2);
+      flex-shrink: 0;
+    }
+
+    #counter.visible {
+      opacity: 1;
+    }
+
+    #antiCheatMessage {
+      opacity: 0;
+      pointer-events: none;
+      user-select: none;
+      transition: opacity 0.5s;
+      margin-top: calc(var(--real-vh, 1vh) * 2);
+      flex-shrink: 0;
+      /* Sicherstellen dass es sichtbar ist */
+      position: relative;
+      z-index: 10;
+    }
+
+    #antiCheatMessage.visible {
+      opacity: 1;
+      pointer-events: auto;
+      user-select: text;
+    }
+
+  </style>
+</head>
+<body>
+<div class="rlz8">you are infinity, realize it
+
+what you see is infinite
+what you are is infinite
+what you do is infinite
+
+you are infinity
+
+realize it
+
+pls
+
+
+now
+
+If you don't get it, 
+click anywhere on the infinite around
+to reaLIZE IT <u>NOW!</u>!
+
+<div id="counter"><span id="count">0</span></div>
+
+<div id="antiCheatMessage">you can't cheat your way up, you have to tap</div>
+
+
+
+</div>
+
+  <script>
+    // ===== Echte Viewport-Höhe berechnen (für mobile Browser) =====
+    function setRealVH() {
+      // Berechne die echte Viewport-Höhe (ohne Browser-UI)
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--real-vh', `${vh}px`);
+    }
+
+    // Initial setzen
+    setRealVH();
+
+    // Bei Resize und Orientation Change aktualisieren
+    window.addEventListener('resize', setRealVH);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(setRealVH, 100); // Kurze Verzögerung für Browser-UI Animation
+    });
+
+    // Für iOS: Auch bei Scroll aktualisieren (wenn Browser-UI ein/ausblendet)
+    let lastHeight = window.innerHeight;
+    window.addEventListener('scroll', () => {
+      if (window.innerHeight !== lastHeight) {
+        lastHeight = window.innerHeight;
+        setRealVH();
+      }
+    });
+
+    // ===== Container Setup =====
+    const container = document.querySelector('.rlz8');
+
+    // ===== Verhindert Double-Tap-Zoom =====
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        e.preventDefault(); // Verhindert Double-Tap-Zoom
+      }
+      lastTouchEnd = now;
+    }, { passive: false }); // passive: false wichtig für preventDefault!
+
+    // Verhindert Pinch-Zoom (falls noch nötig)
+    document.addEventListener('gesturestart', (e) => {
+      e.preventDefault();
+    });
+
+    document.addEventListener('gesturechange', (e) => {
+      e.preventDefault();
+    });
+
+    document.addEventListener('gestureend', (e) => {
+      e.preventDefault();
+    });
+
+    // ===== Counter Logic =====
+    let count = 0n;
+    const clickArea = container; // Ganzer Bildschirm = rlz8 Container
+    const counter = document.getElementById('counter');
+    const countElement = document.getElementById('count');
+    const antiCheatMessage = document.getElementById('antiCheatMessage');
+
+    let isHolding = false;
+    let holdInterval = null;
+    let holdTimeout = null;
+    let holdDuration = 0;
+    let incrementAmount = 1n;
+    let baseCount = 0n; // Gespeicherter Wert beim Start des Haltens
+
+    // 3-Phasen-System
+    let phase = 1;
+    let phaseStartTime = 0;
+    let currentTickRate = 50;
+    let lastTickTime = 0;
+    let animationFrameId = null;
+    let originalCount = 0n; // Für Phase 3 Flackern
+
+    // Console Message Tracking
+    let consoleMessages = {
+      start: false,
+      exponential: false,
+      faster: false,
+      overflow: false,
+      whatHappens: false,
+      reallyFaster: false,
+      randomSprinkle: false,
+      infinity: false,
+      nonsense: false
+    };
+
+    // ===== Overflow Detection - Misst ECHTE Textbreite =====
+    function isNumberOverflowing() {
+      // Erstelle temporäres Element zum Messen der tatsächlichen Textbreite
+      const temp = document.createElement('span');
+      const computedStyle = window.getComputedStyle(countElement);
+
+      temp.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        white-space: nowrap;
+        font-size: ${computedStyle.fontSize};
+        font-family: ${computedStyle.fontFamily};
+        font-weight: ${computedStyle.fontWeight};
+      `;
+      temp.textContent = count.toString();
+      document.body.appendChild(temp);
+
+      const textWidth = temp.offsetWidth;
+      document.body.removeChild(temp);
+
+      // 111% Schwellenwert
+      const isOverflowing = textWidth > window.innerWidth * 1.11;
+
+      return isOverflowing;
+    }
+
+    // ===== Phase 2: Tick-Rate Berechnung =====
+    function calculateTickRate(timeInPhase2) {
+      // Exponentiell: 50ms → 5ms über ~2 Sekunden
+      const progress = Math.min(1, timeInPhase2 / 2000); // 0 bis 1
+      const rate = 50 * Math.pow(0.1, progress); // 50 → 5
+      return Math.max(5, rate);
+    }
+
+    // ===== Phase 2: Increment Berechnung - ALLE Ziffern ändern sich =====
+    function calculateIncrementPhase2(currentCount, timeInPhase) {
+      // Starte mit 1% der aktuellen Zahl, werde langsamer
+      // Aber ALLE Ziffern ändern sich weiterhin!
+      const slowdownFactor = Math.max(0.1, 1 - (timeInPhase / 5000)); // Über 5s von 100% auf 10%
+      const baseIncrement = currentCount / BigInt(100); // 1% der Zahl
+      const adjustedIncrement = baseIncrement * BigInt(Math.floor(slowdownFactor * 100)) / BigInt(100);
+
+      return adjustedIncrement > 1n ? adjustedIncrement : 1n;
+    }
+
+    // ===== Phase 2: Flacker-Intensität - Exponentiell wachsend =====
+    function calculateFlickerIntensity(timeInPhase2) {
+      // Startet bei 0%, wächst exponentiell
+      // Nach 1s: ~5%
+      // Nach 2s: ~18%
+      // Nach 3s: ~39%
+      // Nach 4s: ~63%
+      // Nach 5s: ~82%
+      const intensity = 1 - Math.exp(-timeInPhase2 / 2000);
+      return Math.min(intensity, 1.0);
+    }
+
+    // ===== Phase 2: Angleichungs-Faktor - Wie synchron ist das Flackern? =====
+    function calculateSyncFactor(timeInPhase2) {
+      // Startet bei 0 (komplett random), geht zu 1 (komplett synchron)
+      // Nach 3s: ~39%
+      // Nach 4s: ~63%
+      // Nach 5s: ~82%
+      // Nach 6s: ~95%
+      const sync = 1 - Math.exp(-timeInPhase2 / 2500);
+      return Math.min(sync, 1.0);
+    }
+
+    // ===== Phase 2/3: 0/1/∞ Flackern - Graduell mit Synchronisation =====
+    let currentSyncChar = '0'; // Aktuelles synchronisiertes Zeichen
+    let lastSyncChange = 0;
+
+    function generateInfinityFlicker(originalNumber, intensity, syncFactor, timestamp) {
+      if (intensity <= 0) return originalNumber.toString();
+
+      const digits = originalNumber.toString().split('');
+      const flickerChars = ['0', '1', '∞'];
+
+      // Wechsle synchronisiertes Zeichen alle paar Frames
+      // Je höher syncFactor, desto schneller der Wechsel
+      const changeInterval = Math.max(16, 200 * (1 - syncFactor)); // 200ms → 16ms
+      if (timestamp - lastSyncChange > changeInterval) {
+        const currentIndex = flickerChars.indexOf(currentSyncChar);
+        currentSyncChar = flickerChars[(currentIndex + 1) % 3];
+        lastSyncChange = timestamp;
+      }
+
+      return digits.map(digit => {
+        if (Math.random() < intensity) {
+          // Mische zwischen random und synchronisiert
+          if (Math.random() < syncFactor) {
+            // Synchronisiert: Alle zeigen das gleiche Zeichen
+            return currentSyncChar;
+          } else {
+            // Random: Zufälliges Zeichen
+            return flickerChars[Math.floor(Math.random() * 3)];
+          }
+        }
+        return digit;
+      }).join('');
+    }
+
+    // ===== Main Animation Loop (requestAnimationFrame) =====
+    function tick(timestamp) {
+      if (!isHolding) return;
+
+      const elapsed = timestamp - lastTickTime;
+
+      // === PHASE DETECTION ===
+      if (phase === 1 && isNumberOverflowing()) {
+        phase = 2;
+        phaseStartTime = holdDuration;
+        originalCount = count; // Speichere für Flackern
+
+        if (!consoleMessages.overflow) {
+          console.log('to big for my device, will the developer muck around from here?');
+          consoleMessages.overflow = true;
+        }
+      }
+
+      // === PHASE 1: Exponential Growth ===
+      if (phase === 1) {
+        if (elapsed >= 50) {
+          holdDuration += elapsed;
+
+          const innerExp = Math.pow(3, holdDuration / 800);
+          const smoothValue = Math.pow(2, innerExp);
+
+          if (isFinite(smoothValue)) {
+            incrementAmount = BigInt(Math.floor(smoothValue));
+            count = baseCount + incrementAmount;
+            countElement.textContent = count.toString();
+
+            // Console Messages für Phase 1
+            if (!consoleMessages.exponential && holdDuration > 500) {
+              console.log('hui, this grows exponentially');
+              consoleMessages.exponential = true;
+            }
+            if (!consoleMessages.faster && holdDuration > 1500) {
+              console.log('oh, much faster than this');
+              consoleMessages.faster = true;
+            }
+          }
+
+          lastTickTime = timestamp;
+        }
+      }
+
+      // === PHASE 2: Acceleration Illusion + Gradual Flicker ===
+      else if (phase === 2) {
+        const timeInPhase = holdDuration - phaseStartTime;
+        currentTickRate = calculateTickRate(timeInPhase);
+
+        if (elapsed >= currentTickRate) {
+          holdDuration += elapsed;
+
+          // Increment: Alle Ziffern ändern sich, aber langsamer werdend
+          incrementAmount = calculateIncrementPhase2(count, timeInPhase);
+          count = count + incrementAmount;
+
+          // Flacker-Intensität: Exponentiell wachsend
+          const flickerIntensity = calculateFlickerIntensity(timeInPhase);
+
+          // Synchronisations-Faktor: Wie synchron ist das Flackern?
+          const syncFactor = calculateSyncFactor(timeInPhase);
+
+          // Zeige Zahl mit graduell wachsendem & synchronisierendem Flackern
+          const displayText = generateInfinityFlicker(count, flickerIntensity, syncFactor, timestamp);
+          countElement.textContent = displayText;
+
+         
+          if (!consoleMessages.reallyFaster && timeInPhase > 2500) {
+            console.log('Does it really growing faster or only seeming so?');
+            consoleMessages.reallyFaster = true;
+          }
+          if (!consoleMessages.randomSprinkle && timeInPhase > 4500) {
+            console.log('Really? You randomly sprinkle 0 1 8 in here?');
+            consoleMessages.randomSprinkle = true;
+          }
+          if (!consoleMessages.infinity && syncFactor > 0.96) {
+            console.log('--- YOU REACHED (SIMULATED) INFINITY, FROM HERE IT\'S ALL NONSENSE ---');
+            consoleMessages.infinity = true;
+          }
+          if (!consoleMessages.nonsense && syncFactor > 0.98) {
+            console.log('yeah, exactly, nonsense only from here');
+            consoleMessages.nonsense = true;
+          }
+
+          lastTickTime = timestamp;
+        }
+      }
+
+      if (count >= 1n) {
+        counter.classList.add('visible');
+      }
+
+      animationFrameId = requestAnimationFrame(tick);
+    }
+
+    function startHolding() {
+      if (isHolding) return;
+
+      // Speichere den aktuellen Wert beim Start
+      baseCount = count;
+
+      // Reset Phase-System
+      phase = 1;
+      phaseStartTime = 0;
+      currentTickRate = 50;
+
+      // Reset Console Messages für neues Halten
+      consoleMessages = {
+        start: false,
+        exponential: false,
+        faster: false,
+        overflow: false,
+        whatHappens: false,
+        reallyFaster: false,
+        randomSprinkle: false,
+        infinity: false,
+        nonsense: false
+      };
+
+      // Setze Timeout: Wenn nach 150ms noch gehalten wird, starte Animation
+      holdTimeout = setTimeout(() => {
+        isHolding = true;
+        holdDuration = 0;
+        incrementAmount = 1n;
+        lastTickTime = performance.now();
+
+        console.log('can i cheat my way up?');
+        consoleMessages.start = true;
+
+        // Starte requestAnimationFrame Loop
+        animationFrameId = requestAnimationFrame(tick);
+      }, 150); // 150ms Threshold: Klick vs. Halten
+    }
+
+    function stopHolding() {
+      // Wenn Timeout noch läuft → war nur ein kurzer Klick
+      if (holdTimeout && !isHolding) {
+        clearTimeout(holdTimeout);
+        holdTimeout = null;
+        // Kurzer Klick: nur +1
+        count += 1n;
+        countElement.textContent = count.toString();
+        if (count >= 1n) {
+          counter.classList.add('visible');
+        }
+        return;
+      }
+
+      // Cleanup für Halten
+      if (holdTimeout) {
+        clearTimeout(holdTimeout);
+        holdTimeout = null;
+      }
+      if (holdInterval) {
+        clearInterval(holdInterval);
+        holdInterval = null;
+      }
+
+      // Stop requestAnimationFrame
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+
+      // WICHTIG: Beim Loslassen nach dem Halten → zurück zu baseCount + 1
+      if (isHolding) {
+        count = baseCount + 1n;
+        countElement.textContent = count.toString();
+        if (count >= 1n) {
+          counter.classList.add('visible');
+        }
+
+        // Anti-Cheat Message: Zeige beim ersten Mal nach >1 Sek Halten
+        if (holdDuration > 1000 && !antiCheatMessage.classList.contains('visible')) {
+          antiCheatMessage.classList.add('visible');
+        }
+      }
+
+      isHolding = false;
+      holdDuration = 0;
+      incrementAmount = 1n;
+      phase = 1;
+    }
+
+    // Mouse Events - Ganzer Bildschirm
+    clickArea.addEventListener('mousedown', startHolding);
+    clickArea.addEventListener('mouseup', stopHolding);
+    // KEIN mouseleave! → Soll nicht abbrechen beim Verlassen
+
+    // Touch Events - Ganzer Bildschirm
+    clickArea.addEventListener('touchstart', (e) => {
+      e.preventDefault(); // Verhindert Ghost-Clicks
+      startHolding();
+    });
+    clickArea.addEventListener('touchend', stopHolding);
+    clickArea.addEventListener('touchcancel', stopHolding);
+  </script>
+</body>
+</html>
+

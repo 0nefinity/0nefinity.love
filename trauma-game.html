@@ -27,21 +27,7 @@
       height: 100vh;
       overflow: hidden;
     }
-    #traumaCloud {
-      position: absolute;
-      width: 20vmin;
-      height: 20vmin;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      border: 2px dashed var(--text-color);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--text-color);
-      pointer-events: none;
-    }
+
     #solutionRing {
       position: absolute;
       width: 30vmin;
@@ -58,12 +44,13 @@
     }
     #hole {
       position: absolute;
-      width: 24vmin;
-      height: 24vmin;
+      width: 26vmin;
+      height: 26vmin;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
       background: var(--bg-color);
+      border: 2px dashed var(--text-color);
       border-radius: 50%;
       pointer-events: none;
     }
@@ -75,6 +62,7 @@
       color: var(--text-color);
       pointer-events: none;
       font-size: 1.2em;
+      z-index: 1;
     }
     #problemCircle {
       position: absolute;
@@ -98,7 +86,6 @@
 </head>
 <body>
   <div id="gameContainer">
-    <div id="traumaCloud">Trauma</div>
     <div id="solutionRing">
       <div id="solutionText">Solution</div>
       <div id="hole"></div>

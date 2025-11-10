@@ -1,0 +1,298 @@
+[
+  {
+    "deepest-structure-of-pure-0nefinity": ""
+  },
+  {
+    "project-structure-of-0nefinity.love": {
+      "0nefinity.love": {
+        "0.1 new_version": {
+          "ich machs jetzt wohl doch im Überordner": null,
+          "index.html": null
+        },
+        "00_Archiv": {
+          "2025-02-18-alte-index-keine-Ahnung-ob-ich-die-nochmal-brauche.html": null
+        },
+        "0nefinity": {},
+        "0rdnerstrukturkonzept": {
+          "-0": {},
+          "-1": {},
+          "-10": {},
+          "-11": {},
+          "0": {},
+          "0.01": {},
+          "0.1": {},
+          "00": {},
+          "000": {},
+          "00001": {},
+          "0001": {},
+          "001": {},
+          "01": {},
+          "1": {},
+          "10": {},
+          "100": {},
+          "1000": {},
+          "10000": {},
+          "1001": {},
+          "101": {},
+          "1010": {},
+          "1011": {},
+          "11": {},
+          "110": {},
+          "1100": {},
+          "1101": {},
+          "111": {},
+          "1110": {},
+          "1111": {},
+          "11111": {},
+          "111111": {},
+          "1111111": {},
+          "11111111": {},
+          "man beachte die Unterschiedlichkeiten und die Gleichheiten in der Reihenfolge VS Code vs Windows name sort": null
+        },
+        "assets": {
+          "018 is heart": {},
+          "0nefinity-symbol": {
+            "saves": {
+              "dot1.json": null
+            }
+          },
+          "die0": {
+            "0Potential.png": null,
+            "die0diemalwar.png": null,
+            "hyper0.png": null,
+            "sorichtig0.jpg": null
+          },
+          "memes": {
+            "0-or-3.JPG": null,
+            "1SN00PDOGG.jpg": null
+          },
+          ".gitkeep": null,
+          "bibel.txt": null,
+          "chicken-path.svg": null,
+          "circle.svg": null,
+          "coordinate-system.svg": null,
+          "transparentcss.html": null,
+          "zero_one_infinity.svg": null
+        },
+        "bibelaufdenpunkt": {
+          "bibel.txt": null
+        },
+        "biggercontext": {
+          "test.html": null,
+          "test3.html": null
+        },
+        "errorpages": {
+          "401finity.htm": null,
+          "402finity.hmt": null,
+          "403finity.hmt": null,
+          "404finity.hmt": null,
+          "err.py": null
+        },
+        "fun-with-circles": {
+          "cssKreise.html": null,
+          "kreise-auf-einem-canvas.html": null,
+          "kreise-p5.html": null,
+          "shader-kreise.html": null,
+          "Weiße Kreise.html": null
+        },
+        "funnythings": {
+          "image.png": null
+        },
+        "incidents": {
+          "githubprofilpicturecrisis": {
+            "githubimthemenu.png": null,
+            "githubimthesite.png": null,
+            "githubimthetopbar.png": null,
+            "tryintofindgithubidentity.html": null
+          }
+        },
+        "kuriositäten": {
+          "bibeltürmitweg": {
+            "bibel.txt": null,
+            "bibeltürmitweg.html": null
+          },
+          "dinge-die-zu-random-sind-um-sie-im-kuriositäten-ordner-zu-lassen": {},
+          "doppelpunkte in dateinamen": {
+            "gehen wohl doch nicht alle, sonst kriegt Onedrive hier die Krise.png": null,
+            "hä, die beiden einzeln gehen, aber nicht beide zusammen.png": null,
+            "ː": null,
+            "˸": null
+          },
+          "ausversehen_Hakenkreuz.html": null,
+          "bibel.txt": null,
+          "bibleegg.html": null,
+          "einst-rannte-ein-punkt-im-kreis-niceglitch.html": null,
+          "ich-sagte-ihm-die-sollen-im-Dreieck-rotieren-aber-nicht-um-sich-selbst.html": null,
+          "musterpointfont.html": null,
+          "punkt-mir-kreisen.html": null,
+          "trianglesAndCirclesParty.html": null,
+          "zoomfailpercussionvisualizer.html": null,
+          "𝄆 i wanna 𝄆 push PUSH the button Ayy, push PUSH the button Yeah 𝄇 𝄇 ad 0nefinitum ♫": null
+        },
+        "pragmatischer-nichtdualismus": {},
+        "profilbilder": {
+          "favicon": {
+            "chicken": {
+              "apple-touch-icon.png": null,
+              "favicon-96x96.png": null,
+              "favicon.ico": null,
+              "favicon.svg": null,
+              "site.webmanifest": null,
+              "web-app-manifest-192x192.png": null,
+              "web-app-manifest-512x512.png": null
+            },
+            "index": {
+              "apple-touch-icon.png": null,
+              "favicon-96x96.png": null,
+              "favicon.ico": null,
+              "favicon.svg": null,
+              "site.webmanifest": null,
+              "web-app-manifest-192x192.png": null,
+              "web-app-manifest-512x512.png": null
+            },
+            "source": {
+              "favicon-chicken-black.svg": null,
+              "favicon-chicken-chrome.svg": null,
+              "favicon-chicken-nothing.svg": null
+            }
+          },
+          "091114 Whatsapp.png": null,
+          "0d1518 Chrome mobil.png": null,
+          "0f0f0f YouTube Titelbild.pdn": null,
+          "0f0f0f YouTube.png": null,
+          "191919 beautify this folder Anhang.png": null,
+          "191919 beautify this folder.png": null,
+          "282828 YouTube.png": null,
+          "2b2b2b Chrome Browser Tab Geöffnet.svg": null,
+          "2b2b2b-Chrome-Browser-Tab-Geöffnet.svg": null,
+          "3c3c3c-Chrome-Desktop-Tab-tatsächlich-ganz-geöffnet-und-optimiert.svg": null,
+          "3c3c3c-Chrome-Desktop-Tab-tatsächlich-ganz-geöffnet.svg": null,
+          "3c3c3c-Chrome-Desktop-Tab-tatsächlich-geöffnet.svg": null,
+          "3c3c3c-Chrome-Desktop-Tab-tatsächlich-gnaz-geöffnet.svg": null,
+          "512x512 Profilbildgenerator.svg": null,
+          "Chrome Desktop.png": null,
+          "chromestruggle.png": null,
+          "lovemyprofilepicture.png": null,
+          "nothing.svg": null,
+          "profilbildgenerator.pdn": null,
+          "WeißerPunkt.png": null,
+          "WeißerPunkt010409.pdn": null,
+          "WeißerPunkt0D1017.pdn": null,
+          "WeißerPunktvor010409GithubLeiste.png": null,
+          "WeißerPunktvor0D1017GithubSeite.png": null,
+          "whitedoton141b23forGithubMenu.png": null
+        },
+        "Test": {
+          "advanced-styles.css": null,
+          "advanced.html": null,
+          "canvas.js": null,
+          "index.html": null,
+          "README.md": null,
+          "styles.css": null
+        },
+        "the1Version": {
+          "0nefinity": {
+            "HTMLPage1.html": null
+          }
+        },
+        "verlinkte_Dinge": {
+          "0durch0-Gute-Frage.png": null
+        },
+        "018 sind, waren und werden sein": null,
+        "0nefinity copy 2.js": null,
+        "0nefinity copy 3.js": null,
+        "0nefinity copy.js": null,
+        "0nefinity is.html": null,
+        "0nefinity ist das inherente Recht, Dinge zu tun wie 1 + 1 oder andere Unendlichkeiten": null,
+        "0nefinity-geometry.html": null,
+        "0nefinity-symbol-iframe.html": null,
+        "0nefinity.018 - hier steht drei mal das Gleiche": null,
+        "0nefinity.js": null,
+        "0nefinity1.js": null,
+        "1+0.html": null,
+        "5MeO": null,
+        "ACHTUNG 5-MeO-DMT TÖTET.html": null,
+        "adding-circles.html": null,
+        "add∞0.html": null,
+        "andere Unendlichkeiten.md": null,
+        "applied-math.html": null,
+        "bendTheSystem.html": null,
+        "bibel.txt": null,
+        "bibelaufdenpunkt.html": null,
+        "bibelaufdenpunkt2.html": null,
+        "bibelaufdenpunkt3.html": null,
+        "bibelaufdenpunkt4.html": null,
+        "bibletest.html": null,
+        "choose_nothing.html": null,
+        "circlesAndTriangles.html": null,
+        "der Punkt": null,
+        "die-schwarze-seite.html": null,
+        "die0.html": null,
+        "dithering.html": null,
+        "divide-the-light.js": null,
+        "ein-punkt-ist.html": null,
+        "einPunkt.md": null,
+        "einsen.html": null,
+        "einst-rannte-ein-punkt-im-kreis.html": null,
+        "everything except 0 1 ∞ is hallow words": null,
+        "file-list.json": null,
+        "fractalizer.idea": null,
+        "fraktalpage.html": null,
+        "fundamentalstes.html": null,
+        "geometry.html": null,
+        "godel.html": null,
+        "holes.html": null,
+        "ich hab durch null geteilt.md": null,
+        "ideen.md": null,
+        "identities.json": null,
+        "identitätskrise.html": null,
+        "impressum-und-datenschutz.html": null,
+        "index.html": null,
+        "infinity": null,
+        "invent-your-own-mathematical-system.html": null,
+        "irgendwelche Gedanken": null,
+        "kreisausdingen.html": null,
+        "mathciiArt.html": null,
+        "mathematik ist": null,
+        "meta.css": null,
+        "meta.js": null,
+        "millionen_Kreise_aufnehmen.html": null,
+        "moire effect fractal math art generator.html": null,
+        "nichts hier hat exklusivitätsanspruch": null,
+        "nullgeteiltdurchnull.html": null,
+        "numberline.html": null,
+        "offensichtlichkeiten.md": null,
+        "only a fool will do unphilosophical math": null,
+        "pointfont.html": null,
+        "point≡circle≡sphere.html": null,
+        "point≡line": null,
+        "pragmatischer-nichtdualismus.html": null,
+        "py.py": null,
+        "radialfun.html": null,
+        "randomness.js": null,
+        "README.html": null,
+        "README.md": null,
+        "regardless of what youre doing, it is absolute 0nefinity": null,
+        "riemann-leuchtet.html": null,
+        "robots.txt": null,
+        "scutum-fidei.html": null,
+        "structure-of-0nefinity-generator.py": null,
+        "structure-of-0nefinity.json": null,
+        "theoremfraktal.md": null,
+        "trauma-game.html": null,
+        "unendliche-zahlen.md": null,
+        "universe allows everything you can form out of point": null,
+        "usemathtorealizeabsolut0nefinity.html": null,
+        "von-Linien-und-Punkten.html": null,
+        "Was, wenn man im Dezimalsystem mit 0 als 1 startet": null,
+        "whitelines.html": null,
+        "why-coordinatesystem-is-chicken.html": null,
+        "wie sonst geht die Gleichung auf.md": null,
+        "Wortkarousell.html": null,
+        "wusstest du": null,
+        "Zahlensysteme.md": null,
+        "∞8∞-Das-Axiom-der-purzelnden-Unendlichkeit.html": null
+      }
+    }
+  }
+]

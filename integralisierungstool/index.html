@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Integralisierungstool</title>
+    <link rel="stylesheet" href="../meta.css">
+    <style>
+        /* Tool-spezifische Styles */
+        #integralizer-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        #text-input {
+            position: absolute;
+            border: 2px solid white;
+            background: black;
+            color: white;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            text-align: center;
+            padding: 4px;
+            outline: none;
+            display: none;
+            z-index: 100;
+            transform: translate(-50%, -50%);
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .control-panel {
+            position: absolute;
+            top: 80px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            padding: 12px;
+            border-radius: 8px;
+            color: white;
+            font-size: 12px;
+            z-index: 50;
+            max-width: 220px;
+            backdrop-filter: blur(5px);
+            transition: opacity 0.3s ease;
+        }
+
+        .control-panel:hover {
+            opacity: 1;
+        }
+
+        .control-panel button {
+            width: 100%;
+            margin: 5px 0;
+            padding: 8px;
+            font-size: 11px;
+            border-radius: 4px;
+        }
+
+        .control-panel .info {
+            margin: 5px 0;
+            font-size: 10px;
+            opacity: 0.7;
+            line-height: 1.4;
+        }
+
+        .control-panel .info:first-child {
+            font-weight: bold;
+            opacity: 1;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                font-size: 10px;
+                padding: 8px;
+                max-width: 180px;
+            }
+
+            .control-panel button {
+                font-size: 10px;
+                padding: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="_018-canvas">
+        <canvas id="integralizer-canvas"></canvas>
+        <input type="text" id="text-input" />
+        
+        <div class="control-panel">
+            <div class="info">Integralisierungstool</div>
+            <div class="info">Klick auf Kreis/Text zum Bearbeiten</div>
+            <div class="info">Ziehen zum Verschieben</div>
+            <div class="info">➕ = Neuer Kind-Kreis</div>
+            <div class="info">Tt = Neuer Text</div>
+            <div class="info">❌ = Löschen</div>
+            <div class="info">○ = Kreis-Größe ändern</div>
+            <div class="info">+/- = Text-Größe ändern</div>
+            <button id="reset-btn">🔄 Reset</button>
+            <button id="copy-url-btn">🔗 URL kopieren</button>
+        </div>
+    </div>
+
+    <script src="../meta.js"></script>
+    <script src="integralizer.js"></script>
+</body>
+</html>
+

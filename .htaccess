@@ -1,0 +1,50 @@
+RewriteEngine On
+
+# HTTPS erzwingen
+RewriteCond %{HTTPS} off
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# non-www -> www
+RewriteCond %{HTTP_HOST} ^0nefinity\.love$ [NC]
+RewriteRule ^ https://www.0nefinity.love%{REQUEST_URI} [R=301,L]
+
+# Spezifische URL-Weiterleitungen (case-sensitive fixes)
+RewriteCond %{REQUEST_URI} !^/buyPi$
+RewriteRule ^buypi$ /buyPi [R=301,L,NC]
+
+# Textdateien durch PHP-Viewer anzeigen (.punkt, .dot, und andere Text-Extensions)
+# Nur wenn die Datei tatsächlich existiert
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} \.(punkt|dot|txt)$ [NC]
+RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
+
+# Clean URLs: Redirect .html und .md Endungen zu URLs ohne Endung (301 permanent)
+RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.(html|md)\ HTTP
+RewriteRule ^(.+)\.(html|md)$ /$1 [R=301,L]
+
+# Intern auf .html Dateien routen (wenn vorhanden)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.+)$ $1.html [L]
+
+# Intern auf .md Dateien routen (wenn vorhanden)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.md -f
+RewriteRule ^(.+)$ $1.md [L]
+
+# Offenes Directory Listing (bewusst)
+Options +Indexes
+IndexOptions FancyIndexing NameWidth=* FoldersFirst
+IndexOrderDefault Ascending Name
+
+# Nur heikle Dotfiles sperren
+<FilesMatch "^\.(ht|git|env|ssh|vscode)">
+  Require all denied
+</FilesMatch>
+
+# Performance
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/plain text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
