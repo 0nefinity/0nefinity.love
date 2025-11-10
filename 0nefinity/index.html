@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+  <title>0nefinity test</title>
+
+
+  <style>
+    .toggle-text {
+      transition: color 0.3s ease;
+      cursor: pointer;
+    }
+    .toggle-text:hover {
+      color: var(--text-color-hover);
+    }
+    .no-transition .toggle-text {
+      transition: none !important;
+    }
+
+    #ascii-018 {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre
+      font-size: 1.5rem;
+      font-style: bold;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="O18">
+    At their deepest core, 0 1 ∞ are basically the same<br>
+
+   
+
+
+
+    read <a href="README.html">readme</a>
+
+
+  </div>
+
+  <footer>
+  <nav>
+    <a href="/impressum-und-datenschutz.html">Impressum und Datenschutz</a>
+    <a href="/README.html">README</a>
+    <a href="/robots.txt">robots.txt</a>
+  </nav>
+</footer>
+
+
+
+  <script src="/0nefinity.js" defer></script>
+
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const toggleElements = document.querySelectorAll('.toggle-text');
+      toggleElements.forEach(element => {
+        const originalText = element.getAttribute('data-original');
+        const alternativeText = element.getAttribute('data-alternative');
+        element.addEventListener('mouseenter', () => {
+          if (alternativeText) {
+            element.textContent = alternativeText;
+          }
+        });
+        element.addEventListener('mouseleave', () => {
+          if (originalText) {
+            element.textContent = originalText;
+          }
+        });
+      });
+
+      const nothingnessElement = document.querySelector('.toggle-nothingness');
+      if (nothingnessElement) {
+        const root = document.documentElement;
+        const originalTextColor = getComputedStyle(root).getPropertyValue('--text-color').trim();
+
+        nothingnessElement.addEventListener('mouseenter', () => {
+          root.classList.add('no-transition');
+          const bgColor = getComputedStyle(root).getPropertyValue('--bg-color').trim();
+          root.style.setProperty('--text-color', bgColor);
+        });
+
+        nothingnessElement.addEventListener('mouseleave', () => {
+          root.style.setProperty('--text-color', originalTextColor);
+          setTimeout(() => {
+            root.classList.remove('no-transition');
+          }, 50);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

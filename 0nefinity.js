@@ -828,15 +828,15 @@ canvas {
       START_PHASE: {
         startSpeed: 30,
         rampTo: 0,
-        rampDuration: 1,
-        holdDuration: 2
+        rampDuration: 0.8,
+        holdDuration: 1.5
       },
       // Hauptsequenz - läuft nach der Startphase in Schleife
       SPEED_STEPS: [
-        { increment: 120, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 240, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 180, rampDuration: 1.0, holdDuration: 2.5 },
-        { increment: 180, rampDuration: 1.0, holdDuration: 2.5 }
+        { increment: 120, rampDuration: 0.8, holdDuration: 1.5 },
+        { increment: 240, rampDuration: 0.8, holdDuration: 1.5 },
+        { increment: 180, rampDuration: 0.8, holdDuration: 1.5 },
+        { increment: 180, rampDuration: 0.8, holdDuration: 1.5 }
       ]
     };
 

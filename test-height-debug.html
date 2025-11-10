@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Height Debug Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      height: 100%;
+      background: red; /* Should NOT be visible if everything works */
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header-area {
+      flex-shrink: 0;
+      background: blue;
+      padding: 20px;
+      color: white;
+    }
+
+    .table-area {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: green; /* Should fill remaining space */
+      padding: 20px;
+    }
+
+    .clusterize-scroll {
+      flex: 1;
+      overflow: auto;
+      background: yellow; /* The scrollable area */
+      border: 5px solid purple;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid black;
+      padding: 8px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: orange;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-area">
+    <h1>Header Area (Blue)</h1>
+    <p>This should take only the space it needs</p>
+  </div>
+
+  <div class="table-area">
+    <div class="clusterize-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Column 1</th>
+            <th>Column 2</th>
+            <th>Column 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Row 1</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 2</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 3</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 4</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 5</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 6</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 7</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 8</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 9</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 10</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 11</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 12</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 13</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 14</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 15</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 16</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 17</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 18</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 19</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 20</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 21</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 22</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 23</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 24</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 25</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 26</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 27</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 28</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 29</td><td>Data</td><td>Data</td></tr>
+          <tr><td>Row 30</td><td>Data</td><td>Data</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Debug info
+    window.addEventListener('load', () => {
+      console.log('Body height:', document.body.offsetHeight);
+      console.log('Header height:', document.querySelector('.header-area').offsetHeight);
+      console.log('Table area height:', document.querySelector('.table-area').offsetHeight);
+      console.log('Clusterize scroll height:', document.querySelector('.clusterize-scroll').offsetHeight);
+      console.log('Window inner height:', window.innerHeight);
+    });
+  </script>
+</body>
+</html>
+

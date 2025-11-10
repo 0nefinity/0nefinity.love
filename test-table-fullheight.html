@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Full Height Table Test</title>
+  <link rel="stylesheet" href="meta.css">
+  <style>
+    html, body {
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      flex-shrink: 0;
+      padding: 20px;
+      border-bottom: 2px solid #333;
+    }
+
+    .table-container {
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #333;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Test Header</h1>
+    <p>This is the header area</p>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Column 1</th>
+          <th>Column 2</th>
+          <th>Column 3</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <!-- Will be filled by JavaScript -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    // Generate 100 rows
+    const tbody = document.getElementById('tableBody');
+    for (let i = 1; i <= 100; i++) {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>Row ${i}</td>
+        <td>Data ${i}</td>
+        <td>Value ${i}</td>
+      `;
+      tbody.appendChild(row);
+    }
+
+    // Debug info
+    console.log('Window height:', window.innerHeight);
+    console.log('Body height:', document.body.offsetHeight);
+    console.log('Header height:', document.querySelector('.header').offsetHeight);
+    console.log('Table container height:', document.querySelector('.table-container').offsetHeight);
+  </script>
+</body>
+</html>
+

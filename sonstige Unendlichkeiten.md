@@ -16,3 +16,11 @@ Es Probiert
 Es Friert
 
 Es Tanzt aaaa-ah
+
+
+
+
+
+
+Das Licht war zu viel, es musste sich verdichten
+

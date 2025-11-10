@@ -4,127 +4,143 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>invent your own mathematical system (or whatever you want)</title>
-  <link href="/meta.css" rel="stylesheet"/>
-  <script src="/meta.js" defer></script>
+  <link href="/meta.css" rel="stylesheet"/> <!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (gut durchlesen und diese Zeile unangetastet lassen) -->
+  <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (gut durchlesen und diese Zeile unangetastet lassen) -->
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    #canvas {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 0;
-      touch-action: none;
-    }
-    .topOverlay {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-      user-select: none;
-      pointer-events: none;
-    }
-    .topOverlay button,
-    .topOverlay input,
-    .topOverlay label {
-      pointer-events: auto;
-    }
-    .header-container {
-      text-align: center;
-      margin-bottom: 10px;
-      padding: 10px 70px;
-    }
-    .header-container h3 {
-      margin: 0;
-      font-size: clamp(1.5rem, 5vw, 2.5rem);
-    }
-    .header-container div {
-      margin: 0;
-      font-size: clamp(1rem, 4vw, 1.8rem);
-    }
-    .toolbar {
-      display: flex;
-      flex-wrap: nowrap;
-      align-items: center;
-      gap: 10px;
-      margin: 0;
-      padding: 0;
-    }
-    .toolbar-group {
-      display: flex;
-      flex-wrap: nowrap;
-      align-items: center;
-      margin: 0;
-      padding: 0;
-    }
-    .pen-settings input,
-    .pen-settings button,
-    .toolbar-button,
-    .brush-button {
-      font-size: 1em;
-      background: transparent;
-      border: 1px solid var(--text-color, #000);
-      color: var(--text-color, #000);
-      padding: 0.5em;
-      border-radius: 4px;
-      user-select: none;
-      height: 2.5em;
-      box-sizing: border-box;
-      text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
-      line-height: 1;
-      cursor: pointer;
-    }
-    .color-picker {
-      width: 2.5em;
-      min-width: 2.5em;
-      cursor: pointer;
-      padding: 0;
-    }
-    .brush-button {
-      width: 40px;
-      text-align: center;
-      transition: background-color 0.2s, transform 0.1s;
-    }
-    .brush-button:hover {
-      opacity: 0.9;
-    }
-    .brush-button:active {
-      transform: scale(0.95);
-    }
-    .brush-size-container {
-      display: inline-flex;
-      align-items: center;
-      margin: 0;
-    }
-    .brush-size-container > * {
-      margin: 0 !important;
-      border-radius: 0;
-    }
-    .brush-size-container > button:first-child {
-      border-top-left-radius: 4px;
-      border-bottom-left-radius: 4px;
-    }
-    .brush-size-container > input[type="number"] {
-      width: 70px;
-      text-align: center;
-      padding: 0.5em;
-      border-left: none;
-      border-right: none;
-    }
-    .brush-size-container > button:last-child {
-      border-top-right-radius: 4px;
-      border-bottom-right-radius: 4px;
-    }
-  </style>
+  body {
+    display: block;
+    overflow: hidden;
+    justify-content: unset;
+    align-items: unset;
+    margin: 0;
+    padding: 0;
+  }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+  }
+  
+  #canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    touch-action: none;
+  }
+  
+  .topOverlay {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    user-select: none;
+    pointer-events: none;
+  }
+  
+  .topOverlay button,
+  .topOverlay input,
+  .topOverlay label {
+    pointer-events: auto;
+  }
+  
+  .header-container {
+    text-align: center;
+    margin-bottom: 10px;
+    padding: 10px 70px;
+  }
+  
+  .header-container h3 {
+    margin: 0;
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+  }
+  
+  .header-container div {
+    margin: 0;
+    font-size: clamp(1rem, 4vw, 1.8rem);
+  }
+  
+  .toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Basis-Style für ALLE Toolbar-Elemente */
+  .toolbar-btn {
+    font-size: 1em;
+    background: transparent;
+    border: 1px solid var(--text-color, #000);
+    color: var(--text-color, #000);
+    padding: 0.5em;
+    border-radius: 4px;
+    user-select: none;
+    height: 2.5em;
+    box-sizing: border-box;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+    line-height: 1;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+
+  .toolbar-btn:hover {
+    opacity: 0.9;
+  }
+
+  .toolbar-btn:active {
+    transform: scale(0.95);
+  }
+
+  /* Color Picker - quadratisch */
+  .btn-color {
+    width: 2.5em;
+    min-width: 2.5em;
+    padding: 0.25em;
+  }
+
+  /* Icon Buttons (-, +) */
+  .btn-icon {
+    width: 2.5em;
+    min-width: 2.5em;
+    text-align: center;
+  }
+
+  /* Number Input */
+  .btn-input {
+    width: 70px;
+    text-align: center;
+  }
+
+  /* Button Group - zusammenhängende Buttons */
+  .btn-group {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .btn-group > * {
+    border-radius: 0;
+    margin-left: -1px;
+  }
+
+  .btn-group > *:first-child {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    margin-left: 0;
+  }
+
+  .btn-group > *:last-child {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+</style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
@@ -134,17 +150,13 @@
       <div>(or whatever you want)</div>
     </div>
     <div class="toolbar">
-      <div class="toolbar-group">
-        <div id="penSettings" class="pen-settings">
-          <input type="color" id="colorPicker" class="color-picker" title="Farbe wählen">
-          <div class="brush-size-container">
-            <button id="decreaseBtn" class="brush-button" title="Pinselgröße verringern">-</button>
-            <input type="number" id="brushSize" class="number-picker" min="0" value="1" step="any" title="Pinselgröße">
-            <button id="increaseBtn" class="brush-button" title="Pinselgröße erhöhen">+</button>
-          </div>
-        </div>
-        <button id="clearBtn" class="toolbar-button" title="Leinwand löschen">another one</button>
+      <input type="color" id="colorPicker" class="toolbar-btn btn-color" title="Farbe wählen">
+      <div class="btn-group">
+        <button id="decreaseBtn" class="toolbar-btn btn-icon" title="Pinselgröße verringern">-</button>
+        <input type="number" id="brushSize" class="toolbar-btn btn-input" min="0" value="1" step="any" title="Pinselgröße">
+        <button id="increaseBtn" class="toolbar-btn btn-icon" title="Pinselgröße erhöhen">+</button>
       </div>
+      <button id="clearBtn" class="toolbar-btn" title="Leinwand löschen">another one</button>
     </div>
   </div>
   <script>

@@ -8,11 +8,11 @@
 }
 
 body {
+    min-height: 100vh;
     overflow: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     line-height: 1.5;
     font-size: 1rem;
@@ -22,6 +22,30 @@ body {
     margin: 0;
 }
 
+/* Vertikale Zentrierung für body mit .O18 */
+body:has(.O18)::before,
+body:has(.O18)::after {
+    content: '';
+    flex: 1 0 0;
+    min-height: 0;
+}
+
+
+
+footer nav a { display: none; }
+
+footer nav a[href="/impressum-und-datenschutz.html"] {
+  display: inline-block;
+  color: color-mix(in srgb, var(--text-color) 50%, transparent);
+}
+
+footer nav a[href="/impressum-und-datenschutz.html"]:hover,
+footer nav a[href="/impressum-und-datenschutz.html"]:focus {
+  color: var(--text-color);
+}
+
+
+
 
 *,
 *::before,
@@ -29,10 +53,10 @@ body {
     box-sizing: border-box;
 }
 
-.container {
+.O18 {
     width: 100%;
     max-width: 50rem; /* 800px / 16 */
-    padding-bottom: 7.5rem; /* 120px / 16 */
+    padding: 2rem 1.5rem; /* 2rem oben/unten, 1.5rem links/rechts */
     white-space: pre-line;
 }
 
@@ -62,10 +86,37 @@ a {
     text-decoration: underline;
 }
 
-.menu-button,
+
+button {
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 2px solid var(--text-color);
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-family: inherit;
+    cursor: pointer;
+    border-radius: 9999px;
+    transition: all 0.3s ease;
+}
+
+button:hover {
+    background: var(--text-color);
+    color: var(--bg-color);
+    scale: 1.05;
+}
+
+button:active {
+    scale: 0.98;
+}
+
+button:focus {
+    outline: none;
+}
+
 .back-button {
     position: fixed;
     top: 0;
+    left: 0;
     width: 4.375rem; /* ca. 70px */
     height: 4.375rem;
     display: flex;
@@ -79,54 +130,88 @@ a {
     white-space: nowrap;
 }
 
-.menu-button {
+.back-button:hover {
+    scale: 1.3;
+}
+
+.menu {
+    position: fixed;
+    top: 0;
     right: 0;
-    min-width: 4.375rem;
-    max-width: 31.25rem; /* ca. 500px / 16 */
+    width: 4.375rem; /* ca. 70px - collapsed */
+    background: transparent;
+    z-index: 1000;
+    transition: width 0.3s ease, right 0.3s ease, background 0.3s ease;
+}
+
+.menu.open {
+    right: 0;
+    width: auto;
+    height: 100vh;
+    background: var(--bg-color);
+}
+
+/* Wrapper für den Button - erlaubt Text-Selektion */
+.menu-button-wrapper {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Wrapper für die Menü-Liste - erlaubt Text-Selektion für Kopieren */
+.menu-content-wrapper {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.menu-button {
+    width: 100%;
+    height: 4.375rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-color);
+    font-size: 3.5625rem; /* ca. 57px */
+    cursor: pointer;
+    transform-origin: center;
+    white-space: nowrap;
+}
+
+/* Spans innerhalb des Buttons - verhindert Überlagerung */
+.menu-button span {
+    display: inline;
+    white-space: pre;
+}
+
+.menu.open .menu-button {
+    justify-content: flex-start;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
 }
 
 .menu-button:hover {
     scale: 1.05;
 }
 
-.back-button {
-    left: 0;
-}
-
-.back-button:hover {
-    scale: 1.3;
-}
-
-.menu-button.expanded {
-    right: 1.25rem; /* ca. 20px / 16 */
-    width: 18.75rem; /* ca. 300px / 16 */
-}
-
-.menu-button.expanded:hover {
+.menu.open .menu-button:hover {
     scale: 1.01;
 }
 
-.menu {
-    position: fixed;
-    top: 5rem; /* ca. 80px / 16 */
-    right: 1.25rem; /* ca. 20px / 16 */
-    width: 18.75rem; /* ca. 300px / 16 */
-    max-height: 90%;
-    box-sizing: border-box;
+.menu ul {
+    height: calc(100vh - 4.375rem); /* Full viewport height minus button height */
     overflow-y: auto;
-    background: var(--bg-color);
-    display: none;
-    z-index: 1001;
+    box-sizing: border-box;
     text-align: left;
+    display: none;
+    min-width: max-content;
 }
 
-.menu.open {
+.menu.open ul {
     display: block;
 }
 
 .menu ul {
     list-style: none;
-    padding: 0;
+    padding: 0 0 0 1.25rem;
     margin: 0;
 }
 
@@ -144,10 +229,20 @@ a {
     text-decoration: none;
     font-size: 1rem;
     border-bottom: 1px solid transparent;
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-user-drag: none; /* Verhindert Link-Drag in Safari/Chrome */
+    user-drag: none;
 }
 
 .menu ul li a:hover {
     border-bottom: 1px solid var(--text-color);
+}
+
+.menu-heading {
+    display: block;
+    font-weight: bold;
+    color: var(--text-color);
 }
 
 /* Globale Scrollleisten-Stile für Webkit-basierte Browser */
@@ -197,6 +292,131 @@ a {
     display: block;
     background: transparent;
   }
+
+/* Body-Handling wenn ._018 vorhanden */
+body:has(._018) {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;        /* Body bleibt fix - Scrollen nur auf ._018 */
+}
+
+/* ._018 Klasse für Full-Screen Single-Page-Applikationen */
+/* Für Tools, Experimente und 0nefinity-Konzepte, die den ganzen Bildschirm nutzen sollen */
+/* Mehrschichtige Verteidigung für maximale Browser-Kompatibilität */
+._018 {
+    /* Layout - Fallback-Kette für verschiedene Browser */
+    box-sizing: border-box;  /* Padding wird in height eingerechnet */
+    max-width: 100%;
+    width: 100%;
+    min-height: 100vh;           /* Mindestens Viewport-Höhe */
+    min-height: 100dvh;          /* Dynamic - ändert sich mit Browser-UI */
+    max-height: 100vh;           /* Maximal Viewport-Höhe - verhindert zu groß werden */
+    max-height: 100dvh;
+    padding: 2rem;
+    font-size: 1.5rem;
+
+    /* Position */
+    position: relative;      /* Kontext für absolute Kinder */
+
+    /* Zentrierung */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 1rem;               /* Abstand zwischen Flex-Children */
+
+    /* Umbrüche erkennen */
+    white-space: pre-line;
+
+    /* Native Pull-to-Refresh Setup - minimales Scrollen erlaubt */
+    overflow-y: auto;                    /* Erlaubt Scrollen für Pull-to-Refresh */
+    overflow-x: hidden;                  /* Verhindert horizontales Scrollen */
+    overscroll-behavior-y: auto;         /* Erlaubt Native Pull-to-Refresh */
+    overscroll-behavior-x: contain;      /* Verhindert horizontales Overscroll */
+    -webkit-overflow-scrolling: touch;   /* iOS Safari - smooth scrolling */
+
+    /* Touch-Handling - verhindert Zoom, erlaubt vertikales Panning */
+    touch-action: pan-y;                 /* Erlaubt vertikales Panning */
+    -webkit-tap-highlight-color: transparent; /* Entfernt Tap-Highlight */
+    user-select: none;                   /* Verhindert Text-Selektion */
+    -webkit-user-select: none;           /* Safari-spezifisch */
+}
+
+/* Button-Optimierungen für ._018 Kontext */
+._018 button {
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-size: 1.2rem;
+
+    /* Verhindert Pull-to-Refresh auf dem Button selbst */
+    touch-action: none;
+    overscroll-behavior: contain;
+}
+
+._018 button:hover {
+    scale: 1.02; /* Reduziert von 1.05 für weniger aggressive Animation */
+}
+
+._018 button:active {
+    scale: 1; /* Kein Scale-Down mehr, verhindert störende Effekte bei schnellen Klicks */
+}
+
+/* Verhindert Umbrüche in <u> Elementen */
+._018 u {
+    white-space: nowrap !important;
+    display: inline-block;
+}
+
+/* ._018-canvas Klasse für Absolute-Positioning Single-Page-Applikationen */
+/* Für Canvas-basierte Apps, Spiele, und Experimente mit absolute positioning */
+._018-canvas {
+    /* Layout - Fallback-Kette für verschiedene Browser */
+    width: 100%;
+    height: 100vh;           /* Fallback für alte Browser */
+    height: 100dvh;          /* Dynamic - ändert sich mit Browser-UI */
+    padding: 0;              /* Kein Padding für absolute positioning */
+    margin: 0;
+
+    /* Position - wichtig für absolute children */
+    position: relative;
+
+    /* Scroll-Prevention - mehrere Ebenen für verschiedene Browser */
+    overflow: hidden;                    /* Basis - funktioniert überall */
+    overscroll-behavior: contain;        /* Modern - verhindert Bounce/Pull-to-Refresh */
+    -webkit-overflow-scrolling: touch;   /* iOS Safari - smooth scrolling wenn nötig */
+
+    /* Touch-Handling - verhindert Zoom und unerwünschte Interaktionen */
+    touch-action: manipulation;          /* Verhindert Double-Tap-Zoom */
+    -webkit-tap-highlight-color: transparent; /* Entfernt Tap-Highlight */
+    user-select: none;                   /* Verhindert Text-Selektion */
+    -webkit-user-select: none;           /* Safari-spezifisch */
+}
+
+/* Body fixieren wenn ._018-canvas vorhanden */
+body:has(._018-canvas) {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+}
+
+/* Responsive Anpassungen für ._018 */
+@media (max-width: 768px) {
+    ._018 {
+        padding: 1.5rem;
+        font-size: 1.3rem;
+    }
+}
+
+@media (max-width: 480px) {
+    ._018 {
+        padding: 1rem;
+        font-size: 1.2rem;
+    }
+}
 
 /* Media Query für kleinere Geräte */
 @media (max-width: 480px) {
