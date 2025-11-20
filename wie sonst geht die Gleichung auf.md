@@ -6,14 +6,14 @@ Wieso kann 1 Objekt aus unendlich perspektiven betrachtet werden ohne dass sich 
 
 Wieso können unendlich Spezies 2 unendlich Namen für das Gleiche finden?
 
-Wieso kann einer falsche Mathe Ergebnisse an die Tafel schreiben sie dort stehen lassen?
+Wieso kann einer falsche Ergebnisse an die Tafel schreiben sie dort unbescholten stehen lassen?
 
 Wieso ist alles immer erst mal 0 1 und ∞?
 
 Wieso kann ich schreiben 1 + 1 = 
 und es offen lassen?
 
-Wieso muss man Pi nicht ausrechnen, wenn man nicht will?
+Wieso muss man Pi nicht ausrechnen, wenn man es nicht will?
 
 Wiseo knan ich eifnach Mrekwrüdig shcreiben?
 
@@ -31,7 +31,7 @@ Wieso kann ich unendlich Nullen addieren, ohne mathematisch etwas zu verändern?
 Wieso unendlich Einsen multiplizieren?
 Wieso die erste Wurzel aus was ziehen und es mit 1 potenzieren?
 
-Wieso kann ich etwas aus dem nichts heraus mal zwei rechnen und es verdoppelt sich einfach?
+Wieso kann ich etwas einfach mal zwei rechnen und es verdoppelt sich mathematisch gesehen?
 
 Wieso hat jede Zahl, der man es zutraut, immer noch mehr unendlich Dezimalstellen, als man sich hätte erträumen können?
 
@@ -41,7 +41,7 @@ Und es auch mit jedem einzelnen Zirkel verkacken?
 
 Warum kann ich mit der Zirkelnadel ein Loch in ein Papier machen und es Punkt nennen?
 
-Wieso könnte ich unendlich viele verschiedene Kreisausschnitte beliebig vieler Kreise berechnen, hab aber die Formeln dafür vergessen?
+Wieso könnte ich unendlich viele verschiedene Kreisausschnitte beliebig vieler Kreise berechnen, habe aber die Formeln dafür vergessen?
 
 Wieso kann eigentlich irgendwer irgendwas entdecken?
 
@@ -52,6 +52,8 @@ Why the enemy of art is the absence of limitations?
 Wieso könnte man sehr viele Bücher schreiben über 0 1 und ∞ und alles dazwischen?
 
 Warum sieht der rosa Elefant, den man sich nicht vorstellen soll bei jedem entweder gleich oder unterschiedlich aus?
+
+Stellen sich manche einfache Elefanten und manche Elefantenfraktale dabei vor?
 
 Wieso fühlt Unendlichkeit sich manchmal so begrenzt an und Einheit so unedlich?
 

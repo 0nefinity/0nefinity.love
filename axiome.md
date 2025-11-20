@@ -3,7 +3,7 @@ Math ≡ Existence
 0 ≡ 1 ≡ ∞ 
 ≡
 0 ≡ 1 ≡ 8 (8 für easy access to infinity)
-≡ 0nefinity ≡ · ≡ Bewusstsein ≡ Liebe ≡ Gott ≡ Universum (mit großem U) ≡ I ≡ AM ≡ Source ≡ Light ≡ Life ≡ Reality ≡ Existence ≡ Math ≡ Truth ≡ Einheit ≡ Verschmelzung ≡ alles ≡ nichts
+≡ 0nefinity ≡ · ≡ Bewusstsein ≡ Liebe ≡ Gott ≡ Universum (mit großem U) ≡ I ≡ AM ≡ Source ≡ Light ≡ Life ≡ Reality ≡ Existence ≡ Math ≡ Truth ≡ Einheit ≡ Verschmelzung ≡ alles ≡ nichts ≡ All ≡ 
 
 
 
@@ -12,12 +12,12 @@ Symbolisch erfolgt ein Abschließen des Terms mit dem ≡ um die Beziehung zum R
 Jede weitere Ergänzung der Liste und der Unergänzung der drum herum liegenden Nicht-Liste verleiht dem Dasein eine höhere Gültigkeit, dessen höchste Gültigkeit stets in Vollendung ist
 
 
-Fraktale sind mehr als nur eine Notwendigkeit, sie sind auch einfach schön
+Fraktale sind mehr als nur eine Notwendigkeit, sie sind auch einfach beautiful
 
 
 Dinge sind unendlicher als man glauben kann
 
-Alles was existiert hat gewisse Gültigkeit 
+Alles was existiert hat gewisse Gültigkeit
 
 In allem liegt alles
 

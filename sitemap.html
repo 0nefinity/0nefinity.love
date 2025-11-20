@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sitemap - 0nefinity.love</title>
+  
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
+  
+  <meta name="description" content="Sitemap - Alle Seiten von 0nefinity.love" />
+  <meta name="robots" content="index, follow" />
+  
+  <style>
+    .sitemap-container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    
+    .sitemap-container h1 {
+      margin-bottom: 2rem;
+    }
+    
+    .sitemap-list {
+      list-style: none;
+      padding: 0;
+    }
+    
+    .sitemap-list li {
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      border-left: 3px solid var(--text-color);
+      padding-left: 1rem;
+    }
+    
+    .sitemap-list a {
+      text-decoration: none;
+      color: var(--text-color);
+      transition: color 0.3s ease;
+    }
+    
+    .sitemap-list a:hover {
+      color: var(--text-color-hover);
+      text-decoration: underline;
+    }
+    
+    .sitemap-meta {
+      font-size: 0.85rem;
+      color: var(--text-color);
+      opacity: 0.7;
+      margin-left: 0.5rem;
+    }
+    
+    .sitemap-loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-color);
+    }
+    
+    .sitemap-error {
+      color: #ff6b6b;
+      padding: 1rem;
+      border: 1px solid #ff6b6b;
+      border-radius: 4px;
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="sitemap-container">
+    <h1>Sitemap - Alle Seiten</h1>
+    <div id="sitemap-content">
+      <div class="sitemap-loading">Lädt Sitemap...</div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Load and display sitemap.xml
+     */
+    async function loadSitemap() {
+      try {
+        const response = await fetch('/sitemap.xml');
+        if (!response.ok) throw new Error('Sitemap nicht gefunden');
+        
+        const text = await response.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(text, 'application/xml');
+        
+        if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+          throw new Error('Fehler beim Parsen der Sitemap');
+        }
+        
+        const urls = xmlDoc.getElementsByTagName('url');
+        if (urls.length === 0) {
+          throw new Error('Keine URLs in Sitemap gefunden');
+        }
+        
+        const list = document.createElement('ul');
+        list.className = 'sitemap-list';
+        
+        for (let i = 0; i < urls.length; i++) {
+          const url = urls[i];
+          const loc = url.querySelector('loc')?.textContent;
+          const lastmod = url.querySelector('lastmod')?.textContent;
+          const priority = url.querySelector('priority')?.textContent;
+          
+          if (!loc) continue;
+          
+          const li = document.createElement('li');
+          const link = document.createElement('a');
+          link.href = loc;
+          link.textContent = loc.replace('https://0nefinity.love/', '');
+          
+          li.appendChild(link);
+          
+          if (lastmod || priority) {
+            const meta = document.createElement('span');
+            meta.className = 'sitemap-meta';
+            const parts = [];
+            if (lastmod) parts.push(`Aktualisiert: ${lastmod}`);
+            if (priority) parts.push(`Priorität: ${priority}`);
+            meta.textContent = ` (${parts.join(', ')})`;
+            li.appendChild(meta);
+          }
+          
+          list.appendChild(li);
+        }
+        
+        document.getElementById('sitemap-content').innerHTML = '';
+        document.getElementById('sitemap-content').appendChild(list);
+        
+      } catch (error) {
+        document.getElementById('sitemap-content').innerHTML = 
+          `<div class="sitemap-error">Fehler: ${error.message}</div>`;
+      }
+    }
+    
+    // Load sitemap when page loads
+    document.addEventListener('DOMContentLoaded', loadSitemap);
+  </script>
+</body>
+</html>
+

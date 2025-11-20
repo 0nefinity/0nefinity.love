@@ -10,7 +10,11 @@ RewriteRule ^ https://www.0nefinity.love%{REQUEST_URI} [R=301,L]
 
 # Spezifische URL-Weiterleitungen (case-sensitive fixes)
 RewriteCond %{REQUEST_URI} !^/buyPi$
-RewriteRule ^buypi$ /buyPi [R=301,L,NC]
+RewriteRule ^buypi$ /buyPi [R=302,L,NC]
+RewriteRule ^readme/?$ /README [R=302,L]
+
+# Pi-Quadrat Weiterleitung
+RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=63&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 
 # Textdateien durch PHP-Viewer anzeigen (.punkt, .dot, und andere Text-Extensions)
 # Nur wenn die Datei tatsächlich existiert
@@ -18,21 +22,32 @@ RewriteCond %{REQUEST_FILENAME} -f
 RewriteCond %{REQUEST_FILENAME} \.(punkt|dot|txt)$ [NC]
 RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
 
+# Nur wenn die Datei existiert UND der Request-Pfad keinen Punkt enthält
+# Ausnahme: PHP-Dateien, HTML-Dateien und Verzeichnisse werden nicht umgeleitet
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} !\.php$
+RewriteCond %{REQUEST_FILENAME} !\.html$
+RewriteCond %{REQUEST_URI} !\.[a-zA-Z0-9]+$
+RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
+
 # Clean URLs: Redirect .html und .md Endungen zu URLs ohne Endung (301 permanent)
-RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.(html|md)\ HTTP
-RewriteRule ^(.+)\.(html|md)$ /$1 [R=301,L]
+# WICHTIG: Query-String mit [QSA] Flag erhalten!
+RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.(html|md)(\?.*)?\ HTTP
+RewriteRule ^(.+)\.(html|md)$ /$1 [R=302,L,QSA]
 
 # Intern auf .html Dateien routen (wenn vorhanden)
+# QSA: Query-String erhalten!
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.html -f
-RewriteRule ^(.+)$ $1.html [L]
+RewriteRule ^(.+)$ $1.html [L,QSA]
 
 # Intern auf .md Dateien routen (wenn vorhanden)
+# QSA: Query-String erhalten!
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.md -f
-RewriteRule ^(.+)$ $1.md [L]
+RewriteRule ^(.+)$ $1.md [L,QSA]
 
 # Offenes Directory Listing (bewusst)
 Options +Indexes

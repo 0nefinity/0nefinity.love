@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+    <script src="/meta.js" defer></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+    <title>Sind wir Brüder?</title>
+
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin-bottom: 3rem;
+        }
+
+        .checkbox-group {
+            display: flex;
+            justify-content: center;
+            gap: 4rem;
+            margin-top: 2rem;
+        }
+
+        .checkbox-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper {
+            width: 2.5rem;
+            height: 2.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            accent-color: #00cc00;
+            filter: invert(1);
+            transition: accent-color 0.2s ease;
+        }
+
+        .checkbox-item input[type="checkbox"].gray {
+            accent-color: #888888;
+        }
+
+        .checkbox-item label {
+            font-size: 2rem;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+
+
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 3rem;
+            }
+
+            .checkbox-group {
+                gap: 2rem;
+            }
+
+            .checkbox-item label {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sind wir Brüder?</h1>
+
+        <div class="checkbox-group">
+            <div class="checkbox-item">
+                <div class="checkbox-wrapper" id="ja-wrapper">
+                    <input type="checkbox" id="ja-checkbox">
+                </div>
+                <label for="ja-checkbox">Ja</label>
+            </div>
+
+            <div class="checkbox-item">
+                <div class="checkbox-wrapper" id="nein-wrapper">
+                    <input type="checkbox" id="nein-checkbox">
+                </div>
+                <label for="nein-checkbox">Nein</label>
+            </div>
+        </div>
+
+
+    </div>
+
+    <script>
+        const jaCheckbox = document.getElementById('ja-checkbox');
+        const neinCheckbox = document.getElementById('nein-checkbox');
+        let hasBeenClicked = false;
+
+        // Listener für Checkbox-Änderungen (erster Klick)
+        jaCheckbox.addEventListener('change', function() {
+            if (!hasBeenClicked) {
+                jaCheckbox.checked = true;
+                neinCheckbox.checked = false;
+                hasBeenClicked = true;
+                jaCheckbox.disabled = true;
+                neinCheckbox.disabled = true;
+            }
+        });
+
+        neinCheckbox.addEventListener('change', function() {
+            if (!hasBeenClicked) {
+                jaCheckbox.checked = true;
+                neinCheckbox.checked = false;
+                hasBeenClicked = true;
+                jaCheckbox.disabled = true;
+                neinCheckbox.disabled = true;
+            }
+        });
+
+        // Listener für Klicks überall auf der Seite (nach dem ersten Klick)
+        document.addEventListener('click', function(e) {
+            if (hasBeenClicked && e.target !== jaCheckbox && e.target !== neinCheckbox) {
+                // Toggle nur wenn nicht auf den Checkboxen geklickt wird
+                jaCheckbox.classList.toggle('gray');
+            }
+        });
+    </script>
+</body>
+</html>
