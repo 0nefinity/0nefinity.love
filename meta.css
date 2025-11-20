@@ -134,6 +134,15 @@ button:focus {
     scale: 1.3;
 }
 
+/* Größere Touch-Targets auf hochauflösenden Displays */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+    .back-button {
+        width: 5.5rem; /* ca. 88px */
+        height: 5.5rem;
+        font-size: 4.5rem; /* ca. 72px */
+    }
+}
+
 .menu {
     position: fixed;
     top: 0;
@@ -146,7 +155,8 @@ button:focus {
 
 .menu.open {
     right: 0;
-    width: auto;
+    width: min-content; /* Genau die Breite des Buttons */
+    max-width: 90vw; /* Maximal 90% der Viewport-Breite */
     height: 100vh;
     background: var(--bg-color);
 }
@@ -165,6 +175,7 @@ button:focus {
 
 .menu-button {
     width: 100%;
+    min-width: max-content; /* Breite durch "0 ≡ 1 ≡ ∞" bestimmt */
     height: 4.375rem;
     display: flex;
     justify-content: center;
@@ -196,30 +207,52 @@ button:focus {
     scale: 1.01;
 }
 
-.menu ul {
+/* Größere Touch-Targets auf hochauflösenden Displays */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+    .menu {
+        width: 5.5rem; /* ca. 88px - collapsed */
+    }
+
+    .menu-button {
+        height: 5.5rem;
+        font-size: 4.5rem; /* ca. 72px */
+    }
+}
+
+/* Main menu list (direct child of menu) */
+.menu > .menu-content-wrapper > ul {
     height: calc(100vh - 4.375rem); /* Full viewport height minus button height */
     overflow-y: auto;
+    overflow-x: hidden; /* Verhindert horizontales Scrollen */
     box-sizing: border-box;
     text-align: left;
     display: none;
-    min-width: max-content;
+    width: 100%; /* Nimmt Breite vom Parent (menu-button) */
 }
 
-.menu.open ul {
+.menu.open > .menu-content-wrapper > ul {
     display: block;
 }
 
+/* All lists in menu */
 .menu ul {
     list-style: none;
-    padding: 0 0 0 1.25rem;
+    padding: 0 1.25rem 0 1.25rem; /* Rechts auch Padding für Scrollbar-Abstand */
     margin: 0;
+}
+
+/* Nested lists (folder contents) should always be visible when parent details is open */
+.menu ul li details .folder-contents {
+    display: block; /* Always visible when details is open */
+    padding: 0 0 0 1.5rem; /* Indentation for hierarchy */
+    margin-top: 0.3125rem; /* ca. 5px / 16 */
 }
 
 .menu ul li {
     margin: 0.625rem 0; /* ca. 10px / 16 */
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%; /* Begrenzt auf Menü-Breite */
 }
 
 .menu ul li a {
@@ -233,6 +266,9 @@ button:focus {
     -webkit-user-select: text;
     -webkit-user-drag: none; /* Verhindert Link-Drag in Safari/Chrome */
     user-drag: none;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%; /* Begrenzt auf Menü-Breite */
 }
 
 .menu ul li a:hover {
@@ -243,6 +279,68 @@ button:focus {
     display: block;
     font-weight: bold;
     color: var(--text-color);
+}
+
+/* Separator */
+.menu-separator {
+    margin: 0.9375rem 0; /* ca. 15px / 16 */
+}
+
+.menu-separator hr {
+    border: none;
+    border-top: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent);
+    margin: 0;
+}
+
+/* Collapsible folders */
+.menu ul li details {
+    margin: 0;
+}
+
+.menu ul li details summary {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    list-style: none; /* Remove default triangle */
+    padding-bottom: 0.3125rem; /* ca. 5px / 16 */
+    color: var(--text-color);
+    font-size: 1rem;
+    border-bottom: 1px solid transparent;
+    transition: border-bottom 0.2s ease;
+    position: relative;
+    padding-left: 1.2rem; /* Space for triangle */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%; /* Begrenzt auf Menü-Breite */
+}
+
+/* Remove default triangle in all browsers */
+.menu ul li details summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Custom triangle (collapsed: ▶) */
+.menu ul li details summary::before {
+    content: '▶';
+    position: absolute;
+    left: 0;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+/* Triangle when expanded (rotated: ▼) */
+.menu ul li details[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.menu ul li details summary:hover {
+    border-bottom: 1px solid var(--text-color);
+}
+
+/* File items inside folders */
+.menu ul li details .folder-contents li {
+    margin: 0.3125rem 0; /* ca. 5px / 16 - smaller than top-level */
 }
 
 /* Globale Scrollleisten-Stile für Webkit-basierte Browser */

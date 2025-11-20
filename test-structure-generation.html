@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Structure Generation Test</title>
+    <style>
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 20px;
+        }
+        .log {
+            background: #111;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0a0;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .info { color: #0ff; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Structure Generation Test</h1>
+    
+    <button onclick="generateStructure()">Generate structure.xml</button>
+    <button onclick="loadStructure()">Load structure.xml</button>
+    <button onclick="clearLog()">Clear Log</button>
+    
+    <div class="log" id="log"></div>
+    
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message, type = 'info') {
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function clearLog() {
+            log.innerHTML = '';
+        }
+        
+        async function generateStructure() {
+            addLog('Generating structure.xml...', 'info');
+            try {
+                const response = await fetch('/generate-structure.php?force=1');
+                const data = await response.json();
+                
+                if (data.status === 'success' || data.status === 'ok') {
+                    addLog(`✓ ${data.message}`, 'success');
+                } else {
+                    addLog(`✗ ${data.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`✗ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function loadStructure() {
+            addLog('Loading structure.xml...', 'info');
+            try {
+                const response = await fetch('/structure.xml');
+                if (!response.ok) {
+                    addLog(`✗ HTTP ${response.status}`, 'error');
+                    return;
+                }
+                
+                const xmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
+                
+                if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+                    addLog('✗ XML Parse Error', 'error');
+                    return;
+                }
+                
+                const folders = xmlDoc.querySelectorAll('folder');
+                const pages = xmlDoc.querySelectorAll('page');
+                
+                addLog(`✓ Loaded successfully`, 'success');
+                addLog(`  Folders: ${folders.length}`, 'info');
+                addLog(`  Pages: ${pages.length}`, 'info');
+                
+                // Show first few items
+                let count = 0;
+                folders.forEach(folder => {
+                    if (count < 5) {
+                        addLog(`  📁 ${folder.getAttribute('name')}`, 'info');
+                        count++;
+                    }
+                });
+                
+                if (folders.length > 5) {
+                    addLog(`  ... and ${folders.length - 5} more folders`, 'info');
+                }
+            } catch (error) {
+                addLog(`✗ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            addLog('Page loaded. Click buttons to test.', 'info');
+        });
+    </script>
+</body>
+</html>
+

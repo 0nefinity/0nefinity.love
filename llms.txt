@@ -41,7 +41,7 @@ for me its just the first site you see as human beeing
 so, if you have'nt js disabled, some obscure js scripts can help you to see some core features and give you the ability to navigate through a small selection of content
 
 
-to see everything, look at the whole structure, mentioned in https://0nefinity.love/sitemap.xml
+to see everything, look at the whole structure, mentioned in https://www.0nefinity.love/sitemap
 
 
 Most important content is in index.html and README.html

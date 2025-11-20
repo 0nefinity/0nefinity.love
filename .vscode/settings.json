@@ -1,3 +1,14 @@
 {
-    "files.exclude": {}
+    "files.exclude": {},
+    "fiveServer.php.engine": "C:\\xampp\\php\\php.exe",
+    "fiveServer.php.ini": "C:\\xampp\\php\\php.ini",
+    "liveServer.settings.root": "/",
+    "liveServer.settings.CustomBrowser": "chrome",
+    "liveServer.settings.AdvanceCustomBrowserCmdLine": null,
+    "liveServer.settings.NoBrowser": false,
+    "liveServer.settings.ignoreFiles": [
+        ".vscode/**",
+        "**/*.scss",
+        "**/*.sass"
+    ]
 }

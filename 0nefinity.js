@@ -2,57 +2,192 @@
   // Alle Styles in einem einzigen Block
   function injectStyles() {
     const css = `
+/* Toggle Button für Einstellungen - oben in der Mitte */
+#settingsToggle {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1001; /* Höher als Back-Button/Menü */
+  width: auto;
+  height: 70px;
+  padding: 0;
+  font-size: 57px;
+  background: transparent;
+  color: var(--text-color);
+  border: none;
+  cursor: pointer;
+  display: none;
+  transition: all 0.3s ease;
+  pointer-events: auto;
+  white-space: nowrap;
+  line-height: 70px;
+}
+#settingsToggle:hover {
+  transform: translateX(-50%) scale(1.05);
+}
+#settingsToggle.active {
+  opacity: 0.7;
+}
+
+/* Größerer Button auf hochauflösenden Displays */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+  #settingsToggle {
+    height: 88px;
+    font-size: 72px;
+    line-height: 88px;
+  }
+}
+
 header.controls {
   position: fixed;
   top: 0;
   left: 70px;
   right: 70px;
   height: auto;
-  z-index: 1000;
+  z-index: 999;
   color: var(--text-color);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 2px 4px;
   box-sizing: border-box;
-  padding: 5px;
+  padding: 3px 5px;
   background: transparent;
+  transition: all 0.3s ease;
+  max-height: none;
+  overflow: visible;
+  font-size: 11px;
 }
+
+/* Collapsed State */
+header.controls.collapsed {
+  max-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: none !important;
+}
+
+/* Desktop mit hochauflösendem Display */
+@media (min-width: 769px) and (min-resolution: 2dppx) {
+  header.controls {
+    left: 88px;
+    right: 88px;
+  }
+}
+
+/* Mobile: Sidebar von rechts */
+@media (max-width: 768px) {
+  header.controls {
+    position: fixed !important;
+    right: 0 !important;
+    top: 0 !important;
+    left: auto !important;
+    width: 70vw !important;
+    max-width: 400px !important;
+    height: 100vh !important;
+    padding: 80px 15px 15px 15px;
+    gap: 12px;
+    overflow-y: auto;
+    background: var(--bg-color);
+    border-left: 2px solid var(--text-color);
+    z-index: 1000 !important;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  /* Expanded State - Sidebar sichtbar */
+  header.controls.expanded {
+    transform: translateX(0) !important;
+  }
+
+  /* Collapsed State auf Mobile */
+  header.controls.collapsed {
+    transform: translateX(100%) !important;
+  }
+
+  header.controls label {
+    flex: 1 1 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    padding: 8px 0;
+  }
+
+  header.controls input[type="number"],
+  header.controls input[type="text"] {
+    flex: 0 0 120px;
+    font-size: 16px;
+    padding: 8px;
+    border: 2px solid var(--text-color);
+    background: var(--bg-color);
+    color: var(--text-color);
+    border-radius: 5px;
+  }
+
+  header.controls input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+  }
+
+  header.controls button {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    margin-top: 8px;
+  }
+
+  /* Toggle-Button MUSS sichtbar sein */
+  #settingsToggle {
+    display: block !important;
+  }
+}
+
 header.controls label {
   white-space: nowrap;
-  margin: 2px 4px;
-  font-size: 12px;
+  margin: 1px 2px;
+  font-size: 10px;
 }
 header.controls input[type="number"],
 header.controls input[type="text"] {
-  margin-left: 3px;
-  padding: 2px 4px;
-  font-size: 12px;
+  margin-left: 2px;
+  padding: 1px 3px;
+  font-size: 10px;
   background: var(--bg-color);
   color: var(--text-color);
   box-sizing: content-box;
+  border: 1px solid var(--text-color);
+  border-radius: 2px;
+  width: 45px;
 }
 header.controls input#rotationSpeed {
-  width: 60px;
+  width: 50px;
 }
 header.controls input[type="checkbox"] {
-  margin-left: 3px;
+  margin-left: 2px;
   box-sizing: content-box;
+  width: 12px;
+  height: 12px;
 }
 header.controls button {
-  margin: 2px 4px;
-  padding: 2px 8px;
-  font-size: 12px;
+  margin: 1px 2px;
+  padding: 1px 6px;
+  font-size: 10px;
   background: var(--bg-color);
   color: var(--text-color);
   border: 1px solid var(--text-color);
-  border-radius: 3px;
+  border-radius: 2px;
   cursor: pointer;
 }
 .symbol-container {
   position: relative;
-  margin-top: 70px;
+  margin-top: 40px;
   margin-bottom: 20px;
   overflow: visible;
   display: flex;
@@ -60,19 +195,54 @@ header.controls button {
   align-items: center;
   width: 100%;
   min-height: 400px;
+  transition: margin-top 0.3s ease;
+  z-index: 1; /* Niedriger als Back-Button und Menü */
+}
+
+/* Mobile: Margin für Back-Button und Menü */
+@media (max-width: 768px) {
+  .symbol-container {
+    margin-top: 30px; /* Weniger Platz, da Toggle/Speed oben fixed sind */
+  }
+}
+
+/* Mobile mit hochauflösendem Display */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+  .symbol-container {
+    margin-top: 35px;
+  }
 }
 canvas {
   display: block;
 }
 #speedIndicator {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  color: #fff;
-  padding: 2px 5px;
-  border-radius: 5px;
+  position: fixed;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-left: 30px; /* Rechts vom Toggle-Button */
+  color: var(--text-color);
+  background: transparent;
+  padding: 4px 8px;
   font-size: 12px;
   pointer-events: none;
+  z-index: 1001; /* Höher als Back-Button/Menü */
+  display: none; /* Nur auf Mobile sichtbar */
+}
+
+/* Sichtbar auf Mobile */
+@media (max-width: 768px) {
+  #speedIndicator {
+    display: block;
+  }
+}
+
+/* Größerer Indicator auf hochauflösenden Displays */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+  #speedIndicator {
+    font-size: 14px;
+    padding: 6px 10px;
+  }
 }
 
 /* Info Popup Stil */
@@ -199,6 +369,13 @@ canvas {
 
   // Hauptfunktion zum Erstellen der Grafik
   function createGraphic() {
+    // Erstelle den Toggle-Button (0≡1≡∞ Symbol)
+    const toggleButton = document.createElement('button');
+    toggleButton.id = 'settingsToggle';
+    toggleButton.innerHTML = '0 ≡ 1 ≡ ∞';
+    toggleButton.title = 'Einstellungen';
+    // Button wird später direkt in body eingefügt
+
     // Erstelle die Steuerungsleiste
     const controls = document.createElement('header');
     controls.className = 'controls';
@@ -230,6 +407,109 @@ canvas {
     `;
     document.body.insertBefore(controls, document.body.firstChild);
 
+    // Toggle-Funktionalität
+    let settingsVisible = false;
+    let touchHandled = false;
+    let needsToggle = false;
+
+    // Prüfe, ob wir auf einem mobilen Gerät sind
+    function isMobile() {
+      return window.innerWidth <= 768;
+    }
+
+    // Initialisiere den Zustand basierend auf der Bildschirmgröße
+    async function initializeSettingsState() {
+      if (isMobile()) {
+        // Auf Mobile: Sidebar standardmäßig eingeklappt, Toggle-Button immer sichtbar
+        controls.classList.add('collapsed');
+        controls.classList.remove('expanded');
+        toggleButton.style.display = 'block';
+        toggleButton.classList.remove('active');
+        settingsVisible = false;
+        needsToggle = true;
+      } else {
+        // Auf Desktop: immer sichtbar, kein Toggle-Button
+        controls.classList.remove('collapsed');
+        controls.classList.remove('expanded');
+        toggleButton.style.display = 'none';
+        settingsVisible = true;
+        needsToggle = false;
+      }
+    }
+
+    // Toggle-Funktion für Sidebar
+    function toggleSettings() {
+      settingsVisible = !settingsVisible;
+      if (settingsVisible) {
+        controls.classList.remove('collapsed');
+        controls.classList.add('expanded');
+        toggleButton.classList.add('active');
+      } else {
+        controls.classList.add('collapsed');
+        controls.classList.remove('expanded');
+        toggleButton.classList.remove('active');
+      }
+    }
+
+    // Touch-Event für Mobile
+    toggleButton.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      touchHandled = true;
+      toggleSettings();
+
+      setTimeout(() => {
+        touchHandled = false;
+      }, 300);
+    });
+
+    // Click-Event für Desktop
+    toggleButton.addEventListener('click', (e) => {
+      if (touchHandled) {
+        return;
+      }
+      e.stopPropagation();
+      toggleSettings();
+    });
+
+    // Klick/Touch außerhalb schließt die Sidebar auf Mobile
+    function closeSettingsIfOutside(e) {
+      if (isMobile() && settingsVisible) {
+        // Prüfe ob der Klick außerhalb der Controls und des Toggle-Buttons war
+        if (!controls.contains(e.target) && !toggleButton.contains(e.target)) {
+          controls.classList.add('collapsed');
+          controls.classList.remove('expanded');
+          toggleButton.classList.remove('active');
+          settingsVisible = false;
+        }
+      }
+    }
+
+    document.addEventListener('click', closeSettingsIfOutside);
+    document.addEventListener('touchend', closeSettingsIfOutside);
+
+    // Bei Resize prüfen
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        initializeSettingsState();
+      }, 100);
+    });
+
+    // Initialisiere den Zustand
+    initializeSettingsState();
+
+    // Nochmal nach vollständigem Laden prüfen
+    setTimeout(() => {
+      initializeSettingsState();
+    }, 500);
+
+    // Und nochmal nach 1 Sekunde (für langsame Geräte)
+    setTimeout(() => {
+      initializeSettingsState();
+    }, 1000);
+
     // Erstelle den Container für das Symbol
     // Symbol-Container
     const symbolContainer = document.createElement('div');
@@ -243,11 +523,14 @@ canvas {
     canvas.height = 400;
     symbolContainer.appendChild(canvas);
 
-    // Geschwindigkeitsindikator
+    // Geschwindigkeitsindikator - direkt in body (fixed position)
     const speedIndicator = document.createElement('div');
     speedIndicator.id = 'speedIndicator';
-    speedIndicator.textContent = 'Speed: 0°/Frame';
-    symbolContainer.appendChild(speedIndicator);
+    speedIndicator.textContent = '1559°/Frame';
+    document.body.appendChild(speedIndicator);
+
+    // Toggle-Button direkt in body (fixed position)
+    document.body.appendChild(toggleButton);
 
     if (controls.nextSibling) {
       document.body.insertBefore(symbolContainer, controls.nextSibling);
@@ -1063,13 +1346,23 @@ canvas {
     requestAnimationFrame(animate);
   }
 
-  // Event-Listener für das Verstecken der Steuerungen beim Scrollen
+  // Event-Listener für das Verstecken der Steuerungen beim Scrollen (nur Desktop)
   window.addEventListener('scroll', () => {
     const controls = document.getElementById('controls');
-    if (window.scrollY === 0) {
-      controls.style.display = 'flex';
-    } else {
-      controls.style.display = 'none';
+    const toggleBtn = document.getElementById('settingsToggle');
+
+    // Nur auf Desktop ausblenden beim Scrollen
+    if (window.innerWidth > 768) {
+      if (window.scrollY === 0) {
+        controls.style.display = 'flex';
+      } else {
+        controls.style.display = 'none';
+      }
+    }
+
+    // Toggle-Button bleibt immer sichtbar auf Mobile
+    if (toggleBtn && window.innerWidth <= 768) {
+      toggleBtn.style.display = 'block';
     }
   });
 
