@@ -1,6 +1,7 @@
 <!-- kreisausdingen.html -->
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -8,7 +9,7 @@
 
     <!-- Die Eingabe von sehr vielen Zeichen macht das ganze ziemlich verrückt. Und dann die Leertaste ‒ crazy -->
 
-    
+
     <link href="/meta.css" rel="stylesheet" />
     <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
     <script src="/meta.js" defer></script>
@@ -22,6 +23,7 @@
     <style>
         :root {
             --vh: 1vh;
+            --base-unit: 1vmin;
         }
 
         * {
@@ -34,14 +36,17 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            touch-action: none; /* Verhindert Browser-Zoom */
+            touch-action: none;
+            /* Verhindert Browser-Zoom */
             background: var(--bg-color, black);
         }
 
         body {
-            overflow: hidden; /* Verhindert Scrollen */
+            overflow: hidden;
+            /* Verhindert Scrollen */
             overscroll-behavior: none;
-            opacity: 1 !important; /* Keine Opacity-Effekte */
+            opacity: 1 !important;
+            /* Keine Opacity-Effekte */
             width: 100%;
             height: 100%;
             position: fixed;
@@ -49,14 +54,17 @@
             left: 0;
             right: 0;
             bottom: 0;
-            touch-action: none; /* Verhindert Browser-Zoom */
+            touch-action: none;
+            /* Verhindert Browser-Zoom */
             background: var(--bg-color, black);
         }
+
         canvas {
             display: block;
             cursor: grab;
             opacity: 1 !important;
-            touch-action: none; /* Verhindert Browser-Gesten */
+            touch-action: none;
+            /* Verhindert Browser-Gesten */
             position: absolute;
             top: 0;
             left: 0;
@@ -64,82 +72,93 @@
             height: 100%;
             background: var(--bg-color, black);
         }
+
         canvas:active {
             cursor: grabbing;
         }
+
         #controls {
             position: fixed;
-            top: 4.375rem; /* Direkt unter den meta.js buttons (70px) */
+            top: calc(4.375 * var(--base-unit));
+            /* Direkt unter den meta.js buttons, skaliert mit der kürzeren Seite */
             left: 0;
             right: 0;
             background: transparent;
-            padding: 0 10px;
+            padding: 0 calc(1 * var(--base-unit));
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 100;
             box-sizing: border-box;
-            height: 3rem; /* Etwas kompakter */
-            touch-action: none; /* Verhindert Browser-Zoom auf Controls */
+            height: calc(3 * var(--base-unit));
+            /* Etwas kompakter, skaliert mit der kürzeren Seite */
+            touch-action: none;
+            /* Verhindert Browser-Zoom auf Controls */
         }
+
         .controls-row {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: calc(0.8 * var(--base-unit));
             height: 100%;
             background: var(--bg-color, black);
-            border-radius: 6px;
-            padding: 0 12px;
+            border-radius: calc(0.6 * var(--base-unit));
+            padding: 0 calc(1.2 * var(--base-unit));
         }
+
         .control-group {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: calc(0.4 * var(--base-unit));
             height: 100%;
         }
+
         input[type="number"] {
-            width: 60px;
+            width: calc(6 * var(--base-unit));
             height: 100%;
             text-align: center;
-            font-size: 14px;
-            padding: 0 4px;
+            font-size: calc(1.4 * var(--base-unit));
+            padding: 0 calc(0.4 * var(--base-unit));
             background: var(--bg-color, black);
             color: var(--text-color, white);
             border: none;
-            border-radius: 4px;
+            border-radius: calc(0.4 * var(--base-unit));
             box-sizing: border-box;
             opacity: 1 !important;
         }
+
         input[type="text"] {
-            width: 200px;
+            width: calc(20 * var(--base-unit));
             height: 100%;
-            font-size: 14px;
-            padding: 0 8px;
+            font-size: calc(1.4 * var(--base-unit));
+            padding: 0 calc(0.8 * var(--base-unit));
             background: var(--bg-color, black);
             color: var(--text-color, white);
             border: 2px solid var(--text-color, white);
-            border-radius: 4px;
+            border-radius: calc(0.4 * var(--base-unit));
             box-sizing: border-box;
             opacity: 1 !important;
         }
+
         .control-btn {
             background: transparent;
             color: var(--text-color, white);
             border: none;
             cursor: pointer;
-            font-size: 20px;
+            font-size: calc(2 * var(--base-unit));
             line-height: 1;
             padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             user-select: none;
-            width: 30px;
+            width: calc(3 * var(--base-unit));
             height: 100%;
             flex-shrink: 0;
             font-family: Arial, sans-serif;
             opacity: 1 !important;
         }
+
         #controls {
             opacity: 1 !important;
         }
@@ -148,55 +167,67 @@
         /* Mobile Optimierung - High-Res Displays */
         @media (max-width: 768px) and (min-resolution: 2dppx) {
             #controls {
-                top: 5.5rem; /* Unter den größeren meta.js buttons auf Mobile */
-                padding: 0 8px;
+                top: calc(5.5 * var(--base-unit));
+                /* Unter den größeren meta.js buttons auf Mobile */
+                padding: 0 calc(0.8 * var(--base-unit));
             }
+
             .controls-row {
-                gap: 5px;
+                gap: calc(0.5 * var(--base-unit));
             }
+
             .control-group {
-                gap: 3px;
+                gap: calc(0.3 * var(--base-unit));
             }
+
             input[type="number"] {
-                width: 50px;
-                font-size: 16px;
+                width: calc(5 * var(--base-unit));
+                font-size: calc(1.6 * var(--base-unit));
             }
+
             input[type="text"] {
-                width: 150px;
-                font-size: 14px;
+                width: calc(15 * var(--base-unit));
+                font-size: calc(1.4 * var(--base-unit));
             }
+
             .control-btn {
-                font-size: 22px;
-                width: 30px;
+                font-size: calc(2.2 * var(--base-unit));
+                width: calc(3 * var(--base-unit));
             }
         }
 
         /* Mobile Optimierung - Standard */
         @media (max-width: 768px) and (max-resolution: 1.99dppx) {
             #controls {
-                padding: 0 8px;
+                padding: 0 calc(0.8 * var(--base-unit));
             }
+
             .controls-row {
-                gap: 5px;
+                gap: calc(0.5 * var(--base-unit));
             }
+
             .control-group {
-                gap: 3px;
+                gap: calc(0.3 * var(--base-unit));
             }
+
             input[type="number"] {
-                width: 50px;
-                font-size: 14px;
+                width: calc(5 * var(--base-unit));
+                font-size: calc(1.4 * var(--base-unit));
             }
+
             input[type="text"] {
-                width: 140px;
-                font-size: 13px;
+                width: calc(14 * var(--base-unit));
+                font-size: calc(1.3 * var(--base-unit));
             }
+
             .control-btn {
-                font-size: 18px;
-                width: 28px;
+                font-size: calc(1.8 * var(--base-unit));
+                width: calc(2.8 * var(--base-unit));
             }
         }
     </style>
 </head>
+
 <body>
     <div id="controls">
         <div class="controls-row">
@@ -216,6 +247,7 @@
                 <button class="control-btn" id="charAdd">+</button>
             </div>
         </div>
+        <!-- Kreise sind unteranderem so awesome weil sie neben allem anderen noch herkömmlicher Schrift erlauben Geometrie zu machen lol -->
     </div>
     <canvas id="canvas"></canvas>
 
@@ -369,7 +401,10 @@
         // 2. zoomFactor: Zoom für BEIDE Radius UND Schriftgröße (über Mausrad/Pinch)
         let radiusPercent = 80;  // Basis-Radius in Prozent
         let zoomFactor = 1.0;     // Zoom-Multiplikator
-        const baseFontSize = 30;  // Basis-Schriftgröße in Pixel
+
+        // Basis-Schriftgröße und Innenabstand relativ zur kürzeren Seite des Canvas
+        const baseFontFactor = 0.028;       // ~2.8% der kürzeren Seite
+        const radiusMarginFactor = 0.05;    // ~5% Innenabstand vom Rand
 
         // Synchronisiere radiusPercent mit dem Input-Feld
         function syncRadiusToInput() {
@@ -382,6 +417,279 @@
         let lastY = 0;
         let panX = 0;
         let panY = 0;
+
+        // Deklarativer Modus: Speichert aktuellen Modus und Parameter
+        let currentMode = null; // { type: 'double', param: 4 } oder { type: 'ten', param: -2 } etc.
+
+        // Input-History für Count-Sequenz-Erkennung
+        let inputHistory = [];
+
+        // Prüfe ob Count-Sequenz vorliegt (0 → löschen → 1 → löschen → 2)
+        function isCountSequence() {
+            const len = inputHistory.length;
+            if (len < 5) return false;
+
+            return (
+                inputHistory[len - 5] === '0' &&
+                inputHistory[len - 4] === '' &&
+                inputHistory[len - 3] === '1' &&
+                inputHistory[len - 2] === '' &&
+                inputHistory[len - 1] === '2'
+            );
+        }
+
+        // Parse Modus aus String (z.B. "double(4)" → { type: 'double', param: 4 })
+        function parseModeString(str) {
+            if (!str) return null;
+
+            // double(4), ten(-2), count(5), etc.
+            const match = str.match(/^(double|ten|count)\((-?\d+)\)$/);
+            if (match) {
+                return { type: match[1], param: parseInt(match[2]) };
+            }
+
+            // numbernumber(5), numberspacenumber(7)
+            const matchNumber = str.match(/^(numbernumber|numberspacenumber)\((-?\d+)\)$/);
+            if (matchNumber) {
+                return { type: matchNumber[1], param: parseInt(matchNumber[2]) };
+            }
+
+            // random(7)
+            const matchRandom = str.match(/^random\((\d+)\)$/);
+            if (matchRandom) {
+                return { type: 'random', param: parseInt(matchRandom[1]) };
+            }
+
+            // 018(3), 01(5)
+            const match018 = str.match(/^(018|01)\((-?\d+)\)$/);
+            if (match018) {
+                return { type: match018[1], param: parseInt(match018[2]) };
+            }
+
+            // Binary pattern wie 011001010(3)
+            const matchBinary = str.match(/^([01]+)\((-?\d+)\)$/);
+            if (matchBinary && matchBinary[1].length > 2) {
+                return { type: 'binary', param: parseInt(matchBinary[2]), pattern: matchBinary[1] };
+            }
+
+            // 00(2) oder 00(-3)
+            const match00 = str.match(/^(00)\((-?\d+)\)$/);
+            if (match00) {
+                return { type: '00', param: parseInt(match00[2]) };
+            }
+
+            // 0(-3)
+            const match0 = str.match(/^(0)\((-?\d+)\)$/);
+            if (match0) {
+                return { type: '0', param: parseInt(match0[2]) };
+            }
+
+            // 11(2) oder 11(-3)
+            const match11 = str.match(/^(11)\((-?\d+)\)$/);
+            if (match11) {
+                return { type: '11', param: parseInt(match11[2]) };
+            }
+
+            // 1(5) oder 1(-3)
+            const match1 = str.match(/^(1)\((-?\d+)\)$/);
+            if (match1) {
+                return { type: '1', param: parseInt(match1[2]) };
+            }
+
+            // infinite(8) oder infinite(∞)
+            const matchInfinite = str.match(/^infinite\((.)\)$/);
+            if (matchInfinite) {
+                return { type: 'infinite', char: matchInfinite[1] };
+            }
+
+            return null;
+        }
+
+        // Berechne Display-String aus Modus
+        function calculateDisplay(mode) {
+            if (!mode) return '';
+
+            switch (mode.type) {
+                case 'double':
+                    // double(4) = 2^4 = 16
+                    if (typeof Decimal !== 'undefined') {
+                        const result = Decimal.pow(2, mode.param);
+                        if (result.isInteger()) {
+                            return result.toFixed(0);
+                        } else {
+                            const decimalPlaces = Math.max(1, Math.abs(Math.min(0, result.e)) + 10);
+                            const output = result.toFixed(decimalPlaces);
+                            return output.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+                        }
+                    } else {
+                        return Math.pow(2, mode.param).toString();
+                    }
+
+                case 'ten':
+                    // ten(3) = 10^3 = 1000
+                    if (typeof Decimal !== 'undefined') {
+                        const result = Decimal.pow(10, mode.param);
+                        if (result.isInteger()) {
+                            return result.toFixed(0);
+                        } else {
+                            const decimalPlaces = Math.max(1, Math.abs(Math.min(0, result.e)) + 10);
+                            const output = result.toFixed(decimalPlaces);
+                            return output.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+                        }
+                    } else {
+                        return Math.pow(10, mode.param).toString();
+                    }
+
+                case '018':
+                    // 018(3) = "018018018"
+                    return '018'.repeat(Math.max(0, mode.param));
+
+                case '00':
+                    // 00(2) = "00000000" (2^2 * 2 = 8 Nullen)
+                    // 00(-2) = "-0000" (2^2 = 4 Nullen mit Minus)
+                    if (mode.param >= 0) {
+                        const count = 2 * Math.pow(2, mode.param);
+                        return '0'.repeat(count);
+                    } else {
+                        const count = 2 * Math.pow(2, Math.abs(mode.param));
+                        return '-' + '0'.repeat(count);
+                    }
+
+                case '0':
+                    // 0(0) = "" (leer)
+                    // 0(3) = "000" (3 Nullen)
+                    // 0(-3) = "-000" (3 Nullen mit Minus)
+                    if (mode.param === 0) {
+                        return '';
+                    } else if (mode.param > 0) {
+                        return '0'.repeat(mode.param);
+                    } else {
+                        return '-' + '0'.repeat(Math.abs(mode.param));
+                    }
+
+                case '11':
+                    // 11(2) = "11111111" (2^2 * 2 = 8 Einsen)
+                    // 11(-2) = "-1111" (2^2 = 4 Einsen mit Minus)
+                    if (mode.param >= 0) {
+                        const count = 2 * Math.pow(2, mode.param);
+                        return '1'.repeat(count);
+                    } else {
+                        const count = 2 * Math.pow(2, Math.abs(mode.param));
+                        return '-' + '1'.repeat(count);
+                    }
+
+                case '1':
+                    // 1(0) = "" (leer)
+                    // 1(5) = "11111" (5 Einsen)
+                    // 1(-3) = "-111" (3 Einsen mit Minus)
+                    if (mode.param === 0) {
+                        return '';
+                    } else if (mode.param > 0) {
+                        return '1'.repeat(mode.param);
+                    } else {
+                        return '-' + '1'.repeat(Math.abs(mode.param));
+                    }
+
+                case 'count':
+                    // count(3) = "3"
+                    // count(-5) = "-5"
+                    return mode.param.toString();
+
+                case 'numbernumber':
+                    // numbernumber(3) = "0123"
+                    // numbernumber(0) = "0"
+                    // numbernumber(-1) = "10-"
+                    // numbernumber(-2) = "210-"
+                    // numbernumber(-3) = "3210-"
+                    if (mode.param >= 0) {
+                        let result = '';
+                        for (let i = 0; i <= mode.param; i++) {
+                            result += i;
+                        }
+                        return result;
+                    } else {
+                        // Negativ: Von abs(param) bis 0 rückwärts, Minus rechts
+                        const absParam = Math.abs(mode.param);
+                        let result = '';
+                        for (let i = absParam; i >= 0; i--) {
+                            result += i;
+                        }
+                        return result + '-';
+                    }
+
+                case 'numberspacenumber':
+                    // numberspacenumber(3) = "0 1 2 3"
+                    // numberspacenumber(0) = "0"
+                    // numberspacenumber(-1) = "-1 0"
+                    // numberspacenumber(-3) = "-3 -2 -1 0"
+                    if (mode.param >= 0) {
+                        let result = [];
+                        for (let i = 0; i <= mode.param; i++) {
+                            result.push(i);
+                        }
+                        return result.join(' ');
+                    } else {
+                        // Negativ: Von -param bis 0, links anfügen
+                        let result = [];
+                        for (let i = Math.abs(mode.param); i >= 0; i--) {
+                            result.push('-' + i);
+                        }
+                        return result.join(' ');
+                    }
+
+                case '01':
+                    // 01 = Binär-Zähl-Modus
+                    // 01(1) = "01" (binär 1)
+                    // 01(2) = "10" (binär 2)
+                    // 01(3) = "11" (binär 3)
+                    // 01(4) = "100" (binär 4)
+                    // 01(-1) = "-1" (binär -1)
+                    // 01(-2) = "-10" (binär -2)
+                    if (mode.param >= 0) {
+                        return mode.param.toString(2);
+                    } else {
+                        return '-' + Math.abs(mode.param).toString(2);
+                    }
+
+                case 'binary':
+                    // 011001010(3) = "011001010011001010011001010"
+                    // 011001010(-2) = "-011001010011001010"
+                    if (mode.param >= 0) {
+                        return mode.pattern.repeat(mode.param);
+                    } else {
+                        return '-' + mode.pattern.repeat(Math.abs(mode.param));
+                    }
+
+                case 'random':
+                    // random(7) = 7 zufällige ASCII-Zeichen
+                    let result = '';
+                    for (let i = 0; i < mode.param; i++) {
+                        result += getRandomASCII();
+                    }
+                    return result;
+
+                case 'infinite':
+                    // infinite mit Zeichen '8' oder '∞'
+                    // Gibt eine Platzhalter-Zeichenkette zurück (wird in draw() durch richtige Länge ersetzt)
+                    // Nutze eine moderate Länge als Platzhalter (z.B. 100 Zeichen)
+                    return (mode.char || '8').repeat(1000);
+
+                default:
+                    return '';
+            }
+        }
+
+        // Erstelle URL-String aus Modus
+        function modeToURLString(mode) {
+            if (!mode) return '';
+            if (mode.type === 'binary') {
+                return `${mode.pattern}(${mode.param})`;
+            }
+            if (mode.type === 'infinite') {
+                return `infinite(${mode.char})`;
+            }
+            return `${mode.type}(${mode.param})`;
+        }
 
         // URL-Parameter auslesen
         const urlParams = new URLSearchParams(window.location.search);
@@ -400,49 +708,45 @@
             }
         }
         if (zeichenParam !== null) {
-            // Prüfe ob es infinite(x) Format ist
-            const infiniteMatch = zeichenParam.match(/^infinite\((.)\)$/);
-            if (infiniteMatch) {
-                // Extrahiere das Zeichen (z.B. "8")
-                const char = infiniteMatch[1];
-                // Setze ein einzelnes Zeichen (wird dann im infinite-Modus gerendert)
-                characterInput.value = char;
-                console.log(`✓ Infinite-Modus: Zeichen '${char}'`);
-            }
             // Prüfe ob es pi(x) Format ist
-            else {
-                const piMatch = zeichenParam.match(/^pi\((\d+)\)$/);
-                if (piMatch) {
-                    // Extrahiere Anzahl der Stellen
-                    const digits = parseInt(piMatch[1]);
+            const piMatch = zeichenParam.match(/^pi\((\d+)\)$/);
+            if (piMatch) {
+                // Extrahiere Anzahl der Stellen
+                const digits = parseInt(piMatch[1]);
 
-                    // Berechne Pi mit dieser Anzahl Stellen
-                    if (digits > 0 && typeof Decimal !== 'undefined') {
-                        // Stelle sicher, dass wir genug Pi-Stellen haben
-                        if (piCache.length < digits && !isCalculating) {
-                            isCalculating = true;
-                            console.log(`Lade Pi mit ${digits} Stellen aus URL...`);
-                            const piString = calculatePi(digits + 100);
-                            if (piString) {
-                                piCache = piString;
-                                console.log(`✓ Pi geladen: ${piCache.length - 2} Stellen verfügbar`);
-                            } else {
-                                console.error('❌ Pi-Berechnung fehlgeschlagen!');
-                            }
-                            isCalculating = false;
-                        }
-
-                        // Setze die ersten x Stellen von Pi
-                        if (piCache.length >= digits) {
-                            characterInput.value = piCache.substring(0, digits);
+                // Berechne Pi mit dieser Anzahl Stellen
+                if (digits > 0 && typeof Decimal !== 'undefined') {
+                    // Stelle sicher, dass wir genug Pi-Stellen haben
+                    if (piCache.length < digits && !isCalculating) {
+                        isCalculating = true;
+                        console.log(`Lade Pi mit ${digits} Stellen aus URL...`);
+                        const piString = calculatePi(digits + 100);
+                        if (piString) {
+                            piCache = piString;
+                            console.log(`✓ Pi geladen: ${piCache.length - 2} Stellen verfügbar`);
                         } else {
-                            console.error(`❌ Nicht genug Pi-Stellen im Cache: ${piCache.length} < ${digits}`);
-                            characterInput.value = piCache; // Setze was wir haben
+                            console.error('❌ Pi-Berechnung fehlgeschlagen!');
                         }
-                    } else if (typeof Decimal === 'undefined') {
-                        console.error('❌ Decimal.js ist nicht geladen!');
-                        characterInput.value = '3.14159'; // Fallback
+                        isCalculating = false;
                     }
+
+                    // Setze die ersten x Stellen von Pi
+                    if (piCache.length >= digits) {
+                        characterInput.value = piCache.substring(0, digits);
+                    } else {
+                        console.error(`❌ Nicht genug Pi-Stellen im Cache: ${piCache.length} < ${digits}`);
+                        characterInput.value = piCache; // Setze was wir haben
+                    }
+                } else if (typeof Decimal === 'undefined') {
+                    console.error('❌ Decimal.js ist nicht geladen!');
+                    characterInput.value = '3.14159'; // Fallback
+                }
+            } else {
+                // Prüfe ob es ein Modus-Format ist (double(4), ten(-2), etc.)
+                const parsedMode = parseModeString(zeichenParam);
+                if (parsedMode) {
+                    currentMode = parsedMode;
+                    characterInput.value = calculateDisplay(currentMode);
                 } else {
                     // Normaler String
                     characterInput.value = zeichenParam;
@@ -459,7 +763,8 @@
         if (zoomParam !== null) {
             const zoom = parseFloat(zoomParam);
             if (!isNaN(zoom)) {
-                zoomFactor = zoom;
+                // Clamp Zoomfaktor aus der URL auf denselben Bereich wie im Wheel/Pinch-Handler
+                zoomFactor = Math.max(0.001, Math.min(100, zoom));
             }
         }
         if (panXParam !== null) {
@@ -494,22 +799,25 @@
         resizeCanvas();
 
         function draw() {
-            const count = parseInt(countNumber.value) || 0;
-            const character = characterInput.value || " "; // Standard ist ein Leerzeichen
+            let count = parseInt(countNumber.value) || 0;
+            let character = characterInput.value || " "; // Standard ist ein Leerzeichen
+
+            // Kürzere Seite des Canvas als Basis für alle Proportionen
+            const shorterSide = Math.min(canvas.width, canvas.height);
 
             // Mittelpunkt berechnen (mit Pan-Offset)
             const centerX = canvas.width / 2 + panX;
             const centerY = canvas.height / 2 + panY;
-            const maxRadius = Math.min(canvas.width, canvas.height) / 2 - 50;
+            const maxRadius = shorterSide / 2 - shorterSide * radiusMarginFactor;
 
-            // Radius: radiusPercent * zoomFactor
-            const radius = maxRadius * (radiusPercent / 100) * zoomFactor;
+            // Logischer Radius: abhängig nur von radiusPercent (Zoom kommt über scale)
+            const radius = maxRadius * (radiusPercent / 100);
 
             // Canvas löschen
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Schriftgröße: baseFontSize * zoomFactor (unabhängig von radiusPercent!)
-            const fontSize = baseFontSize * zoomFactor;
+            // Schriftgröße relativ zur kürzeren Seite (Zoom wirkt zusätzlich über Canvas-Skalierung)
+            const fontSize = shorterSide * baseFontFactor;
 
             // Zeichen
             ctx.font = `${fontSize}px Arial`;
@@ -517,51 +825,108 @@
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
-            // Prüfe ob Infinite-Modus (nur 8en)
-            const isInfiniteMode = character.match(/^8+$/);
-
-            if (isInfiniteMode) {
-                // Infinite-Modus: Zeichne mehrere konzentrische Kreise
-                // Berechne wie viele Kreise wir brauchen um den ganzen Canvas zu füllen
-                const maxDistance = Math.sqrt(canvas.width * canvas.width + canvas.height * canvas.height);
-                const radiusStep = radius / count; // Abstand zwischen Zeichen auf einem Kreis
-
-                // Zeichne von Mitte nach außen, bis wir über den Canvas hinaus sind
-                for (let ringIndex = 0; ringIndex * radiusStep < maxDistance; ringIndex++) {
-                    const currentRadius = ringIndex * radiusStep;
-
-                    // Berechne wie viele Zeichen auf diesen Ring passen
-                    const circumference = 2 * Math.PI * currentRadius;
-                    const charsOnRing = Math.max(1, Math.floor(circumference / (fontSize * 1.5)));
-
-                    for (let i = 0; i < charsOnRing; i++) {
-                        const angle = (i / charsOnRing) * 2 * Math.PI - Math.PI / 2;
-
-                        const x = centerX + currentRadius * Math.cos(angle);
-                        const y = centerY + currentRadius * Math.sin(angle);
-
-                        ctx.save();
-                        ctx.translate(x, y);
-                        ctx.rotate(angle + Math.PI / 2);
-                        ctx.fillText('8', 0, 0);
-                        ctx.restore();
-                    }
-                }
-            } else {
-                // Normal-Modus: Zeichne einen Kreis
-                for (let i = 0; i < count; i++) {
-                    const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
-
-                    const x = centerX + radius * Math.cos(angle);
-                    const y = centerY + radius * Math.sin(angle);
-
-                    ctx.save();
-                    ctx.translate(x, y);
-                    ctx.rotate(angle + Math.PI / 2);
-                    ctx.fillText(character, 0, 0);
-                    ctx.restore();
-                }
+            // Infinite-Modus: Cache für die "unendliche" Zeichenkette
+            // Der Text muss nur neu berechnet werden, wenn sich Zoom, Canvasgröße
+            // oder das verwendete Zeichen geändert haben.
+            if (!window._infiniteCache) {
+                window._infiniteCache = {
+                    char: null,
+                    zoom: null,
+                    width: 0,
+                    height: 0,
+                    centerX: 0,
+                    centerY: 0,
+                    radius: 0,
+                    text: ''
+                };
             }
+
+            function getInfiniteText() {
+                const ch = (currentMode && currentMode.char) ? currentMode.char : '8';
+
+                // Wenn sich nichts Relevantes geändert hat, benutze den Cache
+                if (
+                    window._infiniteCache.char === ch &&
+                    window._infiniteCache.zoom === zoomFactor &&
+                    window._infiniteCache.width === canvas.width &&
+                    window._infiniteCache.height === canvas.height &&
+                    window._infiniteCache.centerX === centerX &&
+                    window._infiniteCache.centerY === centerY
+                ) {
+                    return window._infiniteCache.text;
+                }
+
+                // Schätze Breite und Höhe eines Zeichens (niemals 0 wegen "|| 1")
+                const fontSizeSafe = fontSize || 1;
+                const charWidth = ctx.measureText(ch).width || 1;
+                const charHeight = fontSizeSafe;
+
+                // Berücksichtige die Verschiebung des Kreismittelpunkts: wir wollen
+                // in JEDE Richtung (links/rechts/oben/unten) über den sichtbaren
+                // Bereich hinausreichen, egal wo der Mittelpunkt liegt.
+                const leftExtent = Math.abs(centerX) + canvas.width;
+                const rightExtent = Math.abs(canvas.width - centerX) + canvas.width;
+                const topExtent = Math.abs(centerY) + canvas.height;
+                const bottomExtent = Math.abs(canvas.height - centerY) + canvas.height;
+
+                // Größte Ausdehnung in irgendeine Richtung relativ zum sichtbaren Bereich
+                const maxExtentScreen = Math.max(leftExtent, rightExtent, topExtent, bottomExtent);
+
+                // Durch die Canvas-Skalierung mit zoomFactor wird jedes Zeichen auf dem
+                // Bildschirm um diesen Faktor kleiner/größer. In Weltkoordinaten ist
+                // der sichtbare Bereich daher maxExtentScreen / zoomFactor groß.
+                const maxExtentWorld = maxExtentScreen / Math.max(zoomFactor, 0.001);
+
+                // Wie viele Zeichen werden in Weltkoordinaten benötigt, um diese
+                // Ausdehnung zu füllen?
+                const neededCount = Math.ceil(
+                    maxExtentWorld / Math.min(charWidth, charHeight)
+                ) * 2;
+
+                const text = ch.repeat(neededCount);
+
+                window._infiniteCache = {
+                    char: ch,
+                    zoom: zoomFactor,
+                    width: canvas.width,
+                    height: canvas.height,
+                    centerX: centerX,
+                    centerY: centerY,
+                    radius: radius,
+                    text
+                };
+
+                return text;
+            }
+
+            // Infinite-Modus: Erzeuge die passende "unendliche" Zeichenkette
+            if (currentMode && currentMode.type === 'infinite') {
+                character = getInfiniteText();
+                // count bleibt unverändert (kommt vom anzahl-Input!)
+            }
+
+            // Zeichne Zeichen auf dem Kreis
+            ctx.save();
+            // Mittelpunkt (inkl. Pan) in den Ursprung holen
+            ctx.translate(centerX, centerY);
+            // Zoom wird ausschließlich über Skalierung erledigt
+            ctx.scale(zoomFactor, zoomFactor);
+
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
+
+                // Position relativ zum (0, 0)-Mittelpunkt in Weltkoordinaten
+                const x = radius * Math.cos(angle);
+                const y = radius * Math.sin(angle);
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle + Math.PI / 2);
+                ctx.fillText(character, 0, 0);
+                ctx.restore();
+            }
+
+            ctx.restore();
         }
 
         // URL aktualisieren
@@ -573,14 +938,15 @@
             const py = panY.toFixed(2); // 2 Dezimalstellen für panY
             let zeichen = characterInput.value;
 
-            // Wenn zeichen nur aus 8en besteht (mindestens eine 8), verwende infinite(8) Format
-            if (zeichen.match(/^8+$/) && zeichen.length >= 1) {
-                zeichen = 'infinite(8)';
+            // Wenn wir in einem Modus sind, verwende Modus-Format
+            if (currentMode) {
+                zeichen = modeToURLString(currentMode);
             }
             // Wenn zeichen ein Pi-Präfix ist UND mindestens 4 Zeichen lang (z.B. "3.14"), verwende pi(x) Format
             else if (zeichen.length >= 4 && isPiPrefix(zeichen)) {
                 zeichen = `pi(${zeichen.length})`;
             }
+            // infinite(8) bleibt wie es ist (wird direkt in URL übernommen)
 
             // Reihenfolge: anzahl → radius → zoom → panX → panY → zeichen (zeichen als letztes)
             const newURL = `${window.location.pathname}?anzahl=${encodeURIComponent(anzahl)}&radius=${encodeURIComponent(radius)}&zoom=${encodeURIComponent(zoom)}&panX=${encodeURIComponent(px)}&panY=${encodeURIComponent(py)}&zeichen=${encodeURIComponent(zeichen)}`;
@@ -631,46 +997,89 @@
         function addCharacter() {
             const currentValue = characterInput.value;
 
-            // Spezielle Modi basierend auf aktuellem Wert
+            // Wenn wir bereits in einem Modus sind, Parameter erhöhen
+            if (currentMode) {
+                currentMode.param++;
+                characterInput.value = calculateDisplay(currentMode);
+                draw();
+                updateURL();
+                return;
+            }
+
+            // Erkenne Modus basierend auf Eingabe
             if (currentValue === '') {
-                // Leer → Random
-                characterInput.value = getRandomASCII();
+                // Leer → Random mit 1 Zeichen
+                currentMode = { type: 'random', param: 1 };
+                characterInput.value = calculateDisplay(currentMode);
             } else if (currentValue === '0') {
-                // 0 → 018
-                characterInput.value = '018';
-            } else if (currentValue.match(/^(018)+$/)) {
-                // 018018... → Weiter mit 018-Pattern
-                characterInput.value += '018';
-            } else if (currentValue === '1' || currentValue.match(/^1+$/)) {
-                // 1 oder 111... → Immer nur eine 1 hinzufügen
-                characterInput.value += '1';
+                // 0 → Nichts passiert
+                return;
+            } else if (currentValue === '2' && isCountSequence()) {
+                // 2 nach 0→1 Sequenz → Count-Modus
+                currentMode = { type: 'count', param: 3 };
+                characterInput.value = calculateDisplay(currentMode);
             } else if (currentValue === '2') {
-                // 2 → 48163264
-                characterInput.value = '48163264';
-            } else if (currentValue === '48163264') {
-                // 48163264 → Weiter mit 48163264
-                characterInput.value += '48163264';
-            } else if (currentValue.match(/^(48163264)+$/)) {
-                // 48163264... → Weiter mit 48163264-Pattern
-                characterInput.value += '48163264';
-            } else if (currentValue === '8' || currentValue.match(/^8+$/)) {
-                // 8 oder 888... → Infinite-Modus (wird in URL als infinite(8) dargestellt)
-                characterInput.value += '8';
+                // 2 → Starte double-Modus bei double(2) = 4
+                currentMode = { type: 'double', param: 2 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '10') {
+                // 10 → Starte ten-Modus bei ten(2) = 100
+                currentMode = { type: 'ten', param: 2 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '012') {
+                // 012 → NumberNumber-Modus
+                currentMode = { type: 'numbernumber', param: 3 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '0 1 2') {
+                // 0 1 2 → NumberSpaceNumber-Modus
+                currentMode = { type: 'numberspacenumber', param: 3 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '018') {
+                // 018 → Starte 018-Modus bei 018(2) = 018018
+                currentMode = { type: '018', param: 2 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '01') {
+                // 01 → Binär-Zähl-Modus (startet bei 1, nächster Wert ist 2 = "10")
+                currentMode = { type: '01', param: 2 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue.match(/^[01]+$/) && currentValue.length > 2) {
+                // Beliebiges Binary-Pattern (nur 0 und 1, länger als 2)
+                currentMode = { type: 'binary', param: 2, pattern: currentValue };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '00') {
+                // 00 → Starte 00-Modus bei 00(1) = 0000
+                currentMode = { type: '00', param: 1 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '11') {
+                // 11 → Starte 11-Modus bei 11(1) = 1111
+                currentMode = { type: '11', param: 1 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '1') {
+                // 1 → Starte 1-Modus bei 1(2) = 11
+                currentMode = { type: '1', param: 2 };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '8') {
+                // 8 → infinite(8) Modus
+                currentMode = { type: 'infinite', char: '8' };
+                characterInput.value = calculateDisplay(currentMode);
+            } else if (currentValue === '∞') {
+                // ∞ → infinite(∞) Modus
+                currentMode = { type: 'infinite', char: '∞' };
+                characterInput.value = calculateDisplay(currentMode);
             } else {
-                // Pi-Modus nur ab 4 Zeichen (z.B. "3.14" oder "3,14")
-                // Prüfe ORIGINAL-Länge, nicht normalisiert!
+                // Pi-Modus oder Random
                 let nextPiDigit = null;
                 if (currentValue.length >= 4) {
                     nextPiDigit = getNextPiDigit(currentValue);
                 }
 
                 if (nextPiDigit !== null) {
-                    // Wenn es ein Pi-Präfix ist (ab 4 Zeichen), füge die nächste korrekte Pi-Ziffer hinzu
                     characterInput.value += nextPiDigit;
                     console.log(`✓ Pi-Modus: Nächste Ziffer ist '${nextPiDigit}'`);
                 } else {
-                    // Sonst: Zufälliges ASCII-Zeichen wie bisher
-                    characterInput.value += getRandomASCII();
+                    // Fallback: Random-Modus
+                    currentMode = { type: 'random', param: currentValue.length + 1 };
+                    characterInput.value = calculateDisplay(currentMode);
                 }
             }
 
@@ -683,13 +1092,33 @@
             const currentValue = characterInput.value;
 
             if (currentValue.length > 0) {
-                // Spezielle Modi: 018-Pattern → Entferne 3 Zeichen auf einmal
-                if (currentValue.match(/^(018)+$/) && currentValue.length >= 3) {
-                    characterInput.value = currentValue.slice(0, -3);
+                // Wenn wir in einem Modus sind, Parameter verringern
+                if (currentMode) {
+                    // Infinite-Modus: Verlasse den Modus
+                    if (currentMode.type === 'infinite') {
+                        characterInput.value = currentMode.char;
+                        currentMode = null;
+                    } else {
+                        currentMode.param--;
+
+                        // Alle Modi gehen unbegrenzt ins Negative!
+                        // Berechne neuen Display-Wert
+                        characterInput.value = calculateDisplay(currentMode);
+                    }
+
+                    draw();
+                    updateURL();
+                    return;
+                }
+
+                // Ohne Modus: Spezialfälle
+                if (currentValue === '0') {
+                    return;
                 } else {
                     // Normal: Entferne 1 Zeichen
                     characterInput.value = currentValue.slice(0, -1);
                 }
+
                 draw();
                 updateURL();
             }
@@ -799,8 +1228,19 @@
             }
         });
 
-        // Zeichen-Eingabe
+        // Manuelle Eingabe der Zeichen → Modus zurücksetzen + History tracken
         characterInput.addEventListener('input', () => {
+            const currentValue = characterInput.value;
+
+            // Füge zur History hinzu
+            inputHistory.push(currentValue);
+
+            // Behalte nur die letzten 10 Einträge
+            if (inputHistory.length > 10) {
+                inputHistory.shift();
+            }
+
+            currentMode = null; // Modus zurücksetzen bei manueller Eingabe
             draw();
             updateURL();
         });
@@ -944,4 +1384,5 @@
         });
     </script>
 </body>
+
 </html>

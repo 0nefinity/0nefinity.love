@@ -11,18 +11,39 @@ menuButton.classList.add('menu-button');
 menuButton.textContent = '≡';
 menuButtonWrapper.appendChild(menuButton);
 
-// Wrapper für die Menü-Liste (verhindert Text-Selektion)
+// Wrapper für die Menü-Liste
 const menuContentWrapper = document.createElement('div');
 menuContentWrapper.classList.add('menu-content-wrapper');
 
+// Suchleiste über der Dateiliste
+const searchWrapper = document.createElement('div');
+searchWrapper.classList.add('menu-search');
+
+const searchInput = document.createElement('input');
+searchInput.type = 'search';
+searchInput.placeholder = 'type what you want…';
+searchInput.setAttribute('aria-label', 'Menü durchsuchen');
+
+const clearButton = document.createElement('button');
+clearButton.type = 'button';
+clearButton.classList.add('menu-search-clear');
+clearButton.setAttribute('aria-label', 'Suche zurücksetzen');
+clearButton.textContent = '×';
+
+searchWrapper.appendChild(searchInput);
+searchWrapper.appendChild(clearButton);
+
+// Dateiliste
 const fileList = document.createElement('ul');
 fileList.id = 'file-list';
+
+// Reihenfolge: Suchleiste, dann Liste
+menuContentWrapper.appendChild(searchWrapper);
 menuContentWrapper.appendChild(fileList);
 
-// Beide Wrapper zum Menü hinzufügen
+// Menü zusammenbauen
 menu.appendChild(menuButtonWrapper);
 menu.appendChild(menuContentWrapper);
-
 document.body.appendChild(menu);
 
 // Priority items (fixed header)
@@ -30,8 +51,7 @@ const priorityItems = [
     { type: 'heading', text: 'legal stuff first:' },
     { type: 'file', path: 'impressum-und-datenschutz.html', name: 'impressum-und-datenschutz' },
     { type: 'heading', text: 'now the party:' },
-    { type: 'file', path: 'README.html', name: 'README' },
-    { type: 'separator' }
+    { type: 'file', path: 'README.html', name: 'README' }
 ];
 
 // Files to exclude from dynamic content (already in priority items)
@@ -44,10 +64,8 @@ function renderFile(fileData) {
     const listItem = document.createElement('li');
     const link = document.createElement('a');
     link.href = '/' + encodeURI(fileData.path);
-    // Wie im Explorer: vollständiger Dateiname inkl. Endung
     link.textContent = fileData.name || fileData.displayName || fileData.path;
 
-    // Verhindere Link-Drag, damit Text-Selektion funktioniert
     link.addEventListener('dragstart', (e) => {
         e.preventDefault();
     });
@@ -68,11 +86,10 @@ function renderFolder(folderName, folderData) {
 
     details.appendChild(summary);
 
-    // Create nested list for folder contents
     const nestedList = document.createElement('ul');
     nestedList.classList.add('folder-contents');
 
-    // Render subfolders first
+    // Subfolders
     if (folderData.folders) {
         Object.keys(folderData.folders).forEach(subFolderName => {
             const subFolderItem = renderFolder(subFolderName, folderData.folders[subFolderName]);
@@ -80,7 +97,7 @@ function renderFolder(folderName, folderData) {
         });
     }
 
-    // Then render files
+    // Files
     if (folderData.files) {
         folderData.files.forEach(file => {
             const fileItem = renderFile(file);
@@ -95,7 +112,7 @@ function renderFolder(folderName, folderData) {
 }
 
 /**
- * Parse sitemap.xml and derive hierarchical, multi-level folder structure from URLs
+ * Parse sitemap.xml and derive hierarchical structure
  */
 function parseXmlStructure(xmlDoc) {
     const result = {
@@ -105,37 +122,26 @@ function parseXmlStructure(xmlDoc) {
 
     const urls = xmlDoc.getElementsByTagName('url');
 
-    // Process each URL and build hierarchy
     for (let i = 0; i < urls.length; i++) {
         const url = urls[i];
         const loc = url.querySelector('loc')?.textContent;
 
         if (!loc) continue;
 
-        // Remove protocol + domain, then leading slashes
         let path = loc.replace(/^https?:\/\/[^/]+\//, '');
         path = path.replace(/^\/+/, '');
-
         if (!path) continue;
 
         const parts = path.split('/').filter(part => part.length > 0);
         if (parts.length === 0) continue;
 
         const fileName = parts[parts.length - 1];
-
-        // Generischer displayName: alles vor dem letzten Punkt, sonst kompletter Name
         const lastDotIndex = fileName.lastIndexOf('.');
         const displayName = lastDotIndex > 0 ? fileName.slice(0, lastDotIndex) : fileName;
 
         if (parts.length === 1) {
-            // Root level file
-            result.files.push({
-                name: fileName,
-                path,
-                displayName
-            });
+            result.files.push({ name: fileName, path, displayName });
         } else {
-            // File in (possibly nested) folders
             let current = result;
 
             for (let j = 0; j < parts.length - 1; j++) {
@@ -144,7 +150,6 @@ function parseXmlStructure(xmlDoc) {
                 if (!current.folders) {
                     current.folders = {};
                 }
-
                 if (!current.folders[folderName]) {
                     current.folders[folderName] = {
                         folders: {},
@@ -155,15 +160,10 @@ function parseXmlStructure(xmlDoc) {
                 current = current.folders[folderName];
             }
 
-            current.files.push({
-                name: fileName,
-                path,
-                displayName
-            });
+            current.files.push({ name: fileName, path, displayName });
         }
     }
 
-    // Optional: Ordner und Dateien alphabetisch sortieren
     function sortNode(node) {
         if (node.folders) {
             const sortedFolders = {};
@@ -182,8 +182,96 @@ function parseXmlStructure(xmlDoc) {
     }
 
     sortNode(result);
-
     return result;
+}
+
+/**
+ * Normalisierung für die Suche
+ */
+function normalizeForSearch(str) {
+    return str
+        .toLocaleLowerCase('de')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Filtert das Menü anhand eines Suchstrings.
+ * Headings & Separatoren werden bei aktiver Suche komplett ausgeblendet.
+ */
+function filterMenu(queryRaw) {
+    const query = normalizeForSearch(queryRaw.trim());
+
+    if (!query) {
+        // Reset
+        fileList.querySelectorAll('li').forEach(li => {
+            li.style.display = '';
+        });
+
+        fileList.querySelectorAll('details').forEach(details => {
+            details.open = false;
+        });
+
+        return;
+    }
+
+    // Erst mal alles sichtbar machen (Basiszustand)
+    fileList.querySelectorAll('li').forEach(li => {
+        li.style.display = '';
+    });
+
+    // Headings + Separatoren (nur Root-Ebene) bei aktiver Suche ausblenden
+    fileList.querySelectorAll(':scope > li').forEach(li => {
+        const heading = li.querySelector(':scope > .menu-heading');
+        const isSeparator = li.classList.contains('menu-separator');
+        if (heading || isSeparator) {
+            li.style.display = 'none';
+        }
+    });
+
+    function filterList(ul) {
+        let hasVisibleChild = false;
+
+        Array.from(ul.children).forEach(li => {
+            const isHeading = li.querySelector(':scope > .menu-heading');
+            const isSeparator = li.classList.contains('menu-separator');
+
+            if (isHeading || isSeparator) {
+                li.style.display = 'none';
+                return;
+            }
+
+            const details = li.querySelector(':scope > details');
+
+            if (details) {
+                const nestedList = details.querySelector(':scope > ul.folder-contents');
+                const childHasMatch = nestedList ? filterList(nestedList) : false;
+
+                li.style.display = childHasMatch ? '' : 'none';
+                details.open = !!(childHasMatch && query);
+
+                if (childHasMatch) {
+                    hasVisibleChild = true;
+                }
+            } else {
+                const link = li.querySelector('a');
+                const text = link
+                    ? normalizeForSearch(link.textContent || '')
+                    : normalizeForSearch(li.textContent || '');
+
+                const match = text.includes(query);
+                li.style.display = match ? '' : 'none';
+
+                if (match) {
+                    hasVisibleChild = true;
+                }
+            }
+        });
+
+        return hasVisibleChild;
+    }
+
+    filterList(fileList);
 }
 
 /**
@@ -191,7 +279,7 @@ function parseXmlStructure(xmlDoc) {
  */
 async function loadFileList() {
     try {
-        // First, render priority items (fixed header)
+        // Priority items
         priorityItems.forEach(item => {
             const listItem = document.createElement('li');
 
@@ -214,17 +302,15 @@ async function loadFileList() {
             fileList.appendChild(listItem);
         });
 
-        // Ensure sitemap.xml is up to date (non-blocking)
-        fetch('/generate-structure.php').catch(e => console.warn('Sitemap update check failed:', e));
+        // Sitemap anstoßen (non-blocking)
+        fetch('/tools/generate-structure.php').catch(e => console.warn('Sitemap update check failed:', e));
 
-        // Fetch and parse sitemap.xml
         let response = await fetch('/sitemap.xml');
 
-        // If sitemap.xml not found, try to generate it first
         if (!response.ok && response.status === 404) {
             console.warn('sitemap.xml not found, attempting to generate...');
             try {
-                await fetch('/generate-structure.php?force=1');
+                await fetch('/tools/generate-structure.php?force=1');
                 response = await fetch('/sitemap.xml');
             } catch (e) {
                 console.warn('Failed to generate sitemap:', e);
@@ -245,7 +331,6 @@ async function loadFileList() {
 
         const data = parseXmlStructure(xmlDoc);
 
-        // Render folders first
         if (data.folders) {
             Object.keys(data.folders).forEach(folderName => {
                 const folderItem = renderFolder(folderName, data.folders[folderName]);
@@ -253,7 +338,6 @@ async function loadFileList() {
             });
         }
 
-        // Then render root-level files (excluding priority items)
         if (data.files) {
             data.files
                 .filter(file => !excludeFiles.includes(file.name))
@@ -262,108 +346,183 @@ async function loadFileList() {
                     fileList.appendChild(fileItem);
                 });
         }
-
     } catch (error) {
         console.error('Fehler beim Laden der Sitemap:', error);
 
-        // Show error in menu
         const errorItem = document.createElement('li');
         errorItem.style.color = '#ff6b6b';
         errorItem.style.padding = '0.5rem';
         errorItem.textContent = '⚠️ Menü konnte nicht geladen werden';
         fileList.appendChild(errorItem);
-
-        console.error('Details:', {
-            message: error.message,
-            sitemapUrl: '/sitemap.xml',
-            generateUrl: '/generate-structure.php?force=1'
-        });
     }
 }
 
 loadFileList();
 
-// Funktion zum Setzen des Button-Textes
+// Button-Text
 function setMenuButtonText(expanded) {
-    // Einfach als normaler Text - keine separaten Elemente
     menuButton.textContent = expanded ? '0 ≡ 1 ≡ ∞' : '≡';
 }
-
-// Initial: Collapsed State
 setMenuButtonText(false);
 
-// Touch-Handling für Mobile
+// Touch-Handling
 let touchHandled = false;
 
-// Touch-Events für Mobile (ohne Drag-Detection, da Touch anders funktioniert)
+// Desktop-Erkennung für Fokus
+const isDesktopDevice = window.matchMedia &&
+    window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+// Touch: nur toggeln, kein Fokus
 menuButton.addEventListener('touchend', (e) => {
-    e.preventDefault(); // Verhindert dass click auch feuert
+    e.preventDefault();
     touchHandled = true;
 
-    // Bei Touch: Normales Toggle (kein Drag-Support für Text-Selektion auf Mobile)
+    const willOpen = !menu.classList.contains('open');
+
     menu.classList.toggle('open');
     menuButton.classList.toggle('expanded');
 
     setMenuButtonText(menuButton.classList.contains('expanded'));
-
     document.body.classList.toggle('menu-open', menu.classList.contains('open'));
 
-    // Reset nach kurzer Zeit
-    setTimeout(() => {
-        touchHandled = false;
-    }, 300);
-});
-
-// Click-Event (feuert nicht bei Text-Selektion oder Drag)
-menuButton.addEventListener('click', (e) => {
-    // Ignoriere Click wenn gerade Touch behandelt wurde
-    if (touchHandled) {
-        return;
+    if (!willOpen && searchInput) {
+        searchInput.value = '';
+        filterMenu('');
+        if (clearButton) {
+            clearButton.classList.remove('visible');
+        }
     }
 
+    // Touch-Guard direkt wieder freigeben, keine künstliche Verzögerung
+    touchHandled = false;
+});
+
+// Klick: Desktop-Toggle + Fokus
+menuButton.addEventListener('click', () => {
+    if (touchHandled) return;
+
+    const willOpen = !menu.classList.contains('open');
+
     menu.classList.toggle('open');
     menuButton.classList.toggle('expanded');
 
     setMenuButtonText(menuButton.classList.contains('expanded'));
-
     document.body.classList.toggle('menu-open', menu.classList.contains('open'));
+
+    if (willOpen && isDesktopDevice && searchInput) {
+        searchInput.focus();
+        searchInput.select();
+    } else if (!willOpen && searchInput) {
+        searchInput.value = '';
+        filterMenu('');
+        if (clearButton) {
+            clearButton.classList.remove('visible');
+        }
+    }
 });
 
-// Click/Touch außerhalb des Menüs schließt es
+// Klick/Tap außerhalb -> Menü schließen
 function closeMenuIfOutside(e) {
-    // Prüfe ob das Menü offen ist
-    if (!menu.classList.contains('open')) {
-        return;
-    }
-
-    // Prüfe ob der Click/Touch innerhalb des Menüs war
+    if (!menu.classList.contains('open')) return;
     if (!menu.contains(e.target)) {
-        // Click/Touch war außerhalb - Menü schließen
         menu.classList.remove('open');
         menuButton.classList.remove('expanded');
         setMenuButtonText(false);
         document.body.classList.remove('menu-open');
+
+        if (searchInput) {
+            searchInput.value = '';
+            filterMenu('');
+        }
+        if (clearButton) {
+            clearButton.classList.remove('visible');
+        }
     }
 }
 
 document.addEventListener('click', closeMenuIfOutside);
 document.addEventListener('touchend', closeMenuIfOutside);
 
+// Suche mit kleinem Debounce
+let searchTimeoutId = null;
+
+searchInput.addEventListener('input', () => {
+    const value = searchInput.value;
+
+    if (clearButton) {
+        clearButton.classList.toggle('visible', value.length > 0);
+    }
+
+    clearTimeout(searchTimeoutId);
+    searchTimeoutId = setTimeout(() => {
+        filterMenu(value);
+    }, 100);
+});
+
+clearButton.addEventListener('click', () => {
+    searchInput.value = '';
+    clearButton.classList.remove('visible');
+    filterMenu('');
+    searchInput.focus();
+});
+
+// ESC: Suche leeren & Reset
+searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        searchInput.value = '';
+        filterMenu('');
+        if (clearButton) {
+            clearButton.classList.remove('visible');
+        }
+        searchInput.blur();
+    }
+});
+
+// Scroll im Menü:
+// Priorität: Wo die Maus ist, dort wird gescrollt.
+// Maus über Menü -> nur Menü scrollt; Maus über Body -> nur Body scrollt.
+window.addEventListener('wheel', (event) => {
+    // Browser-Zoom (Ctrl/Cmd + Scroll oder Pinch-Gesten) nicht abfangen,
+    // damit Zoomen überall funktioniert – auch über dem Menü.
+    if (event.ctrlKey || event.metaKey) {
+        return;
+    }
+
+    // Nur eingreifen, wenn das Menü überhaupt geöffnet ist
+    if (!menu.classList.contains('open')) {
+        return;
+    }
+
+    // Echte aktuelle Mausposition bestimmen, nicht nur event.target verwenden
+    const hoveredElement = document.elementFromPoint(event.clientX, event.clientY);
+    const inMenu = hoveredElement && hoveredElement.closest('.menu');
+
+    if (!inMenu) {
+        // Maus ist nicht im Menü -> Body/Webseite scrollt ganz normal
+        return;
+    }
+
+    // Maus ist im Menü: Body-Scroll komplett unterbinden
+    event.preventDefault();
+
+    // Immer die eigentliche Liste scrollen, egal ob das Event z.B. vom Suchfeld kommt
+    fileList.scrollTop += event.deltaY;
+}, { passive: false });
+
+
+// Back-Button
 const backButton = document.createElement('div');
 backButton.classList.add('back-button');
 backButton.textContent = '⋅';
 document.body.appendChild(backButton);
 
-// Normaler Klick: Zurück zum Index
 backButton.addEventListener('click', () => {
     window.location.href = '/index.html';
 });
 
-// Mittelklick (Mausrad): Öffnet den Index in einem neuen Tab
 backButton.addEventListener('auxclick', (event) => {
-    if (event.button === 1) {  // 1 entspricht dem Mittelklick
+    if (event.button === 1) {
         window.open('/index.html', '_blank');
         event.preventDefault();
     }
 });
-

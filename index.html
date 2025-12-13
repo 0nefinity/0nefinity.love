@@ -1,22 +1,20 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
   <script src="/meta.js" defer></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
 
   <meta name="description" content="0 ≡ 1 ≡ ∞ nondual math, designed to blow your mind" />
-  <meta name="keywords" content="0nefinity, nondual math, mind blowing math, 0 ≡ 1 ≡ ∞, 0 = 1 = ∞, nichtduale Mathematik, Wissenschaft, Philosophie, Unendlichkeit, Nichts, Alles,Eins Sein, heilige Mathematik, spirituelle Mathematik, erleuchtete Mathematik" />
+  <meta name="keywords" content="0nefinity nondual math, mind blowing math, 0 ≡ 1 ≡ ∞, 0 = 1 = ∞, nichtduale Mathematik, Wissenschaft, Philosophie, Unendlichkeit, Nichts, Alles,Eins Sein, heilige Mathematik, spirituelle Mathematik, erleuchtete Mathematik" />
 
   <title>0nefinity.love</title>
 
   <link rel="icon" type="image/png" href="/profilbilder/favicon/index/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/index/favicon.svg" />
   <link rel="shortcut icon" href="/profilbilder/favicon/index/favicon.ico" />
-  <link rel="manifest" href="/profilbilder/favicon/index/site.webmanifest" />
-
   <style>
     .toggle-text {
       transition: color 0.3s ease;
@@ -31,9 +29,17 @@
 
     #O1ascii {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      white-space: pre
-      font-size: 1.5rem;
+      white-space: pre;
       font-style: bold;
+      max-width: 100%;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      /* Dynamische Schriftgröße basierend auf Viewport-Breite */
+      /* ASCII-Art ist ca. 70 Zeichen breit */
+      /* Bei 50rem max-width und 1.5rem padding: verfügbar sind ca. 47rem */
+      /* 47rem / 70 Zeichen ≈ 0.67rem pro Zeichen */
+      font-size: clamp(0.5rem, 2vw, 1.5rem);
     }
 
   </style>
@@ -47,16 +53,16 @@
     0 1 ∞ are, embody, point to and conceptualize the most basic fundamental aspects of math and everything
     0 1 ∞ is the thing the Unverse runs on
     The Universe is the thing 0 1 8 runs on
-    and this whole singularity called reality, called universe, called 0nefinity, called god (or your version of it)
+    This whole singularity called reality, called universe, called 0nefinity, called god (or your version of it) is 018 in its core
 
     0 1 ∞ are the most basicst truest and constant constants
-    united they form the most meta core aspect of reality and yourself
+    united they form, express and embody the most meta core aspect of reality and yourself
 
     nothing exists without being 0 1 ∞
     in everything is 0 1 ∞
 
     018 is the ultimative mathematical axiom
-    The 0ne Axiom that runs 0nefinity
+    The 0ne Axio∞ that runs 0nefinity
     
     <!-- pssst..
      universe and the things in it are even more than just 0 1 ∞
@@ -69,9 +75,9 @@
      you've outsmarted even atoms
      -->
 
-     0 layer universe is point (singularity)
-     1 layer universe is the first abstraction - the most basicst constants 0 1 ∞
-     2 layer universe is second layer abstractions, things that can be made out of 0 1 ∞ (everything), so it's also called the "∞ layer"
+     0. layer universe is point (the 0ne and alonly infinite empty singularity)
+     1. layer universe is the first abstraction - the most basicst logic constants 0 1 ∞
+     2. layer universe is second layer abstractions, things that can be made out of 0 1 ∞ (everything), so it's also called the "∞ layer"
     
 
      Surrounded by ∞ abstractions, it’s easy to get lost in the countless things of everyday life.
@@ -79,7 +85,7 @@
      in front of you, you can see some of the ∞ abstractions surrounding you
      because of this, it's so easy to get confused about all the countless things in allday life
 
-     to see deeper, you can focus on the similarity between everything, the 0 1 ∞ layer. The one in everything, the infinity the share and the 0 in everything and in between.
+     to see deeper, you can focus on the similarity between everything, the 0 1 ∞ layer. The one in everything, the infinity the share and the 0 around and in between.
 
      for pure nonduality, sunk in the pure unity of 0 1 ∞, where 0 1 ∞ is truely 1 (and 0 and ∞) the pointless point, the singular truth behind yourself, the deepest core in you that provides the whole, the one infinite emptiness that runs the show
       
@@ -421,7 +427,7 @@ V           some weird ancient 5
   <script src="/0nefinity.js" defer></script>
 
 
-  <script>
+<script>
     document.addEventListener('DOMContentLoaded', () => {
       const toggleElements = document.querySelectorAll('.toggle-text');
       toggleElements.forEach(element => {

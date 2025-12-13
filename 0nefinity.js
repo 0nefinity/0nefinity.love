@@ -2,42 +2,6 @@
   // Alle Styles in einem einzigen Block
   function injectStyles() {
     const css = `
-/* Toggle Button für Einstellungen - oben in der Mitte */
-#settingsToggle {
-  position: fixed;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1001; /* Höher als Back-Button/Menü */
-  width: auto;
-  height: 70px;
-  padding: 0;
-  font-size: 57px;
-  background: transparent;
-  color: var(--text-color);
-  border: none;
-  cursor: pointer;
-  display: none;
-  transition: all 0.3s ease;
-  pointer-events: auto;
-  white-space: nowrap;
-  line-height: 70px;
-}
-#settingsToggle:hover {
-  transform: translateX(-50%) scale(1.05);
-}
-#settingsToggle.active {
-  opacity: 0.7;
-}
-
-/* Größerer Button auf hochauflösenden Displays */
-@media (max-width: 768px) and (min-resolution: 2dppx) {
-  #settingsToggle {
-    height: 88px;
-    font-size: 72px;
-    line-height: 88px;
-  }
-}
 
 header.controls {
   position: fixed;
@@ -143,10 +107,6 @@ header.controls.collapsed {
     margin-top: 8px;
   }
 
-  /* Toggle-Button MUSS sichtbar sein */
-  #settingsToggle {
-    display: block !important;
-  }
 }
 
 header.controls label {
@@ -199,50 +159,21 @@ header.controls button {
   z-index: 1; /* Niedriger als Back-Button und Menü */
 }
 
-/* Mobile: Margin für Back-Button und Menü */
+/* Mobile: etwas weniger Margin, da oben nichts mehr fixed ist */
 @media (max-width: 768px) {
   .symbol-container {
-    margin-top: 30px; /* Weniger Platz, da Toggle/Speed oben fixed sind */
+    margin-top: 10px;
   }
 }
 
 /* Mobile mit hochauflösendem Display */
 @media (max-width: 768px) and (min-resolution: 2dppx) {
   .symbol-container {
-    margin-top: 35px;
+    margin-top: 15px;
   }
 }
 canvas {
   display: block;
-}
-#speedIndicator {
-  position: fixed;
-  top: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-left: 30px; /* Rechts vom Toggle-Button */
-  color: var(--text-color);
-  background: transparent;
-  padding: 4px 8px;
-  font-size: 12px;
-  pointer-events: none;
-  z-index: 1001; /* Höher als Back-Button/Menü */
-  display: none; /* Nur auf Mobile sichtbar */
-}
-
-/* Sichtbar auf Mobile */
-@media (max-width: 768px) {
-  #speedIndicator {
-    display: block;
-  }
-}
-
-/* Größerer Indicator auf hochauflösenden Displays */
-@media (max-width: 768px) and (min-resolution: 2dppx) {
-  #speedIndicator {
-    font-size: 14px;
-    padding: 6px 10px;
-  }
 }
 
 /* Info Popup Stil */
@@ -369,13 +300,6 @@ canvas {
 
   // Hauptfunktion zum Erstellen der Grafik
   function createGraphic() {
-    // Erstelle den Toggle-Button (0≡1≡∞ Symbol)
-    const toggleButton = document.createElement('button');
-    toggleButton.id = 'settingsToggle';
-    toggleButton.innerHTML = '0 ≡ 1 ≡ ∞';
-    toggleButton.title = 'Einstellungen';
-    // Button wird später direkt in body eingefügt
-
     // Erstelle die Steuerungsleiste
     const controls = document.createElement('header');
     controls.className = 'controls';
@@ -409,8 +333,6 @@ canvas {
 
     // Toggle-Funktionalität
     let settingsVisible = false;
-    let touchHandled = false;
-    let needsToggle = false;
 
     // Prüfe, ob wir auf einem mobilen Gerät sind
     function isMobile() {
@@ -420,20 +342,15 @@ canvas {
     // Initialisiere den Zustand basierend auf der Bildschirmgröße
     async function initializeSettingsState() {
       if (isMobile()) {
-        // Auf Mobile: Sidebar standardmäßig eingeklappt, Toggle-Button immer sichtbar
+        // Auf Mobile: Sidebar standardmäßig eingeklappt
         controls.classList.add('collapsed');
         controls.classList.remove('expanded');
-        toggleButton.style.display = 'block';
-        toggleButton.classList.remove('active');
         settingsVisible = false;
-        needsToggle = true;
       } else {
-        // Auf Desktop: immer sichtbar, kein Toggle-Button
+        // Auf Desktop: immer sichtbar
         controls.classList.remove('collapsed');
         controls.classList.remove('expanded');
-        toggleButton.style.display = 'none';
         settingsVisible = true;
-        needsToggle = false;
       }
     }
 
@@ -443,43 +360,24 @@ canvas {
       if (settingsVisible) {
         controls.classList.remove('collapsed');
         controls.classList.add('expanded');
-        toggleButton.classList.add('active');
       } else {
         controls.classList.add('collapsed');
         controls.classList.remove('expanded');
-        toggleButton.classList.remove('active');
       }
     }
-
-    // Touch-Event für Mobile
-    toggleButton.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      touchHandled = true;
-      toggleSettings();
-
-      setTimeout(() => {
-        touchHandled = false;
-      }, 300);
-    });
-
-    // Click-Event für Desktop
-    toggleButton.addEventListener('click', (e) => {
-      if (touchHandled) {
-        return;
-      }
-      e.stopPropagation();
-      toggleSettings();
-    });
 
     // Klick/Touch außerhalb schließt die Sidebar auf Mobile
     function closeSettingsIfOutside(e) {
       if (isMobile() && settingsVisible) {
-        // Prüfe ob der Klick außerhalb der Controls und des Toggle-Buttons war
-        if (!controls.contains(e.target) && !toggleButton.contains(e.target)) {
+        // Prüfe ob der Klick außerhalb der Controls und nicht auf dem Symbol war
+        const symbolContainerEl = document.getElementById('symbolContainer');
+        const canvasEl = document.getElementById('canvas');
+        const clickedInsideSymbol = (symbolContainerEl && symbolContainerEl.contains(e.target)) ||
+          (canvasEl && canvasEl.contains(e.target));
+
+        if (!controls.contains(e.target) && !clickedInsideSymbol) {
           controls.classList.add('collapsed');
           controls.classList.remove('expanded');
-          toggleButton.classList.remove('active');
           settingsVisible = false;
         }
       }
@@ -523,14 +421,18 @@ canvas {
     canvas.height = 400;
     symbolContainer.appendChild(canvas);
 
-    // Geschwindigkeitsindikator - direkt in body (fixed position)
-    const speedIndicator = document.createElement('div');
-    speedIndicator.id = 'speedIndicator';
-    speedIndicator.textContent = '1559°/Frame';
-    document.body.appendChild(speedIndicator);
+    // Auf Mobile öffnet ein Click/Tap auf das Symbol die Einstellungen
+    function handleSymbolActivate(e) {
+      if (!isMobile()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSettings();
+    }
 
-    // Toggle-Button direkt in body (fixed position)
-    document.body.appendChild(toggleButton);
+    canvas.addEventListener('click', handleSymbolActivate);
+    canvas.addEventListener('touchend', handleSymbolActivate);
+
+
 
     if (controls.nextSibling) {
       document.body.insertBefore(symbolContainer, controls.nextSibling);
@@ -1335,7 +1237,6 @@ canvas {
 	      }
 
 
-      speedIndicator.textContent = 'Speed: ' + Math.round(rotationSpeed) + '°/Frame';
       requestAnimationFrame(animate);
     }
 
@@ -1349,7 +1250,6 @@ canvas {
   // Event-Listener für das Verstecken der Steuerungen beim Scrollen (nur Desktop)
   window.addEventListener('scroll', () => {
     const controls = document.getElementById('controls');
-    const toggleBtn = document.getElementById('settingsToggle');
 
     // Nur auf Desktop ausblenden beim Scrollen
     if (window.innerWidth > 768) {
@@ -1358,11 +1258,6 @@ canvas {
       } else {
         controls.style.display = 'none';
       }
-    }
-
-    // Toggle-Button bleibt immer sichtbar auf Mobile
-    if (toggleBtn && window.innerWidth <= 768) {
-      toggleBtn.style.display = 'block';
     }
   });
 

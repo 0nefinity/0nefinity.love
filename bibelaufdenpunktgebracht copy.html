@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<!-- bibelaufdenpunkt.html 
+ eine von unendlich random möglichkeiten, die Bibel und andere Bibeln zu rendern-->
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Bibelpunkt</title>
+
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js" defer></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      overflow: hidden;
+      touch-action: none;
+      background: #000;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background: #000;
+    }
+    #container.dragging { cursor: grabbing; }
+    .texture-layer {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform-origin: center center;
+      will-change: transform, opacity, filter;
+    }
+    #base-layer {
+      z-index: 1;
+    }
+    #native-layer {
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <canvas id="base-layer" class="texture-layer"></canvas>
+    <canvas id="native-layer" class="texture-layer"></canvas>
+  </div>
+
+  <script>
+    // ============================================================
+    // CONFIGURATION - Alle Magic Numbers an einem Ort
+    // ============================================================
+    const CONFIG = {
+      // Zoom Einstellungen
+      ZOOM: {
+        min: 0.00001,
+        max: 10000,
+        speed: 0.03,
+        initial: 0.01  // Weit rausgezoomt beim Start
+      },
+
+      // Text-Rendering
+      TARGET_FONT_SIZE: 12,   // Lesbare Schriftgröße im Kreis
+      LINE_HEIGHT_FACTOR: 1.2,
+      FONT_FAMILY: 'monospace',
+
+      // Basis-Textur (einmal gerendert, dann CSS-skaliert)
+      BASE_TEXTURE: {
+        maxSize: 16384,
+        scale: 0.15
+      },
+
+      // Blend-Übergang zwischen Basis und Native
+      BLEND: {
+        startFontSize: 3,    // Ab hier beginnt der Übergang (px)
+        endFontSize: 10      // Hier ist der Übergang abgeschlossen (px)
+        // Kein Blur mehr - nur sauberer Crossfade
+      }
+    };
+
+    // ============================================================
+    // UTILITIES
+    // ============================================================
+    // Smooth interpolation (ease-in-out)
+    function smoothstep(min, max, value) {
+      const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // ============================================================
+    // STATE - Sauberer Zustand
+    // ============================================================
+    const state = {
+      textData: '',
+      circleRadius: 0,
+      baseFontSize: 0,
+      baseCharWidth: 0,
+      lineHeight: 0,
+
+      // Pre-computed: Zeilen-Layout
+      lines: [],  // Array von { y, startIndex, charCount, rowWidth }
+
+      // Transform - Fokuspunkt in WELT-Koordinaten (stabil bei jedem Zoom-Level)
+      focusWorld: { x: 0, y: 0 },  // Welcher Punkt in der Welt ist im Zentrum des Screens
+      scale: CONFIG.ZOOM.initial,
+
+      // Render-Modus: 'texture' (CSS-skaliert) oder 'native' (viewport-scharf)
+      renderMode: 'texture',
+
+      // Vorgehaltene Texturen (immer bereit, kein Neuaufbau nötig)
+      textures: {
+        // Basis-Textur (der ganze Kreis, klein)
+        base: {
+          canvas: null,
+          size: 0
+        },
+        // Native-Textur (scharfer Ausschnitt)
+        native: {
+          canvas: null,
+          centerX: 0,
+          centerY: 0,
+          scale: 0,
+          width: 0,
+          height: 0
+        }
+      },
+      renderTimeout: null,
+
+      // Drag
+      drag: {
+        active: false,
+        lastX: 0,
+        lastY: 0,
+        lastPinchDist: 0,
+        // Für simultanes Pan+Zoom
+        lastPinchCenterX: 0,
+        lastPinchCenterY: 0
+      }
+    };
+
+    // ============================================================
+    // DOM ELEMENTS
+    // ============================================================
+    const elements = {
+      container: document.getElementById('container'),
+      baseCanvas: document.getElementById('base-layer'),
+      nativeCanvas: document.getElementById('native-layer'),
+      get baseCtx() { return this.baseCanvas.getContext('2d'); },
+      get nativeCtx() { return this.nativeCanvas.getContext('2d'); }
+    };
+
+    // ============================================================
+    // LOGGING - Debug für Zoom-Probleme (minimal)
+    // ============================================================
+    const LOG = {
+      lastMode: null,
+      lastExtremeZoom: null,
+      lastLoggedScale: null,
+
+      modeChange(newMode) {
+        if (newMode !== this.lastMode) {
+          console.log(`%c⚡ MODE: ${this.lastMode || 'start'} → ${newMode}`, 'color: #0ff; font-weight: bold');
+          this.lastMode = newMode;
+        }
+      },
+
+      extremeZoomChange(isExtreme, scale, charWidthScreen, viewportW) {
+        if (isExtreme !== this.lastExtremeZoom) {
+          console.log(`%c🔍 EXTREME ZOOM: ${this.lastExtremeZoom} → ${isExtreme} (scale=${scale.toFixed(2)}, charW=${charWidthScreen.toFixed(0)}px)`, 'color: #f0f; font-weight: bold');
+          this.lastExtremeZoom = isExtreme;
+        }
+      },
+
+      // Nur bei 2x Scale-Änderung loggen
+      scaleCheck(scale) {
+        if (!this.lastLoggedScale) {
+          this.lastLoggedScale = scale;
+          return;
+        }
+        const ratio = scale / this.lastLoggedScale;
+        if (ratio > 2 || ratio < 0.5) {
+          console.log(`%c📐 Scale: ${this.lastLoggedScale.toFixed(2)} → ${scale.toFixed(2)}`, 'color: #8f8');
+          this.lastLoggedScale = scale;
+        }
+      },
+
+      nativeRender(centerX, centerY, scale, extremeZoom) {
+        console.log(`%c🎨 RENDER: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), scale=${scale.toFixed(2)}, extreme=${extremeZoom}`, 'color: #ff0');
+      },
+
+      charRender(char, charIdx, worldX, worldY, screenX, screenY) {
+        console.log(`%c   → Char '${char}': world=(${worldX.toFixed(1)}, ${worldY.toFixed(1)})`, 'color: #aaa');
+      },
+
+      info(msg) {
+        console.log(`%c📖 ${msg}`, 'color: #888');
+      }
+    };
+
+    // ============================================================
+    // UTILITIES
+    // ============================================================
+    function clamp(value, min, max) {
+      return Math.min(Math.max(min, value), max);
+    }
+
+    // ============================================================
+    // LAYOUT BERECHNUNG
+    // ============================================================
+
+    // Berechnet den benötigten Radius für gegebene Textlänge und Font-Größe
+    function calculateRadiusForText(textLength, fontSize) {
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = `${fontSize}px ${CONFIG.FONT_FAMILY}`;
+      const charWidth = ctx.measureText('M').width;
+      const lineHeight = fontSize * CONFIG.LINE_HEIGHT_FACTOR;
+
+      // Binary search für den minimalen Radius
+      let low = 100, high = 1000000;
+
+      for (let i = 0; i < 40; i++) {
+        const mid = (low + high) / 2;
+        let capacity = 0;
+
+        for (let y = -mid + lineHeight / 2; y <= mid - lineHeight / 2; y += lineHeight) {
+          const rowWidth = 2 * Math.sqrt(Math.max(0, mid * mid - y * y));
+          capacity += Math.floor(rowWidth / charWidth);
+        }
+
+        if (capacity >= textLength) {
+          high = mid;
+        } else {
+          low = mid;
+        }
+      }
+
+      return Math.ceil(high);
+    }
+
+    // Pre-compute alle Zeilen für schnelles Lookup
+    function computeLineLayout() {
+      state.lines = [];
+      let textIndex = 0;
+      const lh = state.lineHeight;
+      const r = state.circleRadius;
+      const cw = state.baseCharWidth;
+
+      for (let y = -r + lh / 2; y <= r - lh / 2; y += lh) {
+        const rowWidth = 2 * Math.sqrt(Math.max(0, r * r - y * y));
+        const charCount = Math.min(
+          Math.floor(rowWidth / cw),
+          state.textData.length - textIndex
+        );
+
+        if (charCount > 0) {
+          state.lines.push({
+            y: y,
+            startIndex: textIndex,
+            charCount: charCount
+          });
+          textIndex += charCount;
+        }
+
+        if (textIndex >= state.textData.length) break;
+      }
+    }
+
+    // ============================================================
+    // BASIS-TEXTUR (einmal rendern, permanent vorhalten)
+    // ============================================================
+    function renderBaseTexture() {
+      const scale = CONFIG.BASE_TEXTURE.scale;
+      // Padding für überhängende Zeichen am Rand (halbe Zeilenbreite)
+      const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
+      const padding = maxLineWidth * 0.5 * scale;
+      const baseSize = Math.ceil(state.circleRadius * 2 * scale);
+      const size = baseSize + padding * 2;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, size, size);
+
+      const fontSize = Math.max(state.baseFontSize * scale, 1);
+      ctx.fillStyle = '#fff';
+      ctx.font = `${fontSize}px ${CONFIG.FONT_FAMILY}`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+
+      for (const line of state.lines) {
+        ctx.fillText(
+          state.textData.substr(line.startIndex, line.charCount),
+          size / 2,
+          size / 2 + line.y * scale
+        );
+      }
+
+      state.textures.base.canvas = canvas;
+      state.textures.base.size = size;
+      state.textures.base.padding = padding;
+    }
+
+    // ============================================================
+    // BINARY SEARCH - Erste sichtbare Zeile finden (mit Padding für große Zeichen)
+    // ============================================================
+    function findFirstVisibleLine(topWorldY, padding) {
+      const adjustedTop = topWorldY - padding;
+      let lo = 0, hi = state.lines.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (state.lines[mid].y < adjustedTop) lo = mid + 1;
+        else hi = mid;
+      }
+      return Math.max(0, lo - 1);
+    }
+
+    // ============================================================
+    // NATIVES RENDERING - Rendert scharfe Textur für aktuellen Viewport
+    // Bei extremem Zoom: Einzelne Zeichen rendern
+    // ============================================================
+    function renderNativeTexture() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      const scale = state.scale;
+
+      // Viewport-Zentrum in Welt-Koordinaten (direkt aus focusWorld)
+      const centerWorldX = state.focusWorld.x;
+      const centerWorldY = state.focusWorld.y;
+
+      // Cache-Canvas mit großem Margin für Bewegungsspielraum (weniger Re-Renders)
+      const margin = 2.5;
+      const cacheW = Math.round(w * margin * dpr);
+      const cacheH = Math.round(h * margin * dpr);
+
+      // Canvas erstellen/wiederverwenden
+      if (!state.textures.native.canvas) {
+        state.textures.native.canvas = document.createElement('canvas');
+      }
+      const cacheCanvas = state.textures.native.canvas;
+      cacheCanvas.width = cacheW;
+      cacheCanvas.height = cacheH;
+      const ctx = cacheCanvas.getContext('2d', { alpha: false });
+
+      // Schwarzer Hintergrund
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, cacheW, cacheH);
+
+      // Sichtbarer Bereich in Welt-Koordinaten
+      const halfW = (w * margin / 2) / scale;
+      const halfH = (h * margin / 2) / scale;
+      const leftWorldX = centerWorldX - halfW;
+      const rightWorldX = centerWorldX + halfW;
+      const topWorldY = centerWorldY - halfH;
+      const bottomWorldY = centerWorldY + halfH;
+
+      // Font setzen - mit Maximum um Browser-Limits zu respektieren
+      const rawFontSize = state.baseFontSize * scale * dpr;
+      const maxCanvasFontSize = 500; // Browser-Limit für sinnvolles Text-Rendering
+      const actualFontSize = Math.min(rawFontSize, maxCanvasFontSize);
+      const fontScaleFactor = actualFontSize / rawFontSize; // Falls wir limitieren mussten
+
+      ctx.fillStyle = '#fff';
+      ctx.font = `${actualFontSize}px ${CONFIG.FONT_FAMILY}`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+
+      // Padding für Sichtbarkeitsprüfung: Bei extremem Zoom können Zeichen weit über ihre Y-Position hinausragen
+      // Wir nehmen das Maximum aus Zeilenhöhe und halber Viewport-Höhe in Weltkoordinaten
+      const viewportHeightWorld = h / scale;
+      const yPadding = Math.max(state.lineHeight, viewportHeightWorld);
+
+      LOG.nativeRender(centerWorldX, centerWorldY, scale, false);
+
+      const startIdx = findFirstVisibleLine(topWorldY, yPadding);
+
+      for (let i = startIdx; i < state.lines.length; i++) {
+        const line = state.lines[i];
+        // Prüfe ob Zeile (mit großzügigem Padding) noch sichtbar sein könnte
+        if (line.y - yPadding > bottomWorldY) break;
+
+        const lineText = state.textData.substr(line.startIndex, line.charCount);
+
+        // Immer ganze Zeile rendern - konsistente Positionierung bei jedem Zoom-Level
+        const screenX = cacheW / 2 + (0 - centerWorldX) * scale * dpr;
+        const screenY = cacheH / 2 + (line.y - centerWorldY) * scale * dpr;
+
+        if (fontScaleFactor < 1) {
+          ctx.save();
+          ctx.translate(screenX, screenY);
+          ctx.scale(1 / fontScaleFactor, 1 / fontScaleFactor);
+          ctx.fillText(lineText, 0, 0);
+          ctx.restore();
+        } else {
+          ctx.fillText(lineText, Math.round(screenX), Math.round(screenY));
+        }
+      }
+
+      // Cache-Metadaten speichern
+      state.textures.native.centerX = centerWorldX;
+      state.textures.native.centerY = centerWorldY;
+      state.textures.native.scale = scale;
+      state.textures.native.width = w * margin;
+      state.textures.native.height = h * margin;
+    }
+
+    // ============================================================
+    // LAYER-MANAGEMENT: Einfacher Opacity Crossfade
+    // ============================================================
+    function initBaseLayer() {
+      const { baseCanvas } = elements;
+      const base = state.textures.base;
+
+      if (!base.canvas) return;
+
+      baseCanvas.width = base.size;
+      baseCanvas.height = base.size;
+      elements.baseCtx.drawImage(base.canvas, 0, 0);
+      baseCanvas.style.opacity = '1';
+      baseCanvas.style.filter = 'none';
+    }
+
+    // Berechnet pan aus focusWorld (Screen-Offset vom Zentrum)
+    function getPan() {
+      return {
+        x: -state.focusWorld.x * state.scale,
+        y: -state.focusWorld.y * state.scale
+      };
+    }
+
+    function updateBaseTransform() {
+      const pan = getPan();
+      const effectiveScale = state.scale / CONFIG.BASE_TEXTURE.scale;
+      elements.baseCanvas.style.transform =
+        `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${effectiveScale})`;
+    }
+
+    // Dynamisches Blend basierend auf Zoom-Level - einfacher Crossfade ohne Blur
+    function updateBlend(screenFontSize) {
+      const { startFontSize, endFontSize } = CONFIG.BLEND;
+
+      // t = 0 (weit weg) bis 1 (nah dran)
+      const t = smoothstep(startFontSize, endFontSize, screenFontSize);
+
+      // Einfacher Crossfade: Basis blendet aus, Native blendet ein
+      elements.baseCanvas.style.opacity = 1 - t;
+      elements.baseCanvas.style.filter = 'none';
+      elements.nativeCanvas.style.opacity = t;
+    }
+
+    function showNativeOverlay() {
+      const { nativeCanvas } = elements;
+      const native = state.textures.native;
+
+      if (!native.canvas) return;
+
+      nativeCanvas.width = native.canvas.width;
+      nativeCanvas.height = native.canvas.height;
+      elements.nativeCtx.drawImage(native.canvas, 0, 0);
+
+      nativeCanvas.style.width = native.width + 'px';
+      nativeCanvas.style.height = native.height + 'px';
+    }
+
+    function hideNativeOverlay() {
+      elements.nativeCanvas.style.opacity = '0';
+    }
+
+    function updateNativeTransform() {
+      const native = state.textures.native;
+      const scale = state.scale;
+
+      if (!native.scale) return null;
+
+      // Offset in Welt-Koordinaten berechnen, dann in Screen umrechnen
+      const worldOffsetX = native.centerX - state.focusWorld.x;
+      const worldOffsetY = native.centerY - state.focusWorld.y;
+      const offsetX = worldOffsetX * scale;
+      const offsetY = worldOffsetY * scale;
+      const zoomRatio = scale / native.scale;
+
+      elements.nativeCanvas.style.transform =
+        `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${zoomRatio})`;
+
+      return { offsetX, offsetY, zoomRatio };
+    }
+
+    // ============================================================
+    // TRANSFORM - Zoom IMMER sofort, Rendering asynchron
+    // ============================================================
+    function applyTransform() {
+      const screenFontSize = state.baseFontSize * state.scale;
+      const { startFontSize } = CONFIG.BLEND;
+      const shouldBeNative = screenFontSize >= startFontSize;
+
+      // LOGGING - nur bei großen Scale-Änderungen
+      LOG.scaleCheck(state.scale);
+
+      updateBaseTransform();
+      updateBlend(screenFontSize);
+
+      if (shouldBeNative) {
+        if (state.textures.native.scale) {
+          updateNativeTransform();
+        }
+
+        if (state.renderMode !== 'native') {
+          LOG.modeChange('native');
+          state.renderMode = 'native';
+          scheduleNativeRender(80);
+        } else if (state.textures.native.scale) {
+          const result = updateNativeTransform();
+          if (result) {
+            const { offsetX, offsetY, zoomRatio } = result;
+
+            const needsRerender =
+              Math.abs(offsetX) > window.innerWidth * 0.7 ||
+              Math.abs(offsetY) > window.innerHeight * 0.7 ||
+              zoomRatio < 0.5 || zoomRatio > 2.0;
+
+            if (needsRerender) {
+              scheduleNativeRender(150);
+            }
+          }
+        }
+      } else {
+        if (state.renderMode !== 'texture') {
+          LOG.modeChange('texture');
+          cancelNativeRender();
+          state.renderMode = 'texture';
+          hideNativeOverlay();
+        }
+      }
+    }
+
+    // Asynchrones Rendering - blockiert NIE den Zoom
+    let renderScheduled = false;
+    function scheduleNativeRender(delay = 100) {
+      if (renderScheduled) return; // Nicht doppelt schedulen
+
+      cancelNativeRender();
+      renderScheduled = true;
+
+      // Immer setTimeout - requestIdleCallback kann zu spät sein
+      state.renderTimeout = setTimeout(() => {
+        renderScheduled = false;
+        if (state.renderMode === 'native') {
+          renderNativeTexture();
+          showNativeOverlay();
+          updateNativeTransform();
+        }
+      }, delay);
+    }
+
+    function cancelNativeRender() {
+      if (state.renderTimeout) {
+        clearTimeout(state.renderTimeout);
+        state.renderTimeout = null;
+      }
+      renderScheduled = false;
+    }
+
+    // ============================================================
+    // EVENT HANDLERS
+    // ============================================================
+    function setupEvents() {
+      const { container } = elements;
+
+      // === MOUSE ===
+      container.addEventListener('mousedown', e => {
+        state.drag.active = true;
+        state.drag.lastX = e.clientX;
+        state.drag.lastY = e.clientY;
+        container.classList.add('dragging');
+      });
+
+      window.addEventListener('mousemove', e => {
+        if (!state.drag.active) return;
+        // Screen-Delta in Welt-Delta umrechnen
+        const dx = e.clientX - state.drag.lastX;
+        const dy = e.clientY - state.drag.lastY;
+        state.focusWorld.x -= dx / state.scale;
+        state.focusWorld.y -= dy / state.scale;
+        state.drag.lastX = e.clientX;
+        state.drag.lastY = e.clientY;
+        applyTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        state.drag.active = false;
+        container.classList.remove('dragging');
+      });
+
+      // === WHEEL ZOOM ===
+      container.addEventListener('wheel', e => {
+        e.preventDefault();
+
+        // Mausposition relativ zur Bildschirmmitte
+        const screenX = e.clientX - window.innerWidth / 2;
+        const screenY = e.clientY - window.innerHeight / 2;
+
+        // Welcher Weltpunkt ist unter der Maus?
+        const worldUnderMouse = {
+          x: state.focusWorld.x + screenX / state.scale,
+          y: state.focusWorld.y + screenY / state.scale
+        };
+
+        const factor = 1 + (e.deltaY > 0 ? -CONFIG.ZOOM.speed : CONFIG.ZOOM.speed);
+        const newScale = clamp(state.scale * factor, CONFIG.ZOOM.min, CONFIG.ZOOM.max);
+
+        if (newScale !== state.scale) {
+          state.scale = newScale;
+          // Fokus so anpassen, dass der Weltpunkt unter der Maus bleibt
+          state.focusWorld.x = worldUnderMouse.x - screenX / state.scale;
+          state.focusWorld.y = worldUnderMouse.y - screenY / state.scale;
+          applyTransform();
+        }
+      }, { passive: false });
+
+      // === TOUCH - Simultanes Pan + Pinch ===
+      container.addEventListener('touchstart', e => {
+        e.preventDefault();
+
+        if (e.touches.length === 1) {
+          state.drag.active = true;
+          state.drag.lastX = e.touches[0].clientX;
+          state.drag.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          // Bei 2 Fingern: Pinch-Distanz UND Zentrum tracken für simultanes Pan+Zoom
+          state.drag.active = true;
+          state.drag.lastPinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          state.drag.lastPinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          state.drag.lastPinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        }
+      }, { passive: false });
+
+      container.addEventListener('touchmove', e => {
+        e.preventDefault();
+
+        if (e.touches.length === 1 && state.drag.active) {
+          // Single-Finger Pan
+          const dx = e.touches[0].clientX - state.drag.lastX;
+          const dy = e.touches[0].clientY - state.drag.lastY;
+          state.focusWorld.x -= dx / state.scale;
+          state.focusWorld.y -= dy / state.scale;
+          state.drag.lastX = e.touches[0].clientX;
+          state.drag.lastY = e.touches[0].clientY;
+          applyTransform();
+        } else if (e.touches.length === 2) {
+          // Zwei-Finger: Simultanes Pan + Pinch-Zoom
+          const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const currentDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+
+          // ALTES Pinch-Zentrum relativ zur Bildschirmmitte
+          const oldScreenX = state.drag.lastPinchCenterX - window.innerWidth / 2;
+          const oldScreenY = state.drag.lastPinchCenterY - window.innerHeight / 2;
+
+          // Weltpunkt der unter dem ALTEN Pinch-Zentrum lag
+          const worldUnderPinch = {
+            x: state.focusWorld.x + oldScreenX / state.scale,
+            y: state.focusWorld.y + oldScreenY / state.scale
+          };
+
+          // Neuer Scale berechnen
+          const factor = currentDist / state.drag.lastPinchDist;
+          const newScale = clamp(state.scale * factor, CONFIG.ZOOM.min, CONFIG.ZOOM.max);
+          state.scale = newScale;
+
+          // NEUES Pinch-Zentrum relativ zur Bildschirmmitte
+          const newScreenX = currentCenterX - window.innerWidth / 2;
+          const newScreenY = currentCenterY - window.innerHeight / 2;
+
+          // Fokus so anpassen, dass der Weltpunkt jetzt unter dem NEUEN Pinch-Zentrum liegt
+          // Das kombiniert Pan (Zentrum bewegt sich) + Zoom (Scale ändert sich) korrekt
+          state.focusWorld.x = worldUnderPinch.x - newScreenX / state.scale;
+          state.focusWorld.y = worldUnderPinch.y - newScreenY / state.scale;
+
+          // State updaten für nächsten Frame
+          state.drag.lastPinchDist = currentDist;
+          state.drag.lastPinchCenterX = currentCenterX;
+          state.drag.lastPinchCenterY = currentCenterY;
+
+          applyTransform();
+        }
+      }, { passive: false });
+
+      container.addEventListener('touchend', e => {
+        if (e.touches.length === 0) {
+          state.drag.active = false;
+        } else if (e.touches.length === 1) {
+          // Von 2 auf 1 Finger: Auf Single-Pan umschalten
+          state.drag.active = true;
+          state.drag.lastX = e.touches[0].clientX;
+          state.drag.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          // Von 3+ auf 2 Finger: Pinch-State neu initialisieren
+          state.drag.lastPinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          state.drag.lastPinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          state.drag.lastPinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        }
+      });
+
+      window.addEventListener('resize', applyTransform);
+    }
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+    async function init() {
+      try {
+        const response = await fetch('/assets/bibeln/bibel.txt?raw=1');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        state.textData = (await response.text()).replace(/\s+/g, ' ').trim();
+
+        if (!state.textData) {
+          throw new Error('Textdokument ist leer');
+        }
+
+        state.baseFontSize = CONFIG.TARGET_FONT_SIZE;
+        state.circleRadius = calculateRadiusForText(state.textData.length, state.baseFontSize);
+
+        const measureCtx = document.createElement('canvas').getContext('2d');
+        measureCtx.font = `${state.baseFontSize}px ${CONFIG.FONT_FAMILY}`;
+        state.baseCharWidth = measureCtx.measureText('M').width;
+        state.lineHeight = state.baseFontSize * CONFIG.LINE_HEIGHT_FACTOR;
+
+        computeLineLayout();
+        renderBaseTexture();
+        initBaseLayer();
+        hideNativeOverlay();
+        setupEvents();
+        applyTransform();
+
+        LOG.info(`${state.textData.length.toLocaleString()} Zeichen, ${state.lines.length} Zeilen, r=${state.circleRadius}px`);
+
+      } catch (error) {
+        console.error('Fehler beim Initialisieren:', error);
+        document.body.innerHTML = `
+          <div style="color: #f55; padding: 2rem; font-family: monospace;">
+            <h2>Fehler beim Laden</h2>
+            <p>${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // === START ===
+    init();
+  </script>
+</body>
+</html>
+

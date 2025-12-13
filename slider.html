@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0neSlider</title>
+    <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+    <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+	        /* Settings Panel - oben */
+	        .settings {
+	            position: fixed;
+	            top: 4.375rem;
+	            left: 50%;
+	            transform: translateX(-50%);
+	            padding: 0.75rem 1rem;
+	            background: rgba(0, 0, 0, 0.85);
+	            border-radius: 12px;
+	            backdrop-filter: blur(10px);
+	            z-index: 100;
+	            font-size: 14px;
+	            color: var(--text-color, white);
+	            display: flex;
+	            flex-direction: column;
+	        }
+
+	        .settings-body {
+	            overflow-y: auto; /* nur der Inhalt scrollt, Header bleibt statisch */
+	        }
+
+        .settings.dragging {
+            opacity: 0.9;
+        }
+
+        /* Drag-Handle Bereich oben */
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 0;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: grab;
+        }
+
+        .settings-header:active {
+            cursor: grabbing;
+        }
+
+        .drag-indicator {
+            width: 40px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+        }
+
+        .settings .row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            min-height: 32px;
+        }
+
+        .settings .row:last-child {
+            margin-bottom: 0;
+        }
+
+	        .settings .value-display {
+	            font-variant-numeric: tabular-nums;
+	            font-size: 13px;
+	            opacity: 0.9;
+	            margin-left: auto;
+	        }
+
+        .settings label {
+            flex: 0 0 60px;
+            font-size: 13px;
+            opacity: 0.8;
+        }
+
+        .settings select {
+            flex: 1;
+            height: 32px;
+            background: var(--bg-color, #111);
+            color: var(--text-color, white);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            padding: 0 0.5rem;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .settings .stepper-container {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .settings .value-input {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            color: var(--text-color, white);
+            font-size: 14px;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            width: 4em;
+            padding: 0.2em 0.1em;
+            outline: none;
+        }
+
+        .settings .value-input:focus {
+            border-bottom-color: rgba(255,255,255,0.6);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .settings .stepper-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: var(--text-color, white);
+            font-size: 1.3rem;
+            font-weight: 300;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.15s ease, transform 0.1s ease;
+            user-select: none;
+        }
+
+        .settings .stepper-btn:hover {
+            opacity: 1;
+        }
+
+        .settings .stepper-btn:active {
+            transform: scale(0.85);
+        }
+
+        .settings input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .settings input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--text-color, white);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .settings .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Slider-Bereich */
+        .sliders-area {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        /* Toggle Button */
+        .toggle-btn {
+            padding: 0.3rem 1rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: var(--text-color, white);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .toggle-btn.active {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.6);
+        }
+
+	        /* Slider Container */
+	        .slider-container {
+	            position: relative;
+	            width: min(600px, 90vw);
+	            display: flex;
+	            align-items: center;
+	            justify-content: center;
+		            cursor: pointer;
+		            z-index: 1; /* vor der Fullscreen-Schlange */
+		        }
+
+	        /* Schlange als Fullscreen-Overlay hinter allen anderen Objekten */
+	        .slider-value-display {
+	            position: fixed;
+	            inset: 0;               /* top:0; right:0; bottom:0; left:0; */
+	            margin: 0;
+	            width: 100vw;
+	            height: 100vh;
+	            display: flex;
+	            justify-content: center;
+		            align-items: center;
+	            font-size: 1.6rem;
+	            font-variant-numeric: tabular-nums;
+	            color: var(--text-color, white);
+	            pointer-events: none;   /* UI bleibt klickbar, Schlange reagiert über globale Events */
+	            overflow: visible;
+	            z-index: 0;             /* hinter Settings (z-index:100) und Slider, vor Hintergrund */
+	        }
+
+	        .slider-value-display-inner {
+	            position: relative;
+	            width: 100%;
+	            height: 100%;
+	        }
+
+	        .slider-value-display-inner span {
+	            position: absolute;
+		            transform-origin: 50% 50%;
+	            white-space: nowrap;
+	        }
+
+	        /* Mobile Layout: Settings wie bei shadows als Bottom-Sheet */
+	        @media (max-width: 768px) {
+	            .settings {
+	                top: auto;
+	                bottom: 0;
+	                left: 0;
+	                right: 0;
+	                transform: none;
+	                max-width: 100%;
+	                width: 100%;
+	                border-radius: 20px 20px 0 0;
+	                padding: 0;
+	                max-height: 50vh;
+	                font-size: 14px;
+	            }
+
+	            .settings-header {
+	                display: flex;
+	                justify-content: center;
+	                align-items: center;
+	                padding: 12px;
+	                cursor: grab;
+	                touch-action: none;
+	                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+	                margin-bottom: 0;
+	            }
+
+	            .settings-body {
+	                max-height: calc(50vh - 56px);
+	                overflow-y: auto;
+	                overflow-x: hidden;
+	                padding: 0 1rem 1.5rem;
+	                -webkit-overflow-scrolling: touch;
+	            }
+
+	            .sliders-area {
+	                position: fixed;
+	                top: 50%;
+	                left: 50%;
+	                transform: translate(-50%, -55%);
+	                padding: 0 1rem;
+	            }
+	        }
+
+        /* Track (Outline) - jetzt als Bild */
+        .track-outline {
+            position: absolute;
+            pointer-events: none;
+            /* Bild wird per JS gesetzt */
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            /* Zentrierung: left/top zeigt auf Container-Mitte, transform verschiebt um halbe Eigengröße */
+            transform-origin: center center;
+            /* Smooth scaling für beste Qualität */
+            image-rendering: auto;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Track (gefüllt, wird geclippt) - jetzt als Bild */
+        .track-fill {
+            position: absolute;
+            pointer-events: none;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            transform-origin: center center;
+            clip-path: inset(0 50% 0 0);
+            image-rendering: auto;
+        }
+
+        /* Thumb - jetzt als Bild */
+        .thumb {
+            position: absolute;
+	            cursor: pointer;
+            user-select: none;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            /* Zentrierung: left/top ist das Zentrum, transform verschiebt */
+            transform: translate(-50%, -50%);
+            image-rendering: auto;
+            touch-action: none; /* Wichtig für Touch-Drag */
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .thumb:hover {
+            filter: drop-shadow(0 0 20px rgba(255,255,255,0.4));
+        }
+
+	        .thumb:active,
+	        .thumb.dragging {
+	            cursor: pointer;
+	            filter: drop-shadow(0 0 30px rgba(255,255,255,0.6));
+	        }
+
+        /* Debug-Elemente (standardmäßig versteckt) */
+        .debug-line, .debug-crosshair {
+            display: none;
+            position: absolute;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .debug-mode .debug-line,
+        .debug-mode .debug-crosshair {
+            display: block;
+        }
+
+        .debug-line {
+            background: rgba(255, 0, 0, 0.7);
+            transform-origin: center center;
+        }
+
+        /* Fadenkreuz */
+        .debug-crosshair {
+            width: 40px;
+            height: 40px;
+            z-index: 1001;
+        }
+        .debug-crosshair {
+            --line-width: 2px;
+        }
+        .debug-crosshair::before,
+        .debug-crosshair::after {
+            content: '';
+            position: absolute;
+            background: currentColor;
+        }
+        .debug-crosshair::before {
+            width: 100%;
+            height: var(--line-width);
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+        }
+        .debug-crosshair::after {
+            width: var(--line-width);
+            height: 100%;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
+        }
+
+        .debug-crosshair.track-center {
+            color: rgba(0, 255, 0, 0.8);
+        }
+        .debug-crosshair.thumb-center {
+            color: rgba(0, 150, 255, 0.8);
+        }
+	        .debug-crosshair.fill-origin {
+	            color: rgba(255, 0, 200, 0.9);
+	        }
+
+        /* Debug-Anzeige */
+        .debug {
+            position: fixed;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: monospace;
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            text-align: center;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+	<body>
+	where n0thing slides on some1, r8ndomness might h8ppen
+	    <!-- we have to aknowlage that math can do dumb things-->
+	<main aria-label="0neSlider Experiment">
+
+		    <div class="settings" id="settingsPanel">
+	        <div class="settings-header">
+	            <div class="drag-indicator"></div>
+	        </div>
+	        <div class="settings-body">
+		        <div class="row">
+	            <label for="fontSelect">Font</label>
+            <select id="fontSelect">
+                <option value="'Times New Roman', Times, serif" selected>Times</option>
+                <option value="'Ysabeau', sans-serif">Ysabeau</option>
+                <option value="Verdana, Geneva, Tahoma, sans-serif">Verdana</option>
+                <option value="Arial, Helvetica, sans-serif">Arial</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Courier New', Courier, monospace">Courier</option>
+                <option value="Impact, Haettenschweiler, sans-serif">Impact</option>
+                <option value="'Trebuchet MS', sans-serif">Trebuchet</option>
+                <option value="'Palatino Linotype', Palatino, serif">Palatino</option>
+                <option value="'Book Antiqua', serif">Book Antiqua</option>
+                <option value="'Lucida Console', Monaco, monospace">Lucida Console</option>
+                <option value="'Comic Sans MS', cursive">Comic Sans</option>
+                <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+                <option value="Garamond, serif">Garamond</option>
+                <option value="'Century Gothic', sans-serif">Century Gothic</option>
+                <option value="Cambria, serif">Cambria</option>
+                <option value="Consolas, monospace">Consolas</option>
+            </select>
+        </div>
+	        <div class="row">
+	            <label for="sizeInput">Größe</label>
+            <div class="stepper-container">
+	                <button class="stepper-btn minus" type="button" data-param="size">−</button>
+                <input type="text" class="value-input" id="sizeInput" data-param="size" value="150">
+	                <button class="stepper-btn plus" type="button" data-param="size">+</button>
+            </div>
+        </div>
+	        <div class="row">
+	            <label for="lengthInput">Länge</label>
+            <div class="stepper-container">
+	                <button class="stepper-btn minus" type="button" data-param="length">−</button>
+                <input type="text" class="value-input" id="lengthInput" data-param="length" value="5">
+	                <button class="stepper-btn plus" type="button" data-param="length">+</button>
+            </div>
+        </div>
+	        <div class="row">
+	            <label for="resolutionStepsInput">Auflösung</label>
+	            <div class="stepper-container">
+	                <button class="stepper-btn minus" type="button" data-param="resolutionSteps">−</button>
+	                <input type="text" class="value-input" id="resolutionStepsInput" data-param="resolutionSteps" value="9">
+	                <button class="stepper-btn plus" type="button" data-param="resolutionSteps">+</button>
+	            </div>
+	        </div>
+	        <div class="row">
+	            <label for="xValueInput">x</label>
+	            <div class="stepper-container">
+	                <input type="text" class="value-input" id="xValueInput" value="0.500">
+	            </div>
+	        </div>
+	        <div class="row">
+	            <label for="rotationInput">Rotation</label>
+            <div class="stepper-container">
+	                <button class="stepper-btn minus" type="button" data-param="rotation">−</button>
+                <input type="text" class="value-input" id="rotationInput" data-param="rotation" value="0">
+	                <button class="stepper-btn plus" type="button" data-param="rotation">+</button>
+            </div>
+        </div>
+	        <div class="row">
+	            <label id="verticalToggleLabel">90° Slide</label>
+	            <button class="toggle-btn active" id="verticalToggle" type="button" aria-labelledby="verticalToggleLabel" aria-pressed="true">An</button>
+	        </div>
+	        <div class="row">
+	            <label for="trackCharInput">Track</label>
+            <input type="text" class="value-input" id="trackCharInput" value="1" style="width: 6em; text-align: center;">
+        </div>
+        <div class="row">
+	            <label for="thumbCharInput">Thumb</label>
+            <input type="text" class="value-input" id="thumbCharInput" value="0" style="width: 6em; text-align: center;">
+        </div>
+        <div class="row">
+	            <label id="debugToggleLabel">Debug</label>
+	            <button class="toggle-btn" id="debugToggle" type="button" aria-labelledby="debugToggleLabel" aria-pressed="false">Aus</button>
+        </div>
+	        <div class="row">
+		            <label for="debugLineWidthInput">Linien</label>
+	            <div class="stepper-container">
+		                <button class="stepper-btn minus" type="button" data-param="debugLineWidth">−</button>
+	                <input type="text" class="value-input" id="debugLineWidthInput" data-param="debugLineWidth" value="2">
+		                <button class="stepper-btn plus" type="button" data-param="debugLineWidth">+</button>
+	            </div>
+		        </div>
+	        </div> <!-- .settings-body -->
+	    </div>
+
+		    <div class="sliders-area">
+	        <!-- Slider: Thumb auf liegendem Track -->
+		    	    <div class="slider-container" id="slider1">
+		    	        <div class="debug-line" id="debugLine1"></div>
+		    	            <div class="debug-crosshair track-center" id="trackCenter1"></div>
+		    	            <div class="debug-crosshair thumb-center" id="thumbCenter1"></div>
+		    	            <div class="debug-crosshair fill-origin" id="fillOrigin1"></div>
+		    	        <div class="track-outline" id="track1Outline"></div>
+		    	        <div class="track-fill" id="track1Fill"></div>
+		    	        <div class="thumb" id="thumb1"></div>
+		    	    </div>
+	    	</div>
+
+	            <div class="slider-value-display" id="slider1ValueDisplay">0.500</div>
+
+	    <div class="debug" id="debug"></div>
+
+	    </main>
+
+	    <script>
+        // === PARAMS CONFIG (wie in shadows.html) ===
+		        const PARAMS_CONFIG = {
+			 size:           { id: 'sizeInput',           min: 16,  max: 3000, step: 4,   default: 150, decimals: 0 },
+			 length:         { id: 'lengthInput',         min: 1,   max: 20,  step: 1,   default: 5,   decimals: 0 },
+				// Rotation 0° soll optisch eine "normale" aufrechte Glyphe bedeuten
+				// Wir starten im 90°-Slide-Modus, daher Default = 90°
+				rotation:       { id: 'rotationInput',       min: 0,   max: 360, step: 5,   default: 90,  decimals: 0 },
+			 debugLineWidth: { id: 'debugLineWidthInput', min: 0.5, max: 10,  step: 0.5, default: 2,   decimals: 1 },
+			 // Auflösung der 0..1-Anzeige: wie viele Schritte/Zwischenstufen (≈ max. Anzahl x)
+			 resolutionSteps: { id: 'resolutionStepsInput', min: 0, max: 100000, step: 1, default: 9, decimals: 0 }
+		        };
+
+        // Aktuelle Parameter-Werte
+        const params = {};
+        Object.keys(PARAMS_CONFIG).forEach(key => {
+            params[key] = PARAMS_CONFIG[key].default;
+        });
+
+		        // Toggle: wechselt zwischen Breiten- und Längen-Modus
+		        // false = Breite (Rotation 0°)
+		        // true  = Länge  (Rotation 90°)
+		        // Standardmäßig im 90°-Slide (Längen-Modus) starten
+
+        // DOM Elemente
+        const fontSelect = document.getElementById('fontSelect');
+        const trackCharInput = document.getElementById('trackCharInput');
+        const thumbCharInput = document.getElementById('thumbCharInput');
+        const verticalToggle = document.getElementById('verticalToggle');
+        const debugToggle = document.getElementById('debugToggle');
+        const debug = document.getElementById('debug');
+	        	const slider1ValueDisplay = document.getElementById('slider1ValueDisplay');
+	        	const xValueInput = document.getElementById('xValueInput');
+
+        let isDebugMode = false;
+
+	        // Slider
+	        const slider1 = {
+	            container: document.getElementById('slider1'),
+	            trackOutline: document.getElementById('track1Outline'),
+	            trackFill: document.getElementById('track1Fill'),
+	            thumb: document.getElementById('thumb1'),
+	            debugLine: document.getElementById('debugLine1'),
+	            trackCenterCross: document.getElementById('trackCenter1'),
+	            thumbCenterCross: document.getElementById('thumbCenter1'),
+		            fillOriginCross: document.getElementById('fillOrigin1'),
+	            trackChar: '1',
+	            thumbChar: '0',
+	            // Wertebereich 0..1 mit 3 Nachkommastellen (wie HTML-Range, aber fein)
+	            min: 0,
+	            max: 1,
+	            step: 0.001,
+	            value: 0.5,        // aktueller Wert im Bereich [min,max]
+	            currentValue: 0.5, // normalisiert [0,1], passend zu value
+	            bounds: null,
+	            isDragging: false,
+	            dragStartPos: null,
+	            dragStartValue: 0,
+	            dragStartNorm: 0.5
+	        };
+
+        const sliders = [slider1];
+
+	        // Globaler Pointer-Zustand f fcr die Schlange (Maus + Touch)
+	        const snakePointer = {
+	            active: false,
+	            x: 0,
+	            y: 0
+	        };
+
+		    // === ORIENTIERUNGSHILFEN (aus Rotation abgeleitet) ===
+		    function getOrientation(rotationDeg) {
+		        if (typeof rotationDeg !== 'number' || !isFinite(rotationDeg)) return 'horizontal';
+		        const r = ((rotationDeg % 360) + 360) % 360; // 0..360
+		        const distTo90 = Math.min(Math.abs(r - 90), Math.abs(r - 270));
+		        const distTo0  = Math.min(Math.abs(r), Math.abs(r - 180));
+		        return distTo90 > distTo0 ? 'horizontal' : 'vertical';
+		    }
+
+		    function isVerticalMode() {
+		        return getOrientation(params.rotation) === 'vertical';
+		    }
+
+		    function updateVerticalToggleUI() {
+		        if (!verticalToggle) return;
+		        const vertical = isVerticalMode();
+		        verticalToggle.textContent = vertical ? 'An' : 'Aus';
+		        verticalToggle.classList.toggle('active', vertical);
+		        verticalToggle.setAttribute('aria-pressed', vertical ? 'true' : 'false');
+		    }
+
+		    // === ERZEUGE NORMALISIERTES GLYPH-BILD (HiDPI, optional gestreckt) ===
+		    // Rendert Text DIREKT mit moderater Skalierung, damit die Canvas-Größe nicht explodiert
+		    function createGlyphImage(text, fontFamily, fontSize, color = 'white', strokeOnly = false, stretchY = 1) {
+		        // Moderate HiDPI-Skalierung (max. 2x) für Schärfe ohne riesige Canvas
+		        const dpr = window.devicePixelRatio || 1;
+		        const scale = Math.min(2, Math.max(1, dpr));
+		        const scaledFontSize = fontSize * scale;
+		
+		        // Canvas-Größe: proportional zur Fontgröße und Streckung, aber kompakt
+		        const canvas = document.createElement('canvas');
+		        const safeStretch = Math.max(1, stretchY);
+		        const padding = Math.ceil(scaledFontSize * 0.5);
+		        const textLen = text && text.length ? text.length : 1;
+		        const canvasWidth = Math.ceil(scaledFontSize * textLen) + padding * 2;
+		        const canvasHeight = Math.ceil(scaledFontSize * safeStretch) + padding * 2;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            const ctx = canvas.getContext('2d');
+
+            // Text DIREKT mit Skalierung rendern (nicht nachträglich strecken!)
+            ctx.save();
+            ctx.translate(padding, padding);
+            ctx.scale(1, stretchY); // Vertikale Streckung VOR dem Zeichnen
+
+            ctx.font = `${scaledFontSize}px ${fontFamily}`;
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+
+            if (strokeOnly) {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = scale;
+                ctx.strokeText(text, 0, 0);
+            } else {
+                ctx.fillStyle = color;
+                ctx.fillText(text, 0, 0);
+            }
+            ctx.restore();
+
+            // Pixel scannen um Grenzen zu finden
+            const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+            const data = imageData.data;
+
+            let minX = canvasWidth, maxX = 0, minY = canvasHeight, maxY = 0;
+
+            for (let y = 0; y < canvasHeight; y++) {
+                for (let x = 0; x < canvasWidth; x++) {
+                    if (data[(y * canvasWidth + x) * 4 + 3] > 0) {
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                        minY = Math.min(minY, y);
+                        maxY = Math.max(maxY, y);
+                    }
+                }
+            }
+
+            // Falls keine Pixel gefunden (leerer Text)
+            if (minX > maxX || minY > maxY) {
+                return { dataUrl: '', width: 0, height: 0, scale };
+            }
+
+            // Gecropte Größe (bereits gestreckt!)
+            const cropWidth = maxX - minX + 1;
+            const cropHeight = maxY - minY + 1;
+
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropWidth;
+            croppedCanvas.height = cropHeight;
+            const croppedCtx = croppedCanvas.getContext('2d');
+
+            // Einfach kopieren - keine Streckung mehr nötig
+            croppedCtx.drawImage(canvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+            return {
+                dataUrl: croppedCanvas.toDataURL('image/png'),
+                // CSS-Größe = Canvas-Größe / scale
+                width: cropWidth / scale,
+                height: cropHeight / scale,
+                scale
+            };
+        }
+
+	        // === WERT-HELPER (HTML-Range-ähnliches Modell: min/max/step, value) ===
+	        function getSliderRange(slider) {
+	            let min = typeof slider.min === 'number' ? slider.min : 0;
+	            let max = typeof slider.max === 'number' ? slider.max : 1;
+	            const step = typeof slider.step === 'number' ? slider.step : 0;
+	            if (max < min) {
+	                const tmp = min;
+	                min = max;
+	                max = tmp;
+	            }
+	            return { min, max, step };
+	        }
+
+	        function valueToNormalized(slider, value) {
+	            const { min, max } = getSliderRange(slider);
+	            if (max <= min) return 0;
+	            return (value - min) / (max - min);
+	        }
+
+	        function normalizedToValue(slider, norm) {
+	            const { min, max } = getSliderRange(slider);
+	            if (max <= min) return min;
+	            return min + norm * (max - min);
+	        }
+
+	        // Setzt den logischen Slider-Wert (wie beim HTML-Range) und aktualisiert Geometrie
+	        function setSliderValue(slider, newValue, options = {}) {
+	            const { fromUser = false } = options; // wird später für Events genutzt
+	            const { min, max, step } = getSliderRange(slider);
+	            let v = typeof newValue === 'number' ? newValue : min;
+
+	            // Clamp auf [min,max]
+	            if (v < min) v = min;
+	            if (v > max) v = max;
+
+	            // Auf step runden (wenn sinnvoll definiert)
+	            if (step > 0 && max > min) {
+	                v = min + Math.round((v - min) / step) * step;
+	                if (v < min) v = min;
+	                if (v > max) v = max;
+	            }
+
+		            slider.value = v;
+		            // Wenn es unser Hauptslider ist, synchronisieren wir das x-Eingabefeld mit
+		            // dem aktuellen Wert (0..1 mit 3 Nachkommastellen).
+		            if (slider === slider1 && xValueInput) {
+		                xValueInput.value = v.toFixed(3);
+		            }
+
+	            // In Normalform [0,1] umrechnen
+	            let norm = 0;
+	            if (max > min) {
+	                norm = (v - min) / (max - min);
+	            }
+	            norm = Math.max(0, Math.min(1, norm));
+		            // "norm" ist die logische Benutzer-Norm (0 = links, 1 = rechts)
+		            slider.currentValue = norm;
+		
+		            // Geometrie arbeitet mit invertierter Norm, damit 0 links und 1 rechts sind
+		            const geoNorm = 1 - norm;
+		            setThumbPosition(slider, geoNorm);
+
+	            // Später: hier input/change-Events feuern, abhängig von fromUser
+	            return v;
+	        }
+
+        // === RENDERE SLIDER-ELEMENTE ALS BILDER ===
+		    function renderSliderImages(slider) {
+		        const font = fontSelect.value;
+		        const size = params.size;
+		        const length = params.length;
+		            const userRotation = params.rotation;
+		        const thumbSize = size * 0.9;
+
+		    // Erzeuge normalisierte Bilder - Track bereits gestreckt im Canvas!
+		    const trackOutlineImg = createGlyphImage(slider.trackChar, font, size, 'white', true, length);
+		    const trackFillImg = createGlyphImage(slider.trackChar, font, size, 'white', false, length);
+		    const thumbImg = createGlyphImage(slider.thumbChar, font, thumbSize, 'white', false, 1);
+
+		        // Container-Breite aus dem Layout (wie bei einem echten <input type="range">)
+		        const containerRect = slider.container.getBoundingClientRect();
+		        let containerWidth = containerRect.width;
+		        if (!containerWidth || !isFinite(containerWidth)) {
+		            // Fallback: benutze Glyph-Breite oder einen Default
+		            containerWidth = trackOutlineImg.width || 600;
+		        }
+
+		        // Die sichtbare Slider-Achse soll sich an der Container-Breite orientieren
+		        const axisLength = Math.max(10, containerWidth);
+
+		            // Skaliere den Track so, dass seine logische Länge = axisLength ist.
+		            // Die Länge der Bahn verläuft IMMER entlang der lokalen Y-Achse der Glyphe,
+		            // daher normieren wir konsequent auf die Glyphen-Höhe.
+		            let scaleForTrack = 1;
+		            const natLength = trackOutlineImg.height || 1;
+		            scaleForTrack = axisLength / natLength;
+
+		        // Gleicher Scale für Thumb, damit Proportionen stimmen
+		        const trackWidth = trackOutlineImg.width * scaleForTrack;
+		        const trackHeight = trackOutlineImg.height * scaleForTrack;
+		        const thumbWidth = thumbImg.width * scaleForTrack;
+		        const thumbHeight = thumbImg.height * scaleForTrack;
+
+	            slider.trackWidth = trackWidth;
+	            slider.trackHeight = trackHeight;
+	            slider.thumbWidth = thumbWidth;
+	            slider.thumbHeight = thumbHeight;
+
+	            // Container-Höhe = Drag-Bereich: exakt so hoch wie der Thumb
+	            // (plus minimale Untergrenze, falls Thumb extrem klein wäre)
+	            const dragHeight = Math.max(thumbHeight, 10);
+	            slider.container.style.height = dragHeight + 'px';
+
+	            const containerCenterX = containerWidth / 2;
+	            const containerCenterY = dragHeight / 2;
+
+	            // Internes Winkelmodell:
+	            // - "userRotation" ist der Wert aus dem UI, bei dem 0° eine aufrechte 1 ergibt
+	            // - Wir verschieben intern um +90°, damit 0° UI einer vertikalen Achse (oben/unten) entspricht.
+	            // - "baseRotation" beschreibt damit die tatsächliche Slider-Achse (in Mathe-Koordinaten):
+	            //     0°  = nach rechts, 90° = nach oben, 180° = nach links, 270° = nach unten.
+	            // - Diese Achse nutzen wir sowohl zum Drehen der Glyphe als auch für Drag + Debug-Linie.
+	            const baseRotation = (userRotation + 90) % 360; // 0° UI => 90° intern (vertikal nach oben)
+	            const glyphRotation = baseRotation;
+
+	            // Track-Outline setzen
+	            slider.trackOutline.style.backgroundImage = `url(${trackOutlineImg.dataUrl})`;
+	            slider.trackOutline.style.width = trackWidth + 'px';
+	            slider.trackOutline.style.height = trackHeight + 'px';
+	            slider.trackOutline.style.left = containerCenterX + 'px';
+	            slider.trackOutline.style.top = containerCenterY + 'px';
+	            // Glyphen-Rotation: 0° UI = aufrecht, 90°-Slide dreht nur das Zeichen
+	            slider.trackOutline.style.transform = `translate(-50%, -50%) rotate(${glyphRotation - 90}deg)`;
+
+	            // Track-Fill setzen
+	            slider.trackFill.style.backgroundImage = `url(${trackFillImg.dataUrl})`;
+	            slider.trackFill.style.width = trackWidth + 'px';
+	            slider.trackFill.style.height = trackHeight + 'px';
+	            slider.trackFill.style.left = containerCenterX + 'px';
+	            slider.trackFill.style.top = containerCenterY + 'px';
+	            slider.trackFill.style.transform = `translate(-50%, -50%) rotate(${glyphRotation - 90}deg)`;
+
+	            // Thumb setzen
+	            slider.thumb.style.backgroundImage = `url(${thumbImg.dataUrl})`;
+	            slider.thumb.style.width = thumbWidth + 'px';
+	            slider.thumb.style.height = thumbHeight + 'px';
+
+	            // Berechne Slider-Bounds
+	            // Slide-Achse: läuft entlang der Glyphen-Achse (baseRotation)
+	            const slideRot = baseRotation;
+	            const halfRange = axisLength / 2;
+
+	            slider.bounds = {
+	                centerX: containerCenterX,
+	                centerY: containerCenterY,
+	                halfRange,
+	                trackLength: axisLength,
+	                slideRotation: slideRot
+	            };
+
+	            // Thumb initial positionieren – aktuellen Wert im HTML-Sinne auf die Geometrie mappen
+	            const range = getSliderRange(slider);
+	            const initialValue = (typeof slider.value === 'number')
+	                ? slider.value
+	                : (range.min + range.max) / 2;
+	            setSliderValue(slider, initialValue);
+
+	            return slider.bounds;
+	        }
+
+	    // === POSITIONIERE DEN THUMB (value = 0 bis 1) ===
+		    function setThumbPosition(slider, value) {
+		        if (!slider.bounds) return;
+		
+			        // Wert begrenzen (Geo-Norm 0..1)
+			        value = Math.max(0, Math.min(1, value));
+		
+			        // Offset vom Zentrum (-halfRange bis +halfRange), "value" ist hier die Geo-Norm
+		        const offset = (value - 0.5) * 2 * slider.bounds.halfRange;
+		
+		        // Slide-Richtung aus bounds
+		        const slideRot = slider.bounds.slideRotation;
+		        const rotRad = slideRot * Math.PI / 180;
+		
+		        // Position entlang der rotierten Achse (das ist das ZENTRUM des Thumbs)
+		        const thumbCenterX = slider.bounds.centerX + offset * Math.cos(rotRad);
+		        const thumbCenterY = slider.bounds.centerY + offset * Math.sin(rotRad);
+		
+		        // CSS Position - Thumb hat transform: translate(-50%, -50%)
+		        // Also ist left/top direkt das Zentrum!
+		        slider.thumb.style.left = thumbCenterX + 'px';
+		        slider.thumb.style.top = thumbCenterY + 'px';
+		
+		            // Debug: Thumb-Fadenkreuz positionieren (genau im berechneten Zentrum)
+		            const crossSize = parseFloat(slider.thumbCenterCross.style.width) || 24;
+		            slider.thumbCenterCross.style.left = (thumbCenterX - crossSize / 2) + 'px';
+		            slider.thumbCenterCross.style.top = (thumbCenterY - crossSize / 2) + 'px';
+		
+		            // Füllung der Track aktualisieren
+		            // Vereinfachte Variante: die Füllkante bewegt sich immer ENTLANG der Bahn
+		            // und schneidet diese exakt im Thumb-Zentrum – unabhängig vom Winkel.
+		            const trackHeight = slider.trackHeight || 0;
+		            let clipPathValue = '';
+		
+		            if (trackHeight > 0) {
+		                // value: 0   -> Clip oben   = 0%  (Kante am einen Ende der Bahn)
+		                // value: 0.5 -> Clip oben   = 50% (Kante in der Mitte)
+		                // value: 1   -> Clip oben   = 100% (Kante am anderen Ende)
+		                // Da trackHeight == geometrische Länge der Bahn ist,
+		                // liegt die Kante damit immer exakt auf dem Thumb.
+		                const clipPercent = value * 100;
+		                clipPathValue = `inset(${clipPercent}% 0 0 0)`;
+		            }
+		
+		        if (clipPathValue) {
+		            slider.trackFill.style.clipPath = clipPathValue;
+		        }
+		
+		        // Debug: Füll-Ursprung (Übergang) = immer exakt auf dem Thumb (blaues Kreuz)
+		        if (slider.fillOriginCross && slider.bounds) {
+		            const originSize = crossSize;
+		            slider.fillOriginCross.style.width  = originSize + 'px';
+		            slider.fillOriginCross.style.height = originSize + 'px';
+		            slider.fillOriginCross.style.setProperty(
+		                '--line-width',
+		                (parseFloat(getComputedStyle(slider.thumbCenterCross)
+		                    .getPropertyValue('--line-width')) || 2) + 'px'
+		            );
+		            slider.fillOriginCross.style.left = (thumbCenterX - originSize / 2) + 'px';
+		            slider.fillOriginCross.style.top  = (thumbCenterY - originSize / 2) + 'px';
+		        }
+		    }
+
+		        // === SCHLANGEN-WERTANZEIGE (0.xxxx mit Wobble) ===
+		        // Basis-Längenfunktion: 0..1 → 1..N Zeichen.
+		        // N (Anzahl der Schritte/Auflösung) ist einstellbar über params.resolutionSteps.
+		        // Die Anzahl der Zeichen selbst wobbel nicht, nur die Y-Position.
+		        function getBaseChainLength(norm) {
+		            const stepsParam = typeof params.resolutionSteps === 'number' ? params.resolutionSteps : 9;
+		            const steps = Math.max(1, Math.round(stepsParam));
+		            let raw = Math.round(norm * steps); // 0..steps
+		            if (raw < 1) raw = 1;
+		            if (raw > steps) raw = steps;
+		            return raw;
+		        }
+
+		        // Approximierte Schrittweite (Pixel) für ein Zeichen der Schlange (x)
+		        let slider1CharStep = null;
+		        function getSlider1CharStep() {
+		            if (slider1CharStep && slider1CharStep > 0) return slider1CharStep;
+		            if (!slider1ValueDisplay) return 12;
+		            const probe = document.createElement('span');
+		            probe.textContent = 'x';
+		            probe.style.visibility = 'hidden';
+		            probe.style.position = 'absolute';
+		            probe.style.whiteSpace = 'nowrap';
+		            slider1ValueDisplay.appendChild(probe);
+		            const rect = probe.getBoundingClientRect();
+		            slider1CharStep = rect.width || 12;
+		            slider1ValueDisplay.removeChild(probe);
+		            return slider1CharStep;
+		        }
+			
+		        // Baut die 0.xxxx-Schlange als HTML-Spans, die wie eine 2D-Schlange innerhalb
+		        // der Anzeige-Fläche unterwegs ist: Zeichen hängen aneinander, die Textrichtung
+		        // kann sich ändern und die Schlange verlässt ihre Ausgangszeile.
+		        function updateSlider1Display(time) {
+		            if (!slider1ValueDisplay) return;
+		            const norm = typeof slider1.currentValue === 'number' ? slider1.currentValue : 0;
+				
+		            // Arbeitsfläche ist jetzt der gesamte Viewport (die Schlange darf über den ganzen
+		            // Screen laufen, unabhängig von der ursprünglichen Container-Höhe)
+		            const width = window.innerWidth || slider1ValueDisplay.clientWidth || 800;
+		            const height = window.innerHeight || slider1ValueDisplay.clientHeight || 120;
+		            const centerX = width / 2;
+		            const centerY = height / 2;
+		            const step = getSlider1CharStep();
+		            const edgeMargin = 16; // etwas Luft zum Rand
+		            const leftLimit = edgeMargin;
+		            const rightLimit = width - edgeMargin;
+		            const topLimit = edgeMargin;
+		            const bottomLimit = height - edgeMargin;
+				
+		            // Exakte Enden: 0 und 1, zentriert in der Mitte der Anzeige
+		            if (norm <= 0) {
+		                slider1ValueDisplay.innerHTML = `
+		                    <div class="slider-value-display-inner">
+		                        <span class="anchor" style="left:${centerX}px; top:${centerY}px; transform:translate(-50%, -50%);">0</span>
+		                    </div>
+		                `;
+		                return;
+		            }
+		            if (norm >= 1) {
+		                slider1ValueDisplay.innerHTML = `
+		                    <div class="slider-value-display-inner">
+		                        <span class="anchor" style="left:${centerX}px; top:${centerY}px; transform:translate(-50%, -50%);">1</span>
+		                    </div>
+		                `;
+		                return;
+		            }
+				
+		            const len = getBaseChainLength(norm);
+			
+		            // --- Physikalisches Wobble ---
+		            // Grundidee:
+		            // - Im Stand nahezu keine Eigenbewegung.
+		            // - Bewegung des Sliders pumpt Energie in das System.
+			
+		            // Initialisierung der internen Zustände
+		            if (typeof slider1._lastNorm !== 'number') {
+		                slider1._lastNorm = norm;
+		                slider1._vel = 0;
+		                slider1._energy = 0;
+		                slider1._phaseJitter = 0;
+		            }
+			
+		            // Geschwindigkeitsänderung seit letztem Frame
+		            const vel = norm - slider1._lastNorm;
+		            slider1._lastNorm = norm;
+			
+		            // Instant-Energie aus aktueller Geschwindigkeitsänderung
+		            const instantEnergy = Math.min(1, Math.abs(vel) * 400);
+			
+		            // Energie langsam auf- und abbauen (Dämpfung)
+		            const energyDecay = 0.9;
+		            slider1._energy = (slider1._energy || 0) * energyDecay + instantEnergy;
+		            if (slider1.isDragging) {
+		                slider1._energy = Math.min(1, slider1._energy + 0.02);
+		            }
+		            const energy = slider1._energy;
+			
+		            // Leichte zufällige Phase, abhängig von der Energie (mehr Chaos bei mehr Input)
+		            slider1._phaseJitter = (slider1._phaseJitter || 0) * 0.9
+		                + (Math.random() - 0.5) * 0.5 * energy;
+			
+		            // Amplitude: praktisch 0 bei keiner Energie, kräftig bei viel Energie.
+		            // Richtung 1 (norm hoch) verstärkt zusätzlich.
+		            const maxAmp = 16; // maximale Amplitude in px
+		            const amp = maxAmp * energy * (0.3 + norm * 0.7);
+			
+		            const baseSpeed = 0.004;
+		            const extraSpeed = 0.018 * energy;
+		            const speed = baseSpeed + extraSpeed;
+		            const t = (typeof time === 'number' ? time : performance.now()) * speed;
+			
+		            // Zeichenkette: erst der Punkt, dann len-mal 'x'
+		            const chars = ['.'];
+		            for (let i = 0; i < len; i++) chars.push('x');
+			
+		            // 2D-Schlangenpfad: wir starten an der 0 in der Mitte und laufen in einem
+		            // Winkel los. Der Winkel wird über Zeit und Energie leicht verbogen
+		            // und an den Rändern reflektiert (wie ein Lichtstrahl).
+		            const positions = [];
+		            let angle = 0; // 0rad = nach rechts
+		            let x = centerX;
+		            let y = centerY;
+		            for (let i = 0; i < chars.length; i++) {
+		                const idx = i; // 0 = Punkt, 1..len = x-Segmente
+		                const ratio = len <= 1 ? 1 : Math.max(0, (idx - 1)) / Math.max(1, len - 1);
+		                const bendStrength = 0.4 + 0.8 * energy; // wie stark die Schlange abknicken darf
+		                const localNoise = Math.sin(t + idx * 0.5 + slider1._phaseJitter * 2.0);
+		                angle += localNoise * bendStrength * 0.3; // kleine Krümmel in den Winkel
+				
+		                let dx = Math.cos(angle);
+		                let dy = Math.sin(angle);
+		                let nx = x + dx * step;
+		                let ny = y + dy * step;
+				
+		                // Reflektion an allen vier Rändern der Arbeitsfläche
+		                let reflected = false;
+		                if (nx < leftLimit || nx > rightLimit) {
+		                    dx = -dx;
+		                    reflected = true;
+		                }
+		                if (ny < topLimit || ny > bottomLimit) {
+		                    dy = -dy;
+		                    reflected = true;
+		                }
+		                if (reflected) {
+		                    nx = x + dx * step;
+		                    ny = y + dy * step;
+		                    angle = Math.atan2(dy, dx);
+		                }
+				
+		                positions.push({ x: nx, y: ny, ch: chars[i], angle });
+		                x = nx;
+		                y = ny;
+		            }
+			
+		            // HTML aufbauen: Anker "0" bleibt im Zentrum, die Kette folgt dem 2D-Pfad und
+		            // reagiert zusätzlich auf Maus/Touch (Schlange wird in einem Radius weggedrückt).
+		            let chainHtml = '';
+		            for (let i = 0; i < positions.length; i++) {
+		                const p = positions[i];
+		                const isX = p.ch === 'x';
+		                let extraWobble = 0;
+		                if (isX) {
+		                    const segIndex = i - 1;
+		                    const ratio = len <= 1 ? 1 : segIndex / Math.max(1, len - 1);
+		                    const stiffness = 0.3 + ratio * 0.7;
+		                    const phase = segIndex * 0.6 + slider1._phaseJitter * (0.3 + ratio);
+		                    extraWobble = Math.sin(t + phase) * amp * stiffness;
+		                }
+
+		                // Pointer-Einfluss: in der Nähe von Maus/Touch wird die Schlange leicht weggedrückt.
+		                let offsetX = 0;
+		                let offsetY = extraWobble;
+		                if (snakePointer && snakePointer.active) {
+		                    const dxp = p.x - snakePointer.x;
+		                    const dyp = p.y - snakePointer.y;
+		                    const dist = Math.hypot(dxp, dyp) || 1e-6;
+		                    const influenceRadius = Math.min(width, height) * 0.25;
+		                    if (dist < influenceRadius) {
+		                        const strength = 1 - dist / influenceRadius; // 0..1
+		                        const basePush = 40; // in px
+		                        const push = basePush * strength * (0.3 + energy * 0.7);
+		                        offsetX += (dxp / dist) * push;
+		                        offsetY += (dyp / dist) * push;
+		                    }
+		                }
+
+		                const angleDeg = (p.angle * 180) / Math.PI;
+		                chainHtml += `
+		                    <span class="seg" style="left:${p.x.toFixed(1)}px; top:${p.y.toFixed(1)}px; transform:translate(-50%, -50%) translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px) rotate(${angleDeg.toFixed(1)}deg);">${p.ch}</span>
+		                `;
+		            }
+			
+		            const html = `
+		                <div class="slider-value-display-inner">
+		                    <span class="anchor" style="left:${centerX}px; top:${centerY}px; transform:translate(-50%, -50%);">0</span>
+		                    ${chainHtml}
+		                </div>
+		            `;
+			
+		            slider1ValueDisplay.innerHTML = html;
+		        }
+
+	        function animationLoop(time) {
+	            updateSlider1Display(time);
+	            requestAnimationFrame(animationLoop);
+	        }
+
+        // === STEPPER BUTTONS (wie in shadows.html) ===
+		    document.querySelectorAll('.stepper-btn').forEach(btn => {
+		        const paramKey = btn.dataset.param;
+		        const cfg = PARAMS_CONFIG[paramKey];
+		        if (!cfg) return;
+		
+			        const stepOnce = (isPlus) => {
+			            const direction = isPlus ? 1 : -1;
+			            const current = typeof params[paramKey] === 'number' ? params[paramKey] : cfg.default;
+			            let newVal = current + direction * cfg.step;
+		
+		            // Rotation Wraparound
+		            if (paramKey === 'rotation') {
+		                newVal = ((newVal % 360) + 360) % 360;
+		            } else {
+		                newVal = Math.max(cfg.min, Math.min(cfg.max, newVal));
+		            }
+		
+		            // Rundung
+		            const factor = Math.pow(10, cfg.decimals);
+		            newVal = Math.round(newVal * factor) / factor;
+		
+			            params[paramKey] = newVal;
+			            const inputEl = document.getElementById(cfg.id);
+			            if (inputEl) inputEl.value = newVal;
+			            updateStyles();
+			            if (paramKey === 'rotation') {
+			                updateVerticalToggleUI();
+			            }
+		        };
+		
+		        // Einfacher, robuster: ein Klick = ein Schritt. Funktioniert auf Maus & Touch.
+		        btn.addEventListener('click', (e) => {
+		            e.preventDefault();
+		            const isPlus = btn.classList.contains('plus');
+		            stepOnce(isPlus);
+		        });
+		    });
+
+        // === INPUT FIELDS ===
+        document.querySelectorAll('.value-input').forEach(input => {
+            const paramKey = input.dataset.param;
+            const cfg = PARAMS_CONFIG[paramKey];
+            if (!cfg) return;
+
+            input.addEventListener('change', () => {
+                let val = parseFloat(input.value.replace(',', '.'));
+                if (isNaN(val)) val = cfg.default;
+
+                // Rotation Wraparound
+                if (paramKey === 'rotation') {
+                    val = ((val % 360) + 360) % 360;
+                } else {
+                    val = Math.max(cfg.min, Math.min(cfg.max, val));
+                }
+
+		                params[paramKey] = val;
+		                input.value = val;
+		                updateStyles();
+		                if (paramKey === 'rotation') {
+		                    updateVerticalToggleUI();
+		                }
+            });
+        });
+
+	        // Spezielles Eingabefeld f fcr x (Slider-Wert 0..1)
+	        if (xValueInput) {
+	            const startVal = typeof slider1.value === 'number' ? slider1.value : 0.5;
+	            xValueInput.value = startVal.toFixed(3);
+
+	            xValueInput.addEventListener('change', () => {
+	                let v = parseFloat(xValueInput.value.replace(',', '.'));
+	                if (!isFinite(v)) v = slider1.min;
+	                if (v < slider1.min) v = slider1.min;
+	                if (v > slider1.max) v = slider1.max;
+	                setSliderValue(slider1, v, { fromUser: true });
+	            });
+	        }
+
+        // Font-Select
+        fontSelect.addEventListener('change', updateStyles);
+
+        // Track/Thumb Character Inputs
+        trackCharInput.addEventListener('input', () => {
+            slider1.trackChar = trackCharInput.value || '1';
+            updateStyles();
+        });
+
+        thumbCharInput.addEventListener('input', () => {
+            slider1.thumbChar = thumbCharInput.value || '0';
+            updateStyles();
+        });
+
+        // === SLIDER THUMB DRAG (einfach mit mousedown/mousemove) ===
+		        sliders.forEach(slider => {
+		            slider.thumb.addEventListener('mousedown', (e) => {
+                slider.isDragging = true;
+                slider.dragStartPos = { x: e.clientX, y: e.clientY };
+	                const range = getSliderRange(slider);
+	                const currentVal = (typeof slider.value === 'number')
+	                    ? slider.value
+	                    : (range.min + range.max) / 2;
+	                slider.dragStartValue = currentVal; // logischer Wert
+	                slider.dragStartNorm = slider.currentValue ?? valueToNormalized(slider, currentVal);
+                e.preventDefault();
+            });
+
+	            // Touch-Drag auf dem Thumb (Mobil)
+	            slider.thumb.addEventListener('touchstart', (e) => {
+	                const t = e.touches && e.touches[0];
+	                if (!t) return;
+	                slider.isDragging = true;
+	                slider.dragStartPos = { x: t.clientX, y: t.clientY };
+	                const range = getSliderRange(slider);
+	                const currentVal = (typeof slider.value === 'number')
+	                    ? slider.value
+	                    : (range.min + range.max) / 2;
+	                slider.dragStartValue = currentVal; // logischer Wert
+	                slider.dragStartNorm = slider.currentValue ?? valueToNormalized(slider, currentVal);
+	                e.preventDefault();
+	            }, { passive: false });
+
+		            // Klick auf die Bahn / den Container: Wert wie beim HTML-Slider setzen
+		            // und direkt in einen Drag übergehen
+			            slider.container.addEventListener('mousedown', (e) => {
+			                // Wenn direkt auf dem Thumb geklickt wurde, übernimmt der Thumb-Handler
+			                if (e.target === slider.thumb) return;
+			                if (!slider.bounds) return;
+			
+			                const rect = slider.container.getBoundingClientRect();
+			                const px = e.clientX - rect.left;  // Position im Container-Koordinatensystem
+			                const py = e.clientY - rect.top;
+			
+			                // Abstand vom Track-Zentrum
+			                const dx = px - slider.bounds.centerX;
+			                const dy = py - slider.bounds.centerY;
+			
+			                // Auf die Slider-Achse (rote Linie) projizieren, egal wie rotiert
+			                const rotRad = slider.bounds.slideRotation * Math.PI / 180;
+			                const proj = dx * Math.cos(rotRad) + dy * Math.sin(rotRad);
+				
+			                const halfRange = slider.bounds.halfRange;
+			                const fullRange = halfRange * 2;
+			                if (fullRange <= 0) return;
+				
+			                // proj liefert eine Geo-Norm (0..1 entlang der Achse). Für den Benutzer
+			                // soll 0 links und 1 rechts sein, daher invertieren wir auf userNorm.
+			                let geoNorm = 0.5 + (proj / fullRange); // 0..1 entlang der Bahn
+			                geoNorm = Math.max(0, Math.min(1, geoNorm));
+			                const userNorm = 1 - geoNorm;
+				
+			                const newValue = normalizedToValue(slider, userNorm);
+			                setSliderValue(slider, newValue, { fromUser: true });
+			
+			                // Direktes Drag-Verhalten wie beim nativen Slider:
+			                // Wir starten jetzt einen Drag an genau dieser Position.
+			                slider.isDragging = true;
+			                slider.dragStartPos = { x: e.clientX, y: e.clientY };
+			                slider.dragStartValue = newValue;
+			                slider.dragStartNorm = slider.currentValue ?? userNorm;
+			
+			                e.preventDefault();
+			            });
+
+		            // Touch auf Bahn/Container: wie Maus-Klick plus anschließender Drag
+		            slider.container.addEventListener('touchstart', (e) => {
+		                const t = e.touches && e.touches[0];
+		                if (!t) return;
+		                if (t.target === slider.thumb) return;
+		                if (!slider.bounds) return;
+		
+		                const rect = slider.container.getBoundingClientRect();
+		                const px = t.clientX - rect.left;
+		                const py = t.clientY - rect.top;
+		
+		                const dx = px - slider.bounds.centerX;
+		                const dy = py - slider.bounds.centerY;
+		                const rotRad = slider.bounds.slideRotation * Math.PI / 180;
+		                const proj = dx * Math.cos(rotRad) + dy * Math.sin(rotRad);
+		                const halfRange = slider.bounds.halfRange;
+		                const fullRange = halfRange * 2;
+		                if (fullRange <= 0) return;
+		
+		                let geoNorm = 0.5 + (proj / fullRange);
+		                geoNorm = Math.max(0, Math.min(1, geoNorm));
+		                const userNorm = 1 - geoNorm;
+		                const newValue = normalizedToValue(slider, userNorm);
+		                setSliderValue(slider, newValue, { fromUser: true });
+		
+		                slider.isDragging = true;
+		                slider.dragStartPos = { x: t.clientX, y: t.clientY };
+		                slider.dragStartValue = newValue;
+		                slider.dragStartNorm = slider.currentValue ?? userNorm;
+		
+		                e.preventDefault();
+		            }, { passive: false });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            sliders.forEach(slider => {
+                if (!slider.isDragging || !slider.dragStartPos) return;
+                if (!slider.bounds) return;
+
+                const dx = e.clientX - slider.dragStartPos.x;
+                const dy = e.clientY - slider.dragStartPos.y;
+
+                const slideRot = slider.bounds.slideRotation;
+                const rotRad = slideRot * Math.PI / 180;
+	
+		                const movement = dx * Math.cos(rotRad) + dy * Math.sin(rotRad);
+		                const fullRange = slider.bounds.halfRange * 2;
+		                const deltaGeo = fullRange > 0 ? movement / fullRange : 0;
+		
+		                // dragStartNorm und currentValue speichern die Benutzer-Norm (0 = links, 1 = rechts).
+		                // Die Geometrie-Norm l ufuht umgekehrt, daher  e4ndert sich User-Norm mit -deltaGeo.
+		                const startUserNorm = typeof slider.dragStartNorm === 'number'
+		                    ? slider.dragStartNorm
+		                    : (slider.currentValue ?? 0.5);
+		                const newUserNorm = startUserNorm - deltaGeo;
+		                const newValue = normalizedToValue(slider, newUserNorm);
+		
+		                setSliderValue(slider, newValue, { fromUser: true });
+            });
+        });
+
+	        // Touch-Move: gleiche Logik wie Mouse-Move, nur mit Touch-Koordinaten
+	        document.addEventListener('touchmove', (e) => {
+	            const t = e.touches && e.touches[0];
+	            if (!t) return;
+	            sliders.forEach(slider => {
+	                if (!slider.isDragging || !slider.dragStartPos) return;
+	                if (!slider.bounds) return;
+	
+	                const dx = t.clientX - slider.dragStartPos.x;
+	                const dy = t.clientY - slider.dragStartPos.y;
+	                const slideRot = slider.bounds.slideRotation;
+	                const rotRad = slideRot * Math.PI / 180;
+	                const movement = dx * Math.cos(rotRad) + dy * Math.sin(rotRad);
+	                const fullRange = slider.bounds.halfRange * 2;
+	                const deltaGeo = fullRange > 0 ? movement / fullRange : 0;
+	
+	                const startUserNorm = typeof slider.dragStartNorm === 'number'
+	                    ? slider.dragStartNorm
+	                    : (slider.currentValue ?? 0.5);
+	                const newUserNorm = startUserNorm - deltaGeo;
+	                const newValue = normalizedToValue(slider, newUserNorm);
+	                setSliderValue(slider, newValue, { fromUser: true });
+	            });
+	            e.preventDefault();
+	        }, { passive: false });
+
+        document.addEventListener('mouseup', () => {
+            sliders.forEach(slider => {
+                slider.isDragging = false;
+                slider.dragStartPos = null;
+            });
+        });
+
+	        document.addEventListener('touchend', () => {
+	            sliders.forEach(slider => {
+	                slider.isDragging = false;
+	                slider.dragStartPos = null;
+	            });
+	        });
+
+	        document.addEventListener('touchcancel', () => {
+	            sliders.forEach(slider => {
+	                slider.isDragging = false;
+	                slider.dragStartPos = null;
+	            });
+	        });
+
+	        // === GLOBALE MAUS-/TOUCH-EINGABE FÜR DIE SCHLANGE ===
+	        function updateSnakePointerFromEvent(clientX, clientY, active) {
+	            if (!snakePointer) return;
+	            snakePointer.active = active;
+	            snakePointer.x = clientX;
+	            snakePointer.y = clientY;
+	            if (active) {
+	                // Ein bisschen Energie in die Schlange pumpen, auch wenn der Slider stillsteht
+	                slider1._energy = Math.min(1, (slider1._energy || 0) + 0.03);
+	            }
+	        }
+
+	        // Maus-Ereignisse: bewegen und klicken lassen die Schlange reagieren
+	        window.addEventListener('mousemove', (e) => {
+	            updateSnakePointerFromEvent(e.clientX, e.clientY, true);
+	        });
+
+	        window.addEventListener('mousedown', (e) => {
+	            updateSnakePointerFromEvent(e.clientX, e.clientY, true);
+	        });
+
+	        window.addEventListener('mouseup', () => {
+	            if (!snakePointer) return;
+	            snakePointer.active = false;
+	        });
+
+	        window.addEventListener('mouseleave', () => {
+	            if (!snakePointer) return;
+	            snakePointer.active = false;
+	        });
+
+	        // Touch-Ereignisse: volle Mobil-Unterstützung
+	        window.addEventListener('touchstart', (e) => {
+	            const t = e.touches && e.touches[0];
+	            if (!t) return;
+	            updateSnakePointerFromEvent(t.clientX, t.clientY, true);
+	        }, { passive: true });
+
+	        window.addEventListener('touchmove', (e) => {
+	            const t = e.touches && e.touches[0];
+	            if (!t) return;
+	            updateSnakePointerFromEvent(t.clientX, t.clientY, true);
+	        }, { passive: true });
+
+	        window.addEventListener('touchend', () => {
+	            if (!snakePointer) return;
+	            snakePointer.active = false;
+	        });
+
+	        window.addEventListener('touchcancel', () => {
+	            if (!snakePointer) return;
+	            snakePointer.active = false;
+	        });
+
+        // === UPDATE STYLES ===
+        function updateStyles() {
+            sliders.forEach(slider => {
+                // Rendere alle Slider-Elemente als Bilder
+                renderSliderImages(slider);
+
+                // Debug: Linienstärke
+                const lineW = params.debugLineWidth;
+                const crossSize = 20 + lineW * 2;
+
+                // Debug: Track-Fadenkreuz positionieren (im Track-Zentrum)
+                slider.trackCenterCross.style.width = crossSize + 'px';
+                slider.trackCenterCross.style.height = crossSize + 'px';
+                slider.trackCenterCross.style.left = (slider.bounds.centerX - crossSize / 2) + 'px';
+                slider.trackCenterCross.style.top = (slider.bounds.centerY - crossSize / 2) + 'px';
+                slider.trackCenterCross.style.setProperty('--line-width', lineW + 'px');
+
+                // Debug: Thumb-Fadenkreuz Linienstärke
+                slider.thumbCenterCross.style.width = crossSize + 'px';
+                slider.thumbCenterCross.style.height = crossSize + 'px';
+                slider.thumbCenterCross.style.setProperty('--line-width', lineW + 'px');
+
+                // Debug-Linie aktualisieren - volle Track-Länge
+                const slideRot = slider.bounds.slideRotation;
+                const lineLength = slider.bounds.trackLength;
+                slider.debugLine.style.width = lineLength + 'px';
+                slider.debugLine.style.height = lineW + 'px';
+                slider.debugLine.style.left = (slider.bounds.centerX - lineLength / 2) + 'px';
+                slider.debugLine.style.top = (slider.bounds.centerY - lineW / 2) + 'px';
+                slider.debugLine.style.transform = `rotate(${slideRot}deg)`;
+            });
+        }
+
+        // Debug Toggle Event
+        debugToggle.addEventListener('click', () => {
+            isDebugMode = !isDebugMode;
+            debugToggle.textContent = isDebugMode ? 'An' : 'Aus';
+            debugToggle.classList.toggle('active', isDebugMode);
+            sliders.forEach(slider => {
+                slider.container.classList.toggle('debug-mode', isDebugMode);
+            });
+        });
+
+		        // Toggle Event: zwischen Breite (0°) und Länge (90°) umschalten
+		        verticalToggle.addEventListener('click', () => {
+		            const currentlyVertical = isVerticalMode();
+		            // Breite-Modus  -> Rotation = 0°
+		            // Länge-Modus   -> Rotation = 90°
+		            const newRotation = currentlyVertical ? 0 : 90;
+		            params.rotation = newRotation;
+		            const rotCfg = PARAMS_CONFIG.rotation;
+		            const rotInput = document.getElementById(rotCfg.id);
+		            if (rotInput) rotInput.value = newRotation;
+		
+		            updateStyles();
+		            updateVerticalToggleUI();
+		        });
+
+	        // Init: Input-Felder mit Defaults füllen
+	        Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => {
+	            const el = document.getElementById(cfg.id);
+		            if (el) el.value = params[key];
+	        });
+	
+	        updateStyles();
+		        updateVerticalToggleUI();
+	        // Start der kontinuierlichen Anzeige-Animation für den Slider-Wert (0.xxxx mit Wobble)
+	        requestAnimationFrame(animationLoop);
+
+        // === DRAGGABLE SETTINGS PANEL (nur über Header) ===
+	    const settingsPanel = document.getElementById('settingsPanel');
+	    const dragHandle = document.querySelector('.settings-header');
+	    const settingsBody = document.querySelector('.settings-body');
+	    let isPanelDragging = false;
+	    let panelDragStart = { x: 0, y: 0 };
+	    let panelStartPos = { x: 0, y: 0 };
+
+	    function updateSettingsBodyHeight() {
+	        if (!settingsPanel || !settingsBody) return;
+	        const rect = settingsPanel.getBoundingClientRect();
+	        const headerHeight = (dragHandle && dragHandle.offsetHeight) || 40;
+	        const availableHeight = window.innerHeight - rect.top - headerHeight - 8;
+	        if (availableHeight > 0) {
+	            settingsBody.style.maxHeight = availableHeight + 'px';
+	        }
+	    }
+
+	    dragHandle.addEventListener('mousedown', (e) => {
+	        isPanelDragging = true;
+	        settingsPanel.classList.add('dragging');
+
+	        const rect = settingsPanel.getBoundingClientRect();
+	        panelDragStart = { x: e.clientX, y: e.clientY };
+	        panelStartPos = { x: rect.left, y: rect.top };
+
+	        // Transform entfernen für absolute Positionierung
+	        settingsPanel.style.transform = 'none';
+	        settingsPanel.style.left = rect.left + 'px';
+	        settingsPanel.style.top = rect.top + 'px';
+
+	        e.preventDefault();
+	    });
+
+	    document.addEventListener('mousemove', (e) => {
+	        if (!isPanelDragging) return;
+
+	        const dx = e.clientX - panelDragStart.x;
+	        const dy = e.clientY - panelDragStart.y;
+	        let newLeft = panelStartPos.x + dx;
+	        let newTop = panelStartPos.y + dy;
+
+	        // Begrenzen:
+	        // - horizontal komplett im Viewport lassen
+	        // - vertikal: Panel immer voll im Viewport halten,
+	        //   Hhe dynamisch begrenzen und innen scrollen
+	        const maxLeft = Math.max(0, window.innerWidth - settingsPanel.offsetWidth);
+	        const minLeft = 0;
+	        newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+
+	        const minTop = 0; // nicht nach oben raus
+	        const headerHeight = (dragHandle && dragHandle.offsetHeight) || 40;
+	        const maxTop = Math.max(0, window.innerHeight - headerHeight - 8);
+	        newTop = Math.max(minTop, Math.min(maxTop, newTop));
+
+	        // Sichtbare H6he des scrollbaren Inhalts anpassen,
+	        // damit der Inhalt scrollbar bleibt, wenn wenig Platz ist
+	        const availableHeight = window.innerHeight - newTop - headerHeight - 8;
+	        if (settingsBody && availableHeight > 0) {
+	            settingsBody.style.maxHeight = availableHeight + 'px';
+	        }
+
+	        settingsPanel.style.left = newLeft + 'px';
+	        settingsPanel.style.top = newTop + 'px';
+	    });
+
+	    // Initial & bei Resize: H 0fhe des scrollbaren Bereichs anpassen
+	    updateSettingsBodyHeight();
+	    window.addEventListener('resize', updateSettingsBodyHeight);
+
+	    document.addEventListener('mouseup', () => {
+	        if (isPanelDragging) {
+	            isPanelDragging = false;
+	            settingsPanel.classList.remove('dragging');
+	        }
+	    });
+    </script>
+</body>
+</html>
+
