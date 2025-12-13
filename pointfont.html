@@ -3,9 +3,13 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>Punktbasierter Textgenerator</title>
     <link href="/meta.css" rel="stylesheet">
     <script src="/meta.js" defer></script>
+    <script src="/tools/zoom.js"></script>
+    <script src="/tools/controls.js"></script>
     <style>
 
         /* Basisstile für Body und HTML, um volle Höhe und Breite zu nutzen */
@@ -20,72 +24,27 @@
             color: var(--text-color);
         }
 
-        /* Stil für die Steuerungselemente */
-        .controls {
-            position: fixed; /* Fixiert die Steuerleiste oben */
-            height: 70px;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 100; /* Sicherstellt, dass die Steuerleiste immer oben bleibt */
-            flex-wrap: wrap; /* Ermöglicht Zeilenumbrüche bei kleinen Bildschirmen */
-            gap: 20px;
-            background: var(--bg-color); /* Hintergrundfarbe der Steuerleiste */
-        }
-        .controls label {
-            margin-right: 10px;
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        /* Aktualisierte Input- und Select-Stile */
-        .controls input,
-        .controls select {
-            width: 60px;
-            padding: 5px;
-            border: 1px solid var(--text-color); /* Rahmenfarbe auf Textfarbe setzen */
-            border-radius: 4px;
-            text-align: right;
-            background: var(--bg-color);
-            color: var(--text-color);
-            outline: none; /* Entfernt den Standard-Fokusrahmen */
-            box-sizing: border-box; /* Stellt sicher, dass Padding und Border in der Breite enthalten sind */
-        }
 
-        /* Aktualisierte Button-Stile */
-        .controls button {
-            padding: 5px 10px;
-            border: 1px solid var(--text-color); /* Rahmenfarbe auf Textfarbe setzen */
-            border-radius: 4px;
-            background: var(--bg-color);
-            color: var(--text-color);
-            cursor: pointer;
-            outline: none;
-            box-sizing: border-box;
-        }
 
-        /* Optional: Fokus-Stile für Eingaben und Buttons */
-        .controls input:focus,
-        .controls select:focus,
-        .controls button:focus {
-            border-color: var(--text-color);
-            box-shadow: 0 0 5px var(--text-color); /* Optional: fügt einen leichten Schimmer hinzu */
-        }
+	    /* Container für Canvas */
+		    .canvas-container {
+		        position: relative;
+		        width: 100%;
+		        height: 100%;
+		        margin-top: 0; /* Wird dynamisch per JavaScript gesetzt */
+		        overflow: hidden;
+		        background: var(--bg-color); /* Hintergrundfarbe des Canvas-Containers */
+		        touch-action: none; /* Ermöglicht eigenes Touch-Zoom/Pan */
+		    }
 
-        /* Container für Canvas */
-        .canvas-container {
-            position: relative;
-            width: 100%;
-            height: calc(100% - 70px); /* Abzug der Steuerleistenhöhe */
-            margin-top: 70px; /* Platz für die fixierte Steuerleiste */
-            overflow: hidden;
-            background: var(--bg-color); /* Hintergrundfarbe des Canvas-Containers */
-        }
+		    /* Inhalt, der gezoomt/verschoben wird */
+		    .zoom-content {
+		        position: absolute;
+		        top: 0;
+		        left: 0;
+		        width: 100%;
+		        height: 100%;
+		    }
 
         /* Canvas-Stil ohne Rahmen und volle Größe */
         canvas {
@@ -121,198 +80,1703 @@
             pointer-events: none;
         }
 
-        /* Optionaler innerer Text für selektierbare Bereiche */
-        .overlay-text {
-            pointer-events: auto;
-            color: transparent; /* Text weiterhin unsichtbar */
-        }
+	        /* Optionaler innerer Text für selektierbare Bereiche */
+	        .overlay-text {
+	            pointer-events: none; /* Keine Events abfangen, damit Zoom/Drag funktioniert */
+	            color: transparent; /* Text weiterhin unsichtbar */
+	            white-space: pre-wrap; /* Erlaubt Zeilenumbrüche wie im Textfeld */
+	        }
 
-        /* Responsive Anpassung für kleinere Bildschirme */
-        @media (max-width: 800px) {
-            /* Entferne Schriftgrößenanpassungen aus CSS */
-            .controls input, .controls select, .controls button {
-                width: 120px;
-                margin-bottom: 10px;
-            }
-            .controls label {
-                margin-right: 5px;
-            }
-        }
     </style>
 </head>
-<body>
-    <div class="controls">
-        <label for="textInput">Text:</label>
-        <input type="text" id="textInput" value="0 ≡ 1 ≡ ∞ ">
-        
-        <label for="pointCount">Punktanzahl pro Zeichen:</label>
-        <input type="number" id="pointCount" value="100" min="0" max="1000" step="1">
-        
-        <label for="pointSize">Punktgröße:</label>
-        <input type="number" id="pointSize" value="1" min="0" max="1000" step="0.1">
-        
-        <label for="fontSelect">Schriftart:</label>
-        <select id="fontSelect">
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Courier New">Courier New</option>
-            <option value="Verdana" selected>Verdana</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Tahoma">Tahoma</option>
-            <option value="Impact">Impact</option>
-            <!-- Weitere Schriftarten können hier hinzugefügt werden -->
-        </select>
-    </div>
-    <div class="canvas-container">
-        <canvas id="canvas"></canvas>
-        <div id="textOverlay" class="text-overlay">
-            <span class="overlay-text"></span>
-        </div>
-    </div>
+	    <body>
+	    <div class="canvas-container">
+	        <div id="zoomContent" class="zoom-content">
+	            <canvas id="canvas"></canvas>
+	            <div id="textOverlay" class="text-overlay">
+	                <span class="overlay-text"></span>
+	            </div>
+	        </div>
+	    </div>
 
-    <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+	    	    <script>
+	    		        const CONFIG = {
+	    		            // Zentrale Definition aller steuerbaren Eingaben
+	    		            controls: {
+	    		                text: {
+	    		                    defaultValue: '0 ≡ 1 ≡ ∞ '
+	    		                },
+	    		                mainFontSize: {
+	    		                    defaultValue: 150,
+	    		                    min: 0,
+	    		                    max: 10000,
+	    		                    step: 1
+	    		                },
+	    		                letterSpacing: {
+	    		                    defaultValue: 0,
+	    		                    min: 0,
+	    		                    max: 10000,
+	    		                    step: 1
+	    		                },
+	    		                pointCount: {
+	    		                    defaultValue: 100,
+	    		                    min: 0,
+	    		                    max: 1000000,
+	    		                    step: 1
+	    		                },
+	    		                pointSymbol: {
+	    		                    defaultValue: '.'
+	    		                },
+	    		                pointSize: {
+	    		                    defaultValue: 12,
+	    		                    min: 0,
+	    		                    max: 1000,
+	    		                    step: 1
+	    		                },
+	    		                // Hintergrundtext-Einstellungen
+	    		                bgEnabled: {
+	    		                    defaultValue: false
+	    		                },
+	    		                bgSyncWithPoints: {
+	    		                    defaultValue: true
+	    		                },
+	    		                bgText: {
+	    		                    defaultValue: '.'
+	    		                },
+	    		                bgTextCount: {
+	    		                    defaultValue: 100000,
+	    		                    min: 0,
+	    		                    max: 1000000,
+	    		                    step: 1
+	    		                },
+	    		                bgTextSize: {
+	    		                    defaultValue: 12,
+	    		                    min: 0,
+	    		                    max: 1000,
+	    		                    step: 1
+	    		                }
+	    		            },
+	    		            // Reihenfolge bestimmt auch den Default (erste Schriftart)
+	    		            fontList: [
+	    		                'Verdana',
+	    		                'Arial',
+	    		                'Times New Roman',
+	    		                'Courier New',
+	    		                'Georgia',
+	    		                'Tahoma',
+	    		                'Impact'
+	    		            ],
+	    		            pixelDetection: {
+	    		                alphaThreshold: 128,
+	    		                minRGB: 200
+	    		            },
+	    		            css: {
+	    		                pointColorVar: '--text-color',
+	    		                fallbackPointColor: '#FFFFFF'
+	    		            },
+	    		            canvasText: {
+	    		                weight: 'bold',
+	    		                sourceColor: 'white'
+	    		            },
+	    		            // Rendering-Konstanten
+	    		            sprite: {
+	    		                shadowPadding: 4       // Platz für shadowBlur + Offset
+	    		            },
+	    		            distribution: {
+	    		                maxCandidates: 2000,   // Max. Kandidaten für Max-Distance-Sampling
+	    		                viewMargin: 0.1,       // 10% Rand beim Fit-to-View
+	    		                bgExpandFactor: 2.0    // Puffer für BG-Punkte außerhalb des sichtbaren Bereichs
+	    		            }
+	    		        };
 
-        const textInput = document.getElementById('textInput');
-        const pointCountInput = document.getElementById('pointCount');
-        const pointSizeInput = document.getElementById('pointSize');
-        const fontSelect = document.getElementById('fontSelect');
-        const textOverlay = document.getElementById('textOverlay');
-        const overlayText = document.querySelector('.overlay-text');
+		        const canvas = document.getElementById('canvas');
+		        const ctx = canvas.getContext('2d');
+		        // Offscreen-Canvas nur für die Texterzeugung / Pixelanalyse,
+		        // damit der Großtext nicht durch die Fenstergröße beschnitten wird.
+		        const sourceCanvas = document.createElement('canvas');
+		        const sourceCtx = sourceCanvas.getContext('2d');
 
-        // Funktion zum Abrufen der CSS-Variable
-        function getCSSVariable(variable) {
-            return getComputedStyle(document.body).getPropertyValue(variable).trim();
-        }
+		        const textOverlay = document.getElementById('textOverlay');
+		        const overlayText = document.querySelector('.overlay-text');
+		        const canvasContainer = document.querySelector('.canvas-container');
+		        const zoomContent = document.getElementById('zoomContent');
 
-        // Funktion zur Anpassung der Canvas-Größe an den Container
-        function resizeCanvas() {
-            canvas.width = canvas.parentElement.clientWidth;
-            canvas.height = canvas.parentElement.clientHeight;
-            determineFontSize();
-            renderPoints();
-        }
+		        // === CONTROLS PANEL ===
+		        const panel = Controls.createPanel({
+		            position: 'center',
+		            mobileContentElement: canvasContainer, // Canvas verschiebt sich mit Panel
+		            mobileContentMaxOffset: 15 // vh - wie weit der Canvas nach oben wandert
+		        });
 
-        // Bestimme die Schriftgröße basierend auf der Fensterbreite
-        function determineFontSize() {
-            const width = window.innerWidth;
-            let fontSize;
-            if (width <= 800) {
-                fontSize = 80;
-            } else {
-                fontSize = 150;
-            }
-            // Setze die Schriftgröße sowohl für das Overlay
-            overlayText.style.fontSize = `${fontSize}px`;
-            overlayText.style.lineHeight = `${fontSize}px`;
-        }
+		        // Distribution Mode Options
+		        const distributionOptions = [
+		            { value: 'random', label: 'zufällig' },
+		            { value: 'grid', label: 'Raster' },
+		            { value: 'packed', label: 'Packung' },
+		            { value: 'maxDist', label: 'max. Abstand' },
+		            { value: 'maxDistDynamic', label: 'max. Abstand (dyn.)' },
+		            { value: 'contourLoose', label: 'Kontur (locker)' },
+		            { value: 'contour', label: 'Kontur' }
+		        ];
+
+		        const bgDistributionOptions = [
+		            { value: 'random', label: 'zufällig' },
+		            { value: 'grid', label: 'Raster' },
+		            { value: 'packed', label: 'Packung' },
+		            { value: 'maxDist', label: 'max. Abstand' },
+		            { value: 'maxDistDynamic', label: 'max. Abstand (dyn.)' }
+		        ];
+
+		        // Hilfsfunktion: Re-render auslösen
+		        const triggerRender = () => { if (typeof resizeCanvas === 'function') resizeCanvas(); };
+		        const triggerBgRender = () => { invalidateBgCache(); renderWithZoom(); };
+
+		        // Panel aufbauen
+		        panel
+		            .addText('text', {
+		                label: 'Text',
+		                value: CONFIG.controls.text.defaultValue,
+		                onChange: triggerRender
+		            })
+		            .addStepper('mainFontSize', {
+		                label: 'Größe',
+		                min: CONFIG.controls.mainFontSize.min,
+		                max: CONFIG.controls.mainFontSize.max,
+		                step: CONFIG.controls.mainFontSize.step,
+		                value: CONFIG.controls.mainFontSize.defaultValue,
+		                decimals: 0,
+		                onChange: triggerRender
+		            })
+		            .addStepper('letterSpacing', {
+		                label: 'Abstand',
+		                min: CONFIG.controls.letterSpacing.min,
+		                max: CONFIG.controls.letterSpacing.max,
+		                step: CONFIG.controls.letterSpacing.step,
+		                value: CONFIG.controls.letterSpacing.defaultValue,
+		                decimals: 0,
+		                onChange: triggerRender
+		            })
+		            .addSelect('font', {
+		                label: 'Schrift',
+		                options: CONFIG.fontList,
+		                value: CONFIG.fontList[0],
+		                onChange: triggerRender
+		            })
+		            .addDivider()
+		            .addStepper('pointCount', {
+		                label: 'Punkte',
+		                min: CONFIG.controls.pointCount.min,
+		                max: CONFIG.controls.pointCount.max,
+		                step: CONFIG.controls.pointCount.step,
+		                value: CONFIG.controls.pointCount.defaultValue,
+		                decimals: 0,
+		                onChange: () => {
+		                    if (panel.get('bgEnabled') && panel.get('bgSync')) syncBgWithPoints();
+		                    triggerRender();
+		                }
+		            })
+		            .addText('pointSymbol', {
+		                label: 'Symbol',
+		                value: CONFIG.controls.pointSymbol.defaultValue,
+		                onChange: () => {
+		                    if (panel.get('bgEnabled') && panel.get('bgSync')) syncBgWithPoints();
+		                    triggerRender();
+		                }
+		            })
+		            .addStepper('pointSize', {
+		                label: 'Symbolgr.',
+		                min: CONFIG.controls.pointSize.min,
+		                max: CONFIG.controls.pointSize.max,
+		                step: CONFIG.controls.pointSize.step,
+		                value: CONFIG.controls.pointSize.defaultValue,
+		                decimals: 0,
+		                onChange: () => {
+		                    if (panel.get('bgEnabled') && panel.get('bgSync')) syncBgWithPoints();
+		                    triggerRender();
+		                }
+		            })
+		            .addSelect('distributionMode', {
+		                label: 'Verteilung',
+		                options: distributionOptions,
+		                value: 'packed',
+		                onChange: () => {
+		                    if (panel.get('bgEnabled') && panel.get('bgSync')) syncBgWithPoints();
+		                    triggerRender();
+		                }
+		            })
+		            .addDivider()
+		            .addToggle('bgEnabled', {
+		                label: 'Hintergrund',
+		                value: CONFIG.controls.bgEnabled.defaultValue,
+		                onChange: (active) => {
+		                    updateBgControlsVisibility();
+		                    if (active && panel.get('bgSync')) syncBgWithPoints();
+		                    triggerBgRender();
+		                }
+		            })
+		            .addToggle('bgSync', {
+		                label: 'BG Sync',
+		                value: CONFIG.controls.bgSyncWithPoints.defaultValue,
+		                onChange: (active) => {
+		                    if (active) syncBgWithPoints();
+		                    triggerBgRender();
+		                }
+		            })
+		            .addText('bgText', {
+		                label: 'BG Text',
+		                value: CONFIG.controls.bgText.defaultValue,
+		                onChange: triggerBgRender
+		            })
+		            .addStepper('bgTextCount', {
+		                label: 'BG Dichte',
+		                min: CONFIG.controls.bgTextCount.min,
+		                max: CONFIG.controls.bgTextCount.max,
+		                step: 1000,
+		                value: CONFIG.controls.bgTextCount.defaultValue,
+		                decimals: 0,
+		                onChange: triggerBgRender
+		            })
+		            .addStepper('bgTextSize', {
+		                label: 'BG Größe',
+		                min: CONFIG.controls.bgTextSize.min,
+		                max: CONFIG.controls.bgTextSize.max,
+		                step: CONFIG.controls.bgTextSize.step,
+		                value: CONFIG.controls.bgTextSize.defaultValue,
+		                decimals: 0,
+		                onChange: triggerBgRender
+		            })
+		            .addSelect('bgDistributionMode', {
+		                label: 'BG Vert.',
+		                options: bgDistributionOptions,
+		                value: 'random',
+		                onChange: triggerBgRender
+		            });
+
+		        // Weltkoordinaten für die Punktwolke + Zoom-Zustand
+		        let worldPoints = [];
+		        // Hintergrund-Punkte (werden dynamisch basierend auf sichtbarem Bereich generiert)
+		        let bgWorldPoints = [];
+		        let bgRenderConfig = {
+		            font: CONFIG.fontList[0],
+		            pointSize: CONFIG.controls.bgTextSize.defaultValue,
+		            symbolLines: [CONFIG.controls.bgText.defaultValue],
+		            symbolLineHeight: CONFIG.controls.bgTextSize.defaultValue
+		        };
+		        let pointRenderConfig = {
+		            font: CONFIG.fontList[0],
+		            pointSize: CONFIG.controls.pointSize.defaultValue,
+		            symbolLines: [CONFIG.controls.pointSymbol.defaultValue],
+		            symbolLineHeight: CONFIG.controls.pointSize.defaultValue
+		        };
+		        let zoomState = { scale: 1, offsetX: 0, offsetY: 0 };
+		        let zoomInstance = null;
+		        // Merker: hat der Benutzer bereits aktiv gezoomt/verschoben?
+		        let userAdjustedZoom = false;
+		        // Merker: läuft gerade eine programmatische Änderung via setView?
+		        let isProgrammaticZoomUpdate = false;
+
+        // ===== SPRITE-CACHE für effizientes Rendering =====
+        // Statt bei jedem Punkt fillText() aufzurufen (sehr langsam),
+        // rendern wir das Symbol einmal auf ein OffscreenCanvas und
+        // kopieren es dann mit drawImage() (5-10x schneller).
+        let spriteCache = {
+            canvas: null,
+            key: null,           // Cache-Key: font|size|color|symbol
+            width: 0,
+            height: 0,
+            offsetX: 0,          // Offset zum Zentrieren
+            offsetY: 0
+        };
+		        // Cache speziell für den Packungs-Modus, damit wir bei +/-1 Punkten
+		        // nicht jedes Mal eine komplett neue Zufallsverteilung erzeugen.
+		        let packedCache = {
+		            layoutKey: null,
+		            pointCount: 0,
+		            perCharSelections: []
+		        };
+		        // Separater Cache für den „max. Abstand“-Modus, damit wir bei +/-1
+		        // Punkten auf der vorhandenen Verteilung weiterarbeiten können.
+		        let maxDistCache = {
+		            layoutKey: null,
+		            pointCount: 0,
+		            perCharSelections: []
+		        };
+
+	        // Funktion zum Abrufen der CSS-Variable
+	        function getCSSVariable(variable) {
+	            return getComputedStyle(document.body).getPropertyValue(variable).trim();
+	        }
+
+	        // ===== SPRITE-ERSTELLUNG =====
+	        // Generische Funktion zum Erstellen eines gecachten Sprites.
+	        // cacheObj: Referenz auf spriteCache oder bgSpriteCache
+	        // keyPrefix: optionaler Prefix für den Cache-Key (z.B. 'bg_')
+	        function createOrGetCachedSprite(cacheObj, keyPrefix, font, fontSize, color, symbolLines, lineHeight) {
+	            const key = `${keyPrefix}${font}|${fontSize.toFixed(2)}|${color}|${symbolLines.join('\\n')}`;
+
+	            // Cache-Hit: bestehendes Sprite zurückgeben
+	            if (cacheObj.key === key && cacheObj.canvas) {
+	                return cacheObj;
+	            }
+
+	            // Cache-Miss: neues Sprite erstellen
+	            const linesCount = symbolLines.length || 1;
+
+	            // Temporärer Canvas zum Messen
+	            const measureCanvas = document.createElement('canvas');
+	            const measureCtx = measureCanvas.getContext('2d');
+	            measureCtx.font = `${fontSize}px ${font}`;
+
+	            // Maximale Breite aller Zeilen ermitteln
+	            let maxWidth = 0;
+	            for (const line of symbolLines) {
+	                const w = measureCtx.measureText(line || ' ').width;
+	                if (w > maxWidth) maxWidth = w;
+	            }
+
+	            // Sprite-Dimensionen mit Padding für Schatten
+	            const spriteWidth = Math.ceil(maxWidth + CONFIG.sprite.shadowPadding * 2);
+	            const spriteHeight = Math.ceil(lineHeight * linesCount + CONFIG.sprite.shadowPadding * 2);
+
+	            // Sprite-Canvas erstellen
+	            let spriteCanvas = cacheObj.canvas;
+	            if (!spriteCanvas) {
+	                spriteCanvas = document.createElement('canvas');
+	            }
+	            spriteCanvas.width = spriteWidth;
+	            spriteCanvas.height = spriteHeight;
+
+	            const spriteCtx = spriteCanvas.getContext('2d');
+	            spriteCtx.clearRect(0, 0, spriteWidth, spriteHeight);
+
+	            // Schatten-Einstellungen
+	            spriteCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+	            spriteCtx.shadowBlur = 2;
+	            spriteCtx.shadowOffsetX = 1;
+	            spriteCtx.shadowOffsetY = 1;
+
+	            // Text-Einstellungen
+	            spriteCtx.fillStyle = color;
+	            spriteCtx.font = `${fontSize}px ${font}`;
+	            spriteCtx.textAlign = 'center';
+	            spriteCtx.textBaseline = 'middle';
+
+	            // Zentriert auf das Sprite zeichnen
+	            const centerX = spriteWidth / 2;
+	            const centerY = spriteHeight / 2;
+
+	            if (linesCount === 1) {
+	                spriteCtx.fillText(symbolLines[0] || '', centerX, centerY);
+	            } else {
+	                const totalHeight = lineHeight * linesCount;
+	                const startY = centerY - (totalHeight - lineHeight) / 2;
+	                for (let i = 0; i < linesCount; i++) {
+	                    spriteCtx.fillText(symbolLines[i] || '', centerX, startY + i * lineHeight);
+	                }
+	            }
+
+	            // Cache-Objekt in-place aktualisieren
+	            cacheObj.canvas = spriteCanvas;
+	            cacheObj.key = key;
+	            cacheObj.width = spriteWidth;
+	            cacheObj.height = spriteHeight;
+	            cacheObj.offsetX = spriteWidth / 2;
+	            cacheObj.offsetY = spriteHeight / 2;
+
+	            return cacheObj;
+	        }
+
+	        // Wrapper für Punkt-Sprites
+	        function getOrCreateSprite(font, fontSize, color, symbolLines, lineHeight) {
+	            return createOrGetCachedSprite(spriteCache, '', font, fontSize, color, symbolLines, lineHeight);
+	        }
+
+	        // Initialisiert alle Eingabeelemente - jetzt vom Panel übernommen
+	        function initializeUIFromConfig() {
+	            // Panel ist bereits initialisiert mit Werten aus CONFIG
+	            // BG-Controls initial ein-/ausblenden
+	            updateBgControlsVisibility();
+	            // Sync initialisieren falls aktiviert
+	            if (panel.get('bgEnabled') && panel.get('bgSync')) {
+	                syncBgWithPoints();
+	            }
+	        }
+
+	        // Sichtbarkeit der Hintergrund-Controls steuern
+	        function updateBgControlsVisibility() {
+	            const visible = panel.get('bgEnabled');
+	            panel.setRowVisibility('bgSync', visible);
+	            panel.setRowVisibility('bgText', visible);
+	            panel.setRowVisibility('bgTextCount', visible);
+	            panel.setRowVisibility('bgTextSize', visible);
+	            panel.setRowVisibility('bgDistributionMode', visible);
+	        }
+
+	        // Zählt die exakte Anzahl der gefüllten Pixel im Großtext
+	        function countTextPixels() {
+	            const text = panel.get('text') || '';
+	            if (!text.trim()) return 0;
+
+	            const mainFontSize = parseFloat(panel.get('mainFontSize')) || 150;
+	            const font = panel.get('font') || 'Arial';
+	            const letterSpacing = parseFloat(panel.get('letterSpacing')) || 0;
+	            const lineHeight = mainFontSize * 1.2;
+
+	            // Temporäres Canvas erstellen
+	            const tempCanvas = document.createElement('canvas');
+	            const tempCtx = tempCanvas.getContext('2d');
+
+	            // Canvas-Größe basierend auf Text berechnen
+	            tempCtx.font = `${mainFontSize}px "${font}"`;
+	            const lines = text.split('\n');
+	            let maxWidth = 0;
+	            for (const line of lines) {
+	                let lineWidth = 0;
+	                for (const char of line) {
+	                    lineWidth += tempCtx.measureText(char).width + letterSpacing;
+	                }
+	                maxWidth = Math.max(maxWidth, lineWidth);
+	            }
+	            const totalHeight = lines.length * lineHeight;
+
+	            tempCanvas.width = Math.ceil(maxWidth) + 10;
+	            tempCanvas.height = Math.ceil(totalHeight) + 10;
+
+	            // Text rendern
+	            tempCtx.fillStyle = 'white';
+	            tempCtx.font = `${mainFontSize}px "${font}"`;
+	            tempCtx.textBaseline = 'top';
+
+	            let y = 0;
+	            for (const line of lines) {
+	                let x = 0;
+	                for (const char of line) {
+	                    if (char !== ' ') {
+	                        tempCtx.fillText(char, x, y);
+	                    }
+	                    x += tempCtx.measureText(char).width + letterSpacing;
+	                }
+	                y += lineHeight;
+	            }
+
+	            // Pixel zählen
+	            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+	            const data = imageData.data;
+	            let filledPixels = 0;
+
+	            for (let i = 0; i < data.length; i += 4) {
+	                const alpha = data[i + 3];
+	                if (alpha > 128) { // Mehr als 50% opak = gefüllt
+	                    filledPixels++;
+	                }
+	            }
+
+	            return filledPixels;
+	        }
+
+	        // Synchronisiert BG-Einstellungen mit Kleintext-Einstellungen
+	        // Bei Sync: gleiche Zeichengröße, gleiches Symbol, gleiche Dichte (Konzentration)
+	        function syncBgWithPoints() {
+	            if (!panel.get('bgSync')) return;
+	            panel.set('bgText', panel.get('pointSymbol'));
+	            panel.set('bgTextSize', panel.get('pointSize'));
+	            // Verteilung synchronisieren (nur kompatible Modi)
+	            const distMode = panel.get('distributionMode');
+	            const bgOptions = ['random', 'grid', 'packed', 'maxDist', 'maxDistDynamic'];
+	            if (bgOptions.includes(distMode)) {
+	                panel.set('bgDistributionMode', distMode);
+	            }
+
+	            // Exakte Dichte berechnen:
+	            // Zähle die tatsächlichen Pixel, die vom Großtext bedeckt werden
+	            const textPixelCount = countTextPixels();
+	            if (textPixelCount === 0) {
+	                panel.set('bgTextCount', 0);
+	                return;
+	            }
+
+	            const pointCount = parseInt(panel.get('pointCount'), 10) || 0;
+	            const text = panel.get('text') || '';
+	            const textLength = text.replace(/\s/g, '').length || 1;
+
+	            // Gesamte Punkte im Kleintext
+	            const totalKleintextPoints = pointCount * textLength;
+
+	            // Dichte = Punkte / gefüllte Pixel
+	            const density = totalKleintextPoints / textPixelCount;
+
+	            // Für den Canvas: BG-Anzahl = Dichte × Canvas-Fläche
+	            const canvasArea = canvas.width * canvas.height;
+	            const bgCount = Math.round(density * canvasArea);
+
+	            panel.set('bgTextCount', bgCount);
+	        }
+
+	    		// Funktion zur Anpassung der Canvas-Größe an den Container
+	    		function resizeCanvas() {
+	    		    const parentWidth = canvas.parentElement.clientWidth;
+	    		    const parentHeight = canvas.parentElement.clientHeight;
+	    		    // Wenn der Container noch keine sinnvolle Größe hat, abbrechen
+	    		    if (!parentWidth || !parentHeight) {
+	    		        return;
+	    		    }
+	    		
+	    		    canvas.width = parentWidth;
+	    		    canvas.height = parentHeight;
+	    		    renderPoints();
+	    		}
 
         // Event Listener für Fenstergrößenänderungen
         window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        // Nach vollständigem Laden der Seite noch einmal korrekt layouten
+        window.addEventListener('load', resizeCanvas);
 
-        function renderPoints() {
-            const text = textInput.value;
-            const pointCount = parseInt(pointCountInput.value, 10);
-            const pointSize = parseFloat(pointSizeInput.value);
-            const font = fontSelect.value;
+		    	function renderPoints() {
+		    	    const text = panel.get('text');
+		    	    let pointCount = parseInt(panel.get('pointCount'), 10);
+		    	    let pointSize = parseFloat(panel.get('pointSize'));
+		    	    const font = panel.get('font');
+		    	    const pointSymbol = (panel.get('pointSymbol') || '').trim();
+	    	    let letterSpacing = parseFloat(panel.get('letterSpacing'));
+		    		
+		    	    // Punktanzahl: keine Fallbacks; NaN oder negativ -> 0, 0 ist erlaubt
+		    	    if (isNaN(pointCount) || pointCount < 0) {
+		    	        pointCount = 0;
+		    	    }
+		    		
+		    	    // Punktgröße: keine Fallbacks; NaN oder negativ -> 0, 0 ist erlaubt
+		    	    if (isNaN(pointSize) || pointSize < 0) {
+		    	        pointSize = 0;
+		    	    }
+		    		
+		    	    // Zeichenabstand: keine Fallbacks; NaN oder negativ -> 0
+		    	    if (isNaN(letterSpacing) || letterSpacing < 0) {
+		    	        letterSpacing = 0;
+		    	    }
+		    		
+		    	    // Canvas ist noch nicht sinnvoll skaliert
+		            if (!canvas.width || !canvas.height) {
+		                return;
+		            }
+		    		
+		    	    // Edgecase: Kein Punktzeichen (leer) -> nichts anzeigen (Canvas leeren)
+		            if (!pointSymbol) {
+		                ctx.clearRect(0, 0, canvas.width, canvas.height);
+		                worldPoints = [];
+		                renderWithZoom();
+		                return;
+		            }
+		    		
+		    	        // Bestimme die aktuelle Schriftgröße aus dem Eingabefeld
+		    	        let fontSize = parseFloat(panel.get('mainFontSize'));
+		    	        // Keine Fallbacks: 0 ist erlaubt (kein Text sichtbar),
+		    	        // ungültige oder negative Werte werden als 0 behandelt.
+		    	        if (isNaN(fontSize) || fontSize < 0) {
+		    	            fontSize = 0;
+		    	        }
+		    		
+		            // Aktualisiere das unsichtbare Text-Overlay
+		            overlayText.textContent = text;
+		            overlayText.style.font = `${CONFIG.canvasText.weight} ${fontSize}px ${font}`;
+		            overlayText.style.letterSpacing = letterSpacing ? `${letterSpacing}px` : 'normal';
+		    		
+		            // Zeichne den Großtext auf ein Offscreen-Canvas, damit er nicht
+		            // durch die Fenstergröße beschnitten wird, und nutze diese
+		            // Pixel-Daten für die Punktverteilung.
+		            const lines = text.split(/\r?\n/);
+		            const lineHeight = fontSize;
+		            const charBoxes = [];
+		    		
+		            // Erste Messung: Breite jeder Zeile bei aktueller Schrift einstellen
+		            sourceCtx.font = `${CONFIG.canvasText.weight} ${fontSize}px ${font}`;
+		            sourceCtx.textBaseline = 'top';
+		    		
+		            const lineLayouts = lines.map(line => {
+		                let width = 0;
+		                for (let i = 0; i < line.length; i++) {
+		                    const ch = line[i];
+		                    const w = sourceCtx.measureText(ch).width;
+		                    width += w;
+		                    if (i < line.length - 1) {
+		                        width += letterSpacing;
+		                    }
+		                }
+		                return { text: line, width };
+		            });
+		    		
+		            const totalHeight = lineHeight * Math.max(lines.length, 1);
+		            let maxLineWidth = 0;
+		            for (const layout of lineLayouts) {
+		                if (layout.width > maxLineWidth) maxLineWidth = layout.width;
+		            }
+		    		
+		            const padding = Math.max(fontSize * 0.5, 1);
+		            const srcWidth = Math.max(1, Math.ceil(maxLineWidth + 2 * padding));
+		            const srcHeight = Math.max(1, Math.ceil(totalHeight + 2 * padding));
+		    		
+		            // Offscreen-Canvas auf die Textausdehnung anpassen
+		            sourceCanvas.width = srcWidth;
+		            sourceCanvas.height = srcHeight;
+		            sourceCtx.clearRect(0, 0, srcWidth, srcHeight);
+		            sourceCtx.fillStyle = CONFIG.canvasText.sourceColor;
+		            sourceCtx.font = `${CONFIG.canvasText.weight} ${fontSize}px ${font}`;
+		            sourceCtx.textBaseline = 'top';
+		    		
+		            // Text zeilenweise mit Zeichenabstand zeichnen und Bounding-Boxen sammeln
+		            let y = padding;
+		            for (let li = 0; li < lines.length; li++) {
+		                const line = lines[li];
+		                const layout = lineLayouts[li];
+		                const lineWidth = layout.width;
+		                let x = padding;
+		    		
+		                for (let ci = 0; ci < line.length; ci++) {
+		                    const ch = line[ci];
+		                    const charWidth = sourceCtx.measureText(ch).width;
+		    				
+		                    sourceCtx.fillText(ch, x, y);
+		    				
+		                    charBoxes.push({
+		                        x1: x,
+		                        x2: x + charWidth,
+		                        y1: y,
+		                        y2: y + lineHeight
+		                    });
+		    				
+		                    x += charWidth + letterSpacing;
+		                }
+		    		
+		                y += lineHeight;
+		            }
+		    		
+		            // Extrahiere Pixel-Daten vom Offscreen-Canvas
+			            const imageData = sourceCtx.getImageData(0, 0, srcWidth, srcHeight);
+		            const data = imageData.data;
+		    		
+		            // Sammle Positionen der weißen Pixel
+		            const pixels = [];
+			            for (let i = 0; i < data.length; i += 4) {
+		                const alpha = data[i + 3];
+		                const red = data[i];
+		                const green = data[i + 1];
+		                const blue = data[i + 2];
+		                if (
+		                    alpha > CONFIG.pixelDetection.alphaThreshold &&
+		                    red   > CONFIG.pixelDetection.minRGB &&
+		                    green > CONFIG.pixelDetection.minRGB &&
+		                    blue  > CONFIG.pixelDetection.minRGB
+		                ) {
+		                    const index = i / 4;
+		                    const px = index % srcWidth;
+		                    const py = Math.floor(index / srcWidth);
+		                    pixels.push({ x: px, y: py });
+		                }
+		            }
+		    		
+		            const chars = charBoxes.length;
+		            if (chars === 0) {
+		                // Kein sichtbarer Text -> keine Punkte
+		                ctx.clearRect(0, 0, canvas.width, canvas.height);
+		                worldPoints = [];
+		                renderWithZoom();
+		                return;
+		            }
+		    		
+		            const pointsPerChar = pointCount; // Punktanzahl pro Zeichen
+		            const distributionMode = panel.get('distributionMode') || 'random';
 
-            if (isNaN(pointCount) || pointCount <= 0) {
-                alert("Bitte geben Sie eine gültige Punktanzahl ein.");
-                return;
-            }
+		            function isBrightAt(x, y) {
+		                if (x < 0 || x >= srcWidth || y < 0 || y >= srcHeight) return false;
+		                const idx = (y * srcWidth + x) * 4;
+		                const alpha = data[idx + 3];
+		                const red = data[idx];
+		                const green = data[idx + 1];
+		                const blue = data[idx + 2];
+		                return (
+		                    alpha > CONFIG.pixelDetection.alphaThreshold &&
+		                    red   > CONFIG.pixelDetection.minRGB &&
+		                    green > CONFIG.pixelDetection.minRGB &&
+		                    blue  > CONFIG.pixelDetection.minRGB
+		                );
+		            }
 
-            if (isNaN(pointSize) || pointSize <= 0) {
-                alert("Bitte geben Sie eine gültige Punktgröße ein.");
-                return;
-            }
+		            function selectGridPointsForBox(box, targetCount) {
+		                const result = [];
+		                if (targetCount <= 0) return result;
 
-            // Bestimme die aktuelle Schriftgröße
-            const width = window.innerWidth;
-            let fontSize;
-            if (width <= 800) {
-                fontSize = 80;
-            } else {
-                fontSize = 150;
-            }
+		                const boxWidth = box.x2 - box.x1;
+		                const boxHeight = box.y2 - box.y1;
+		                if (boxWidth <= 0 || boxHeight <= 0) return result;
 
-            // Aktualisiere das unsichtbare Text-Overlay
-            overlayText.textContent = text;
-            overlayText.style.font = `bold ${fontSize}px ${font}`;
+		                const aspect = boxWidth / Math.max(boxHeight, 1);
+		                let cols = Math.max(1, Math.round(Math.sqrt(targetCount * aspect)));
+		                let rows = Math.max(1, Math.round(targetCount / cols));
+		                if (rows * cols < targetCount) {
+		                    rows = Math.ceil(targetCount / cols);
+		                }
 
-            // Zeichne den Text auf das Canvas, um Pixel-Daten zu erhalten
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'white';
-            ctx.font = `bold ${fontSize}px ${font}`;
-            ctx.textBaseline = 'top';
+		                const maxPoints = targetCount;
+		                const maxRadius = 3; // Suchradius für Nachbarn um Rasterzentrum
 
-            // Zentriere den Text
-            const textMetrics = ctx.measureText(text);
-            const textWidth = textMetrics.width;
-            const x = (canvas.width - textWidth) / 2;
-            const y = (canvas.height - fontSize) / 2;
+		                for (let row = 0; row < rows; row++) {
+		                    for (let col = 0; col < cols; col++) {
+		                        if (result.length >= maxPoints) break;
+		
+		                        const gx = Math.round(box.x1 + (col + 0.5) * (boxWidth / cols));
+		                        const gy = Math.round(box.y1 + (row + 0.5) * (boxHeight / rows));
+		
+		                        let found = null;
+		                        if (isBrightAt(gx, gy)) {
+		                            found = { x: gx, y: gy };
+		                        } else {
+		                            outer: for (let r = 1; r <= maxRadius; r++) {
+		                                for (let dy = -r; dy <= r; dy++) {
+		                                    for (let dx = -r; dx <= r; dx++) {
+		                                        const sx = gx + dx;
+		                                        const sy = gy + dy;
+		                                        if (sx < box.x1 || sx >= box.x2 || sy < box.y1 || sy >= box.y2) continue;
+		                                        if (isBrightAt(sx, sy)) {
+		                                            found = { x: sx, y: sy };
+		                                            break outer;
+		                                        }
+		                                    }
+		                                }
+		                            }
+		                        }
+		
+		                        if (found) {
+		                            result.push(found);
+		                        }
+		                    }
+		                }
 
-            ctx.fillText(text, x, y);
+		                return result;
+		            }
 
-            // Extrahiere Pixel-Daten
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
+		            function selectContourPointsForChar(charPixels, targetCount) {
+		                const result = [];
+		                if (!charPixels || !charPixels.length || targetCount <= 0) {
+		                    return result;
+		                }
+		
+		                // Set für schnellen Nachbarschafts-Check
+		                const pixelSet = new Set();
+		                for (const p of charPixels) {
+		                    pixelSet.add(p.x + ',' + p.y);
+		                }
+		
+		                const contourPixels = [];
+		                const neighbors = [
+		                    [1, 0], [-1, 0], [0, 1], [0, -1]
+		                ];
+		
+		                for (const p of charPixels) {
+		                    for (const [dx, dy] of neighbors) {
+		                        const key = (p.x + dx) + ',' + (p.y + dy);
+		                        if (!pixelSet.has(key)) {
+		                            contourPixels.push(p);
+		                            break;
+		                        }
+		                    }
+		                }
+		
+		                if (!contourPixels.length) {
+		                    // Fallback: zufällige Auswahl aus allen Pixeln
+		                    const shuffledAll = shuffleArray(charPixels.slice());
+		                    return shuffledAll.slice(0, Math.min(targetCount, shuffledAll.length));
+		                }
+		
+		                if (contourPixels.length <= targetCount) {
+		                    return contourPixels;
+		                }
+		
+		                // --- Gleichmäßigere Verteilung entlang der Kontur ---
+		                // 1. Bounding-Box des Zeichens abschätzen
+		                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		                for (const p of charPixels) {
+		                    if (p.x < minX) minX = p.x;
+		                    if (p.x > maxX) maxX = p.x;
+		                    if (p.y < minY) minY = p.y;
+		                    if (p.y > maxY) maxY = p.y;
+		                }
+		                const width = Math.max(1, maxX - minX);
+		                const height = Math.max(1, maxY - minY);
+		                const approxPerimeter = 2 * (width + height);
+		                const desiredSpacing = approxPerimeter / Math.max(1, targetCount);
+		                const minDist = Math.max(1, desiredSpacing * 0.5);
+		                const minDistSq = minDist * minDist;
+		
+		                // 2. Punkte in zufälliger Reihenfolge durchgehen und nur nehmen,
+		                //    wenn sie nicht zu nah an schon gewählten Konturpunkten liegen
+		                const shuffledContour = shuffleArray(contourPixels.slice());
+		                const selected = [];
+		
+		                for (const p of shuffledContour) {
+		                    let ok = true;
+		                    for (let i = 0; i < selected.length; i++) {
+		                        const q = selected[i];
+		                        const dx = p.x - q.x;
+		                        const dy = p.y - q.y;
+		                        if (dx * dx + dy * dy < minDistSq) {
+		                            ok = false;
+		                            break;
+		                        }
+		                    }
+		                    if (ok) {
+		                        selected.push(p);
+		                        if (selected.length >= targetCount) break;
+		                    }
+		                }
+		
+		                // 3. Falls wir noch nicht genug Punkte haben: mit restlichen Konturpunkten auffüllen
+		                if (selected.length < targetCount) {
+		                    // Set für O(1) Lookup statt O(n) Array.includes()
+		                    const selectedSet = new Set(selected.map(q => `${q.x},${q.y}`));
+		                    for (const p of shuffledContour) {
+		                        if (selected.length >= targetCount) break;
+		                        const key = `${p.x},${p.y}`;
+		                        if (!selectedSet.has(key)) {
+		                            selected.push(p);
+		                            selectedSet.add(key);
+		                        }
+		                    }
+		                }
 
-            // Sammle Positionen der weißen Pixel
-            const pixels = [];
-            for (let i = 0; i < data.length; i += 4) {
-                const alpha = data[i + 3];
-                const red = data[i];
-                const green = data[i + 1];
-                const blue = data[i + 2];
-                if (alpha > 128 && red > 200 && green > 200 && blue > 200) {
-                    const index = i / 4;
-                    const px = index % canvas.width;
-                    const py = Math.floor(index / canvas.width);
-                    pixels.push({ x: px, y: py });
-                }
-            }
+		                return selected;
+		            }
 
-            // Bestimme Punkte pro Zeichen
-            const chars = text.length;
-            if (chars === 0) return; // Verhindere Division durch Null
+		            function selectPackedPointsForChar(charPixels, targetCount) {
+		                const result = [];
+		                if (!charPixels || !charPixels.length || targetCount <= 0) {
+		                    return result;
+		                }
+		
+		                const area = charPixels.length;
+		                const desiredSpacing = Math.sqrt(area / Math.max(1, targetCount));
+		                const minDist = Math.max(1, desiredSpacing * 0.7);
+		                const minDistSq = minDist * minDist;
+		
+		                const shuffled = shuffleArray(charPixels.slice());
+		                for (const p of shuffled) {
+		                    let ok = true;
+		                    for (let i = 0; i < result.length; i++) {
+		                        const q = result[i];
+		                        const dx = p.x - q.x;
+		                        const dy = p.y - q.y;
+		                        if (dx * dx + dy * dy < minDistSq) {
+		                            ok = false;
+		                            break;
+		                        }
+		                    }
+		                    if (ok) {
+		                        result.push(p);
+		                        if (result.length >= targetCount) break;
+		                    }
+		                }
+		
+		                if (result.length < targetCount) {
+		                    // Set für O(1) Lookup statt O(n) Array.includes()
+		                    const resultSet = new Set(result.map(q => `${q.x},${q.y}`));
+		                    for (const p of shuffled) {
+		                        if (result.length >= targetCount) break;
+		                        const key = `${p.x},${p.y}`;
+		                        if (!resultSet.has(key)) {
+		                            result.push(p);
+		                            resultSet.add(key);
+		                        }
+		                    }
+		                }
 
-            const pointsPerChar = pointCount; // Punktanzahl pro Zeichen
+		                return result;
+		            }
+		
+		            function pointsEqual(a, b) {
+		                return a && b && a.x === b.x && a.y === b.y;
+		            }
+		
+		            function pointListHasPoint(list, p) {
+		                if (!list || !list.length || !p) return false;
+		                return list.some(q => pointsEqual(q, p));
+		            }
+		
+		            // Einen weiteren Punkt in eine bestehende Packungs-Auswahl
+		            // „einschieben“, ohne alle Punkte neu zu verteilen.
+		            function expandPackedSelectionOnce(charPixels, existing, targetCount) {
+		                const base = existing ? existing.slice() : [];
+		                if (!charPixels || !charPixels.length) return base;
+		                if (base.length >= targetCount) return base.slice(0, targetCount);
+		
+		                const area = charPixels.length;
+		                const desiredSpacing = Math.sqrt(area / Math.max(1, targetCount));
+		                const minDist = Math.max(1, desiredSpacing * 0.7);
+		                const minDistSq = minDist * minDist;
+		
+		                // Set für O(1) Lookup statt O(n) pointListHasPoint
+		                const baseSet = new Set(base.map(q => `${q.x},${q.y}`));
+		                const shuffled = shuffleArray(charPixels.slice());
 
-            // Zeichne die Punkte auf das Canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+		                for (const p of shuffled) {
+		                    const key = `${p.x},${p.y}`;
+		                    if (baseSet.has(key)) continue;
+		                    let ok = true;
+		                    for (const q of base) {
+		                        const dx = p.x - q.x;
+		                        const dy = p.y - q.y;
+		                        if (dx * dx + dy * dy < minDistSq) {
+		                            ok = false;
+		                            break;
+		                        }
+		                    }
+		                    if (ok) {
+		                        base.push(p);
+		                        return base;
+		                    }
+		                }
+		
+		                // Fallback: irgendeinen Pixel nehmen, der noch nicht drin ist
+		                for (const p of shuffled) {
+		                    const key = `${p.x},${p.y}`;
+		                    if (!baseSet.has(key)) {
+		                        base.push(p);
+		                        return base;
+		                    }
+		                }
+		
+		                return base;
+		            }
 
-            // Setze die Punktfarbe basierend auf der CSS-Variable
-            const pointColor = getCSSVariable('--text-color') || '#FFFFFF'; // Fallback auf Weiß
-            ctx.fillStyle = pointColor; // Setze die Füllfarbe dynamisch
+		            // Einen weiteren Punkt f fcr den Max-Abstand-Modus inkrementell hinzuf fcgen
+		            // und anschlie dfend die Nachbarschaft leicht relaxen.
+		            function expandMaxDistSelectionOnce(charPixels, existing, targetCount) {
+		                let base = existing ? existing.slice() : [];
+		                if (!charPixels || !charPixels.length) return base;
+		                if (base.length >= targetCount) return base.slice(0, targetCount);
+		
+		                // Falls es noch keine Punkte gibt, klassischen Start nutzen
+		                if (base.length === 0) {
+		                    base = selectMaxDistancePointsForChar(charPixels, targetCount);
+		                    return base;
+		                }
+		
+		                // Einen neuen Kandidaten w e4hlen, der m f6glichst weit weg von allen
+		                // bestehenden Punkten liegt (Farthest-Point-Schritt).
+		                let pool = charPixels.slice();
+		                if (pool.length > CONFIG.distribution.maxCandidates) {
+		                    pool = shuffleArray(pool).slice(0, CONFIG.distribution.maxCandidates);
+		                }
+		
+		                let bestP = pool[0];
+		                let bestScore = -1;
+		                for (const p of pool) {
+		                    let minD2 = Infinity;
+		                    for (const q of base) {
+		                        const dx = p.x - q.x;
+		                        const dy = p.y - q.y;
+		                        const d2 = dx * dx + dy * dy;
+		                        if (d2 < minD2) minD2 = d2;
+		                    }
+		                    if (minD2 > bestScore) {
+		                        bestScore = minD2;
+		                        bestP = p;
+		                    }
+		                }
+		
+		                base.push(bestP);
+		                // Leichte Relaxation, damit sich die Nachbarn etwas zurechtschieben
+		                base = relaxMaxDistSelection(charPixels, base, 1);
+		                if (base.length > targetCount) base = base.slice(0, targetCount);
+		                return base;
+		            }
 
-            let currentX = x;
-            for (let c = 0; c < chars; c++) {
-                const char = text[c];
-                const charWidth = ctx.measureText(char).width;
-                const charPixels = pixels.filter(p => p.x >= currentX && p.x < currentX + charWidth);
+		            // Einen Punkt f fcr den Max-Abstand-Modus entfernen (den mit dem
+		            // kleinsten Minimalabstand) und anschlie dfend leicht relaxen.
+		            function shrinkMaxDistSelectionOnce(charPixels, existing, targetCount) {
+		                let base = existing ? existing.slice() : [];
+		                if (base.length <= targetCount) return base.slice(0, targetCount);
+		                if (base.length === 0) return base;
+		
+		                let worstIdx = 0;
+		                let worstScore = Infinity;
+		                for (let i = 0; i < base.length; i++) {
+		                    const score = minDistSqToOthers(base, i);
+		                    if (score < worstScore) {
+		                        worstScore = score;
+		                        worstIdx = i;
+		                    }
+		                }
+		
+		                base.splice(worstIdx, 1);
+		                base = relaxMaxDistSelection(charPixels, base, 1);
+		                if (base.length > targetCount) base = base.slice(0, targetCount);
+		                return base;
+		            }
 
-                if (charPixels.length === 0) continue;
+		            // Hilfsfunktionen für den Modus "max. Abstand"
+		            function minDistSqToOthers(points, idx) {
+		                if (!points || points.length <= 1) return Infinity;
+		                const p = points[idx];
+		                let best = Infinity;
+		                for (let i = 0; i < points.length; i++) {
+		                    if (i === idx) continue;
+		                    const q = points[i];
+		                    const dx = p.x - q.x;
+		                    const dy = p.y - q.y;
+		                    const d2 = dx * dx + dy * dy;
+		                    if (d2 < best) best = d2;
+		                }
+		                return best;
+		            }
+		
+		            function minDistSqToOthersWithCandidate(points, idx, cand) {
+		                if (!points || points.length <= 1) return Infinity;
+		                let best = Infinity;
+		                for (let i = 0; i < points.length; i++) {
+		                    if (i === idx) continue;
+		                    const q = points[i];
+		                    const dx = cand.x - q.x;
+		                    const dy = cand.y - q.y;
+		                    const d2 = dx * dx + dy * dy;
+		                    if (d2 < best) best = d2;
+		                }
+		                return best;
+		            }
+		
+		            // Punkte physikalisch anordnen (Force-Layout wie in Games/Simulationen):
+		            // Jeder Punkt stößt die anderen ab, danach wird auf den nächsten
+		            // gültigen Glyphen-Pixel "gesnappt". So entsteht eine ruhige,
+		            // natürlich wirkende Verteilung.
+		            function relaxMaxDistSelection(charPixels, existing, iterations) {
+		                const base = existing ? existing.map(p => ({ x: p.x, y: p.y })) : [];
+		                const n = base.length;
+		                if (!charPixels || !charPixels.length || n <= 1) return base;
+		
+		                // Für das Snappen nur eine begrenzte Menge Kandidaten nutzen
+		                let snapPool;
+		                const MAX_SNAP_CANDIDATES = 800;
+		                if (charPixels.length > MAX_SNAP_CANDIDATES) {
+		                    snapPool = shuffleArray(charPixels.slice()).slice(0, MAX_SNAP_CANDIDATES);
+		                } else {
+		                    snapPool = charPixels;
+		                }
+		
+		                // Schwerpunkt der aktuellen Punkte (leichte Rückstellkraft)
+		                let cx = 0, cy = 0;
+		                for (const p of base) {
+		                    cx += p.x;
+		                    cy += p.y;
+		                }
+		                cx /= n;
+		                cy /= n;
+		
+		                const dt = 0.02;
+		                const repulsionStrength = 1.0;
+		                const centerStrength = 0.001;
+		
+		                for (let it = 0; it < iterations; it++) {
+		                    const forces = new Array(n);
+		                    for (let i = 0; i < n; i++) {
+		                        forces[i] = { x: 0, y: 0 };
+		                    }
+		
+		                    // Gegenseitige Abstoßung (O(N^2), N pro Zeichen ist klein)
+		                    for (let i = 0; i < n; i++) {
+		                        for (let j = i + 1; j < n; j++) {
+		                            const dx = base[i].x - base[j].x;
+		                            const dy = base[i].y - base[j].y;
+		                            const d2 = dx * dx + dy * dy + 0.01; // epsilon
+		                            const inv = repulsionStrength / d2;
+		                            const fx = dx * inv;
+		                            const fy = dy * inv;
+		                            forces[i].x += fx;
+		                            forces[i].y += fy;
+		                            forces[j].x -= fx;
+		                            forces[j].y -= fy;
+		                        }
+		                    }
+		
+		                    // Leichte Anziehung zurück zum Schwerpunkt
+		                    for (let i = 0; i < n; i++) {
+		                        forces[i].x += (cx - base[i].x) * centerStrength;
+		                        forces[i].y += (cy - base[i].y) * centerStrength;
+		                    }
+		
+		                    // Positionen updaten und auf nächsten Glyphen-Pixel snappen
+		                    for (let i = 0; i < n; i++) {
+		                        const p = base[i];
+		                        const f = forces[i];
+		                        const nx = p.x + f.x * dt;
+		                        const ny = p.y + f.y * dt;
+		
+		                        let best = p;
+		                        let bestD2 = Infinity;
+		                        for (const cand of snapPool) {
+		                            const dx = cand.x - nx;
+		                            const dy = cand.y - ny;
+		                            const d2 = dx * dx + dy * dy;
+		                            if (d2 < bestD2) {
+		                                bestD2 = d2;
+		                                best = cand;
+		                            }
+		                        }
+		
+		                        base[i] = best;
+		                    }
+		                }
+		
+		                return base;
+		            }
+		
+		            // Startverteilung für max. Abstand (greedy Farthest-Point-Sampling).
+		            function selectMaxDistancePointsForChar(charPixels, targetCount) {
+		                const result = [];
+		                if (!charPixels || !charPixels.length || targetCount <= 0) {
+		                    return result;
+		                }
+		
+		                // Für sehr viele Pixel beschränken wir uns auf eine zufällige Teilmenge
+		                // für bessere Performance, das Muster bleibt aber schön verteilt.
+		                let pool = charPixels.slice();
+		                if (pool.length > CONFIG.distribution.maxCandidates) {
+		                    pool = shuffleArray(pool).slice(0, CONFIG.distribution.maxCandidates);
+		                }
+		
+		                const n = pool.length;
+		                if (targetCount >= n) {
+		                    return pool.slice();
+		                }
+		
+		                // Startpunkt möglichst nahe am geometrischen Zentrum wählen,
+		                // damit das Muster symmetrisch "aufblüht".
+		                let cx = 0, cy = 0;
+		                for (const p of pool) {
+		                    cx += p.x;
+		                    cy += p.y;
+		                }
+		                cx /= n;
+		                cy /= n;
+		
+		                let firstIndex = 0;
+		                let bestDistSq = Infinity;
+		                for (let i = 0; i < n; i++) {
+		                    const p = pool[i];
+		                    const dx = p.x - cx;
+		                    const dy = p.y - cy;
+		                    const d2 = dx * dx + dy * dy;
+		                    if (d2 < bestDistSq) {
+		                        bestDistSq = d2;
+		                        firstIndex = i;
+		                    }
+		                }
+		
+		                const selectedFlags = new Array(n).fill(false);
+		                const minDistSqArr = new Array(n).fill(Infinity);
+		
+		                result.push(pool[firstIndex]);
+		                selectedFlags[firstIndex] = true;
+		
+		                for (let i = 0; i < n; i++) {
+		                    if (i === firstIndex) {
+		                        minDistSqArr[i] = 0;
+		                    } else {
+		                        const dx = pool[i].x - pool[firstIndex].x;
+		                        const dy = pool[i].y - pool[firstIndex].y;
+		                        minDistSqArr[i] = dx * dx + dy * dy;
+		                    }
+		                }
+		
+		                // Füge nacheinander immer den Kandidaten hinzu, der momentan
+		                // den größten minimalen Abstand zu allen bereits gewählten Punkten hat.
+		                while (result.length < targetCount) {
+		                    let bestIdx = -1;
+		                    let bestD2 = -1;
+		                    for (let i = 0; i < n; i++) {
+		                        if (selectedFlags[i]) continue;
+		                        const d2 = minDistSqArr[i];
+		                        if (d2 > bestD2) {
+		                            bestD2 = d2;
+		                            bestIdx = i;
+		                        }
+		                    }
+		
+		                    if (bestIdx === -1) break;
+		
+		                    selectedFlags[bestIdx] = true;
+		                    const newP = pool[bestIdx];
+		                    result.push(newP);
+		
+		                    // Abstände zu diesem neuen Punkt einarbeiten
+		                    for (let i = 0; i < n; i++) {
+		                        if (selectedFlags[i]) continue;
+		                        const dx = pool[i].x - newP.x;
+		                        const dy = pool[i].y - newP.y;
+		                        const d2 = dx * dx + dy * dy;
+		                        if (d2 < minDistSqArr[i]) {
+		                            minDistSqArr[i] = d2;
+		                        }
+		                    }
+		                }
+		
+		                return result;
+		            }
+		
+		            function selectContourPointsLooseForChar(charPixels, targetCount) {
+		                const result = [];
+		                if (!charPixels || !charPixels.length || targetCount <= 0) {
+		                    return result;
+		                }
+		
+		                const pixelSet = new Set();
+		                for (const p of charPixels) {
+		                    pixelSet.add(p.x + ',' + p.y);
+		                }
+		
+		                const contourPixels = [];
+		                const neighbors = [
+		                    [1, 0], [-1, 0], [0, 1], [0, -1]
+		                ];
+		
+		                for (const p of charPixels) {
+		                    for (const [dx, dy] of neighbors) {
+		                        const key = (p.x + dx) + ',' + (p.y + dy);
+		                        if (!pixelSet.has(key)) {
+		                            contourPixels.push(p);
+		                            break;
+		                        }
+		                    }
+		                }
+		
+		                if (!contourPixels.length) {
+		                    const shuffledAll = shuffleArray(charPixels.slice());
+		                    return shuffledAll.slice(0, Math.min(targetCount, shuffledAll.length));
+		                }
+		
+		                if (contourPixels.length <= targetCount) {
+		                    return contourPixels;
+		                }
+		
+		                const selected = [];
+		                const step = contourPixels.length / targetCount;
+		                for (let i = 0; i < targetCount; i++) {
+		                    const idx = Math.floor(i * step);
+		                    selected.push(contourPixels[idx]);
+		                }
+		                return selected;
+		            }
+		
+		            // Layout-Signatur für den Packungs-Cache (alles außer Punktanzahl)
+		            const layoutKey = JSON.stringify({
+		                text,
+		                font,
+		                fontSize,
+		                letterSpacing,
+		                canvasWidth: canvas.width,
+		                canvasHeight: canvas.height
+		            });
+		
+		            // Sammle für jedes Zeichen die ausgewählten Punkte
+		            const perCharSelections = [];
+		            const allSelectedPoints = [];
 
-                // Zufällige Auswahl der Punkte
-                const shuffledPixels = shuffleArray(charPixels);
+		            for (let c = 0; c < chars; c++) {
+		                const box = charBoxes[c];
+		                let selectedPoints = [];
+		                let charPixels;
+		
+		                if (distributionMode === 'grid') {
+		                    selectedPoints = selectGridPointsForBox(box, pointsPerChar);
+		                    perCharSelections[c] = selectedPoints || [];
+		                    if (selectedPoints && selectedPoints.length) {
+		                        allSelectedPoints.push(...selectedPoints);
+		                    }
+		                    continue;
+		                } else {
+		                    charPixels = pixels.filter(p =>
+		                        p.x >= box.x1 && p.x < box.x2 &&
+		                        p.y >= box.y1 && p.y < box.y2
+		                    );
+		
+		                }
+		
+		                if (!charPixels || !charPixels.length) {
+		                    perCharSelections[c] = [];
+		                    continue;
+		                }
+		
+		                if (distributionMode === 'contour') {
+		                    selectedPoints = selectContourPointsForChar(charPixels, pointsPerChar);
+		                } else if (distributionMode === 'contourLoose') {
+		                    selectedPoints = selectContourPointsLooseForChar(charPixels, pointsPerChar);
+		                } else if (distributionMode === 'maxDist') {
+		                    // Klassischer Farthest-Point-Sampler: jedes Mal neu, sehr gleichm e4 dfig.
+		                    selectedPoints = selectMaxDistancePointsForChar(charPixels, pointsPerChar);
+		                } else if (distributionMode === 'maxDistDynamic') {
+		                    // Dynamische Variante: auf vorhandener Verteilung aufbauen,
+		                    // bei +/-1 Punkten nur lokal erweitern/verkleinern + relaxen.
+		                    const canReuse =
+		                        maxDistCache.layoutKey === layoutKey &&
+		                        Array.isArray(maxDistCache.perCharSelections) &&
+		                        maxDistCache.perCharSelections.length === chars &&
+		                        (pointsPerChar === maxDistCache.pointCount ||
+		                         Math.abs(pointsPerChar - maxDistCache.pointCount) === 1);
+		
+		                    if (canReuse) {
+		                        const prev = maxDistCache.perCharSelections[c] || [];
+		                        if (pointsPerChar === maxDistCache.pointCount) {
+		                            selectedPoints = prev.slice(0, Math.min(prev.length, pointsPerChar));
+		                        } else if (pointsPerChar === maxDistCache.pointCount + 1) {
+		                            selectedPoints = expandMaxDistSelectionOnce(charPixels, prev, pointsPerChar);
+		                        } else if (pointsPerChar === maxDistCache.pointCount - 1) {
+		                            selectedPoints = shrinkMaxDistSelectionOnce(charPixels, prev, pointsPerChar);
+		                        } else {
+		                            selectedPoints = selectMaxDistancePointsForChar(charPixels, pointsPerChar);
+		                        }
+		                    } else {
+		                        selectedPoints = selectMaxDistancePointsForChar(charPixels, pointsPerChar);
+		                    }
+		                } else if (distributionMode === 'packed') {
+		                    // Wenn sich nur die Punktanzahl um +/-1 ge9fndert hat
+		                    // und das Layout gleich geblieben ist, erweitern /
+		                    // reduzieren wir die bestehende Auswahl inkrementell.
+		                    const canReuse =
+		                        packedCache.layoutKey === layoutKey &&
+		                        Array.isArray(packedCache.perCharSelections) &&
+		                        packedCache.perCharSelections.length === chars &&
+		                        (pointsPerChar === packedCache.pointCount ||
+		                         Math.abs(pointsPerChar - packedCache.pointCount) === 1);
+		
+		                    if (canReuse) {
+		                        const prev = packedCache.perCharSelections[c] || [];
+		                        if (pointsPerChar === packedCache.pointCount) {
+		                            // gleiche Anzahl -> einfach 91bernehmen
+		                            selectedPoints = prev.slice(0, Math.min(prev.length, pointsPerChar));
+		                        } else if (pointsPerChar === packedCache.pointCount + 1) {
+		                            // ein Punkt mehr -> gezielt einen dazunehmen
+		                            selectedPoints = expandPackedSelectionOnce(charPixels, prev, pointsPerChar);
+		                        } else if (pointsPerChar === packedCache.pointCount - 1) {
+		                            // ein Punkt weniger -> einen entfernen (einfach am Ende)
+		                            selectedPoints = prev.slice(0, Math.max(0, Math.min(prev.length - 1, pointsPerChar)));
+		                        } else {
+		                            selectedPoints = selectPackedPointsForChar(charPixels, pointsPerChar);
+		                        }
+		                    } else {
+		                        selectedPoints = selectPackedPointsForChar(charPixels, pointsPerChar);
+		                    }
+		                } else if (!selectedPoints || !selectedPoints.length) {
+		                    const shuffledPixels = shuffleArray(charPixels);
+		                    selectedPoints = shuffledPixels.slice(0, Math.min(pointsPerChar, charPixels.length));
+		                }
+		
+		                perCharSelections[c] = selectedPoints || [];
+		
+		                if (selectedPoints && selectedPoints.length) {
+		                    allSelectedPoints.push(...selectedPoints);
+		                }
+		            }
+		    		
+		            if (allSelectedPoints.length === 0) {
+		                ctx.clearRect(0, 0, canvas.width, canvas.height);
+		                worldPoints = [];
+		                renderWithZoom();
+		                return;
+		            }
+		    		
+		            // Weltkoordinaten erzeugen: Text um Ursprung (0,0) zentrieren
+		            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		            allSelectedPoints.forEach(p => {
+		                if (p.x < minX) minX = p.x;
+		                if (p.x > maxX) maxX = p.x;
+		                if (p.y < minY) minY = p.y;
+		                if (p.y > maxY) maxY = p.y;
+		            });
+		            const centerX = (minX + maxX) / 2;
+		            const centerY = (minY + maxY) / 2;
+		
+		            worldPoints = allSelectedPoints.map(p => ({
+		                x: p.x - centerX,
+		                y: p.y - centerY
+		            }));
+		
+		            pointRenderConfig = {
+		                font,
+		                pointSize,
+		                symbolLines: pointSymbol.split(/\r?\n/),
+		                symbolLineHeight: pointSize
+		            };
+		
+		            // Packungs-Cache aktualisieren, damit bei kleiner  f5nderung der Punktanzahl
+		            // nicht jedes Mal ein komplett neues Muster entsteht.
+		            if (distributionMode === 'packed') {
+		                packedCache = {
+		                    layoutKey,
+		                    pointCount: pointsPerChar,
+		                    perCharSelections
+		                };
+		            } else {
+		                // Andere Modi nutzen den Cache nicht
+		                packedCache.pointCount = 0;
+		                packedCache.perCharSelections = [];
+		                packedCache.layoutKey = null;
+		            }
+		
+		            // Max-Abstand-Cache nur f c3 9cr die dynamische Variante nutzen
+		            if (distributionMode === 'maxDistDynamic') {
+		                maxDistCache = {
+		                    layoutKey,
+		                    pointCount: pointsPerChar,
+		                    perCharSelections
+		                };
+		            } else {
+		                maxDistCache.pointCount = 0;
+		                maxDistCache.perCharSelections = [];
+		                maxDistCache.layoutKey = null;
+		            }
+		
+		            // Ansicht so setzen, dass der gesamte Text immer ins Canvas passt.
+		            const worldWidth = maxX - minX || 1;
+		            const worldHeight = maxY - minY || 1;
+		            const margin = CONFIG.distribution.viewMargin;
+		            const scaleX = canvas.width * (1 - margin) / worldWidth;
+		            const scaleY = canvas.height * (1 - margin) / worldHeight;
+		            const fitScale = Math.min(scaleX, scaleY);
+		
+		            const centerScreenX = canvas.width / 2;
+		            const centerScreenY = canvas.height / 2;
+		
+		            // Zoom-Zustand auf "alles sichtbar" setzen – aber nur,
+		            // solange der Benutzer noch nicht selbst gezoomt hat.
+		            if (!userAdjustedZoom) {
+		                zoomState.scale = fitScale;
+		                zoomState.offsetX = centerScreenX;
+		                zoomState.offsetY = centerScreenY;
+		            }
+		
+		            // Falls die Zoom-Instanz schon existiert, Ansicht sofort übernehmen
+		            if (zoomInstance && typeof zoomInstance.setView === 'function') {
+		                isProgrammaticZoomUpdate = true;
+		                zoomInstance.setView({
+		                    scale: zoomState.scale,
+		                    offsetX: zoomState.offsetX,
+		                    offsetY: zoomState.offsetY
+		                });
+		                isProgrammaticZoomUpdate = false;
+		            }
+		
+		            // Canvas löschen – tatsächliches Zeichnen passiert in renderWithZoom()
+		            ctx.clearRect(0, 0, canvas.width, canvas.height);
+		            renderWithZoom();
+		        }
 
-                // Wähle so viele Punkte wie gewünscht oder so viele, wie verfügbar sind
-                const selectedPoints = shuffledPixels.slice(0, Math.min(pointsPerChar, shuffledPixels.length));
+		        // Cache für Hintergrund-Sprite (separat vom Vordergrund)
+		        let bgSpriteCache = {
+		            canvas: null,
+		            key: null,
+		            width: 0,
+		            height: 0,
+		            offsetX: 0,
+		            offsetY: 0
+		        };
 
-                selectedPoints.forEach(p => {
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
-                    ctx.fill();
-                });
+		        // Wrapper für BG-Sprites (nutzt die generische Funktion)
+		        function getOrCreateBgSprite(font, fontSize, color, symbolLines, lineHeight) {
+		            return createOrGetCachedSprite(bgSpriteCache, 'bg_', font, fontSize, color, symbolLines, lineHeight);
+		        }
 
-                currentX += charWidth;
-            }
-        }
+		        // ===== HINTERGRUND-CACHE =====
+		        // BG-Punkte werden gecacht und nur bei Bedarf neu berechnet
+		        let bgPointsCache = {
+		            points: [],
+		            key: null,           // Cache-Key: text|count|distMode|canvasSize
+		            lastScale: 1,        // Letzter Scale für dynamische Erweiterung
+		            basePoints: []       // Basis-Punkte in normalisiertem Raum [-0.5, 0.5]
+		        };
+
+		        // Seeded Random für konsistente Zufallsverteilung
+		        function seededRandom(seed) {
+		            const x = Math.sin(seed) * 10000;
+		            return x - Math.floor(x);
+		        }
+
+		        // Generiert oder holt gecachte Hintergrund-Punkte
+		        function getBgPoints(scale) {
+		            if (!panel.get('bgEnabled')) {
+		                return [];
+		            }
+
+		            const bgText = (panel.get('bgText') || '').trim();
+		            let bgCount = parseInt(panel.get('bgTextCount'), 10);
+		            const bgDistMode = panel.get('bgDistributionMode');
+
+		            if (!bgText || isNaN(bgCount) || bgCount <= 0) {
+		                return [];
+		            }
+
+		            // Cache-Key basierend auf den Einstellungen (nicht Scale!)
+		            const cacheKey = `${bgText}|${bgCount}|${bgDistMode}|${canvas.width}x${canvas.height}`;
+
+		            // Bei Zoom-Änderung: Punkte nur neu berechnen wenn rausgezoomt
+		            // (mehr Bereich sichtbar) ODER wenn sich Einstellungen geändert haben
+		            const needsRegenerate =
+		                bgPointsCache.key !== cacheKey ||
+		                scale < bgPointsCache.lastScale * 0.8; // Deutlich rausgezoomt
+
+		            if (!needsRegenerate && bgPointsCache.points.length > 0) {
+		                return bgPointsCache.points;
+		            }
+
+		            // Sichtbarer Bereich berechnen
+		            const viewWidth = canvas.width / scale;
+		            const viewHeight = canvas.height / scale;
+		            const totalWidth = viewWidth * CONFIG.distribution.bgExpandFactor;
+		            const totalHeight = viewHeight * CONFIG.distribution.bgExpandFactor;
+
+		            // Punktanzahl basierend auf Basis-Dichte skalieren
+		            const baseArea = canvas.width * canvas.height;
+		            const visibleArea = totalWidth * totalHeight;
+		            const scaledCount = Math.ceil(bgCount * (visibleArea / baseArea));
+
+		            const points = [];
+
+		            if (bgDistMode === 'grid') {
+		                // Raster-Verteilung (deterministisch)
+		                const aspect = totalWidth / totalHeight;
+		                let cols = Math.max(1, Math.round(Math.sqrt(scaledCount * aspect)));
+		                let rows = Math.max(1, Math.round(scaledCount / cols));
+
+		                const cellWidth = totalWidth / cols;
+		                const cellHeight = totalHeight / rows;
+
+		                for (let row = 0; row < rows; row++) {
+		                    for (let col = 0; col < cols; col++) {
+		                        const x = -totalWidth / 2 + (col + 0.5) * cellWidth;
+		                        const y = -totalHeight / 2 + (row + 0.5) * cellHeight;
+		                        points.push({ x, y });
+		                    }
+		                }
+		            } else {
+		                // Zufällige Verteilung mit Seed für Konsistenz
+		                // Seed basiert auf Einstellungen, sodass gleiche Einstellungen
+		                // immer das gleiche Muster erzeugen
+		                let seed = 12345;
+		                for (let i = 0; i < bgText.length; i++) {
+		                    seed += bgText.charCodeAt(i) * (i + 1);
+		                }
+		                seed += bgCount * 7;
+
+		                for (let i = 0; i < scaledCount; i++) {
+		                    const rx = seededRandom(seed + i * 2);
+		                    const ry = seededRandom(seed + i * 2 + 1);
+		                    const x = (rx - 0.5) * totalWidth;
+		                    const y = (ry - 0.5) * totalHeight;
+		                    points.push({ x, y });
+		                }
+		            }
+
+		            // Cache aktualisieren
+		            bgPointsCache = {
+		                points: points,
+		                key: cacheKey,
+		                lastScale: scale,
+		                basePoints: []
+		            };
+
+		            return points;
+		        }
+
+		        // BG-Punkte explizit neu berechnen (wird nur bei BG-Einstellungs-Änderung aufgerufen)
+		        function invalidateBgCache() {
+		            bgPointsCache.key = null;
+		        }
+
+		        function renderWithZoom() {
+		            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		            const { scale, offsetX, offsetY } = zoomState;
+		            const pointColor = getCSSVariable(CONFIG.css.pointColorVar) || CONFIG.css.fallbackPointColor;
+
+		            // ===== 1. HINTERGRUND RENDERN (nur Scale, KEIN Offset) =====
+		            if (panel.get('bgEnabled')) {
+		                const bgPoints = getBgPoints(scale);
+
+		                if (bgPoints.length > 0) {
+		                    // BG-Konfiguration ermitteln
+		                    let bgSize = parseFloat(panel.get('bgTextSize'));
+		                    if (isNaN(bgSize) || bgSize < 0) bgSize = 0;
+
+		                    const bgText = (panel.get('bgText') || '').trim();
+		                    const bgSymbolLines = bgText.split(/\r?\n/);
+		                    const font = panel.get('font');
+
+		                    const bgFontSizeScreen = bgSize * scale;
+		                    const bgLineHeightScreen = bgSize * scale;
+
+		                    const bgSprite = getOrCreateBgSprite(
+		                        font,
+		                        bgFontSizeScreen,
+		                        pointColor,
+		                        bgSymbolLines,
+		                        bgLineHeightScreen
+		                    );
+
+		                    ctx.shadowColor = 'transparent';
+		                    ctx.shadowBlur = 0;
+		                    ctx.shadowOffsetX = 0;
+		                    ctx.shadowOffsetY = 0;
+
+		                    const bgSpriteCanvas = bgSprite.canvas;
+		                    const bgSpriteOffsetX = bgSprite.offsetX;
+		                    const bgSpriteOffsetY = bgSprite.offsetY;
+
+		                    // Canvas-Mitte als Referenzpunkt (BG bleibt immer zentriert)
+		                    const centerScreenX = canvas.width / 2;
+		                    const centerScreenY = canvas.height / 2;
+
+		                    for (let i = 0; i < bgPoints.length; i++) {
+		                        const p = bgPoints[i];
+		                        // Nur Scale anwenden, KEIN Offset (Drag)
+		                        const sx = p.x * scale + centerScreenX - bgSpriteOffsetX;
+		                        const sy = p.y * scale + centerScreenY - bgSpriteOffsetY;
+		                        ctx.drawImage(bgSpriteCanvas, sx, sy);
+		                    }
+		                }
+		            }
+
+		            // ===== 2. VORDERGRUND RENDERN (Scale + Offset) =====
+		            if (!worldPoints.length) {
+		                return;
+		            }
+
+		            const { font, pointSize, symbolLines, symbolLineHeight } = pointRenderConfig;
+		            const fontSizeScreen = pointSize * scale;
+		            const lineHeightScreen = symbolLineHeight * scale;
+
+		            const sprite = getOrCreateSprite(
+		                font,
+		                fontSizeScreen,
+		                pointColor,
+		                symbolLines,
+		                lineHeightScreen
+		            );
+
+		            ctx.shadowColor = 'transparent';
+		            ctx.shadowBlur = 0;
+		            ctx.shadowOffsetX = 0;
+		            ctx.shadowOffsetY = 0;
+
+		            const spriteCanvas = sprite.canvas;
+		            const spriteOffsetX = sprite.offsetX;
+		            const spriteOffsetY = sprite.offsetY;
+		            const pointCount = worldPoints.length;
+
+		            for (let i = 0; i < pointCount; i++) {
+		                const p = worldPoints[i];
+		                const sx = p.x * scale + offsetX - spriteOffsetX;
+		                const sy = p.y * scale + offsetY - spriteOffsetY;
+		                ctx.drawImage(spriteCanvas, sx, sy);
+		            }
+		        }
 
         // Funktion zum zufälligen Mischen eines Arrays (Fisher-Yates Shuffle)
-        function shuffleArray(array) {
+	        function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [array[i], array[j]] = [array[j], array[i]];
@@ -320,28 +1784,62 @@
             return array;
         }
 
-        // Initiale Darstellung
-        renderPoints();
+	        // Initiale Konfiguration und Darstellung
+	        initializeUIFromConfig();
+	        resizeCanvas();
 
-        // Event Listener für Eingabefelder
-        textInput.addEventListener('input', renderPoints);
-        pointCountInput.addEventListener('input', renderPoints);
-        pointSizeInput.addEventListener('input', renderPoints);
-        fontSelect.addEventListener('change', renderPoints);
+	    	// Event Listener werden jetzt vom Controls-Panel gehandhabt
 
-        // Beobachten von Änderungen der CSS-Variable '--text-color'
-        const observer = new MutationObserver(renderPoints);
-        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+	        // Beobachten von Änderungen der CSS-Variable '--text-color'
+	        const observer = new MutationObserver(() => {
+		            renderWithZoom();
+	        });
+	        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
 
-        // Optional: Funktion zum Aktualisieren der Punkte, wenn '--text-color' sich ändert
-        function updatePointColor() {
-            renderPoints();
-        }
-
-        // Erweiterung des Beobachters, um Änderungen an CSS-Variablen zu erkennen
-        observer.disconnect(); // Entferne vorherige Beobachtungen
-        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
-
-    </script>
+		        // --- Zoom-Initialisierung (nur pointfont) ---
+		        if (window.Zoom2D && canvasContainer) {
+		            // Falls renderPoints bereits gelaufen ist, kann zoomState hier
+		            // schon eine sinnvolle Start-Ansicht (eingepasster Text) enthalten.
+		            const initialScaleFromState =
+		                typeof zoomState.scale === 'number' && zoomState.scale > 0
+		                    ? zoomState.scale
+		                    : 1;
+		
+		            zoomInstance = Zoom2D.createZoom2D({
+		                container: canvasContainer,
+		                minScale: 0.001,
+		                maxScale: 10000,
+		                initialScale: initialScaleFromState,
+		                onTransform({ scale, offsetX, offsetY }) {
+		                    zoomState.scale = scale;
+		                    zoomState.offsetX = offsetX;
+		                    zoomState.offsetY = offsetY;
+		                    // Jede Transformation, die nicht aus einem programmatischen
+		                    // setView-Aufruf stammt, zählt als Benutzerinteraktion.
+		                    if (!isProgrammaticZoomUpdate) {
+		                        userAdjustedZoom = true;
+		                    }
+		                    renderWithZoom();
+		                }
+		            });
+		
+		            if (typeof zoomInstance.setView === 'function') {
+		                isProgrammaticZoomUpdate = true;
+		                zoomInstance.setView({
+		                    scale: zoomState.scale,
+		                    offsetX: zoomState.offsetX,
+		                    offsetY: zoomState.offsetY
+		                });
+		                isProgrammaticZoomUpdate = false;
+		            }
+		            
+		            // Nach der Zoom-Initialisierung einmal neu rendern, damit die
+		            // Auto-Fit-Logik (zentrierte Ansicht) greift, ohne als Benutzerzoom
+		            // zu zählen.
+		            userAdjustedZoom = false;
+		            renderPoints();
+		        }
+		
+		    </script>
 </body>
 </html>

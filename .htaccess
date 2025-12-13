@@ -14,12 +14,16 @@ RewriteRule ^buypi$ /buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ /README [R=302,L]
 
 # Pi-Quadrat Weiterleitung
-RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=63&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
+RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 
 # Textdateien durch PHP-Viewer anzeigen (.punkt, .dot, und andere Text-Extensions)
 # Nur wenn die Datei tatsächlich existiert
+# NICHT bei fetch/XHR-Requests (für JavaScript-Apps die rohen Text brauchen)
 RewriteCond %{REQUEST_FILENAME} -f
-RewriteCond %{REQUEST_FILENAME} \.(punkt|dot|txt)$ [NC]
+RewriteCond %{REQUEST_FILENAME} \.(punkt|dot|txt|md)$ [NC]
+RewriteCond %{HTTP:X-Requested-With} !XMLHttpRequest
+RewriteCond %{HTTP:Accept} !application/json
+RewriteCond %{QUERY_STRING} !raw=1
 RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
 
 # Nur wenn die Datei existiert UND der Request-Pfad keinen Punkt enthält
@@ -32,8 +36,8 @@ RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
 
 # Clean URLs: Redirect .html und .md Endungen zu URLs ohne Endung (301 permanent)
 # WICHTIG: Query-String mit [QSA] Flag erhalten!
-RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.(html|md)(\?.*)?\ HTTP
-RewriteRule ^(.+)\.(html|md)$ /$1 [R=302,L,QSA]
+RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.html(\?.*)?\ HTTP
+RewriteRule ^(.+)\.html$ /$1 [R=302,L,QSA]
 
 # Intern auf .html Dateien routen (wenn vorhanden)
 # QSA: Query-String erhalten!

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>p5.js Kreis in der Mitte</title>
+    <title>adding circles</title>
     <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
     <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
 
@@ -16,59 +16,510 @@
         canvas {
             display: block;
         }
+
+        /* 0nefinity Slider - "0" gleitet auf liegender "1" */
+        .onefinity-slider {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(90vw, 450px);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .slider-track {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            overflow: visible;
+        }
+
+        /* Container für die beiden "1"en */
+        .slider-one-container {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Die "1" Outline (immer sichtbar) */
+        .slider-one-outline {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 32px;
+            font-weight: normal;
+            color: transparent;
+            -webkit-text-stroke: 1px var(--text-color, white);
+            transform: rotate(-90deg) scaleY(12);
+            transform-origin: center center;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        /* Die "1" gefüllt (wird geclippt) */
+        .slider-one-fill {
+            position: absolute;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 32px;
+            font-weight: normal;
+            color: var(--text-color, white);
+            transform: rotate(-90deg) scaleY(12);
+            transform-origin: center center;
+            line-height: 1;
+            pointer-events: none;
+            clip-path: inset(0 0 50% 0);
+        }
+
+        /* Die "0" als Slider-Thumb */
+        .slider-zero {
+            position: absolute;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 28px;
+            font-weight: normal;
+            color: var(--text-color, white);
+            cursor: grab;
+            transform: translate(-50%, -50%);
+            transition: text-shadow 0.2s ease;
+            line-height: 1;
+            top: 50%;
+            left: 50%;
+        }
+
+        .slider-zero:hover {
+            text-shadow: 0 0 20px rgba(255,255,255,0.4);
+        }
+
+        .slider-zero:active,
+        .slider-zero.dragging {
+            cursor: grabbing;
+            text-shadow: 0 0 30px rgba(255,255,255,0.6);
+        }
+
+        /* Settings Panel */
+        .slider-settings {
+            position: fixed;
+            bottom: 7rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            font-size: 12px;
+            color: var(--text-color, white);
+        }
+
+        .setting-group {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .setting-group label {
+            opacity: 0.7;
+        }
+
+        .setting-group select,
+        .setting-group input {
+            background: var(--bg-color, black);
+            color: var(--text-color, white);
+            border: 1px solid var(--text-color, white);
+            border-radius: 4px;
+            padding: 0.25rem 0.4rem;
+            font-size: 11px;
+            font-family: inherit;
+        }
+
+        .setting-group input[type="range"] {
+            width: 80px;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .onefinity-slider {
+                bottom: 1.5rem;
+                width: 95vw;
+            }
+            .slider-one-outline,
+            .slider-one-fill {
+                font-size: 28px;
+                transform: rotate(-90deg) scaleY(14);
+            }
+            .slider-zero {
+                font-size: 32px;
+            }
+            .slider-settings {
+                bottom: 6rem;
+                font-size: 11px;
+                padding: 0.5rem 0.75rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Settings Panel -->
+    <div class="slider-settings">
+        <div class="setting-group">
+            <label>Font:</label>
+            <select id="fontSelect">
+                <option value="'Times New Roman', Times, serif" selected>Times</option>
+                <option value="'Ysabeau', sans-serif">Ysabeau</option>
+                <option value="Verdana, Geneva, Tahoma, sans-serif">Verdana</option>
+                <option value="Arial, Helvetica, sans-serif">Arial</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Courier New', Courier, monospace">Courier</option>
+                <option value="Impact, Haettenschweiler, sans-serif">Impact</option>
+                <option value="'Trebuchet MS', sans-serif">Trebuchet</option>
+                <option value="'Palatino Linotype', Palatino, serif">Palatino</option>
+                <option value="'Book Antiqua', serif">Book Antiqua</option>
+                <option value="'Lucida Console', Monaco, monospace">Lucida Console</option>
+                <option value="'Comic Sans MS', cursive">Comic Sans</option>
+                <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+                <option value="Garamond, serif">Garamond</option>
+                <option value="'Century Gothic', sans-serif">Century Gothic</option>
+                <option value="Cambria, serif">Cambria</option>
+                <option value="Consolas, monospace">Consolas</option>
+            </select>
+        </div>
+        <div class="setting-group">
+            <label>Länge:</label>
+            <input type="range" id="lengthSlider" min="4" max="20" value="12">
+        </div>
+        <div class="setting-group">
+            <label>Größe:</label>
+            <input type="range" id="sizeSlider" min="16" max="300" value="32">
+        </div>
+        <div class="setting-group">
+            <label>Stroke:</label>
+            <input type="range" id="strokeSlider" min="1" max="4" value="1" step="0.5">
+        </div>
+    </div>
+
+    <!-- 0nefinity Slider -->
+    <div class="onefinity-slider">
+        <div class="slider-track" id="sliderTrack">
+            <div class="slider-one-container">
+                <span class="slider-one-outline" id="sliderOneOutline">1</span>
+                <span class="slider-one-fill" id="sliderOneFill">1</span>
+            </div>
+            <span class="slider-zero" id="sliderZero">0</span>
+        </div>
+    </div>
+
     <script>
         let goldenRatio = (1 + Math.sqrt(5)) / 2;
-let circles = [];
-let growthSlider;
+        let circles = [];
+        let growthValue = 0;
 
-function setup() {
-  createCanvas(windowWidth, windowHeight);
-  let initialRadius = min(width, height) / 2;
-  circles.push(new Circle(width/2, height/2, initialRadius));
+        // Slider Elemente
+        const sliderTrack = document.getElementById('sliderTrack');
+        const sliderZero = document.getElementById('sliderZero');
+        const sliderOneOutline = document.getElementById('sliderOneOutline');
+        const sliderOneFill = document.getElementById('sliderOneFill');
+        const sliderOneContainer = document.querySelector('.slider-one-container');
 
-  // Erstelle einen Schieberegler
-  growthSlider = createSlider(-10, 10, 0, 0.01);
-  growthSlider.position(10, 10);
-}
+        // Settings Elemente
+        const fontSelect = document.getElementById('fontSelect');
+        const lengthSlider = document.getElementById('lengthSlider');
+        const sizeSlider = document.getElementById('sizeSlider');
+        const strokeSlider = document.getElementById('strokeSlider');
 
-function draw() {
-  // CSS-Farben verwenden
-  const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || 'black';
-  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+        const sliderMin = -10;
+        const sliderMax = 10;
+        let isDragging = false;
 
-  background(bgColor);
-  for (let i = 0; i < circles.length; i++) {
-    circles[i].display(textColor);
-    circles[i].grow(growthSlider.value());
-  }
+        // Gecachte Grenzen
+        let cachedBounds = null;
 
-  if (frameCount % 10 == 0) {
-    let newRadius = circles[circles.length-1].radius / goldenRatio;
-    circles.push(new Circle(width/2, height/2, newRadius));
-  }
-}
+        // Misst die ECHTEN Pixel-Grenzen eines Zeichens durch Canvas-Scanning
+        // Gibt auch den visuellen Mittelpunkt relativ zur Zeichenposition zurück
+        function measureGlyphPixels(char, fontFamily, fontSize) {
+            const canvas = document.createElement('canvas');
+            const padding = Math.ceil(fontSize * 0.5);
+            const size = Math.ceil(fontSize * 2) + padding * 2;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
 
-class Circle {
-  constructor(x, y, r) {
-    this.x = x;
-    this.y = y;
-    this.radius = r;
-  }
+            // Zeichenposition (wo wir das Zeichen hinmalen)
+            const drawX = padding;
+            const drawY = size / 2;
 
-  display(color = 'white') {
-    noFill();
-    stroke(color);
-    ellipse(this.x, this.y, this.radius * 2, this.radius * 2);
-  }
+            // Text zeichnen
+            ctx.font = `${fontSize}px ${fontFamily}`;
+            ctx.fillStyle = 'black';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+            ctx.fillText(char, drawX, drawY);
 
-  grow(rate) {
-    this.radius += rate;
-  }
-}
+            // Pixel scannen - niedriger Threshold für Anti-Aliasing (alpha > 1 statt > 0)
+            const imageData = ctx.getImageData(0, 0, size, size);
+            const data = imageData.data;
 
+            let minX = size, maxX = 0, minY = size, maxY = 0;
+            const alphaThreshold = 1; // Erfasst auch schwache Anti-Aliasing-Pixel
+
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const alpha = data[(y * size + x) * 4 + 3];
+                    if (alpha > alphaThreshold) {
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                        minY = Math.min(minY, y);
+                        maxY = Math.max(maxY, y);
+                    }
+                }
+            }
+
+            const width = maxX - minX + 1;
+            const height = maxY - minY + 1;
+
+            // Visueller Mittelpunkt des Zeichens
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+
+            // Offset: Wie weit ist der visuelle Mittelpunkt von der Zeichenposition entfernt?
+            const offsetX = centerX - drawX;
+            const offsetY = centerY - drawY;
+
+            return { width, height, offsetX, offsetY, centerX, centerY };
+        }
+
+        function updateBounds() {
+            const trackRect = sliderTrack.getBoundingClientRect();
+            const oneContainerRect = sliderOneContainer.getBoundingClientRect();
+
+            // Aktuelle Einstellungen holen
+            const font = fontSelect.value;
+            const size = parseFloat(sizeSlider.value);
+            const zeroSize = size * 0.9; // Die "0" ist 90% der Größe
+            const length = parseFloat(lengthSlider.value);
+
+            // Pixel-genaue Messung beider Zeichen
+            const oneGlyph = measureGlyphPixels('1', font, size);
+            const zeroGlyph = measureGlyphPixels('0', font, zeroSize);
+
+            // Transformation: rotate(-90deg) scaleY(length)
+            // → Horizontale Länge nach Transformation = originale Höhe × scaleY
+            const visibleLength = oneGlyph.height * length;
+
+            // Berechne die Mitte der "1" relativ zum Track
+            const centerX = oneContainerRect.left + oneContainerRect.width / 2 - trackRect.left;
+
+            const halfWidth = visibleLength / 2;
+
+            // Die "0" hat einen visuellen Offset - wir müssen das beim Positionieren berücksichtigen
+            // offsetX ist wie weit der visuelle Mittelpunkt vom CSS-Ursprung entfernt ist
+            const zeroOffsetX = zeroGlyph.offsetX;
+
+            const minX = centerX - halfWidth;
+            const maxX = centerX + halfWidth;
+            const rangeWidth = visibleLength;
+
+            cachedBounds = { minX, maxX, rangeWidth, zeroOffsetX };
+
+            console.log(`[1] height=${oneGlyph.height.toFixed(1)}px → visibleLength=${visibleLength.toFixed(1)}px`);
+            console.log(`[0] width=${zeroGlyph.width.toFixed(1)}px, offsetX=${zeroOffsetX.toFixed(1)}px`);
+            console.log(`[Bounds] minX=${minX.toFixed(1)}, maxX=${maxX.toFixed(1)}`);
+
+            return cachedBounds;
+        }
+
+        function getSliderBounds() {
+            if (!cachedBounds) {
+                return updateBounds();
+            }
+            return cachedBounds;
+        }
+
+        function updateSliderPosition(clientX) {
+            const trackRect = sliderTrack.getBoundingClientRect();
+            const { minX, maxX, rangeWidth, zeroOffsetX } = getSliderBounds();
+
+            let x = clientX - trackRect.left;
+            // "0" darf nicht über die "1" hinausgehen
+            x = Math.max(minX, Math.min(maxX, x));
+
+            const percent = (x - minX) / rangeWidth;
+            growthValue = sliderMin + percent * (sliderMax - sliderMin);
+
+            // Position des Thumbs (0) - korrigiert um den visuellen Offset
+            // Die CSS left-Position muss den Offset berücksichtigen, damit der
+            // visuelle Mittelpunkt der "0" an der gewünschten Position landet
+            sliderZero.style.left = (x - zeroOffsetX) + 'px';
+
+            // Füllung der "1" aktualisieren (von links bis zur 0)
+            const clipFromBottom = (1 - percent) * 100;
+            sliderOneFill.style.clipPath = `inset(0 0 ${clipFromBottom}% 0)`;
+        }
+
+        function initSlider() {
+            // Warten bis Layout fertig
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const bounds = updateBounds();
+                    const centerX = bounds.minX + bounds.rangeWidth / 2;
+                    sliderZero.style.left = (centerX - bounds.zeroOffsetX) + 'px';
+                    sliderOneFill.style.clipPath = 'inset(0 0 50% 0)';
+                });
+            });
+        }
+
+        function updateStyles() {
+            const font = fontSelect.value;
+            const length = lengthSlider.value;
+            const size = sizeSlider.value;
+            const stroke = strokeSlider.value;
+
+            const transform = `rotate(-90deg) scaleY(${length})`;
+
+            sliderOneOutline.style.fontFamily = font;
+            sliderOneOutline.style.fontSize = size + 'px';
+            sliderOneOutline.style.transform = transform;
+            sliderOneOutline.style.webkitTextStroke = `${stroke}px var(--text-color, white)`;
+
+            sliderOneFill.style.fontFamily = font;
+            sliderOneFill.style.fontSize = size + 'px';
+            sliderOneFill.style.transform = transform;
+
+            sliderZero.style.fontFamily = font;
+            sliderZero.style.fontSize = (size * 0.9) + 'px';
+
+            // Aktuellen Wert merken, Grenzen invalidieren, dann Position aktualisieren
+            const currentValue = growthValue;
+            cachedBounds = null;
+
+            // Warten bis Layout fertig, dann Position basierend auf aktuellem Wert setzen
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const bounds = updateBounds();
+                    // Position aus dem aktuellen Wert berechnen (nicht zurücksetzen)
+                    const percent = (currentValue - sliderMin) / (sliderMax - sliderMin);
+                    const x = bounds.minX + percent * bounds.rangeWidth;
+                    sliderZero.style.left = (x - bounds.zeroOffsetX) + 'px';
+
+                    // clipPath entsprechend anpassen
+                    const clipFromBottom = (1 - percent) * 100;
+                    sliderOneFill.style.clipPath = `inset(0 0 ${clipFromBottom}% 0)`;
+                });
+            });
+        }
+
+        // Settings Event Listeners
+        fontSelect.addEventListener('change', updateStyles);
+        lengthSlider.addEventListener('input', updateStyles);
+        sizeSlider.addEventListener('input', updateStyles);
+        strokeSlider.addEventListener('input', updateStyles);
+
+        // Mouse Events
+        sliderZero.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            sliderZero.classList.add('dragging');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                updateSliderPosition(e.clientX);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            sliderZero.classList.remove('dragging');
+        });
+
+        // Touch Events
+        sliderZero.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            sliderZero.classList.add('dragging');
+            e.preventDefault();
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging && e.touches.length > 0) {
+                updateSliderPosition(e.touches[0].clientX);
+            }
+        });
+
+        document.addEventListener('touchend', () => {
+            isDragging = false;
+            sliderZero.classList.remove('dragging');
+        });
+
+        // Klick auf Track
+        sliderTrack.addEventListener('click', (e) => {
+            if (e.target !== sliderZero) {
+                updateSliderPosition(e.clientX);
+            }
+        });
+
+        // p5.js Setup
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            let initialRadius = min(width, height) / 2;
+            circles.push(new Circle(width/2, height/2, initialRadius));
+
+            // Slider initialisieren nachdem DOM bereit ist
+            setTimeout(initSlider, 100);
+        }
+
+        function draw() {
+            // CSS-Farben verwenden
+            const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || 'black';
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+
+            background(bgColor);
+            for (let i = 0; i < circles.length; i++) {
+                circles[i].display(textColor);
+                circles[i].grow(growthValue);
+            }
+
+            if (frameCount % 10 == 0) {
+                let newRadius = circles[circles.length-1].radius / goldenRatio;
+                circles.push(new Circle(width/2, height/2, newRadius));
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            setTimeout(initSlider, 50);
+        }
+
+        class Circle {
+            constructor(x, y, r) {
+                this.x = x;
+                this.y = y;
+                this.radius = r;
+            }
+
+            display(color = 'white') {
+                noFill();
+                stroke(color);
+                ellipse(this.x, this.y, this.radius * 2, this.radius * 2);
+            }
+
+            grow(rate) {
+                this.radius += rate;
+            }
+        }
     </script>
 </body>
 </html>

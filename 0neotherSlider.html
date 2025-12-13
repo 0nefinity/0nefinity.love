@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>0/1 Typo-Slider</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slider-wrapper {
+      position: relative;
+      width: 320px;   /* sichtbare Gesamtbreite */
+      height: 80px;
+    }
+
+    /* unsichtbarer Slider */
+    #logic-slider {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 240px;   /* Länge der Bewegung */
+      opacity: 0;
+      -webkit-appearance: none;
+      height: 40px;
+    }
+
+    .visual-track {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 240px;
+      pointer-events: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .symbol-one {
+      font-family: "Times New Roman", serif;
+      font-size: 44px;
+      color: #fff;
+      transform: rotate(90deg) scaleX(6); /* <-- Track-Länge */
+      transform-origin: center;
+    }
+
+    .thumb-symbol {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-family: "Times New Roman", serif;
+      font-size: 44px;
+      color: #fff;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="slider-wrapper">
+    <input id="logic-slider" type="range" min="0" max="100" value="50">
+
+    <div class="visual-track">
+      <span class="symbol-one">1</span>
+    </div>
+
+    <div class="thumb-symbol">0</div>
+  </div>
+
+  <script>
+    const slider  = document.getElementById("logic-slider");
+    const thumb   = document.querySelector(".thumb-symbol");
+    const wrapper = document.querySelector(".slider-wrapper");
+
+    function updateThumb() {
+      const percent = (slider.value - slider.min) / (slider.max - slider.min);
+
+      const trackRect = slider.getBoundingClientRect();
+      const wrapRect  = wrapper.getBoundingClientRect();
+
+      const minX = trackRect.left - wrapRect.left;
+      const maxX = trackRect.right - wrapRect.left;
+
+      const x = minX + percent * (maxX - minX);
+      thumb.style.left = x + "px";
+    }
+
+    slider.addEventListener("input", updateThumb);
+    window.addEventListener("resize", updateThumb);
+    updateThumb();
+  </script>
+</body>
+</html>

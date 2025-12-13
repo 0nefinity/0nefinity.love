@@ -1,0 +1,949 @@
+<!-- kreisausdingen.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kreis aus Dingen mit Musterpotenzial</title>
+
+    <!-- Die Eingabe von sehr vielen Zeichen macht das ganze ziemlich verrückt. Und dann die Leertaste ‒ crazy
+     
+    something really crazy goes around when you feed it some 8 -->
+
+    
+    <link href="/meta.css" rel="stylesheet" />
+    <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
+    <script src="/meta.js" defer></script>
+    <!-- meta.js regelt das Menü und den Zurückbutton und evt. sonstige zukünftige Metafunktionen -->
+
+    <!-- Decimal.js für Pi-Berechnung mit beliebiger Genauigkeit -->
+    <!-- KEIN defer! Muss VOR dem Haupt-Script geladen sein -->
+    <script src="/tools/decimal.js"></script>
+
+
+    <style>
+        :root {
+            --vh: 1vh;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            touch-action: none; /* Verhindert Browser-Zoom */
+            background: var(--bg-color, black);
+        }
+
+        body {
+            overflow: hidden; /* Verhindert Scrollen */
+            overscroll-behavior: none;
+            opacity: 1 !important; /* Keine Opacity-Effekte */
+            width: 100%;
+            height: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            touch-action: none; /* Verhindert Browser-Zoom */
+            background: var(--bg-color, black);
+        }
+        canvas {
+            display: block;
+            cursor: grab;
+            opacity: 1 !important;
+            touch-action: none; /* Verhindert Browser-Gesten */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color, black);
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        #controls {
+            position: fixed;
+            top: 4.375rem; /* Direkt unter den meta.js buttons (70px) */
+            left: 0;
+            right: 0;
+            background: transparent;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            box-sizing: border-box;
+            height: 3rem; /* Etwas kompakter */
+            touch-action: none; /* Verhindert Browser-Zoom auf Controls */
+        }
+        .controls-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 100%;
+            background: var(--bg-color, black);
+            border-radius: 6px;
+            padding: 0 12px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 100%;
+        }
+        input[type="number"] {
+            width: 60px;
+            height: 100%;
+            text-align: center;
+            font-size: 14px;
+            padding: 0 4px;
+            background: var(--bg-color, black);
+            color: var(--text-color, white);
+            border: none;
+            border-radius: 4px;
+            box-sizing: border-box;
+            opacity: 1 !important;
+        }
+        input[type="text"] {
+            width: 200px;
+            height: 100%;
+            font-size: 14px;
+            padding: 0 8px;
+            background: var(--bg-color, black);
+            color: var(--text-color, white);
+            border: 2px solid var(--text-color, white);
+            border-radius: 4px;
+            box-sizing: border-box;
+            opacity: 1 !important;
+        }
+        .control-btn {
+            background: transparent;
+            color: var(--text-color, white);
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            width: 30px;
+            height: 100%;
+            flex-shrink: 0;
+            font-family: Arial, sans-serif;
+            opacity: 1 !important;
+        }
+        #controls {
+            opacity: 1 !important;
+        }
+
+
+        /* Mobile Optimierung - High-Res Displays */
+        @media (max-width: 768px) and (min-resolution: 2dppx) {
+            #controls {
+                top: 5.5rem; /* Unter den größeren meta.js buttons auf Mobile */
+                padding: 0 8px;
+            }
+            .controls-row {
+                gap: 5px;
+            }
+            .control-group {
+                gap: 3px;
+            }
+            input[type="number"] {
+                width: 50px;
+                font-size: 16px;
+            }
+            input[type="text"] {
+                width: 150px;
+                font-size: 14px;
+            }
+            .control-btn {
+                font-size: 22px;
+                width: 30px;
+            }
+        }
+
+        /* Mobile Optimierung - Standard */
+        @media (max-width: 768px) and (max-resolution: 1.99dppx) {
+            #controls {
+                padding: 0 8px;
+            }
+            .controls-row {
+                gap: 5px;
+            }
+            .control-group {
+                gap: 3px;
+            }
+            input[type="number"] {
+                width: 50px;
+                font-size: 14px;
+            }
+            input[type="text"] {
+                width: 140px;
+                font-size: 13px;
+            }
+            .control-btn {
+                font-size: 18px;
+                width: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="controls-row">
+            <div class="control-group anzahl">
+                <button class="control-btn" id="countDown">▼</button>
+                <input type="number" id="countNumber" min="0" max="20000" value="50">
+                <button class="control-btn" id="countUp">▲</button>
+            </div>
+            <div class="control-group radius">
+                <button class="control-btn" id="radiusDown">▼</button>
+                <input type="number" id="radiusNumber" min="-1000" max="1000" value="80">
+                <button class="control-btn" id="radiusUp">▲</button>
+            </div>
+            <div class="control-group zeichen">
+                <button class="control-btn" id="charRemove">−</button>
+                <input type="text" id="character" value="1">
+                <button class="control-btn" id="charAdd">+</button>
+            </div>
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // ============================================
+        // PI CALCULATION MODULE (Chudnovsky Algorithm)
+        // ============================================
+
+        // Pi cache: Speichert berechnete Pi-Stellen
+        let piCache = "3."; // Startet mit "3."
+        let isCalculating = false;
+
+        // Berechne Pi mit dem Chudnovsky-Algorithmus
+        // Basierend auf: https://www.i4cy.com/pi/
+        function calculatePi(digits) {
+            if (typeof Decimal === 'undefined') {
+                console.error('Decimal.js ist nicht geladen!');
+                return null;
+            }
+
+            console.log(`Berechne Pi mit ${digits} Stellen...`);
+            const startTime = performance.now();
+
+            // Setze Präzision (mit Puffer)
+            Decimal.set({ precision: digits + 10 });
+
+            let pi = new Decimal(0);
+            const digitsPerIteration = 14; // Chudnovsky konvergiert mit ~14 Stellen pro Iteration
+            const iterations = Math.ceil(digits / digitsPerIteration) + 1;
+
+            let C, Mk, Lk, Xk;
+
+            for (let k = 0; k < iterations; k++) {
+                // Mk = (6k)! / ((3k)! * (k!)^3)
+                Mk = factorial(6 * k).div(factorial(3 * k).mul(factorial(k).pow(3)));
+
+                // Lk = 545140134k + 13591409
+                Lk = new Decimal(545140134).mul(k).add(13591409);
+
+                // Xk = (-262537412640768000)^k
+                Xk = new Decimal(-262537412640768000).pow(k);
+
+                // Summiere: Mk * Lk / Xk
+                pi = pi.add(Mk.mul(Lk).div(Xk));
+            }
+
+            // C = 426880 * sqrt(10005)
+            C = new Decimal(426880).mul(new Decimal(10005).sqrt());
+
+            // Pi = C / Summe
+            pi = C.div(pi);
+
+            const endTime = performance.now();
+            const timeMs = (endTime - startTime).toFixed(2);
+            console.log(`✓ Pi berechnet in ${timeMs}ms (${(timeMs / digits).toFixed(4)}ms pro Stelle)`);
+
+            return pi.toFixed(digits);
+        }
+
+        // Hilfsfunktion: Fakultät (optimiert für große Zahlen)
+        function factorial(n) {
+            let result = new Decimal(1);
+            for (let i = 2; i <= n; i++) {
+                result = result.mul(i);
+            }
+            return result;
+        }
+
+        // Prüfe ob ein String mit Pi übereinstimmt
+        function isPiPrefix(str) {
+            if (!str || str.length === 0) return false;
+            if (typeof Decimal === 'undefined') return false; // Decimal.js nicht geladen
+
+            // Normalisiere: Ersetze Komma durch Punkt, entferne alle anderen Nicht-Ziffern
+            let cleanStr = str.replace(/,/g, '.'); // Komma → Punkt
+            cleanStr = cleanStr.replace(/[^0-9.]/g, ''); // Nur Ziffern und Punkt behalten
+
+            // Stelle sicher, dass wir genug Pi-Stellen haben
+            const neededLength = cleanStr.length;
+
+            // Erweitere Cache falls nötig (KEIN while! Nur einmal versuchen)
+            if (piCache.length < neededLength + 1 && !isCalculating) {
+                const digitsNeeded = neededLength + 1000;
+                isCalculating = true;
+                const piString = calculatePi(digitsNeeded);
+                if (piString) {
+                    piCache = piString;
+                } else {
+                    isCalculating = false;
+                    return false; // Berechnung fehlgeschlagen
+                }
+                isCalculating = false;
+            }
+
+            // Vergleiche
+            return piCache.startsWith(cleanStr);
+        }
+
+        // Hole die nächste Pi-Ziffer nach einem gegebenen String
+        function getNextPiDigit(currentStr) {
+            if (!currentStr || currentStr.length === 0) {
+                return '3'; // Starte mit '3'
+            }
+
+            if (typeof Decimal === 'undefined') return null; // Decimal.js nicht geladen
+
+            // Prüfe ob aktueller String mit Pi übereinstimmt
+            if (!isPiPrefix(currentStr)) {
+                return null; // Kein Pi-Präfix
+            }
+
+            // Normalisiere für Index-Berechnung (Komma → Punkt)
+            const normalizedStr = currentStr.replace(/,/g, '.');
+            const nextIndex = normalizedStr.length;
+
+            // Stelle sicher, dass wir genug Stellen haben (KEIN while! Nur einmal)
+            if (piCache.length <= nextIndex && !isCalculating) {
+                const digitsNeeded = nextIndex + 1000;
+                isCalculating = true;
+                const piString = calculatePi(digitsNeeded);
+                if (piString) {
+                    piCache = piString;
+                } else {
+                    isCalculating = false;
+                    return null; // Berechnung fehlgeschlagen
+                }
+                isCalculating = false;
+            }
+
+            return nextIndex < piCache.length ? piCache[nextIndex] : null;
+        }
+
+        // ============================================
+        // ORIGINAL CODE STARTS HERE
+        // ============================================
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const countNumber = document.getElementById('countNumber');
+        const countUp = document.getElementById('countUp');
+        const countDown = document.getElementById('countDown');
+        const radiusNumber = document.getElementById('radiusNumber');
+        const radiusUp = document.getElementById('radiusUp');
+        const radiusDown = document.getElementById('radiusDown');
+        const characterInput = document.getElementById('character');
+        const charAdd = document.getElementById('charAdd');
+        const charRemove = document.getElementById('charRemove');
+
+        // Zwei separate Systeme:
+        // 1. radiusPercent: Nur Radius-Größe (über Buttons steuerbar)
+        // 2. zoomFactor: Zoom für BEIDE Radius UND Schriftgröße (über Mausrad/Pinch)
+        let radiusPercent = 80;  // Basis-Radius in Prozent
+        let zoomFactor = 1.0;     // Zoom-Multiplikator
+        const baseFontSize = 30;  // Basis-Schriftgröße in Pixel
+
+        // Synchronisiere radiusPercent mit dem Input-Feld
+        function syncRadiusToInput() {
+            radiusNumber.value = Math.round(radiusPercent);
+        }
+
+        // Pan/Drag-Steuerung
+        let isDragging = false;
+        let lastX = 0;
+        let lastY = 0;
+        let panX = 0;
+        let panY = 0;
+
+        // URL-Parameter auslesen
+        const urlParams = new URLSearchParams(window.location.search);
+        const anzahlParam = urlParams.get('anzahl');
+        const zeichenParam = urlParams.get('zeichen');
+        const radiusParam = urlParams.get('radius');
+        const zoomParam = urlParams.get('zoom');
+        const panXParam = urlParams.get('panX');
+        const panYParam = urlParams.get('panY');
+
+        // Wenn URL-Parameter vorhanden sind, setze die Werte
+        if (anzahlParam !== null) {
+            const anzahl = parseInt(anzahlParam);
+            if (!isNaN(anzahl)) {
+                countNumber.value = anzahl;
+            }
+        }
+        if (zeichenParam !== null) {
+            // Prüfe ob es infinite(x) Format ist
+            const infiniteMatch = zeichenParam.match(/^infinite\((.)\)$/);
+            if (infiniteMatch) {
+                // Extrahiere das Zeichen (z.B. "8")
+                const char = infiniteMatch[1];
+                // Setze ein einzelnes Zeichen (wird dann im infinite-Modus gerendert)
+                characterInput.value = char;
+                console.log(`✓ Infinite-Modus: Zeichen '${char}'`);
+            }
+            // Prüfe ob es pi(x) Format ist
+            else {
+                const piMatch = zeichenParam.match(/^pi\((\d+)\)$/);
+                if (piMatch) {
+                    // Extrahiere Anzahl der Stellen
+                    const digits = parseInt(piMatch[1]);
+
+                    // Berechne Pi mit dieser Anzahl Stellen
+                    if (digits > 0 && typeof Decimal !== 'undefined') {
+                        // Stelle sicher, dass wir genug Pi-Stellen haben
+                        if (piCache.length < digits && !isCalculating) {
+                            isCalculating = true;
+                            console.log(`Lade Pi mit ${digits} Stellen aus URL...`);
+                            const piString = calculatePi(digits + 100);
+                            if (piString) {
+                                piCache = piString;
+                                console.log(`✓ Pi geladen: ${piCache.length - 2} Stellen verfügbar`);
+                            } else {
+                                console.error('❌ Pi-Berechnung fehlgeschlagen!');
+                            }
+                            isCalculating = false;
+                        }
+
+                        // Setze die ersten x Stellen von Pi
+                        if (piCache.length >= digits) {
+                            characterInput.value = piCache.substring(0, digits);
+                        } else {
+                            console.error(`❌ Nicht genug Pi-Stellen im Cache: ${piCache.length} < ${digits}`);
+                            characterInput.value = piCache; // Setze was wir haben
+                        }
+                    } else if (typeof Decimal === 'undefined') {
+                        console.error('❌ Decimal.js ist nicht geladen!');
+                        characterInput.value = '3.14159'; // Fallback
+                    }
+                } else {
+                    // Normaler String
+                    characterInput.value = zeichenParam;
+                }
+            }
+        }
+        if (radiusParam !== null) {
+            const radius = parseFloat(radiusParam);
+            if (!isNaN(radius)) {
+                radiusPercent = radius;
+                syncRadiusToInput();
+            }
+        }
+        if (zoomParam !== null) {
+            const zoom = parseFloat(zoomParam);
+            if (!isNaN(zoom)) {
+                zoomFactor = zoom;
+            }
+        }
+        if (panXParam !== null) {
+            const px = parseFloat(panXParam);
+            if (!isNaN(px)) {
+                panX = px;
+            }
+        }
+        if (panYParam !== null) {
+            const py = parseFloat(panYParam);
+            if (!isNaN(py)) {
+                panY = py;
+            }
+        }
+
+        // Canvas Größe an Bildschirm anpassen
+        function resizeCanvas() {
+            // Nutze die tatsächliche Größe des Canvas-Elements (wichtig für Firefox Mobile)
+            const rect = canvas.getBoundingClientRect();
+
+            // Setze Canvas-Pixel-Größe auf die tatsächliche Display-Größe
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            draw();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', () => {
+            setTimeout(resizeCanvas, 100);
+        });
+        resizeCanvas();
+
+        function draw() {
+            const count = parseInt(countNumber.value) || 0;
+            const character = characterInput.value || " "; // Standard ist ein Leerzeichen
+
+            // Mittelpunkt berechnen (mit Pan-Offset)
+            const centerX = canvas.width / 2 + panX;
+            const centerY = canvas.height / 2 + panY;
+            const maxRadius = Math.min(canvas.width, canvas.height) / 2 - 50;
+
+            // Radius: radiusPercent * zoomFactor
+            const radius = maxRadius * (radiusPercent / 100) * zoomFactor;
+
+            // Canvas löschen
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Schriftgröße: baseFontSize * zoomFactor (unabhängig von radiusPercent!)
+            const fontSize = baseFontSize * zoomFactor;
+
+            // Zeichen
+            ctx.font = `${fontSize}px Arial`;
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            // Prüfe ob Infinite-Modus (nur 8en)
+            const isInfiniteMode = character.match(/^8+$/);
+
+            if (isInfiniteMode) {
+                // Infinite-Modus: Zeichne mehrere konzentrische Kreise
+                // Berechne wie viele Kreise wir brauchen um den ganzen Canvas zu füllen
+                const maxDistance = Math.sqrt(canvas.width * canvas.width + canvas.height * canvas.height);
+                const radiusStep = radius / count; // Abstand zwischen Zeichen auf einem Kreis
+
+                // Zeichne von Mitte nach außen, bis wir über den Canvas hinaus sind
+                for (let ringIndex = 0; ringIndex * radiusStep < maxDistance; ringIndex++) {
+                    const currentRadius = ringIndex * radiusStep;
+
+                    // Berechne wie viele Zeichen auf diesen Ring passen
+                    const circumference = 2 * Math.PI * currentRadius;
+                    const charsOnRing = Math.max(1, Math.floor(circumference / (fontSize * 1.5)));
+
+                    for (let i = 0; i < charsOnRing; i++) {
+                        const angle = (i / charsOnRing) * 2 * Math.PI - Math.PI / 2;
+
+                        const x = centerX + currentRadius * Math.cos(angle);
+                        const y = centerY + currentRadius * Math.sin(angle);
+
+                        ctx.save();
+                        ctx.translate(x, y);
+                        ctx.rotate(angle + Math.PI / 2);
+                        ctx.fillText('8', 0, 0);
+                        ctx.restore();
+                    }
+                }
+            } else {
+                // Normal-Modus: Zeichne einen Kreis
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
+
+                    const x = centerX + radius * Math.cos(angle);
+                    const y = centerY + radius * Math.sin(angle);
+
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(angle + Math.PI / 2);
+                    ctx.fillText(character, 0, 0);
+                    ctx.restore();
+                }
+            }
+        }
+
+        // URL aktualisieren
+        function updateURL() {
+            const anzahl = countNumber.value;
+            const radius = radiusPercent;
+            const zoom = zoomFactor.toFixed(2); // 2 Dezimalstellen für Zoom
+            const px = panX.toFixed(2); // 2 Dezimalstellen für panX
+            const py = panY.toFixed(2); // 2 Dezimalstellen für panY
+            let zeichen = characterInput.value;
+
+            // Wenn zeichen nur aus 8en besteht (mindestens eine 8), verwende infinite(8) Format
+            if (zeichen.match(/^8+$/) && zeichen.length >= 1) {
+                zeichen = 'infinite(8)';
+            }
+            // Wenn zeichen ein Pi-Präfix ist UND mindestens 4 Zeichen lang (z.B. "3.14"), verwende pi(x) Format
+            else if (zeichen.length >= 4 && isPiPrefix(zeichen)) {
+                zeichen = `pi(${zeichen.length})`;
+            }
+
+            // Reihenfolge: anzahl → radius → zoom → panX → panY → zeichen (zeichen als letztes)
+            const newURL = `${window.location.pathname}?anzahl=${encodeURIComponent(anzahl)}&radius=${encodeURIComponent(radius)}&zoom=${encodeURIComponent(zoom)}&panX=${encodeURIComponent(px)}&panY=${encodeURIComponent(py)}&zeichen=${encodeURIComponent(zeichen)}`;
+            window.history.replaceState({}, '', newURL);
+        }
+
+        // Hilfsfunktion: Zufälliges druckbares ASCII-Zeichen (32-126)
+        function getRandomASCII() {
+            return String.fromCharCode(Math.floor(Math.random() * (126 - 32 + 1)) + 32);
+        }
+
+        // Gedrückt-Halten Logik
+        let holdInterval = null;
+        let holdTimeout = null;
+
+        function startHold(action, initialDelay = 500, repeatDelay = 100) {
+            action(); // Sofort einmal ausführen
+            holdTimeout = setTimeout(() => {
+                holdInterval = setInterval(action, repeatDelay);
+            }, initialDelay);
+        }
+
+        function stopHold() {
+            if (holdTimeout) clearTimeout(holdTimeout);
+            if (holdInterval) clearInterval(holdInterval);
+            holdTimeout = null;
+            holdInterval = null;
+        }
+
+        // Anzahl erhöhen
+        function incrementCount() {
+            countNumber.value = parseInt(countNumber.value) + 1;
+            draw();
+            updateURL();
+        }
+
+        // Anzahl verringern
+        function decrementCount() {
+            const newValue = parseInt(countNumber.value) - 1;
+            if (newValue >= 0) {
+                countNumber.value = newValue;
+                draw();
+                updateURL();
+            }
+        }
+
+        // Zeichen hinzufügen
+        function addCharacter() {
+            const currentValue = characterInput.value;
+
+            // Spezielle Modi basierend auf aktuellem Wert
+            if (currentValue === '') {
+                // Leer → Random
+                characterInput.value = getRandomASCII();
+            } else if (currentValue === '0') {
+                // 0 → 018
+                characterInput.value = '018';
+            } else if (currentValue.match(/^(018)+$/)) {
+                // 018018... → Weiter mit 018-Pattern
+                characterInput.value += '018';
+            } else if (currentValue === '1' || currentValue.match(/^1+$/)) {
+                // 1 oder 111... → Immer nur eine 1 hinzufügen
+                characterInput.value += '1';
+            } else if (currentValue === '2') {
+                // 2 → 48163264
+                characterInput.value = '48163264';
+            } else if (currentValue === '48163264') {
+                // 48163264 → Weiter mit 48163264
+                characterInput.value += '48163264';
+            } else if (currentValue.match(/^(48163264)+$/)) {
+                // 48163264... → Weiter mit 48163264-Pattern
+                characterInput.value += '48163264';
+            } else if (currentValue === '8' || currentValue.match(/^8+$/)) {
+                // 8 oder 888... → Infinite-Modus (wird in URL als infinite(8) dargestellt)
+                characterInput.value += '8';
+            } else {
+                // Pi-Modus nur ab 4 Zeichen (z.B. "3.14" oder "3,14")
+                // Prüfe ORIGINAL-Länge, nicht normalisiert!
+                let nextPiDigit = null;
+                if (currentValue.length >= 4) {
+                    nextPiDigit = getNextPiDigit(currentValue);
+                }
+
+                if (nextPiDigit !== null) {
+                    // Wenn es ein Pi-Präfix ist (ab 4 Zeichen), füge die nächste korrekte Pi-Ziffer hinzu
+                    characterInput.value += nextPiDigit;
+                    console.log(`✓ Pi-Modus: Nächste Ziffer ist '${nextPiDigit}'`);
+                } else {
+                    // Sonst: Zufälliges ASCII-Zeichen wie bisher
+                    characterInput.value += getRandomASCII();
+                }
+            }
+
+            draw();
+            updateURL();
+        }
+
+        // Zeichen entfernen
+        function removeCharacter() {
+            const currentValue = characterInput.value;
+
+            if (currentValue.length > 0) {
+                // Spezielle Modi: 018-Pattern → Entferne 3 Zeichen auf einmal
+                if (currentValue.match(/^(018)+$/) && currentValue.length >= 3) {
+                    characterInput.value = currentValue.slice(0, -3);
+                } else {
+                    // Normal: Entferne 1 Zeichen
+                    characterInput.value = currentValue.slice(0, -1);
+                }
+                draw();
+                updateURL();
+            }
+        }
+
+        // Radius erhöhen (nur Radius, nicht Schriftgröße!)
+        function incrementRadius() {
+            radiusPercent = Math.min(1000, radiusPercent + 1);
+            syncRadiusToInput();
+            draw();
+            updateURL();
+        }
+
+        // Radius verringern (nur Radius, nicht Schriftgröße! Kann negativ werden!)
+        function decrementRadius() {
+            radiusPercent = Math.max(-1000, radiusPercent - 1);
+            syncRadiusToInput();
+            draw();
+            updateURL();
+        }
+
+        // Event-Listener für Anzahl-Buttons (Desktop)
+        countUp.addEventListener('mousedown', () => startHold(incrementCount));
+        countUp.addEventListener('mouseup', stopHold);
+        countUp.addEventListener('mouseleave', stopHold);
+
+        countDown.addEventListener('mousedown', () => startHold(decrementCount));
+        countDown.addEventListener('mouseup', stopHold);
+        countDown.addEventListener('mouseleave', stopHold);
+
+        // Event-Listener für Anzahl-Buttons (Mobile)
+        countUp.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startHold(incrementCount);
+        });
+        countUp.addEventListener('touchend', stopHold);
+        countUp.addEventListener('touchcancel', stopHold);
+
+        countDown.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startHold(decrementCount);
+        });
+        countDown.addEventListener('touchend', stopHold);
+        countDown.addEventListener('touchcancel', stopHold);
+
+        // Event-Listener für Radius-Buttons (Desktop)
+        radiusUp.addEventListener('mousedown', () => startHold(incrementRadius));
+        radiusUp.addEventListener('mouseup', stopHold);
+        radiusUp.addEventListener('mouseleave', stopHold);
+
+        radiusDown.addEventListener('mousedown', () => startHold(decrementRadius));
+        radiusDown.addEventListener('mouseup', stopHold);
+        radiusDown.addEventListener('mouseleave', stopHold);
+
+        // Event-Listener für Radius-Buttons (Mobile)
+        radiusUp.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startHold(incrementRadius);
+        });
+        radiusUp.addEventListener('touchend', stopHold);
+        radiusUp.addEventListener('touchcancel', stopHold);
+
+        radiusDown.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startHold(decrementRadius);
+        });
+        radiusDown.addEventListener('touchend', stopHold);
+        radiusDown.addEventListener('touchcancel', stopHold);
+
+        // Event-Listener für Zeichen-Buttons (Desktop)
+        charAdd.addEventListener('mousedown', () => startHold(addCharacter, 500, 150));
+        charAdd.addEventListener('mouseup', stopHold);
+        charAdd.addEventListener('mouseleave', stopHold);
+
+        charRemove.addEventListener('mousedown', () => startHold(removeCharacter, 500, 150));
+        charRemove.addEventListener('mouseup', stopHold);
+        charRemove.addEventListener('mouseleave', stopHold);
+
+        // Event-Listener für Zeichen-Buttons (Mobile)
+        charAdd.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startHold(addCharacter, 500, 150);
+        });
+        charAdd.addEventListener('touchend', stopHold);
+        charAdd.addEventListener('touchcancel', stopHold);
+
+        charRemove.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startHold(removeCharacter, 500, 150);
+        });
+        charRemove.addEventListener('touchend', stopHold);
+        charRemove.addEventListener('touchcancel', stopHold);
+
+        // Manuelle Eingabe der Anzahl
+        countNumber.addEventListener('input', () => {
+            draw();
+            updateURL();
+        });
+
+        // Manuelle Eingabe des Radius (kann negativ sein!)
+        radiusNumber.addEventListener('input', () => {
+            const value = parseFloat(radiusNumber.value);
+            if (!isNaN(value)) {
+                radiusPercent = Math.max(-1000, Math.min(1000, value));
+                draw();
+                updateURL();
+            }
+        });
+
+        // Zeichen-Eingabe
+        characterInput.addEventListener('input', () => {
+            draw();
+            updateURL();
+        });
+
+        // Drag/Pan-Funktionalität (Desktop)
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        // mousemove auf document statt canvas - funktioniert auch außerhalb
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastX;
+                const deltaY = e.clientY - lastY;
+
+                panX += deltaX;
+                panY += deltaY;
+
+                lastX = e.clientX;
+                lastY = e.clientY;
+
+                draw();
+            }
+        });
+
+        // mouseup auf document statt canvas - fängt mouseup auch außerhalb ab
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // Zoom-Steuerung durch Scrollen (ändert Radius UND Schriftgröße!)
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            // Mausrad → Zoom (beeinflusst BEIDE: Radius und Schriftgröße)
+            const zoomIntensity = 0.001;
+            const deltaScale = 1 + e.deltaY * -zoomIntensity;
+            const newZoomFactor = Math.max(0.001, Math.min(100, zoomFactor * deltaScale));
+
+            zoomFactor = newZoomFactor;
+
+            draw();
+            updateURL();
+        }, { passive: false });
+
+        // Touch-Drag für Mobile (1 Finger)
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchPanX = 0;
+        let touchPanY = 0;
+
+        // Touch-Pinch für Mobile (2 Finger)
+        let initialDistance = null;
+        let initialZoom = zoomFactor;
+        let wasPinching = false; // Flag um Sprung nach Pinch zu verhindern
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1 && !wasPinching) {
+                // Single touch - Pan (nur wenn nicht gerade gepincht wurde)
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchPanX = panX;
+                touchPanY = panY;
+            } else if (e.touches.length === 2) {
+                // Two fingers - Pinch zoom (ändert Radius UND Schriftgröße!)
+                e.preventDefault();
+                wasPinching = true;
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                initialDistance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                );
+                initialZoom = zoomFactor;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1 && !wasPinching) {
+                // Single touch - Pan (nur wenn nicht gerade gepincht wurde)
+                const deltaX = e.touches[0].clientX - touchStartX;
+                const deltaY = e.touches[0].clientY - touchStartY;
+
+                panX = touchPanX + deltaX;
+                panY = touchPanY + deltaY;
+
+                draw();
+            } else if (e.touches.length === 2 && initialDistance !== null) {
+                // Two fingers - Pinch zoom (ändert Radius UND Schriftgröße!)
+                e.preventDefault();
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const currentDistance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                );
+
+                const scale = currentDistance / initialDistance;
+                zoomFactor = Math.max(0.001, Math.min(100, initialZoom * scale));
+
+                draw();
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialDistance = null;
+                updateURL();
+            }
+
+            // Reset wasPinching Flag wenn alle Finger weg sind
+            if (e.touches.length === 0) {
+                wasPinching = false;
+            }
+        });
+
+        // Keyboard-Steuerung: + und - Tasten
+        document.addEventListener('keydown', (e) => {
+            // Prüfe ob ein Input-Feld fokussiert ist
+            const activeElement = document.activeElement;
+            const isInputFocused = activeElement && (
+                activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.isContentEditable
+            );
+
+            // Nur wenn KEIN Input fokussiert ist
+            if (!isInputFocused) {
+                if (e.key === '+' || e.key === '=') {
+                    // + Taste → Zeichen hinzufügen
+                    e.preventDefault();
+                    addCharacter();
+                } else if (e.key === '-' || e.key === '_') {
+                    // - Taste → Zeichen entfernen
+                    e.preventDefault();
+                    removeCharacter();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,3 +1,7 @@
+Alles ist ein Punkt von weiter weg betrachtet
+
+In allem liegt 0 1 8 
+
 Math ≡ Existence
 ≡
 0 ≡ 1 ≡ ∞ 

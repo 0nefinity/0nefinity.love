@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+    <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+    <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+  <title>Test-Slider mit Times New Roman 1</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #000;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .container {
+      text-align: center;
+      transform-origin: center center; /* für zentriertes Zoom */
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.75rem;
+    }
+
+    p {
+      opacity: 0.8;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    .slider-wrapper {
+      margin-bottom: 0.75rem;
+    }
+
+    .slider-value {
+      margin-bottom: 1.5rem;
+      font-size: 1.2rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Basis-Style für den Slider */
+    #demo-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 320px;
+      background: transparent;
+    }
+
+    /* Track (WebKit) */
+    #demo-slider::-webkit-slider-runnable-track {
+      height: 6px;
+      background: #ffffff;
+      border-radius: 3px;
+    }
+
+    /* Track (Firefox) */
+    #demo-slider::-moz-range-track {
+      height: 6px;
+      background: #ffffff;
+      border-radius: 3px;
+    }
+
+    /* Thumb (WebKit) – Times New Roman "1" als SVG */
+    #demo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 48px;
+  margin-top: -21px;
+  border: none;
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='40'%20height='60'%3E%3Ctext%20x='50%25'%20y='60%25'%20font-family='Times%20New%20Roman'%20font-size='42'%20text-anchor='middle'%20dominant-baseline='middle'%20fill='white'%3E1%3C/text%3E%3C/svg%3E")
+    no-repeat center center;
+  background-size: contain;
+  cursor: pointer;
+}
+
+
+    /* Thumb (Firefox) */
+    #demo-slider::-moz-range-thumb {
+  width: 32px;
+  height: 48px;
+  border: none;
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='40'%20height='60'%3E%3Ctext%20x='50%25'%20y='60%25'%20font-family='Times%20New%20Roman'%20font-size='42'%20text-anchor='middle'%20dominant-baseline='middle'%20fill='white'%3E1%3C/text%3E%3C/svg%3E")
+    no-repeat center center;
+  background-size: contain;
+  cursor: pointer;
+}
+
+
+    #demo-slider:focus {
+      outline: none;
+    }
+
+    .output {
+      font-size: 1.0rem;
+    }
+
+    .value {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      display: inline-block;
+      min-width: 3ch;
+    }
+
+    .emoji {
+      font-size: 1.4rem;
+      margin-left: 0.35rem;
+    }
+  </style>
+</head>
+<body>
+    <div class="container">
+      <h1>Times-New-Roman-Slider</h1>
+      <p>Schieb den Slider – der Wert steuert einen kleinen zufälligen Effekt.</p>
+
+      <div class="slider-wrapper">
+        <input
+          id="demo-slider"
+          type="range"
+          min="0"
+          max="100"
+          value="50"
+        />
+      </div>
+
+      <div class="slider-value">
+        Wert: <span class="value" id="value-display">50</span>
+      </div>
+
+      <div class="output">
+        <span class="emoji" id="emoji-display">✨</span>
+        <div id="text-display" style="margin-top:0.75rem; opacity:0.85; font-size:0.95rem;">
+          Irgendwas Random-mäßiges passiert …
+        </div>
+      </div>
+    </div>
+
+  <script>
+    const slider = document.getElementById("demo-slider");
+    const valueDisplay = document.getElementById("value-display");
+    const emojiDisplay = document.getElementById("emoji-display");
+    const textDisplay = document.getElementById("text-display");
+
+    const emojis = ["✨", "🌙", "🧪", "🎲", "🌀", "🚀", "🌈", "💾", "📡", "💡"];
+    const texte = [
+      "Das Universum kalibriert sich neu …",
+      "Kleine Glitches im Raum-Zeit-Kontinuum.",
+      "Entropie-Level wird justiert.",
+      "Zufallsrauschen wird hochgedreht.",
+      "Quantenschaum leicht aufgeschüttelt.",
+      "Debuggen der Realität läuft …",
+      "Kosmische Würfel werden geworfen.",
+      "Pseudozufall sieht heute echt aus.",
+      "Bits und Atome tanzen im Takt.",
+      "Das ist komplett nachvollziehbarer Zufall. Fast."
+    ];
+
+    function updateRandomStuff() {
+      const value = slider.value;
+
+      valueDisplay.textContent = value;
+
+      // "Random": Emoji & Text bei jedem Input neu wählen
+      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+      const text = texte[Math.floor(Math.random() * texte.length)];
+
+      emojiDisplay.textContent = emoji;
+      textDisplay.textContent = text;
+
+      // kleiner optischer Effekt: Text-Opacity vom Wert abhängig
+      const opacity = 0.4 + (value / 100) * 0.6; // 0.4 - 1.0
+      textDisplay.style.opacity = opacity.toFixed(2);
+    }
+
+    slider.addEventListener("input", updateRandomStuff);
+
+    // Initialer Zustand
+    updateRandomStuff();
+
+    // --- Zoom-Logik: gesamte Slider-Section skalieren (wie "Zoom" in shadows) ---
+    const container = document.querySelector(".container");
+    if (container) {
+      let currentScale = 1;
+      const MIN_SCALE = 0.6;
+      const MAX_SCALE = 2.0;
+
+      const applyScale = () => {
+        container.style.transform = `scale(${currentScale})`;
+      };
+
+      // Maus / Trackpad: Scroll zum Zoomen benutzen
+      container.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          const factor = e.deltaY < 0 ? 1.05 : 0.95;
+          currentScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, currentScale * factor));
+          applyScale();
+        },
+        { passive: false }
+      );
+
+      // Touch: Zwei-Finger-Pinch zum Zoomen
+      let pinchStartDist = 0;
+      let pinchStartScale = 1;
+      let isPinching = false;
+
+      const getTouchDistance = (touches) => {
+        if (touches.length < 2) return 0;
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+      };
+
+      container.addEventListener(
+        "touchstart",
+        (e) => {
+          if (e.touches.length === 2) {
+            isPinching = true;
+            pinchStartDist = getTouchDistance(e.touches);
+            pinchStartScale = currentScale;
+          }
+        },
+        { passive: true }
+      );
+
+      container.addEventListener(
+        "touchmove",
+        (e) => {
+          if (!isPinching || e.touches.length !== 2) return;
+          e.preventDefault();
+          const dist = getTouchDistance(e.touches) || pinchStartDist;
+          if (!dist || !pinchStartDist) return;
+          const factor = dist / pinchStartDist;
+          currentScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, pinchStartScale * factor));
+          applyScale();
+        },
+        { passive: false }
+      );
+
+      const stopPinch = (e) => {
+        if (!e.touches || e.touches.length < 2) {
+          isPinching = false;
+        }
+      };
+
+      container.addEventListener("touchend", stopPinch, { passive: true });
+      container.addEventListener("touchcancel", stopPinch, { passive: true });
+    }
+  </script>
+</body>
+</html>

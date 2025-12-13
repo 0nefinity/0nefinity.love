@@ -1,7 +1,11 @@
 /* meta.css */
+
+
+
 :root {
     --bg-color: black;
     --text-color: white;
+    --menu-open-width: 21rem; /* Breite des geöffneten Menüs – nach Geschmack anpassen */
     font-size: 16px; /* Basisgröße; wird über Media Query auf mobilen Geräten angepasst */
     background: var(--bg-color);
     color: var(--text-color);
@@ -22,6 +26,12 @@ body {
     margin: 0;
 }
 
+body.menu-open {
+    /* Seite darf weiter scrollen, wenn der Mauszeiger NICHT über dem Menü ist */
+    overflow: auto;
+}
+
+
 /* Vertikale Zentrierung für body mit .O18 */
 body:has(.O18)::before,
 body:has(.O18)::after {
@@ -30,9 +40,9 @@ body:has(.O18)::after {
     min-height: 0;
 }
 
-
-
-footer nav a { display: none; }
+footer nav a {
+    display: none;
+}
 
 footer nav a[href="/impressum-und-datenschutz.html"] {
   display: inline-block;
@@ -43,9 +53,6 @@ footer nav a[href="/impressum-und-datenschutz.html"]:hover,
 footer nav a[href="/impressum-und-datenschutz.html"]:focus {
   color: var(--text-color);
 }
-
-
-
 
 *,
 *::before,
@@ -63,7 +70,6 @@ footer nav a[href="/impressum-und-datenschutz.html"]:focus {
 section {
     margin: 0.9375rem 0; /* ca. 15px / 16 */
 }
-
 
 h1 {
     font-size: 2.5rem;
@@ -85,7 +91,6 @@ a {
     color: var(--text-color);
     text-decoration: underline;
 }
-
 
 button {
     background: var(--bg-color);
@@ -143,6 +148,7 @@ button:focus {
     }
 }
 
+/* Menü-Grundlayout */
 .menu {
     position: fixed;
     top: 0;
@@ -150,12 +156,14 @@ button:focus {
     width: 4.375rem; /* ca. 70px - collapsed */
     background: transparent;
     z-index: 1000;
-    transition: width 0.3s ease, right 0.3s ease, background 0.3s ease;
+    /* keine Transition: sofort auf/zu klappen */
+    display: flex;
+    flex-direction: column;
 }
 
 .menu.open {
     right: 0;
-    width: min-content; /* Genau die Breite des Buttons */
+    width: var(--menu-open-width); /* feste Breite im geöffneten Zustand */
     max-width: 90vw; /* Maximal 90% der Viewport-Breite */
     height: 100vh;
     background: var(--bg-color);
@@ -167,15 +175,20 @@ button:focus {
     -webkit-user-select: text;
 }
 
-/* Wrapper für die Menü-Liste - erlaubt Text-Selektion für Kopieren */
+/* Wrapper für Button + Inhalt im Menü */
 .menu-content-wrapper {
     user-select: text;
     -webkit-user-select: text;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0; /* erlaubt innerem UL zu scrollen */
 }
 
+/* Menü-Button */
 .menu-button {
     width: 100%;
-    min-width: max-content; /* Breite durch "0 ≡ 1 ≡ ∞" bestimmt */
+    /* min-width: max-content;  entfällt – Breite kommt vom Menü */
     height: 4.375rem;
     display: flex;
     justify-content: center;
@@ -219,15 +232,144 @@ button:focus {
     }
 }
 
-/* Main menu list (direct child of menu) */
+/* Suchleiste im Menü */
+.menu-search {
+    display: none; /* standardmäßig unsichtbar */
+    padding: 0.75rem 1.25rem 0.5rem;
+    position: relative;
+}
+
+.menu.open .menu-search {
+    display: block; /* nur sichtbar, wenn Menü offen */
+}
+
+/* Eingabefeld */
+.menu-search input[type="search"] {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg-color);
+    color: var(--text-color);
+    border-radius: 9999px;
+    border: 1.5px solid var(--text-color);    /* weißer Rand wie Button */
+    padding: 0.4rem 2.1rem 0.4rem 2.6rem;   /* mehr Platz links für Lupe & rechts für X */
+    font: inherit;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+/* Ysabeau – latin, lokal eingebunden nur für die Lupe (0/1) */
+@font-face {
+  font-family: 'Ysabeau';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('tools/fonts/Ysabeau/kmKiZqEiBAXLcnuMvjZNI_5FGeJet7OWCAY3KcA.woff2') format('woff2');
+  unicode-range: U+0000-00FF;
+}
+
+/* Native WebKit-X ausblenden, wir benutzen einen eigenen Clear-Button */
+.menu-search input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+}
+
+/* Lupe links im Feld – zusammengesetzt aus 0 (Glas) und 1 (Griff) */
+.menu-search::before,
+.menu-search::after {
+    font-family: 'Ysabeau', system-ui, -apple-system, BlinkMacSystemFont,
+        'Helvetica Neue', Arial, sans-serif;
+}
+
+/* 0 = Glas */
+.menu-search::before {
+    content: '0';
+    position: absolute;
+    left: 1.8rem;              /* Abstand vom linken Rand */
+    top: 45%;
+    transform: translateY(-50%);
+    width: 1.2rem;              /* fester Bereich, in dem die 0 zentriert wird */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 400;
+    line-height: 1;
+    pointer-events: none;
+}
+
+/* 1 = Griff */
+.menu-search::after {
+    content: '1';
+    position: absolute;
+    left: 2.5rem;
+    top: 40%;
+    transform-origin: center left;
+    transform: translate(-0.05rem, 0.18rem) rotate(-45deg);
+    font-size: 1.4rem;
+    font-weight: 400;
+    line-height: 1;
+    pointer-events: none;
+}
+
+/* eigener Clear-Button rechts */
+.menu-search-clear {
+    position: absolute;
+    right: 1.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: none;
+    color: var(--text-color);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.menu-search-clear.visible {
+    opacity: 0.85;
+    pointer-events: auto;
+}
+
+/* Placeholder dezenter */
+.menu-search input[type="search"]::placeholder {
+    color: color-mix(in srgb, var(--text-color) 60%, transparent);
+    opacity: 0.85;
+}
+
+/* Fokuszustand */
+.menu-search input[type="search"]:focus {
+    border-color: var(--text-color);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-color) 40%, transparent);
+}
+
+/* Auf sehr kleinen Screens etwas kompakter */
+@media (max-width: 480px) {
+    .menu-search {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .menu-search input[type="search"] {
+        font-size: 0.95rem;
+        padding: 0.35rem 1.9rem 0.35rem 2.4rem;
+    }
+}
+
+/* Main menu list (direktes Kind unter der Suchleiste)
+   -> eigener Scroll-Container für Menü-Inhalt */
 .menu > .menu-content-wrapper > ul {
-    height: calc(100vh - 4.375rem); /* Full viewport height minus button height */
-    overflow-y: auto;
-    overflow-x: hidden; /* Verhindert horizontales Scrollen */
+    flex: 1 1 auto;
+    min-height: 0;
     box-sizing: border-box;
     text-align: left;
     display: none;
-    width: 100%; /* Nimmt Breite vom Parent (menu-button) */
+    width: 100%; /* Nimmt Breite vom Parent (menu) */
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain; /* Scroll-Ereignisse bleiben im Menü, kein Chain zum Body */
 }
 
 .menu.open > .menu-content-wrapper > ul {
@@ -375,21 +517,21 @@ button:focus {
     opacity: 1;
 }
 
-
 .iframe-container {
     width: 100vw;
     max-width: 400px;
     aspect-ratio: 1;
     margin: 0 auto;
     background: transparent;
-  }
-  .iframe-container iframe {
+}
+
+.iframe-container iframe {
     border: none;
     width: 100%;
     height: 100%;
     display: block;
     background: transparent;
-  }
+}
 
 /* Body-Handling wenn ._018 vorhanden */
 body:has(._018) {
@@ -400,46 +542,38 @@ body:has(._018) {
 }
 
 /* ._018 Klasse für Full-Screen Single-Page-Applikationen */
-/* Für Tools, Experimente und 0nefinity-Konzepte, die den ganzen Bildschirm nutzen sollen */
-/* Mehrschichtige Verteidigung für maximale Browser-Kompatibilität */
 ._018 {
-    /* Layout - Fallback-Kette für verschiedene Browser */
-    box-sizing: border-box;  /* Padding wird in height eingerechnet */
+    box-sizing: border-box;
     max-width: 100%;
     width: 100%;
-    min-height: 100vh;           /* Mindestens Viewport-Höhe */
-    min-height: 100dvh;          /* Dynamic - ändert sich mit Browser-UI */
-    max-height: 100vh;           /* Maximal Viewport-Höhe - verhindert zu groß werden */
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-height: 100vh;
     max-height: 100dvh;
     padding: 2rem;
     font-size: 1.5rem;
 
-    /* Position */
-    position: relative;      /* Kontext für absolute Kinder */
+    position: relative;
 
-    /* Zentrierung */
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: 1rem;               /* Abstand zwischen Flex-Children */
+    gap: 1rem;
 
-    /* Umbrüche erkennen */
     white-space: pre-line;
 
-    /* Native Pull-to-Refresh Setup - minimales Scrollen erlaubt */
-    overflow-y: auto;                    /* Erlaubt Scrollen für Pull-to-Refresh */
-    overflow-x: hidden;                  /* Verhindert horizontales Scrollen */
-    overscroll-behavior-y: auto;         /* Erlaubt Native Pull-to-Refresh */
-    overscroll-behavior-x: contain;      /* Verhindert horizontales Overscroll */
-    -webkit-overflow-scrolling: touch;   /* iOS Safari - smooth scrolling */
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
 
-    /* Touch-Handling - verhindert Zoom, erlaubt vertikales Panning */
-    touch-action: pan-y;                 /* Erlaubt vertikales Panning */
-    -webkit-tap-highlight-color: transparent; /* Entfernt Tap-Highlight */
-    user-select: none;                   /* Verhindert Text-Selektion */
-    -webkit-user-select: none;           /* Safari-spezifisch */
+    touch-action: pan-y;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* Button-Optimierungen für ._018 Kontext */
@@ -448,17 +582,16 @@ body:has(._018) {
     -webkit-tap-highlight-color: transparent;
     font-size: 1.2rem;
 
-    /* Verhindert Pull-to-Refresh auf dem Button selbst */
     touch-action: none;
     overscroll-behavior: contain;
 }
 
 ._018 button:hover {
-    scale: 1.02; /* Reduziert von 1.05 für weniger aggressive Animation */
+    scale: 1.02;
 }
 
 ._018 button:active {
-    scale: 1; /* Kein Scale-Down mehr, verhindert störende Effekte bei schnellen Klicks */
+    scale: 1;
 }
 
 /* Verhindert Umbrüche in <u> Elementen */
@@ -468,28 +601,23 @@ body:has(._018) {
 }
 
 /* ._018-canvas Klasse für Absolute-Positioning Single-Page-Applikationen */
-/* Für Canvas-basierte Apps, Spiele, und Experimente mit absolute positioning */
 ._018-canvas {
-    /* Layout - Fallback-Kette für verschiedene Browser */
     width: 100%;
-    height: 100vh;           /* Fallback für alte Browser */
-    height: 100dvh;          /* Dynamic - ändert sich mit Browser-UI */
-    padding: 0;              /* Kein Padding für absolute positioning */
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
     margin: 0;
 
-    /* Position - wichtig für absolute children */
     position: relative;
 
-    /* Scroll-Prevention - mehrere Ebenen für verschiedene Browser */
-    overflow: hidden;                    /* Basis - funktioniert überall */
-    overscroll-behavior: contain;        /* Modern - verhindert Bounce/Pull-to-Refresh */
-    -webkit-overflow-scrolling: touch;   /* iOS Safari - smooth scrolling wenn nötig */
+    overflow: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 
-    /* Touch-Handling - verhindert Zoom und unerwünschte Interaktionen */
-    touch-action: manipulation;          /* Verhindert Double-Tap-Zoom */
-    -webkit-tap-highlight-color: transparent; /* Entfernt Tap-Highlight */
-    user-select: none;                   /* Verhindert Text-Selektion */
-    -webkit-user-select: none;           /* Safari-spezifisch */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* Body fixieren wenn ._018-canvas vorhanden */
@@ -517,6 +645,19 @@ body:has(._018-canvas) {
 }
 
 /* Media Query für kleinere Geräte */
+/* Pre-Element Styling */
+pre {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    margin: 0;
+    padding: 0;
+    /* Dynamische Schriftgröße basierend auf Viewport-Breite */
+    font-size: clamp(0.7rem, 1.5vw, 1rem);
+}
+
 @media (max-width: 480px) {
     :root {
         font-size: 14px; /* Erhöht die Basis-Schriftgröße, sodass alle Elemente größer wirken */

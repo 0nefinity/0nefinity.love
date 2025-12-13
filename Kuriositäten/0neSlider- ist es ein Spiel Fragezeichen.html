@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0neSlider</title>
+    <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+    <script src="/meta.js" defer></script><!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        /* Settings Panel - oben */
+        .settings {
+            position: fixed;
+            top: 4.375rem;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.75rem 1rem;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            font-size: 14px;
+            color: var(--text-color, white);
+        }
+
+        .settings .row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            min-height: 32px;
+        }
+
+        .settings .row:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings label {
+            flex: 0 0 60px;
+            font-size: 13px;
+            opacity: 0.8;
+        }
+
+        .settings select {
+            flex: 1;
+            height: 32px;
+            background: var(--bg-color, #111);
+            color: var(--text-color, white);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            padding: 0 0.5rem;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .settings .stepper-container {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .settings .value-input {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            color: var(--text-color, white);
+            font-size: 14px;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            width: 4em;
+            padding: 0.2em 0.1em;
+            outline: none;
+        }
+
+        .settings .value-input:focus {
+            border-bottom-color: rgba(255,255,255,0.6);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .settings .stepper-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: var(--text-color, white);
+            font-size: 1.3rem;
+            font-weight: 300;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.15s ease, transform 0.1s ease;
+            user-select: none;
+        }
+
+        .settings .stepper-btn:hover {
+            opacity: 1;
+        }
+
+        .settings .stepper-btn:active {
+            transform: scale(0.85);
+        }
+
+        .settings input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .settings input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--text-color, white);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .settings .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Slider-Bereich */
+        .sliders-area {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        /* Slider Container */
+        .slider-container {
+            position: relative;
+            width: 500px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Track (Outline) */
+        .track-outline {
+            position: absolute;
+            font-family: 'Times New Roman', serif;
+            font-size: 32px;
+            color: transparent;
+            -webkit-text-stroke: 1px var(--text-color, white);
+            transform-origin: center center;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        /* Track (gefüllt, wird geclippt) */
+        .track-fill {
+            position: absolute;
+            font-family: 'Times New Roman', serif;
+            font-size: 32px;
+            color: var(--text-color, white);
+            transform-origin: center center;
+            line-height: 1;
+            pointer-events: none;
+            clip-path: inset(0 0 50% 0);
+        }
+
+        /* Thumb */
+        .thumb {
+            position: absolute;
+            font-family: 'Times New Roman', serif;
+            font-size: 29px;
+            color: var(--text-color, white);
+            cursor: grab;
+            line-height: 1;
+            user-select: none;
+        }
+
+        .thumb:hover {
+            text-shadow: 0 0 20px rgba(255,255,255,0.4);
+        }
+
+        .thumb:active {
+            cursor: grabbing;
+            text-shadow: 0 0 30px rgba(255,255,255,0.6);
+        }
+
+        /* Debug-Anzeige */
+        .debug {
+            position: fixed;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: monospace;
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            text-align: center;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="settings">
+        <div class="row">
+            <label>Font</label>
+            <select id="fontSelect">
+                <option value="'Times New Roman', Times, serif" selected>Times</option>
+                <option value="'Ysabeau', sans-serif">Ysabeau</option>
+                <option value="Verdana, Geneva, Tahoma, sans-serif">Verdana</option>
+                <option value="Arial, Helvetica, sans-serif">Arial</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Courier New', Courier, monospace">Courier</option>
+                <option value="Impact, Haettenschweiler, sans-serif">Impact</option>
+                <option value="'Trebuchet MS', sans-serif">Trebuchet</option>
+                <option value="'Palatino Linotype', Palatino, serif">Palatino</option>
+                <option value="'Book Antiqua', serif">Book Antiqua</option>
+                <option value="'Lucida Console', Monaco, monospace">Lucida Console</option>
+                <option value="'Comic Sans MS', cursive">Comic Sans</option>
+                <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+                <option value="Garamond, serif">Garamond</option>
+                <option value="'Century Gothic', sans-serif">Century Gothic</option>
+                <option value="Cambria, serif">Cambria</option>
+                <option value="Consolas, monospace">Consolas</option>
+            </select>
+        </div>
+        <div class="row">
+            <label>Größe</label>
+            <div class="stepper-container">
+                <button class="stepper-btn minus" data-param="size">−</button>
+                <input type="text" class="value-input" id="sizeInput" data-param="size" value="32">
+                <button class="stepper-btn plus" data-param="size">+</button>
+            </div>
+        </div>
+        <div class="row">
+            <label>Länge</label>
+            <div class="stepper-container">
+                <button class="stepper-btn minus" data-param="length">−</button>
+                <input type="text" class="value-input" id="lengthInput" data-param="length" value="12">
+                <button class="stepper-btn plus" data-param="length">+</button>
+            </div>
+        </div>
+        <div class="row">
+            <label>Rotation</label>
+            <div class="stepper-container">
+                <button class="stepper-btn minus" data-param="rotation">−</button>
+                <input type="text" class="value-input" id="rotationInput" data-param="rotation" value="270">
+                <button class="stepper-btn plus" data-param="rotation">+</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sliders-area">
+        <!-- Slider 1: "0" auf liegender "1" -->
+        <div class="slider-container" id="slider1">
+            <span class="track-outline" id="track1Outline">1</span>
+            <span class="track-fill" id="track1Fill">1</span>
+            <span class="thumb" id="thumb1">0</span>
+        </div>
+
+        <!-- Slider 2: "1" auf liegender "0" -->
+        <div class="slider-container" id="slider2">
+            <span class="track-outline" id="track2Outline">0</span>
+            <span class="track-fill" id="track2Fill">0</span>
+            <span class="thumb" id="thumb2">1</span>
+        </div>
+    </div>
+
+    <div class="debug" id="debug"></div>
+
+    <script>
+        // === PARAMS CONFIG (wie in shadows.html) ===
+        const PARAMS_CONFIG = {
+size:     { id: 'sizeInput',     min: 1,   max: 300, step: 4, default: 150,  decimals: 0 },
+length:   { id: 'lengthInput',   min: 1,   max: 20,  step: 1, default: 5,  decimals: 0 },
+rotation: { id: 'rotationInput', min: 0,   max: 360, step: 5, default: 180,   decimals: 0 }
+        };
+
+        // Aktuelle Parameter-Werte
+        const params = {};
+        Object.keys(PARAMS_CONFIG).forEach(key => {
+            params[key] = PARAMS_CONFIG[key].default;
+        });
+
+        // DOM Elemente
+        const fontSelect = document.getElementById('fontSelect');
+        const debug = document.getElementById('debug');
+
+        // Slider 1: 0 auf 1
+        const slider1 = {
+            container: document.getElementById('slider1'),
+            trackOutline: document.getElementById('track1Outline'),
+            trackFill: document.getElementById('track1Fill'),
+            thumb: document.getElementById('thumb1'),
+            trackChar: '1',
+            thumbChar: '0',
+            bounds: null,
+            isDragging: false,
+            dragStartPos: null,  // Mausposition beim Start
+            dragStartValue: 0    // Slider-Wert beim Start (0-1)
+        };
+
+        // Slider 2: 1 auf 0
+        const slider2 = {
+            container: document.getElementById('slider2'),
+            trackOutline: document.getElementById('track2Outline'),
+            trackFill: document.getElementById('track2Fill'),
+            thumb: document.getElementById('thumb2'),
+            trackChar: '0',
+            thumbChar: '1',
+            bounds: null,
+            isDragging: false,
+            dragStartPos: null,
+            dragStartValue: 0
+        };
+
+        const sliders = [slider1, slider2];
+
+        // === MESSE PIXEL-GRENZEN EINES ZEICHENS ===
+        function measureGlyph(char, fontFamily, fontSize) {
+            const canvas = document.createElement('canvas');
+            const size = Math.ceil(fontSize * 3);
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            ctx.font = `${fontSize}px ${fontFamily}`;
+            ctx.fillStyle = 'white';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+            ctx.fillText(char, fontSize, fontSize);
+
+            const imageData = ctx.getImageData(0, 0, size, size);
+            const data = imageData.data;
+
+            let minX = size, maxX = 0, minY = size, maxY = 0;
+
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    if (data[(y * size + x) * 4 + 3] > 0) {
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                        minY = Math.min(minY, y);
+                        maxY = Math.max(maxY, y);
+                    }
+                }
+            }
+
+            return {
+                width: maxX - minX + 1,
+                height: maxY - minY + 1,
+                offsetX: (minX + maxX) / 2 - fontSize,
+                offsetY: (minY + maxY) / 2 - fontSize
+            };
+        }
+
+        // === BERECHNE SLIDER-GRENZEN ===
+        function updateBounds(slider) {
+            const font = fontSelect.value;
+            const size = params.size;
+            const length = params.length;
+            const thumbSize = size * 0.9;
+
+            const trackMetrics = measureGlyph(slider.trackChar, font, size);
+            const thumbMetrics = measureGlyph(slider.thumbChar, font, thumbSize);
+
+            // Track-Länge nach Transformation
+            const trackVisualLength = trackMetrics.height * length;
+
+            // Container-Mitte
+            const containerRect = slider.container.getBoundingClientRect();
+            const centerX = containerRect.width / 2;
+            const centerY = containerRect.height / 2;
+
+            // Halbe Länge des Bewegungsbereichs (Track-Länge minus Thumb-Größe)
+            const thumbHalfSize = Math.max(thumbMetrics.width, thumbMetrics.height) / 2;
+            const halfRange = (trackVisualLength / 2) - thumbHalfSize;
+
+            slider.bounds = {
+                centerX,
+                centerY,
+                halfRange,  // Wie weit vom Zentrum der Thumb sich bewegen kann
+                thumbOffsetX: thumbMetrics.offsetX,
+                thumbOffsetY: thumbMetrics.offsetY,
+                thumbWidth: thumbMetrics.width,
+                thumbHeight: thumbMetrics.height,
+                trackLength: trackVisualLength
+            };
+
+            return slider.bounds;
+        }
+
+        // === POSITIONIERE DEN THUMB (value = 0 bis 1) ===
+        function setThumbPosition(slider, value) {
+            if (!slider.bounds) updateBounds(slider);
+
+            // Wert begrenzen
+            value = Math.max(0, Math.min(1, value));
+            slider.currentValue = value;
+
+            // Offset vom Zentrum (-halfRange bis +halfRange)
+            const offset = (value - 0.5) * 2 * slider.bounds.halfRange;
+
+            // Rotation in Radiant
+            const rotRad = params.rotation * Math.PI / 180;
+
+            // Position entlang der Achse berechnen
+            // Bei 0°: nach oben = positiver offset → y nimmt ab
+            // Bei 90°: nach rechts = positiver offset → x nimmt zu
+            const thumbX = slider.bounds.centerX + offset * Math.sin(rotRad);
+            const thumbY = slider.bounds.centerY - offset * Math.cos(rotRad);
+
+            // CSS Position (left/top setzen die linke obere Ecke)
+            slider.thumb.style.left = (thumbX - slider.bounds.thumbWidth / 2 - slider.bounds.thumbOffsetX) + 'px';
+            slider.thumb.style.top = (thumbY - slider.bounds.thumbHeight / 2 - slider.bounds.thumbOffsetY) + 'px';
+
+            // Füllung der Track aktualisieren
+            const clipFromBottom = (1 - value) * 100;
+            slider.trackFill.style.clipPath = `inset(0 0 ${clipFromBottom}% 0)`;
+        }
+
+        // === STEPPER BUTTONS (wie in shadows.html) ===
+        document.querySelectorAll('.stepper-btn').forEach(btn => {
+            const paramKey = btn.dataset.param;
+            const cfg = PARAMS_CONFIG[paramKey];
+            if (!cfg) return;
+
+            let holdInterval = null;
+            let holdTimeout = null;
+
+            const doStep = () => {
+                const isPlus = btn.classList.contains('plus');
+                let newVal = params[paramKey] + (isPlus ? cfg.step : -cfg.step);
+
+                // Rotation Wraparound
+                if (paramKey === 'rotation') {
+                    newVal = ((newVal % 360) + 360) % 360;
+                } else {
+                    newVal = Math.max(cfg.min, Math.min(cfg.max, newVal));
+                }
+
+                // Rundung
+                const factor = Math.pow(10, cfg.decimals);
+                newVal = Math.round(newVal * factor) / factor;
+
+                params[paramKey] = newVal;
+                document.getElementById(cfg.id).value = newVal;
+                updateStyles();
+            };
+
+            const stopHold = () => {
+                if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
+                if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
+            };
+
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                doStep();
+                holdTimeout = setTimeout(() => {
+                    holdInterval = setInterval(doStep, 80);
+                }, 400);
+            });
+
+            btn.addEventListener('pointerup', stopHold);
+            btn.addEventListener('pointerleave', stopHold);
+            btn.addEventListener('pointercancel', stopHold);
+        });
+
+        // === INPUT FIELDS ===
+        document.querySelectorAll('.value-input').forEach(input => {
+            const paramKey = input.dataset.param;
+            const cfg = PARAMS_CONFIG[paramKey];
+            if (!cfg) return;
+
+            input.addEventListener('change', () => {
+                let val = parseFloat(input.value.replace(',', '.'));
+                if (isNaN(val)) val = cfg.default;
+
+                // Rotation Wraparound
+                if (paramKey === 'rotation') {
+                    val = ((val % 360) + 360) % 360;
+                } else {
+                    val = Math.max(cfg.min, Math.min(cfg.max, val));
+                }
+
+                params[paramKey] = val;
+                input.value = val;
+                updateStyles();
+            });
+        });
+
+        // Font-Select
+        fontSelect.addEventListener('change', updateStyles);
+
+        // === DRAG EVENTS (mit Rotation) ===
+        sliders.forEach(slider => {
+            slider.thumb.addEventListener('mousedown', (e) => {
+                slider.isDragging = true;
+                slider.dragStartPos = { x: e.clientX, y: e.clientY };
+                slider.dragStartValue = slider.currentValue ?? 0.5;
+                e.preventDefault();
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            sliders.forEach(slider => {
+                if (!slider.isDragging || !slider.dragStartPos) return;
+                if (!slider.bounds) updateBounds(slider);
+
+                // Mausbewegung seit Start
+                const dx = e.clientX - slider.dragStartPos.x;
+                const dy = e.clientY - slider.dragStartPos.y;
+
+                // Rotation in Radiant
+                const rotRad = params.rotation * Math.PI / 180;
+
+                // Projektion der Mausbewegung auf die Slider-Achse
+                // Achse zeigt von Fuß (unten) zur Spitze (oben) des Symbols
+                const axisX = Math.sin(rotRad);
+                const axisY = -Math.cos(rotRad);
+
+                // Skalarprodukt: Bewegung entlang der Achse
+                const movement = dx * axisX + dy * axisY;
+
+                // In Wert-Änderung umrechnen (halfRange * 2 = voller Bewegungsbereich)
+                const fullRange = slider.bounds.halfRange * 2;
+                const deltaValue = fullRange > 0 ? movement / fullRange : 0;
+
+                // Neuen Wert berechnen
+                const newValue = slider.dragStartValue + deltaValue;
+                setThumbPosition(slider, newValue);
+            });
+        });
+
+        document.addEventListener('mouseup', () => {
+            sliders.forEach(slider => {
+                slider.isDragging = false;
+                slider.dragStartPos = null;
+            });
+        });
+
+        // === UPDATE STYLES ===
+        function updateStyles() {
+            const font = fontSelect.value;
+            const size = params.size;
+            const length = params.length;
+            const rotation = params.rotation;
+            const transform = `rotate(${rotation - 90}deg) scaleY(${length})`;
+
+            sliders.forEach(slider => {
+                slider.trackOutline.style.fontFamily = font;
+                slider.trackOutline.style.fontSize = size + 'px';
+                slider.trackOutline.style.transform = transform;
+                slider.trackOutline.style.webkitTextStroke = `1px var(--text-color, white)`;
+
+                slider.trackFill.style.fontFamily = font;
+                slider.trackFill.style.fontSize = size + 'px';
+                slider.trackFill.style.transform = transform;
+
+                slider.thumb.style.fontFamily = font;
+                slider.thumb.style.fontSize = (size * 0.9) + 'px';
+
+                // Bounds neu berechnen und Thumb auf aktuellem Wert positionieren
+                slider.bounds = null;
+                updateBounds(slider);
+                const currentValue = slider.currentValue ?? 0.5;
+                setThumbPosition(slider, currentValue);
+            });
+        }
+
+        // Init: Input-Felder mit Defaults füllen
+        Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => {
+            const el = document.getElementById(cfg.id);
+            if (el) el.value = params[key];
+        });
+
+        updateStyles();
+    </script>
+</body>
+</html>
+

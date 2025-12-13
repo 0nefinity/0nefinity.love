@@ -10,5 +10,6 @@
         ".vscode/**",
         "**/*.scss",
         "**/*.sass"
-    ]
+    ],
+    "liveServer.settings.port": 5501
 }
