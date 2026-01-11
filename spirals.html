@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Slinky Simulator 2D</title>
+<style>
+html,body{margin:0;padding:0;background:black;overflow:hidden}
+canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+addEventListener("resize",resize);resize();
+
+// ---------- PARAMETERS ----------
+const SEGMENTS = 40;
+const REST = 1;
+const STIFF = 0.5;
+const DAMP = 0.01;
+const GRAVITY = 0.0;
+const BEND = 0.15;
+
+const SPIRAL_RADIUS = 8;     // <<< BREITE
+const SPIRAL_TURNS = 2.5;    // <<< WINDUNGSDICHTE
+
+const BOUNCE = 0.6;
+const FRICTION = 0.98;
+
+// ---------- STATE ----------
+let pts=[], grabbed=null;
+for(let i=0;i<SEGMENTS;i++){
+  pts.push({
+    x: canvas.width/2,
+    y: canvas.height/4 + i*REST,
+    vx:0,vy:0
+  });
+}
+
+// ---------- INPUT ----------
+function pick(x,y){
+  return pts.reduce((a,p)=>{
+    const d=Math.hypot(p.x-x,p.y-y);
+    return d<(a?.d??20)?{p,d}:a;
+  },null)?.p||null;
+}
+function pos(e){return e.touches?
+  {x:e.touches[0].clientX,y:e.touches[0].clientY}:
+  {x:e.clientX,y:e.clientY}}
+canvas.onmousedown=e=>grabbed=pick(...Object.values(pos(e)));
+canvas.onmousemove=e=>{
+  if(!grabbed)return;
+  let p=pos(e);
+  grabbed.x=p.x; grabbed.y=p.y;
+  grabbed.vx=grabbed.vy=0;
+};
+onmouseup=()=>grabbed=null;
+canvas.ontouchstart=e=>grabbed=pick(...Object.values(pos(e)));
+canvas.ontouchmove=e=>{
+  if(!grabbed)return;
+  let p=pos(e);
+  grabbed.x=p.x; grabbed.y=p.y;
+  grabbed.vx=grabbed.vy=0;
+};
+ontouchend=()=>grabbed=null;
+
+// ---------- PHYSICS ----------
+function step(){
+  pts.forEach(p=>{if(p!==grabbed)p.vy+=GRAVITY});
+
+  // springs
+  for(let i=0;i<pts.length-1;i++){
+    let a=pts[i], b=pts[i+1];
+    let dx=b.x-a.x, dy=b.y-a.y;
+    let d=Math.hypot(dx,dy)||0.001;
+    let nx=dx/d, ny=dy/d;
+    let f=(d-REST)*STIFF;
+    let dv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;
+    f+=dv*DAMP;
+    if(a!==grabbed){a.vx+=f*nx;a.vy+=f*ny}
+    if(b!==grabbed){b.vx-=f*nx;b.vy-=f*ny}
+  }
+
+  // bending
+  for(let i=1;i<pts.length-1;i++){
+    let a=pts[i-1],b=pts[i],c=pts[i+1];
+    let abx=b.x-a.x, aby=b.y-a.y;
+    let bcx=c.x-b.x, bcy=c.y-b.y;
+    let ang=(abx*bcx+aby*bcy)/
+      ((Math.hypot(abx,aby)*Math.hypot(bcx,bcy))+0.001);
+    let fx=(a.x+c.x-2*b.x)*BEND;
+    let fy=(a.y+c.y-2*b.y)*BEND;
+    if(b!==grabbed){b.vx+=fx;b.vy+=fy}
+  }
+
+  // integrate + walls
+  pts.forEach(p=>{
+    if(p===grabbed)return;
+    p.x+=p.vx; p.y+=p.vy;
+    p.vx*=0.999; p.vy*=0.999;
+
+    if(p.x<0||p.x>canvas.width){
+      p.x=Math.max(0,Math.min(canvas.width,p.x));
+      p.vx*=-BOUNCE; p.vy*=FRICTION;
+    }
+    if(p.y<0||p.y>canvas.height){
+      p.y=Math.max(0,Math.min(canvas.height,p.y));
+      p.vy*=-BOUNCE; p.vx*=FRICTION;
+    }
+  });
+}
+
+// ---------- RENDER ----------
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle="cyan";
+  ctx.lineWidth=2;
+  ctx.shadowColor="cyan";
+  ctx.shadowBlur=15;
+
+  ctx.beginPath();
+  for(let i=0;i<pts.length;i++){
+    let p=pts[i];
+    let t=i*SPIRAL_TURNS;
+    let n=i<pts.length-1?
+      {x:pts[i+1].y-p.y,y:-(pts[i+1].x-p.x)}:{x:0,y:0};
+    let l=Math.hypot(n.x,n.y)||1;
+    n.x/=l; n.y/=l;
+    let ox=n.x*Math.sin(t)*SPIRAL_RADIUS;
+    let oy=n.y*Math.sin(t)*SPIRAL_RADIUS;
+    i?ctx.lineTo(p.x+ox,p.y+oy):ctx.moveTo(p.x+ox,p.y+oy);
+  }
+  ctx.stroke();
+  ctx.shadowBlur=0;
+}
+
+(function loop(){
+  step(); draw();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

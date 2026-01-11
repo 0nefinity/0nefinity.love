@@ -1,4 +1,12 @@
 // meta.js
+
+// Settings laden
+//const settingsScript = document.createElement('script');
+//settingsScript.src = '/tools/settings.js';
+//settingsScript.defer = true;
+//document.head.appendChild(settingsScript);
+
+
 const menu = document.createElement('div');
 menu.classList.add('menu');
 

@@ -6,9 +6,15 @@
     --bg-color: black;
     --text-color: white;
     --menu-open-width: 21rem; /* Breite des geöffneten Menüs – nach Geschmack anpassen */
-    font-size: 16px; /* Basisgröße; wird über Media Query auf mobilen Geräten angepasst */
+    --font-family: "Courier New", Courier, monospace; /* Wird von settings.js überschrieben */
+    font-size: 16px; /* Basisgröße; wird über Media Query auf mobilen Geräten angepasst und von settings.js überschrieben */
     background: var(--bg-color);
     color: var(--text-color);
+}
+
+/* Universelle Leerzeichen-Erhaltung */
+* {
+    white-space: pre-wrap;
 }
 
 body {
@@ -17,7 +23,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-family: var(--font-family);
     line-height: 1.5;
     font-size: 1rem;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
@@ -64,7 +70,6 @@ footer nav a[href="/impressum-und-datenschutz.html"]:focus {
     width: 100%;
     max-width: 50rem; /* 800px / 16 */
     padding: 2rem 1.5rem; /* 2rem oben/unten, 1.5rem links/rechts */
-    white-space: pre-line;
 }
 
 section {
@@ -562,8 +567,6 @@ body:has(._018) {
     text-align: center;
     gap: 1rem;
 
-    white-space: pre-line;
-
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: auto;
@@ -644,16 +647,21 @@ body:has(._018-canvas) {
     }
 }
 
+/* weird-text-viewer.php Styling */
+.text-viewer-content {
+    white-space: pre-wrap !important;
+}
+
 /* Media Query für kleinere Geräte */
 /* Pre-Element Styling */
 pre {
     max-width: 100%;
     box-sizing: border-box;
-    white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
     margin: 0;
     padding: 0;
+    font-family: monospace;
     /* Dynamische Schriftgröße basierend auf Viewport-Breite */
     font-size: clamp(0.7rem, 1.5vw, 1rem);
 }
@@ -661,5 +669,220 @@ pre {
 @media (max-width: 480px) {
     :root {
         font-size: 14px; /* Erhöht die Basis-Schriftgröße, sodass alle Elemente größer wirken */
+    }
+}
+
+/* Settings Button (Zahnrad) - dezent */
+.settings-button {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 4.375rem; /* ca. 70px */
+    height: 4.375rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-color);
+    font-size: 1.5rem; /* kleiner und dezenter */
+    cursor: pointer;
+    z-index: 999;
+    transform-origin: center;
+    transition: all 0.3s ease;
+    opacity: 0.4; /* dezent */
+}
+
+.settings-button:hover {
+    opacity: 1;
+    transform: scale(1.15) rotate(90deg);
+}
+
+.settings-button.open {
+    opacity: 1;
+    transform: rotate(90deg);
+}
+
+/* Verschiebung wenn Menü offen */
+.settings-button.menu-open {
+    right: var(--menu-open-width);
+    max-width: calc(100vw - var(--menu-open-width));
+}
+
+/* Größere Touch-Targets auf hochauflösenden Displays */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+    .settings-button {
+        width: 5.5rem; /* ca. 88px */
+        height: 5.5rem;
+        font-size: 1.8rem;
+    }
+}
+
+/* Settings Panel - klappt nach links aus dem Symbol aus */
+.settings-panel {
+    position: fixed;
+    bottom: 0;
+    right: 0; /* Startet beim Symbol */
+    background: rgba(0, 0, 0, 0.85);
+    color: var(--text-color);
+    border-radius: 0;
+    padding: 8px 16px;
+    padding-right: 70px; /* Platz für das Symbol */
+    z-index: 998; /* Unter dem Button */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    height: 70px;
+    align-items: center;
+
+    /* Ausklapp-Animation */
+    display: flex;
+    transform: translateX(100%); /* Versteckt rechts außerhalb */
+    transition: transform 0.3s ease;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.settings-panel.open {
+    transform: translateX(0); /* Eingeklappt */
+    pointer-events: auto;
+    opacity: 1;
+}
+
+/* Verschiebung wenn Menü offen */
+.settings-panel.menu-open {
+    right: var(--menu-open-width);
+}
+
+.settings-panel.menu-open.open {
+    transform: translateX(0);
+}
+
+.settings-body {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    height: 100%;
+}
+
+.settings-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.settings-group label {
+    font-size: 13px;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.settings-divider {
+    width: 1px;
+    height: 2rem;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.settings-select {
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--text-color);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+    min-width: 100px;
+}
+
+.settings-select:focus {
+    border-color: var(--text-color);
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.settings-select:hover {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.settings-value-display {
+    text-align: center;
+    font-size: 13px;
+    min-width: 50px;
+    padding: 0.2rem 0.5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.settings-stepper-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    font-size: 1.3rem;
+    font-weight: 300;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    outline: none;
+    opacity: 0.7;
+    border-radius: 4px;
+}
+
+.settings-stepper-btn:focus {
+    outline: none;
+}
+
+.settings-stepper-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.settings-stepper-btn:active {
+    transform: scale(0.85);
+    opacity: 1;
+}
+
+/* Mobile Anpassungen */
+@media (max-width: 768px) {
+    .settings-panel {
+        padding: 12px 16px;
+        padding-right: 88px; /* Platz für größeres Symbol auf Mobile */
+        height: 88px;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .settings-body {
+        gap: 1.5rem;
+    }
+
+    .settings-stepper-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 1.5rem;
+    }
+
+    .settings-group label {
+        font-size: 14px;
+    }
+
+    .settings-value-display {
+        font-size: 14px;
+        min-width: 60px;
+    }
+
+    .settings-select {
+        font-size: 14px;
+        min-width: 110px;
+    }
+}
+
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+    .settings-panel {
+        height: 88px;
+        padding-right: 88px;
     }
 }
