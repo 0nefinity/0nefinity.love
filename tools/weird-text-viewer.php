@@ -33,6 +33,9 @@ if (!file_exists($realPath) || !is_file($realPath)) {
 $content = file_get_contents($realPath);
 $fileName = basename($realPath);
 
+// Prüfe ob es eine Markdown-Datei ist
+$isMarkdown = preg_match('/\.md$/i', $realPath);
+
 // HTML-Escape für sichere Anzeige
 $escapedContent = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
 
@@ -50,6 +53,9 @@ $title = $fileName;
 
   <title><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></title>
 
+<?php if ($isMarkdown): ?>
+  <script src="/tools/showdown.js"></script>
+<?php endif; ?>
 
 </head>
 <body>
@@ -59,8 +65,27 @@ $title = $fileName;
     <h1><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></h1>
   </div>
 
-  <div class="text-viewer-content"><?php echo $escapedContent; ?></div>
+  <div class="text-viewer-content" id="content"><?php echo $escapedContent; ?></div>
 </div>
+
+<?php if ($isMarkdown): ?>
+<script>
+(function () {
+  var el = document.getElementById('content');
+  if (!el || !window.showdown) return;
+
+  // Rohen Text aus dem HTML holen (behält Leerzeichen)
+  var markdown = el.innerHTML
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+  var converter = new showdown.Converter({ simpleLineBreaks: true });
+  var html = converter.makeHtml(markdown);
+  el.innerHTML = html;
+})();
+</script>
+<?php endif; ?>
 
 </body>
 </html>

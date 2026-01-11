@@ -1,8 +1,8 @@
 0nefinity durchwebt seit geraumen Zeiten unsere Sprache
 
-nicht nur, dass wir für jedes Ding ein Wort haben, nein, viele davon bringen einen unendlichen Bedeutungsraum mit sich und ließen sich in sehr vielen Sätzen und in noch sehr sehr vielen mehr Geschichten verwenden.
+nicht nur, dass wir für jedes Ding ein Wort haben, nein, viele davon bringen einen unendlichen Bedeutungsraum mit sich und ließen sich in sehr vielen Sätzen und in noch sehr sehr vielen mehr Geschichten, Gedichten etc. verwenden.
 
-gleichzeitig lassen sich unzählige Worte für ein einzelnes Ding finden und noch mehr ließen sich dazuerfinden.
+gleichzeitig lassen sich unzählige Worte für ein einzelnes Ding finden und noch mehr ließen sich dazuerfinden und oder in beliebig viele existierende oder ausgedachte Sprachen übersetzen.
 Hier eine Liste mit 100 ausgedachten Wörtern für "was triviales":
 
 
@@ -13,5 +13,5 @@ Ab Zeile 7 rastet er bisschen aus
 
 ein unendlicher Raum
 
- Wie viele Ecken hat ein Kreis? 0 1 ∞
+Wie viele Ecken hat ein Kreis? 0 1 ∞
 Wie viele Punkte hat eine Linie? 0 1 ∞

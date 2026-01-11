@@ -6,45 +6,196 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">     
     <link href="/meta.css" rel="stylesheet" /><!-- meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->     
     <script src="/meta.js" defer></script> <!-- meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+    <script src="/tools/zoom.js"></script>
+    <script src="/tools/controls.js"></script>
     <title>0nefinity - Riemannsche Zahlenkugeln</title>
+    <style>
+        /* DER GANZE BILDSCHIRM IST DER CANVAS - KEINE BOX, KEIN RAHMEN */
+        /* Überschreibt meta.css Regeln */
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+            background-color: #000000 !important;
+            display: block !important;
+            min-height: auto !important;
+            align-items: normal !important;
+            justify-content: normal !important;
+            font-family: inherit !important;
+            line-height: normal !important;
+            font-size: inherit !important;
+            text-shadow: none !important;
+            text-align: left !important;
+            touch-action: none !important;
+        }
+        
+        /* Entfernt die Flexbox-Pseudo-Elemente von meta.css */
+        body:has(.O18)::before,
+        body:has(.O18)::after {
+            display: none !important;
+        }
+        
+        .O18 {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background-color: #000000 !important;
+            white-space: normal !important;
+            display: block !important;
+        }
+        
+        .question {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            font-size: clamp(16px, 3vw, 24px);
+            max-width: 90%;
+            color: var(--text-color);
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Canvas Container - DER GANZE BILDSCHIRM */
+        .canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            touch-action: none;
+            cursor: grab;
+            background-color: #000000;
+        }
+        
+        .canvas-container:active {
+            cursor: grabbing;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background-color: #000000;
+        }
+        
+        #answer {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: clamp(16px, 3vw, 22px);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 10px;
+            color: var(--text-color);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        #answer.visible {
+            opacity: 1;
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            font-size: clamp(12px, 2vw, 16px);
+            opacity: 0.6;
+            color: var(--text-color);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 16px;
+            border-radius: 8px;
+            z-index: 10;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
 </head> 
 <body> 
-    <div class="O18" style="text-align: center; padding: 20px;">
+    <div class="O18">
         <h1 class="question">Was passiert, wenn sich zwei Riemannsche Zahlenkugeln in Ihrem Unendlichkeitspunkt treffen?</h1>
         
-        <div id="animation-container" style="margin: 40px auto; position: relative; width: 600px; height: 400px;">
-            <canvas id="animation-canvas" width="600" height="400" style="position: absolute; top: 0; left: 0;"></canvas>
-            <div id="answer" style="position: absolute; bottom: 20px; width: 100%; opacity: 0; transition: opacity 1s ease;">
-                <h2>Sie leuchten (wenn man ihnen Leuchteffekte gibt)</h2>
+        <div class="canvas-container" id="canvas-container">
+            <canvas id="riemann-canvas"></canvas>
+            <div id="answer">
+                <p>Sie leuchten (wenn man ihnen Leuchteffekte gibt)</p>
             </div>
         </div>
         
-        <button id="start-button" style="padding: 10px 20px; cursor: pointer; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--text-color);">Animation starten</button>
+        <div class="instructions">
+            Ziehe eine Kugel horizontal. Je näher die ∞-Punkte, desto stärker das Leuchten.<br>
+            Maus: Klicken und ziehen | Touch: Tippen und ziehen | Zoom: Mausrad oder Pinch
+        </div>
     </div>
 
     <script>
-        // Canvas-Elemente und Animation
-        const canvas = document.getElementById('animation-canvas');
+        // Canvas-Elemente
+        const canvas = document.getElementById('riemann-canvas');
         const ctx = canvas.getContext('2d');
-        const startButton = document.getElementById('start-button');
         const answerElement = document.getElementById('answer');
+        const container = document.getElementById('canvas-container');
         
         // Textfarbe aus CSS-Variablen holen
         const computedStyle = getComputedStyle(document.documentElement);
         const textColor = computedStyle.getPropertyValue('--text-color').trim() || '#ffffff';
         
         // Konstanten für die Zahlenkugeln
-        const sphereSize = 150;
+        const sphereSize = 120;
         const sphereRadius = sphereSize / 2;
-        const infinityPointSize = sphereRadius / 15; // Größe der Unendlichkeitspunkte
-        const centerX = canvas.width / 2;
-        const sphereY = 200;
+        const infinityPointSize = sphereRadius / 15;
         
-        // Startposition der Kugeln mit genug Abstand
-        const leftSphereX = centerX - sphereRadius - 100;
-        const rightSphereX = centerX + sphereRadius + 100;
+        // State für Interaktion
+        let isDragging = false;
+        let dragTarget = null; // 'left' | 'right' | null
+        let currentLeftX = 0;
+        let currentRightX = 0;
+        let startDragX = 0;
+        let startSphereX = 0;
         
-        // Funktion zum Zeichnen einer liegenden Riemannschen Zahlenkugel
+        // Zoom State
+        let zoomState = { scale: 1, offsetX: 0, offsetY: 0 };
+        let zoomInstance = null;
+        let userAdjustedZoom = false;
+        let isProgrammaticZoomUpdate = false;
+        
+        // Canvas-Größe anpassen
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            // Initialisiere Positionen (nach erstem Resize)
+            if (currentLeftX === 0 && currentRightX === 0) {
+                const centerX = canvas.width / 2;
+                const sphereY = canvas.height / 2;
+                currentLeftX = centerX - sphereRadius - 80;
+                currentRightX = centerX + sphereRadius + 80;
+            }
+            
+            render();
+        }
+        
+        // Funktion zum Zeichnen einer Riemannschen Zahlenkugel
         function drawRiemannSphere(x, y, size, mirrored = false) {
             const radius = size / 2;
             
@@ -55,7 +206,7 @@
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            // Hauptkreis (Äquator) - jetzt vertikal statt horizontal
+            // Hauptkreis (Äquator)
             ctx.beginPath();
             ctx.ellipse(x, y, radius / 3, radius, 0, 0, Math.PI * 2);
             ctx.strokeStyle = textColor;
@@ -78,212 +229,254 @@
             ctx.lineWidth = 0.5;
             ctx.stroke();
             
-            // Unendlichkeitspunkt und Beschriftungen platzieren je nach Spiegelung
+            // Unendlichkeitspunkt und Beschriftungen
             if (!mirrored) {
-                // Nullpunkt (jetzt links)
+                // Nullpunkt (links)
                 ctx.beginPath();
                 ctx.arc(x - radius, y, radius / 30, 0, Math.PI * 2);
                 ctx.fillStyle = textColor;
                 ctx.fill();
                 
                 // Beschriftungen
-                ctx.font = '16px sans-serif';
+                ctx.font = '14px sans-serif';
                 ctx.fillStyle = textColor;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 
-                // 0 (links)
-                ctx.fillText('0', x - radius - 15, y);
+                ctx.fillText('0', x - radius - 12, y);
+                ctx.fillText('1', x, y - radius - 12);
+                ctx.fillText('-1', x, y + radius + 12);
                 
-                // 1 (oben)
-                ctx.fillText('1', x, y - radius - 15);
-                
-                // -1 (unten)
-                ctx.fillText('-1', x, y + radius + 15);
-                
-                // Unendlichkeitspunkt (jetzt rechts) - zeichne zuletzt, damit er über anderen Elementen liegt
+                // Unendlichkeitspunkt (rechts)
                 ctx.beginPath();
                 ctx.arc(x + radius, y, infinityPointSize, 0, Math.PI * 2);
                 ctx.fillStyle = textColor;
                 ctx.fill();
-                
-                // Unendlich-Symbol (rechts)
-                ctx.fillText('∞', x + radius + 15, y);
+                ctx.fillText('∞', x + radius + 12, y);
             } else {
-                // Nullpunkt (jetzt rechts für die gespiegelte Version)
+                // Gespiegelte Version
                 ctx.beginPath();
                 ctx.arc(x + radius, y, radius / 30, 0, Math.PI * 2);
                 ctx.fillStyle = textColor;
                 ctx.fill();
                 
-                // Beschriftungen für gespiegelte Version
-                ctx.font = '16px sans-serif';
+                ctx.font = '14px sans-serif';
                 ctx.fillStyle = textColor;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 
-                // 0 (rechts)
-                ctx.fillText('0', x + radius + 15, y);
+                ctx.fillText('0', x + radius + 12, y);
+                ctx.fillText('1', x, y - radius - 12);
+                ctx.fillText('-1', x, y + radius + 12);
                 
-                // 1 (oben)
-                ctx.fillText('1', x, y - radius - 15);
-                
-                // -1 (unten)
-                ctx.fillText('-1', x, y + radius + 15);
-                
-                // Unendlichkeitspunkt (jetzt links für die gespiegelte Version) - zeichne zuletzt
+                // Unendlichkeitspunkt (links)
                 ctx.beginPath();
                 ctx.arc(x - radius, y, infinityPointSize, 0, Math.PI * 2);
                 ctx.fillStyle = textColor;
                 ctx.fill();
-                
-                // Unendlich-Symbol (links)
-                ctx.fillText('∞', x - radius - 15, y);
+                ctx.fillText('∞', x - radius - 12, y);
             }
         }
         
         // Funktion für den Leuchteffekt
         function drawGlow(x, y, intensity) {
-            // Erstelle einen radialen Gradienten für den Leuchteffekt
-            const gradient = ctx.createRadialGradient(x, y, 0, x, y, 60);
-            const alpha = Math.floor((intensity * 255)).toString(16).padStart(2, '0');
+            if (intensity <= 0) return;
             
-            // Helle Farbe für den Leuchteffekt
-            gradient.addColorStop(0, `${textColor}${alpha}`);
-            gradient.addColorStop(1, `${textColor}00`);
+            const outerRadius = 100;
+            const middleRadius = 60;
+            const innerRadius = 30;
+            const glowColor = '#ffffff';
             
-            // Zeichne den Leuchteffekt
-            ctx.globalAlpha = Math.min(1, intensity);
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.arc(x, y, 60, 0, Math.PI * 2);
-            ctx.fill();
+            // Äußere Schicht
+            const outerGradient = ctx.createRadialGradient(x, y, 0, x, y, outerRadius);
+            const alphaOuter = Math.min(0.9, intensity * 0.7);
+            outerGradient.addColorStop(0, `${glowColor}${Math.floor(alphaOuter * 255).toString(16).padStart(2, '0')}`);
+            outerGradient.addColorStop(0.7, `${glowColor}${Math.floor(alphaOuter * 0.5 * 255).toString(16).padStart(2, '0')}`);
+            outerGradient.addColorStop(1, `${glowColor}00`);
+            
+            // Mittlere Schicht
+            const middleGradient = ctx.createRadialGradient(x, y, 0, x, y, middleRadius);
+            const alphaMiddle = Math.min(1, intensity);
+            middleGradient.addColorStop(0, `${glowColor}ff`);
+            middleGradient.addColorStop(0.5, `${glowColor}${Math.floor(alphaMiddle * 255).toString(16).padStart(2, '0')}`);
+            middleGradient.addColorStop(1, `${glowColor}00`);
+            
+            // Innere Schicht
+            const innerGradient = ctx.createRadialGradient(x, y, 0, x, y, innerRadius);
+            const alphaInner = Math.min(1, intensity * 1.2);
+            innerGradient.addColorStop(0, `${glowColor}ff`);
+            innerGradient.addColorStop(0.3, `${glowColor}${Math.floor(alphaInner * 255).toString(16).padStart(2, '0')}`);
+            innerGradient.addColorStop(1, `${glowColor}00`);
+            
             ctx.globalAlpha = 1;
+            
+            ctx.fillStyle = outerGradient;
+            ctx.beginPath();
+            ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = middleGradient;
+            ctx.beginPath();
+            ctx.arc(x, y, middleRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = innerGradient;
+            ctx.beginPath();
+            ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
+            ctx.fill();
         }
         
-        // Zeichne die Zahlenkugeln sofort beim Laden der Seite
-        function initialDraw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawRiemannSphere(leftSphereX, sphereY, sphereSize, false); // Linke Kugel
-            drawRiemannSphere(rightSphereX, sphereY, sphereSize, true); // Rechte Kugel (gespiegelt)
+        // Kollisionserkennung: Prüft ob Punkt (x,y) auf einer Kugel liegt
+        function isPointOnSphere(x, y, sphereX, sphereY) {
+            const dx = x - sphereX;
+            const dy = y - sphereY;
+            return Math.sqrt(dx * dx + dy * dy) <= sphereRadius;
         }
         
-        // Initial zeichnen
-        initialDraw();
-        
-        // Animation starten
-        startButton.addEventListener('click', function() {
-            // Button deaktivieren während Animation läuft
-            startButton.disabled = true;
+        // Get canvas coordinates from mouse/touch event
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
             
-            // Initialisiere Positionen
-            let currentLeftSphereX = leftSphereX;
-            let currentRightSphereX = rightSphereX;
-            let glowIntensity = 0;
-            let step = 0;
-            
-            // Berechne die exakten Zielpositionen für die perfekte Überlappung der Unendlichkeitspunkte
-            // Der Unendlichkeitspunkt der linken Kugel befindet sich bei x + radius
-            // Der Unendlichkeitspunkt der rechten Kugel befindet sich bei x - radius
-            // Damit die Punkte genau übereinander liegen, muss gelten: leftSphereX + radius = rightSphereX - radius
-            // Oder anders ausgedrückt: Die Kugelmittelpunkte müssen genau 2*radius - 2*infinityPointSize voneinander entfernt sein
-            
-            // Wir wollen, dass der gemeinsame Unendlichkeitspunkt genau in der Mitte (centerX) liegt
-            // Das bedeutet für die linke Kugel: centerX = leftTargetSphereX + radius
-            // Und für die rechte Kugel: centerX = rightTargetSphereX - radius
-            const leftTargetSphereX = centerX - sphereRadius;
-            const rightTargetSphereX = centerX + sphereRadius;
-            
-            // Animationsschleife
-            function animate() {
-                // Canvas löschen
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                if (step < 120) {
-                    // Bewege die Kugeln aufeinander zu mit präziserer Berechnung
-                    currentLeftSphereX += (leftTargetSphereX - currentLeftSphereX) / 20;
-                    currentRightSphereX += (rightTargetSphereX - currentRightSphereX) / 20;
-                    
-                    // Aktuelle Position der Unendlichkeitspunkte berechnen
-                    const leftInfinityX = currentLeftSphereX + sphereRadius;
-                    const rightInfinityX = currentRightSphereX - sphereRadius;
-                    
-                    // Zuerst die Kugeln zeichnen
-                    drawRiemannSphere(currentLeftSphereX, sphereY, sphereSize, false);
-                    drawRiemannSphere(currentRightSphereX, sphereY, sphereSize, true);
-                    
-                    // Prüfen, wie nah die Unendlichkeitspunkte aneinander sind
-                    const distance = Math.abs(leftInfinityX - rightInfinityX);
-                    
-                    // Leuchteffekt beginnt wenn die Punkte näher als 15 Pixel kommen
-                    if (distance < 15) {
-                        // Wenn die Punkte sich nähern, machen wir den Leuchteffekt dort, wo sie sich treffen werden
-                        glowIntensity = (15 - distance) / 15;
-                        drawGlow(centerX, sphereY, glowIntensity * 2);
-                    }
-                } else {
-                    // Finale Phase: Perfekte Überlappung und starker Leuchteffekt
-                    
-                    // Zeichne die rechte Kugel zuerst
-                    drawRiemannSphere(rightTargetSphereX, sphereY, sphereSize, true);
-                    
-                    // Dann die linke Kugel, damit ihr Unendlichkeitspunkt über dem der rechten liegt
-                    drawRiemannSphere(leftTargetSphereX, sphereY, sphereSize, false);
-                    
-                    // Zusätzlich den Unendlichkeitspunkt nochmal etwas größer zeichnen, um zu betonen, dass sie übereinander liegen
-                    ctx.beginPath();
-                    ctx.arc(centerX, sphereY, infinityPointSize * 1.2, 0, Math.PI * 2);
-                    ctx.fillStyle = textColor;
-                    ctx.fill();
-                    
-                    // Stärkerer Leuchteffekt genau am Unendlichkeitspunkt
-                    glowIntensity = Math.min(1, (step - 120) / 30);
-                    drawGlow(centerX, sphereY, glowIntensity * 4);
-                    
-                    // Zeige die Antwort, wenn der Leuchteffekt stärker wird
-                    if (step > 140) {
-                        answerElement.style.opacity = (step - 140) / 40;
-                    }
-                }
-                
-                // Nächster Animationsschritt
-                step++;
-                
-                if (step < 180) {
-                    requestAnimationFrame(animate);
-                } else {
-                    // Animation beendet, Button wieder aktivieren
-                    startButton.disabled = false;
-                    startButton.textContent = "Animation neu starten";
-                    
-                    // Event-Listener für Neustart zurücksetzen
-                    startButton.onclick = function() {
-                        // Antwort ausblenden
-                        answerElement.style.opacity = 0;
-                        
-                        // Variablen zurücksetzen
-                        currentLeftSphereX = leftSphereX;
-                        currentRightSphereX = rightSphereX;
-                        glowIntensity = 0;
-                        step = 0;
-                        
-                        // Zurück zur Ausgangsposition
-                        initialDraw();
-                        
-                        // Animation neu starten
-                        this.textContent = "Animation läuft...";
-                        this.disabled = true;
-                        
-                        setTimeout(() => {
-                            animate();
-                        }, 500);
-                    };
-                }
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
             }
             
-            // Animation starten
-            this.textContent = "Animation läuft...";
-            animate();
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+        
+        // Event Handler: Start
+        function handleStart(e) {
+            e.preventDefault();
+            const pos = getCanvasCoordinates(e);
+            
+            // Prüfe welche Kugel geklickt wurde
+            const sphereY = canvas.height / 2;
+            
+            if (isPointOnSphere(pos.x, pos.y, currentLeftX, sphereY)) {
+                isDragging = true;
+                dragTarget = 'left';
+                startDragX = pos.x;
+                startSphereX = currentLeftX;
+            } else if (isPointOnSphere(pos.x, pos.y, currentRightX, sphereY)) {
+                isDragging = true;
+                dragTarget = 'right';
+                startDragX = pos.x;
+                startSphereX = currentRightX;
+            }
+        }
+        
+        // Event Handler: Move
+        function handleMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            const pos = getCanvasCoordinates(e);
+            const deltaX = pos.x - startDragX;
+            
+            if (dragTarget === 'left') {
+                currentLeftX = startSphereX + deltaX;
+                // Spiegele die rechte Kugel
+                const centerX = canvas.width / 2;
+                currentRightX = centerX + (centerX - currentLeftX);
+            } else if (dragTarget === 'right') {
+                currentRightX = startSphereX + deltaX;
+                // Spiegele die linke Kugel
+                const centerX = canvas.width / 2;
+                currentLeftX = centerX - (currentRightX - centerX);
+            }
+            
+            render();
+        }
+        
+        // Event Handler: End
+        function handleEnd(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            isDragging = false;
+            dragTarget = null;
+        }
+        
+        // Rendern
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const sphereY = canvas.height / 2;
+            
+            // Berechne Positionen der Unendlichkeitspunkte
+            const leftInfinityX = currentLeftX + sphereRadius;
+            const rightInfinityX = currentRightX - sphereRadius;
+            
+            // Berechne den MITTELPUNKT zwischen den beiden Unendlichkeitspunkten
+            const glowX = (leftInfinityX + rightInfinityX) / 2;
+            
+            // Berechne Abstand der Unendlichkeitspunkte
+            const distance = Math.abs(leftInfinityX - rightInfinityX);
+            
+            // Maximaler Abstand für 0% Leuchten
+            const maxDistance = canvas.width * 0.8;
+            
+            // Leuchtintensität berechnen (je näher, desto stärker)
+            let glowIntensity = 1 - (distance / maxDistance);
+            glowIntensity = Math.max(0, Math.min(1, glowIntensity));
+            
+            // Zeichne Leuchteffekt (unter den Kugeln) - GENAU ZWISCHEN DEN PUNKTEN
+            if (glowIntensity > 0) {
+                drawGlow(glowX, sphereY, glowIntensity * 2);
+            }
+            
+            // Zeichne Kugeln
+            drawRiemannSphere(currentLeftX, sphereY, sphereSize, false);
+            drawRiemannSphere(currentRightX, sphereY, sphereSize, true);
+            
+            // Zeige Antwort wenn sehr nah
+            if (distance < 10) {
+                answerElement.classList.add('visible');
+            } else {
+                answerElement.classList.remove('visible');
+            }
+        }
+        
+        // Event Listener hinzufügen
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+        
+        canvas.addEventListener('touchstart', handleStart, { passive: false });
+        canvas.addEventListener('touchmove', handleMove, { passive: false });
+        canvas.addEventListener('touchend', handleEnd, { passive: false });
+        canvas.addEventListener('touchcancel', handleEnd, { passive: false });
+        
+        // Zoom initialisieren
+        if (window.Zoom2D) {
+            zoomInstance = Zoom2D.createZoom2D({
+                container: container,
+                minScale: 0.1,
+                maxScale: 10,
+                onTransform({ scale, offsetX, offsetY }) {
+                    zoomState.scale = scale;
+                    zoomState.offsetX = offsetX;
+                    zoomState.offsetY = offsetY;
+                    if (!isProgrammaticZoomUpdate) {
+                        userAdjustedZoom = true;
+                    }
+                    render();
+                }
+            });
+        }
+        
+        // Initialisierung
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('load', () => {
+            resizeCanvas();
         });
     </script>
 </body> 
