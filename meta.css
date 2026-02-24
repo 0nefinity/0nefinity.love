@@ -5,9 +5,9 @@
 :root {
     --bg-color: black;
     --text-color: white;
-    --menu-open-width: 21rem; /* Breite des geöffneten Menüs – nach Geschmack anpassen */
-    --font-family: "Courier New", Courier, monospace; /* Wird von settings.js überschrieben */
-    font-size: 16px; /* Basisgröße; wird über Media Query auf mobilen Geräten angepasst und von settings.js überschrieben */
+    --menu-open-width: 21rem;
+    --font-family: Verdana, Geneva, Tahoma, sans-serif; /*"Courier New", Courier, monospace;*/
+    font-size: 16px; 
     background: var(--bg-color);
     color: var(--text-color);
 }
@@ -603,15 +603,16 @@ body:has(._018) {
     display: inline-block;
 }
 
-/* ._018-canvas Klasse für Absolute-Positioning Single-Page-Applikationen */
+/* ._018-canvas Klasse für Fullscreen Canvas-Applikationen */
 ._018-canvas {
+    position: fixed;
+    inset: 0;
     width: 100%;
-    height: 100vh;
-    height: 100dvh;
+    height: 100%;
     padding: 0;
     margin: 0;
-
-    position: relative;
+    font-size: 0;      /* Whitespace-Textknoten zwischen Tags unsichtbar machen */
+    line-height: 0;    /* (verursacht sonst Gap durch * { white-space: pre-wrap }) */
 
     overflow: hidden;
     overscroll-behavior: contain;
@@ -630,6 +631,9 @@ body:has(._018-canvas) {
     width: 100%;
     height: 100%;
     margin: 0;
+    /* Flex-Layout des body neutralisieren, damit der Canvas-Container
+       nicht durch align-items/justify-content verschoben wird */
+    display: block;
 }
 
 /* Responsive Anpassungen für ._018 */
@@ -732,6 +736,12 @@ pre {
     height: 70px;
     align-items: center;
 
+    /* Ensure it stays within the viewport; scroll horizontally if content is wider */
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+
     /* Ausklapp-Animation */
     display: flex;
     transform: translateX(100%); /* Versteckt rechts außerhalb */
@@ -749,6 +759,9 @@ pre {
 /* Verschiebung wenn Menü offen */
 .settings-panel.menu-open {
     right: var(--menu-open-width);
+
+    /* Keep the panel fully visible in the remaining space */
+    max-width: calc(100vw - var(--menu-open-width));
 }
 
 .settings-panel.menu-open.open {

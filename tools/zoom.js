@@ -1,4 +1,5 @@
 // tools/zoom.js - minimal generic 2D zoom + pan helper
+// Mit optionalem Damping (sanftes Easing wie OrbitControls)
 (function (global) {
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -16,6 +17,11 @@
     // Anti-Momentum (verhindert Nachziehen)
     wheelThrottleMs: 80,         // Min. ms zwischen Zoom-Schritten (0 = kein Throttle)
     wheelDeltaThreshold: 10,     // Ignoriere Delta unter diesem Wert (filtert Momentum)
+
+    // Damping (sanftes Easing)
+    enableDamping: false,        // true = sanftes Gleiten, false = sofortige Änderung
+    dampingFactor: 0.12,         // 0.05 = sehr sanft, 0.2 = schnell (wie OrbitControls)
+    externalDamping: false,      // true = kein interner rAF-Loop, update() muss extern aufgerufen werden
 
     // Initiale Werte
     initialScale: 1,
@@ -41,11 +47,22 @@
     const pinchSensitivity = cfg.pinchSensitivity;
     const wheelThrottleMs = cfg.wheelThrottleMs;
     const wheelDeltaThreshold = cfg.wheelDeltaThreshold;
+    const enableDamping = cfg.enableDamping;
+    const dampingFactor = cfg.dampingFactor;
+    const externalDamping = cfg.externalDamping;
 
+    // Aktuelle Werte (werden bei Damping interpoliert)
     let scale = clamp(cfg.initialScale, minScale, maxScale);
     let offsetX = cfg.initialOffsetX;
     let offsetY = cfg.initialOffsetY;
+
+    // Target-Werte (wohin wir wollen - für Damping)
+    let targetScale = scale;
+    let targetOffsetX = offsetX;
+    let targetOffsetY = offsetY;
+
     let lastWheelTime = 0;
+    let animationFrameId = null;
 
     if (content && content.style && !content.style.transformOrigin) {
       content.style.transformOrigin = '0 0';
@@ -62,18 +79,94 @@
       }
     }
 
+    // Damping Animation Loop
+    function dampingLoop() {
+      if (!enableDamping) return;
+
+      const scaleChanged = Math.abs(scale - targetScale) > 0.0001;
+      const offsetChanged = Math.abs(offsetX - targetOffsetX) > 0.01 ||
+                            Math.abs(offsetY - targetOffsetY) > 0.01;
+
+      if (scaleChanged || offsetChanged) {
+        // Interpoliere zum Target
+        scale += (targetScale - scale) * dampingFactor;
+        offsetX += (targetOffsetX - offsetX) * dampingFactor;
+        offsetY += (targetOffsetY - offsetY) * dampingFactor;
+        applyTransform();
+        animationFrameId = requestAnimationFrame(dampingLoop);
+      } else {
+        // Snap zu exakten Werten wenn nahe genug
+        scale = targetScale;
+        offsetX = targetOffsetX;
+        offsetY = targetOffsetY;
+        animationFrameId = null;
+      }
+    }
+
+    function startDampingLoop() {
+      // Bei externalDamping: kein interner Loop, update() wird extern aufgerufen
+      if (externalDamping) return;
+
+      if (enableDamping && !animationFrameId) {
+        animationFrameId = requestAnimationFrame(dampingLoop);
+      }
+    }
+
+    // Externe Update-Funktion für Integration in bestehende Animations-Loops
+    // Gibt true zurück wenn noch Bewegung stattfindet
+    function update() {
+      if (!enableDamping) return false;
+
+      const scaleChanged = Math.abs(scale - targetScale) > 0.0001;
+      const offsetChanged = Math.abs(offsetX - targetOffsetX) > 0.01 ||
+                            Math.abs(offsetY - targetOffsetY) > 0.01;
+
+      if (scaleChanged || offsetChanged) {
+        scale += (targetScale - scale) * dampingFactor;
+        offsetX += (targetOffsetX - offsetX) * dampingFactor;
+        offsetY += (targetOffsetY - offsetY) * dampingFactor;
+        applyTransform();
+        return true; // Noch in Bewegung
+      } else {
+        // Snap zu exakten Werten
+        scale = targetScale;
+        offsetX = targetOffsetX;
+        offsetY = targetOffsetY;
+        return false; // Fertig
+      }
+    }
+
     function screenToWorld(x, y) {
-      return { x: (x - offsetX) / scale, y: (y - offsetY) / scale };
+      // Bei Damping: Target-Werte für Berechnungen nutzen
+      const s = enableDamping ? targetScale : scale;
+      const ox = enableDamping ? targetOffsetX : offsetX;
+      const oy = enableDamping ? targetOffsetY : offsetY;
+      return { x: (x - ox) / s, y: (y - oy) / s };
     }
 
     function zoomAt(screenX, screenY, factor) {
-      const newScale = clamp(scale * factor, minScale, maxScale);
-      if (newScale === scale) return;
+      const currentScale = enableDamping ? targetScale : scale;
+      const currentOffsetX = enableDamping ? targetOffsetX : offsetX;
+      const currentOffsetY = enableDamping ? targetOffsetY : offsetY;
+
+      const newScale = clamp(currentScale * factor, minScale, maxScale);
+      if (newScale === currentScale) return;
+
       const w = screenToWorld(screenX, screenY);
-      scale = newScale;
-      offsetX = screenX - w.x * scale;
-      offsetY = screenY - w.y * scale;
-      applyTransform();
+      const newOffsetX = screenX - w.x * newScale;
+      const newOffsetY = screenY - w.y * newScale;
+
+      if (enableDamping) {
+        targetScale = newScale;
+        targetOffsetX = newOffsetX;
+        targetOffsetY = newOffsetY;
+        startDampingLoop();
+      } else {
+        scale = newScale;
+        offsetX = newOffsetX;
+        offsetY = newOffsetY;
+        applyTransform();
+      }
     }
 
     function onWheel(e) {
@@ -101,6 +194,10 @@
 
     function onMouseDown(e) {
       if (e.button !== 0) return;
+      // Optional: Callback um Drag zu blockieren (z.B. für Epicycle-Handle)
+      if (typeof opts.shouldIgnoreDrag === 'function' && opts.shouldIgnoreDrag(e)) {
+        return;
+      }
       isDragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -112,12 +209,19 @@
       const dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
-      offsetX += dx;
-      offsetY += dy;
-      applyTransform();
+
+      if (enableDamping) {
+        targetOffsetX += dx;
+        targetOffsetY += dy;
+        startDampingLoop();
+      } else {
+        offsetX += dx;
+        offsetY += dy;
+        applyTransform();
+      }
     }
 
-    function onMouseUp(e) {
+    function onMouseUp() {
       isDragging = false;
     }
 
@@ -159,13 +263,23 @@
         const rect = container.getBoundingClientRect();
         const cx = (t0.clientX + t1.clientX) / 2 - rect.left;
         const cy = (t0.clientY + t1.clientY) / 2 - rect.top;
-        const newScale = clamp(scale * factor, minScale, maxScale);
-        if (newScale === scale) return;
-        scale = newScale;
-        offsetX = cx - pinch.worldX * scale;
-        offsetY = cy - pinch.worldY * scale;
+
+        const currentScale = enableDamping ? targetScale : scale;
+        const newScale = clamp(currentScale * factor, minScale, maxScale);
+        if (newScale === currentScale) return;
+
+        if (enableDamping) {
+          targetScale = newScale;
+          targetOffsetX = cx - pinch.worldX * newScale;
+          targetOffsetY = cy - pinch.worldY * newScale;
+          startDampingLoop();
+        } else {
+          scale = newScale;
+          offsetX = cx - pinch.worldX * scale;
+          offsetY = cy - pinch.worldY * scale;
+          applyTransform();
+        }
         pinch.startDist = newDist;
-        applyTransform();
       } else if (!pinch.active && e.touches.length === 1 && isDragging) {
         e.preventDefault();
         const t = e.touches[0];
@@ -173,9 +287,16 @@
         const dy = t.clientY - lastY;
         lastX = t.clientX;
         lastY = t.clientY;
-        offsetX += dx;
-        offsetY += dy;
-        applyTransform();
+
+        if (enableDamping) {
+          targetOffsetX += dx;
+          targetOffsetY += dy;
+          startDampingLoop();
+        } else {
+          offsetX += dx;
+          offsetY += dy;
+          applyTransform();
+        }
       }
     }
 
@@ -212,25 +333,74 @@
       return { scale, offsetX, offsetY };
     }
 
-    function setView(newState) {
+    function setView(newState, animate) {
       if (!newState) return;
-      if (typeof newState.scale === 'number') {
-        scale = clamp(newState.scale, minScale, maxScale);
+
+      const newScale = typeof newState.scale === 'number'
+        ? clamp(newState.scale, minScale, maxScale)
+        : (enableDamping ? targetScale : scale);
+      const newOffsetX = typeof newState.offsetX === 'number'
+        ? newState.offsetX
+        : (enableDamping ? targetOffsetX : offsetX);
+      const newOffsetY = typeof newState.offsetY === 'number'
+        ? newState.offsetY
+        : (enableDamping ? targetOffsetY : offsetY);
+
+      if (enableDamping && animate !== false) {
+        targetScale = newScale;
+        targetOffsetX = newOffsetX;
+        targetOffsetY = newOffsetY;
+        startDampingLoop();
+      } else {
+        scale = newScale;
+        offsetX = newOffsetX;
+        offsetY = newOffsetY;
+        if (enableDamping) {
+          targetScale = scale;
+          targetOffsetX = offsetX;
+          targetOffsetY = offsetY;
+        }
+        applyTransform();
       }
-      if (typeof newState.offsetX === 'number') {
-        offsetX = newState.offsetX;
-      }
-      if (typeof newState.offsetY === 'number') {
-        offsetY = newState.offsetY;
-      }
-      applyTransform();
+    }
+
+    // Zoom um einen Faktor zur Bildschirmmitte
+    function zoomBy(factor) {
+      const rect = container.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      zoomAt(centerX, centerY, factor);
+    }
+
+    // Zoom In (für Button)
+    function zoomIn() {
+      zoomBy(1 + wheelSpeed * 2);
+    }
+
+    // Zoom Out (für Button)
+    function zoomOut() {
+      zoomBy(1 - wheelSpeed * 2);
+    }
+
+    // Reset zur Ausgangsposition
+    function reset() {
+      setView({
+        scale: cfg.initialScale,
+        offsetX: cfg.initialOffsetX,
+        offsetY: cfg.initialOffsetY
+      });
     }
 
     return {
       destroy,
-      getScale: function () { return scale; },
+      getScale: function () { return enableDamping ? targetScale : scale; },
       getState,
-      setView
+      setView,
+      zoomIn,
+      zoomOut,
+      zoomBy,
+      reset,
+      update  // Für externe Damping-Integration
     };
   }
 

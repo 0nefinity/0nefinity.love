@@ -1,4 +1,4 @@
-(function() {
+(function () {
   // Alle Styles in einem einzigen Block
   function injectStyles() {
     const css = `
@@ -414,23 +414,125 @@ canvas {
     symbolContainer.className = 'symbol-container';
     symbolContainer.id = 'symbolContainer';
 
-    // Erstelle den Canvas für die Animation
+    // Erstelle den Canvas für die Animation (wird für globalen z-index an den body gehängt)
     const canvas = document.createElement('canvas');
     canvas.id = 'canvas';
     canvas.width = 400;
     canvas.height = 400;
-    symbolContainer.appendChild(canvas);
+    document.body.appendChild(canvas); // An Body für sauberen globalen Stacking-Context
 
-    // Auf Mobile öffnet ein Click/Tap auf das Symbol die Einstellungen
-    function handleSymbolActivate(e) {
-      if (!isMobile()) return;
-      e.preventDefault();
-      e.stopPropagation();
-      toggleSettings();
+    // Physisches Hitbox-Layer exakt über dem Symbol, fängt alle Maus/Touch-Events für Zoom/Pan ab
+    const interactionLayer = document.createElement('div');
+    interactionLayer.id = 'interactionLayer';
+    interactionLayer.style.position = 'fixed';
+    interactionLayer.style.zIndex = '51'; // Über dem Canvas
+    interactionLayer.style.borderRadius = '50%';
+    interactionLayer.style.cursor = 'grab';
+    interactionLayer.style.touchAction = 'none'; // Wichtig für reibungsloses Pannen auf Mobile!
+    document.body.appendChild(interactionLayer);
+
+    // Klicks auf das Symbol umleiten an die Sidebar (nur wichtig falls wir es auf Desktop/Mobile nutzen)
+    // Auf Mobile war das Menü vorher deaktiviert, aber touchstart/click fängt das Layer nun ab
+    interactionLayer.addEventListener('mousedown', () => { interactionLayer.style.cursor = 'grabbing'; });
+    interactionLayer.addEventListener('mouseup', () => { interactionLayer.style.cursor = 'grab'; });
+    interactionLayer.addEventListener('mouseleave', () => { interactionLayer.style.cursor = 'grab'; });
+
+    // === ZOOM + PAN ===
+    // Logische Größe des Interaktionsbereichs
+    let logicalCanvasSize = 400;
+
+    // Zoom2D wird NUR für Pan genutzt (Scale locked bei 1).
+    // Zoom (Wheel + Pinch) wird separat gehandelt, damit das Symbol
+    // beim Zoomen seine Position nicht verändert.
+    let zoomState = { scale: 1, offsetX: logicalCanvasSize / 2, offsetY: logicalCanvasSize / 2 };
+    let zoomInstance = null;
+
+    if (window.Zoom2D) {
+      zoomInstance = Zoom2D.createZoom2D({
+        container: interactionLayer, // Event-Listener jetzt auf die echte Hitbox
+        initialScale: 1,
+        initialOffsetX: logicalCanvasSize / 2,
+        initialOffsetY: logicalCanvasSize / 2,
+        minScale: 0.1,  // Scale locked – wir zoomen selbst
+        maxScale: 1,
+        enableDamping: true,
+        dampingFactor: 0.15,
+        onTransform: (state) => {
+          // Nur Pan-Offset übernehmen, Scale kommt von unseren eigenen Handlern
+          zoomState.offsetX = state.offsetX;
+          zoomState.offsetY = state.offsetY;
+        }
+      });
     }
 
-    canvas.addEventListener('click', handleSymbolActivate);
-    canvas.addEventListener('touchend', handleSymbolActivate);
+    // Zoom via Mausrad
+    interactionLayer.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) < 5) return;
+      const zoomingIn = e.deltaY < 0; // Scroll up = reinzoomen
+
+      // Absoluter Screen-Zentrum des Symbols im Viewport (fixed)
+      const rect = symbolContainer.getBoundingClientRect();
+      const symbolScreenX = rect.left + zoomState.offsetX;
+      const symbolScreenY = rect.top + zoomState.offsetY;
+
+      if (zoomingIn) {
+        // === REINZOOMEN: Zoom-toward-cursor ===
+        e.preventDefault();
+
+        // Da Event jetzt auf Vollbild-Canvas liegt, sind e.clientX/Y bereits relativ zum Top-Left
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        // Weltpunkt unter dem Cursor berechnen
+        // Hier: (mouseX - OffsetTotal) / scale
+        const worldX = (mouseX - symbolScreenX) / zoomState.scale;
+        const worldY = (mouseY - symbolScreenY) / zoomState.scale;
+
+        const newScale = Math.max(0.03, Math.min(100, zoomState.scale * 1.15));
+
+        // Offset anpassen:
+        zoomState.offsetX = (mouseX - worldX * newScale) - rect.left;
+        zoomState.offsetY = (mouseY - worldY * newScale) - rect.top;
+        zoomState.scale = newScale;
+
+        // Zoom2D-Offset synchronisieren
+        if (zoomInstance) {
+          zoomInstance.setView({ offsetX: zoomState.offsetX, offsetY: zoomState.offsetY }, false);
+        }
+      } else {
+        // === RAUSZOOMEN: zentriert, Symbol bleibt an seiner Position ===
+        e.preventDefault();
+        zoomState.scale = Math.max(0.03, Math.min(100, zoomState.scale * 0.85));
+      }
+    }, { passive: false });
+
+    // Zoom via Pinch (Mobile) – Symbol bleibt an seiner Position
+    let pinchData = { active: false, startDist: 0, startScale: 1 };
+
+    interactionLayer.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchData.active = true;
+        pinchData.startDist = Math.sqrt(dx * dx + dy * dy);
+        pinchData.startScale = zoomState.scale;
+      }
+    }, { passive: true });
+
+    interactionLayer.addEventListener('touchmove', (e) => {
+      if (pinchData.active && e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (pinchData.startDist > 0) {
+          zoomState.scale = Math.max(0.03, Math.min(100, pinchData.startScale * (dist / pinchData.startDist)));
+        }
+      }
+    }, { passive: true });
+
+    interactionLayer.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinchData.active = false;
+    });
 
 
 
@@ -452,7 +554,7 @@ canvas {
     let photoCounter = 0;
 
     // Handler, der die Auswahl zurücksetzt, wenn außerhalb geklickt wird
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', function (e) {
       if (!e.target.closest('.editable-photo') && !e.target.closest('.control-point') && !e.target.closest('.rotation-handle')) {
         if (selectedPhoto) {
           selectedPhoto.classList.remove('selected');
@@ -470,7 +572,7 @@ canvas {
       // Zufällige Position im sichtbaren Bereich des Fensters
       const randomX = Math.random() * (window.innerWidth - Math.min(originalWidth, window.innerWidth * 0.3));
       const randomY = Math.max(window.innerHeight * 0.1,
-                         Math.random() * (window.innerHeight - Math.min(originalHeight, window.innerHeight * 0.3)));
+        Math.random() * (window.innerHeight - Math.min(originalHeight, window.innerHeight * 0.3)));
 
       photo.style.left = randomX + 'px';
       photo.style.top = randomY + 'px';
@@ -488,7 +590,7 @@ canvas {
         mediaElement.playbackRate = 1.0;
         mediaElement.setAttribute('playsinline', '');
         mediaElement.preload = 'auto';
-        mediaElement.addEventListener('loadeddata', () => { try { mediaElement.play(); } catch(e) {} });
+        mediaElement.addEventListener('loadeddata', () => { try { mediaElement.play(); } catch (e) { } });
         // Merke die Blob-URL für späteres Aufräumen
         photo.dataset.objectUrl = mediaUrl;
       } else {
@@ -496,12 +598,12 @@ canvas {
         mediaElement.src = mediaUrl;
       }
 
-      mediaElement.onload = function() {
+      mediaElement.onload = function () {
         addControlPoints(photo, originalWidth, originalHeight);
       };
 
       if (isGif) {
-        mediaElement.onloadedmetadata = function() {
+        mediaElement.onloadedmetadata = function () {
           addControlPoints(photo, originalWidth, originalHeight);
         };
       }
@@ -512,10 +614,10 @@ canvas {
       closeBtn.title = 'Entfernen';
       closeBtn.addEventListener('click', () => {
         const vid = photo.querySelector('video');
-        if (vid) { try { vid.pause(); } catch(e) {} }
+        if (vid) { try { vid.pause(); } catch (e) { } }
         const url = photo.dataset.objectUrl;
         if (url) {
-          try { URL.revokeObjectURL(url); } catch (e) {}
+          try { URL.revokeObjectURL(url); } catch (e) { }
           delete photo.dataset.objectUrl;
         }
         document.body.removeChild(photo);
@@ -539,7 +641,7 @@ canvas {
       document.body.appendChild(photo);
 
       // Klick-Handler für die Auswahl
-      photo.addEventListener('mousedown', function(e) {
+      photo.addEventListener('mousedown', function (e) {
         if (e.target === photo || e.target === mediaElement) {
           // Vorherige Auswahl entfernen
           if (selectedPhoto && selectedPhoto !== photo) {
@@ -554,7 +656,7 @@ canvas {
       });
 
       // Rotations-Handler
-      rotationHandle.addEventListener('mousedown', function(e) {
+      rotationHandle.addEventListener('mousedown', function (e) {
         e.stopPropagation();
         startRotation(e, photo);
       });
@@ -583,7 +685,7 @@ canvas {
         controlPoint.style.cursor = pos.cursor;
         controlPoint.dataset.position = pos.position;
 
-        controlPoint.addEventListener('mousedown', function(e) {
+        controlPoint.addEventListener('mousedown', function (e) {
           e.stopPropagation();
           startResizing(e, photo, pos.position);
         });
@@ -816,15 +918,15 @@ canvas {
         btn.addEventListener('click', handleToggle);
       }
 
-	      // Aufnahme-Kontext registrieren, damit animate() exakte Frame-Zählung hat
-	      currentRecording = {
-	        recorder,
-	        infinite: frameCount === Infinity,
-	        targetFrameCount: frameCount === Infinity ? Number.POSITIVE_INFINITY : frameCount,
-	        framesCaptured: 0,
-	        stopRequested: false,
-	        cleanup: () => { currentRecording = null; }
-	      };
+      // Aufnahme-Kontext registrieren, damit animate() exakte Frame-Zählung hat
+      currentRecording = {
+        recorder,
+        infinite: frameCount === Infinity,
+        targetFrameCount: frameCount === Infinity ? Number.POSITIVE_INFINITY : frameCount,
+        framesCaptured: 0,
+        stopRequested: false,
+        cleanup: () => { currentRecording = null; }
+      };
 
 
       // Start mit kleinem timeslice generiert regelmäßige Blobs
@@ -833,7 +935,7 @@ canvas {
       // rAF-Schleife nur für den ∞-Stop-Button
       function step() {
         if (stopRequested) {
-          try { recorder.stop(); } catch(e) {}
+          try { recorder.stop(); } catch (e) { }
           return;
         }
         requestAnimationFrame(step);
@@ -867,8 +969,18 @@ canvas {
       }
 
       context.save();
-      context.translate(targetCanvas.width / 2, targetCanvas.height / 2);
-      const minDim = Math.min(targetCanvas.width, targetCanvas.height);
+      if (!forExport && zoomState && targetCanvas === canvas) {
+        // Zoom + Pan: Absoluter Screen-Koordinaten berechnen (Scroll-sicher + Pan!)
+        const rect = symbolContainer.getBoundingClientRect();
+        context.translate(rect.left + zoomState.offsetX, rect.top + zoomState.offsetY);
+        context.scale(zoomState.scale, zoomState.scale);
+      } else {
+        // Export (Foto/GIF): Immer zentriert, kein Zoom
+        context.translate(targetCanvas.width / 2, targetCanvas.height / 2);
+      }
+      const minDim = (forExport || targetCanvas === photoCanvas)
+        ? Math.min(targetCanvas.width, targetCanvas.height)
+        : logicalCanvasSize;
 
       // Parameter abrufen, bei 0 nicht zeichnen
       const textSizePercentage = parseFloat(document.getElementById('textSize').value) || 0;
@@ -1108,8 +1220,8 @@ canvas {
     let stepIndex = 0;
     let currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
 
-	    // Aufnahme-Steuerung (global innerhalb createGraphic)
-	    let currentRecording = null; // { recorder, track, infinite, targetFrameCount, framesCaptured, stopRequested, cleanup }
+    // Aufnahme-Steuerung (global innerhalb createGraphic)
+    let currentRecording = null; // { recorder, track, infinite, targetFrameCount, framesCaptured, stopRequested, cleanup }
 
     let autoSpeedBase = manualSpeed;
     let autoSpeedTarget = autoSpeedBase + currentStep.increment;
@@ -1138,15 +1250,35 @@ canvas {
       // Viewport-relative Größen verwenden
       const viewportSize = Math.min(window.innerWidth, window.innerHeight);
 
-      // Canvas-Größe relativ zum Viewport (75% der Fenstergröße)
-      const canvasSize = Math.floor(viewportSize * 0.75);
+      const oldLogicalSize = logicalCanvasSize;
+      logicalCanvasSize = Math.floor(viewportSize * 0.75);
 
-      canvas.width = canvasSize;
-      canvas.height = canvasSize;
+      // symbolContainer als Layout-Platzhalter in fester Größe
+      symbolContainer.style.width = logicalCanvasSize + 'px';
+      symbolContainer.style.height = logicalCanvasSize + 'px';
 
-      // Aktualisiere auch das Photo-Canvas
-      photoCanvas.width = canvasSize;
-      photoCanvas.height = canvasSize;
+      // Canvas bleibt permanent unklickbar
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      canvas.style.position = 'fixed';
+      canvas.style.top = '0';
+      canvas.style.left = '0';
+      canvas.style.zIndex = '50';
+      canvas.style.pointerEvents = 'none';
+
+      // Photo-Canvas bleibt exakt logische Größe für Export
+      photoCanvas.width = logicalCanvasSize;
+      photoCanvas.height = logicalCanvasSize;
+
+      // Zoom-Offset re-zentrieren basierend auf der Änderung der logischen Größe
+      if (zoomInstance && oldLogicalSize > 0) {
+        const dx = logicalCanvasSize / 2 - oldLogicalSize / 2;
+        const dy = logicalCanvasSize / 2 - oldLogicalSize / 2;
+        zoomInstance.setView({
+          offsetX: zoomState.offsetX + dx,
+          offsetY: zoomState.offsetY + dy
+        }, false);
+      }
     }
 
     // Zeichenfunktion für das Dreieck-Symbol (aktualisiert für 0-Werte)
@@ -1160,6 +1292,13 @@ canvas {
       if (!lastTimestamp) lastTimestamp = timestamp;
       const dt = (timestamp - lastTimestamp) / 1000;
       lastTimestamp = timestamp;
+
+      // Echtzeit-Prüfung der Viewport-Größe (für mobile URL-Leisten-Verschiebungen)
+      if (canvas.width !== window.innerWidth || Math.abs(canvas.height - window.innerHeight) > 1) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+
       if (autoSpeedEnabled) {
         autoSpeedTimer += dt;
         let currentCycleSpeed;
@@ -1191,15 +1330,15 @@ canvas {
             // Hold Phase - konstante Geschwindigkeit
             currentCycleSpeed = autoSpeedTarget;
 
-	      // Wenn Aufnahme läuft: Frame zählen/triggern
-	      if (currentRecording && !currentRecording.stopRequested) {
-	        currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-	        if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-	          try { currentRecording.recorder.stop(); } catch(e) {}
-	          if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch(e) {} }
-	          currentRecording.stopRequested = true;
-	        }
-	      }
+            // Wenn Aufnahme läuft: Frame zählen/triggern
+            if (currentRecording && !currentRecording.stopRequested) {
+              currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
+              if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
+                try { currentRecording.recorder.stop(); } catch (e) { }
+                if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch (e) { } }
+                currentRecording.stopRequested = true;
+              }
+            }
 
           } else {
             // Zyklus abgeschlossen - nächsten Step starten
@@ -1226,16 +1365,37 @@ canvas {
       // Zeichne das Dreieck auf den Hauptcanvas
       drawTriangleOnCanvas(ctx, canvas);
 
-	      // Aufnahme-Frame zählen nach dem Zeichnen
-	      if (currentRecording && !currentRecording.stopRequested) {
-	        currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-	        if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-	          try { currentRecording.recorder.stop(); } catch(e) {}
-	          if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch(e) {} }
-	          currentRecording.stopRequested = true;
-	        }
-	      }
+      // Aufnahme-Frame zählen nach dem Zeichnen
+      if (currentRecording && !currentRecording.stopRequested) {
+        currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
+        if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
+          try { currentRecording.recorder.stop(); } catch (e) { }
+          if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch (e) { } }
+          currentRecording.stopRequested = true;
+        }
+      }
 
+
+      // Hitbox / InteractionLayer dynamisch an Position und Skalierung anpassen
+      if (interactionLayer && zoomState) {
+        const rect = symbolContainer.getBoundingClientRect();
+        const symbolScreenX = rect.left + zoomState.offsetX;
+        const symbolScreenY = rect.top + zoomState.offsetY;
+
+        const minDim = logicalCanvasSize;
+        const triSize = parseFloat(document.getElementById('triangleSize').value) || 30;
+        const textSize = parseFloat(document.getElementById('textSize').value) || 25;
+        // Puffer leicht erhöhen für angenehmeres Greifen
+        // Mindestradius für das Layer (z.B. 70px), damit es auf Mobile immer greifbar bleibt
+        const baseRadius = (minDim * (triSize / 100) + minDim * (textSize / 100) * 0.8) * zoomState.scale;
+        const symbolRadius = Math.max(200, baseRadius);
+
+        // Layergröße und Position setzen
+        interactionLayer.style.width = (symbolRadius * 2) + 'px';
+        interactionLayer.style.height = (symbolRadius * 2) + 'px';
+        interactionLayer.style.left = (symbolScreenX - symbolRadius) + 'px';
+        interactionLayer.style.top = (symbolScreenY - symbolRadius) + 'px';
+      }
 
       requestAnimationFrame(animate);
     }
@@ -1269,7 +1429,7 @@ canvas {
     }
     window.__resizeTimeoutId = setTimeout(() => {
       if (document.getElementById('canvas')) {
-        const resizeCanvasToFitContent = function() {
+        const resizeCanvasToFitContent = function () {
           const canvas = document.getElementById('canvas');
           const photoCanvas = document.querySelector('canvas[style="display: none;"]');
 

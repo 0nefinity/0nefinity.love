@@ -1,0 +1,454 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0ne Lifes Game - identity operators don't exist, so they don't survive</title>
+    <!-- thx Convey -->
+    <link href="/meta.css" rel="stylesheet" />
+    <script src="/meta.js"></script>
+    <script src="/tools/pixi.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <script>
+    (async function() {
+        'use strict';
+
+        // ═══════════════════════════════════════════════════════════════════
+        // KONFIGURATION
+        // ═══════════════════════════════════════════════════════════════════
+        const config = {
+            tokens: '+0, *1',        // Komma-getrennte Tokens
+            spawnChance: 0.001,      // Wahrscheinlichkeit für Root-Spawn pro Frame
+            deathChance: 0.002,      // Wahrscheinlichkeit dass ein Node stirbt
+            childSpawnChance: 0.02,  // Wahrscheinlichkeit dass ein Node ein Child spawnt
+            maxChildren: 4,          // Max Children pro Node
+            spacing: 60,             // Abstand zwischen Parent und Child
+            fontSize: 24,            // Basis-Schriftgröße
+            rotateText: false,       // Text in Richtung drehen
+            paused: false
+        };
+
+        // Geparsete Tokens
+        let parsedTokens = [];
+        let tokenTextures = {};      // token -> { texture, width, height }
+        let operatorTextures = {};   // operator -> { texture, width, height }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PIXI.JS SETUP
+        // ═══════════════════════════════════════════════════════════════════
+        const container = document.getElementById('canvas-container');
+
+        const app = new PIXI.Application();
+        await app.init({
+            resizeTo: container,
+            backgroundAlpha: 0,
+            antialias: true,
+            resolution: window.devicePixelRatio || 1,
+            autoDensity: true
+        });
+        container.appendChild(app.canvas);
+
+        // Container für alle Nodes (wird von zoom.js transformiert)
+        const worldContainer = new PIXI.Container();
+        app.stage.addChild(worldContainer);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ZOOM.JS INTEGRATION
+        // ═══════════════════════════════════════════════════════════════════
+        const zoom = Zoom2D.createZoom2D({
+            container: app.canvas,
+            initialScale: 1,
+            initialOffsetX: app.screen.width / 2,
+            initialOffsetY: app.screen.height / 2,
+            minScale: 0.05,
+            maxScale: 50,
+            wheelSpeed: 0.15,
+            enableDamping: true,
+            dampingFactor: 0.15,
+            onTransform: ({ scale, offsetX, offsetY }) => {
+                worldContainer.scale.set(scale);
+                worldContainer.position.set(offsetX, offsetY);
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TEXT TEXTURE CACHE (High-Res für scharfes Zoomen)
+        // ═══════════════════════════════════════════════════════════════════
+        const HIRES_SCALE = 2;       // Render at 2x for sharpness
+        let cachedFgColor = '#ffffff';
+        let lastColorCheck = 0;
+
+        function getTextColor() {
+            const now = performance.now();
+            if (now - lastColorCheck > 500) {
+                lastColorCheck = now;
+                const styles = getComputedStyle(document.body);
+                cachedFgColor = (styles.getPropertyValue('--text-color') || '#fff').trim();
+            }
+            return cachedFgColor;
+        }
+
+        function createTextTexture(text, fontSize) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scaledSize = fontSize * HIRES_SCALE;
+
+            ctx.font = `bold ${scaledSize}px ui-monospace, monospace`;
+            const metrics = ctx.measureText(text);
+            const width = Math.ceil(metrics.width) + 8;
+            const height = Math.ceil(scaledSize * 1.4);
+
+            canvas.width = width;
+            canvas.height = height;
+
+            ctx.font = `bold ${scaledSize}px ui-monospace, monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = getTextColor();
+            ctx.fillText(text, width / 2, height / 2);
+
+            const texture = PIXI.Texture.from(canvas);
+            return {
+                texture,
+                width: width / HIRES_SCALE,
+                height: height / HIRES_SCALE
+            };
+        }
+
+        function parseTokens() {
+            parsedTokens = config.tokens.split(',').map(t => t.trim()).filter(t => t.length > 0);
+            if (parsedTokens.length === 0) parsedTokens = ['+0', '*1'];
+            rebuildTextureCache();
+        }
+
+        function rebuildTextureCache() {
+            // Alte Texturen aufräumen
+            for (const key in tokenTextures) {
+                tokenTextures[key].texture.destroy(true);
+            }
+            for (const key in operatorTextures) {
+                operatorTextures[key].texture.destroy(true);
+            }
+            tokenTextures = {};
+            operatorTextures = {};
+
+            // Neue Texturen erstellen
+            for (const token of parsedTokens) {
+                tokenTextures[token] = createTextTexture(token, config.fontSize);
+                // Operator ist das erste Zeichen des Tokens
+                const op = token.charAt(0);
+                if (!operatorTextures[op]) {
+                    operatorTextures[op] = createTextTexture(op, config.fontSize);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SPRITE POOL
+        // ═══════════════════════════════════════════════════════════════════
+        const spritePool = [];
+
+        function getSprite() {
+            let sprite = spritePool.pop();
+            if (!sprite) {
+                sprite = new PIXI.Sprite();
+                sprite.anchor.set(0.5);
+            }
+            sprite.visible = true;
+            return sprite;
+        }
+
+        function recycleSprite(sprite) {
+            sprite.visible = false;
+            if (sprite.parent) sprite.parent.removeChild(sprite);
+            spritePool.push(sprite);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // NODE SYSTEM
+        // ═══════════════════════════════════════════════════════════════════
+        let nodeIdCounter = 0;
+        const nodes = new Map();
+
+        function createNode(x, y, tokenIndex, parent = null, angle = 0) {
+            const id = nodeIdCounter++;
+            const token = parsedTokens[tokenIndex];
+            const operator = token.charAt(0);
+
+            // Container für diesen Node (Token + evtl. Operator zum Parent)
+            const nodeContainer = new PIXI.Container();
+            nodeContainer.position.set(x, y);
+            worldContainer.addChild(nodeContainer);
+
+            // Token-Sprite
+            const tokenData = tokenTextures[token];
+            const tokenSprite = getSprite();
+            tokenSprite.texture = tokenData.texture;
+            tokenSprite.scale.set(1 / HIRES_SCALE);
+            tokenSprite.position.set(0, 0);
+            nodeContainer.addChild(tokenSprite);
+
+            // Operator-Sprite (zwischen Parent und diesem Node)
+            let operatorSprite = null;
+            if (parent) {
+                const opData = operatorTextures[parent.operator];
+                operatorSprite = getSprite();
+                operatorSprite.texture = opData.texture;
+                operatorSprite.scale.set(1 / HIRES_SCALE);
+                // Operator auf halber Strecke zum Parent
+                const halfDist = config.spacing / 2;
+                const opX = -Math.cos(angle) * halfDist;
+                const opY = -Math.sin(angle) * halfDist;
+                operatorSprite.position.set(opX, opY);
+                if (config.rotateText) {
+                    operatorSprite.rotation = angle;
+                }
+                nodeContainer.addChild(operatorSprite);
+            }
+
+            // Rotation anwenden wenn aktiviert
+            if (config.rotateText && parent) {
+                tokenSprite.rotation = angle;
+            }
+
+            const node = {
+                id,
+                token,
+                tokenIndex,
+                operator,
+                x,
+                y,
+                angle,
+                parent,
+                children: [],
+                container: nodeContainer,
+                tokenSprite,
+                operatorSprite,
+                childCount: 0,
+                alive: true
+            };
+
+            if (parent) {
+                parent.children.push(node);
+                parent.childCount++;
+            }
+
+            nodes.set(id, node);
+            return node;
+        }
+
+        function killNode(node) {
+            if (!node.alive) return;
+            node.alive = false;
+
+            // Rekursiv alle Children töten
+            for (const child of [...node.children]) {
+                killNode(child);
+            }
+
+            // Sprites recyclen
+            recycleSprite(node.tokenSprite);
+            if (node.operatorSprite) {
+                recycleSprite(node.operatorSprite);
+            }
+
+            // Container entfernen
+            worldContainer.removeChild(node.container);
+            node.container.destroy();
+
+            nodes.delete(node.id);
+
+            // Aus Parent entfernen
+            if (node.parent) {
+                const idx = node.parent.children.indexOf(node);
+                if (idx !== -1) node.parent.children.splice(idx, 1);
+            }
+        }
+
+        function spawnChild(parentNode) {
+            if (!parentNode.alive) return;
+            if (parentNode.childCount >= config.maxChildren) return;
+
+            // Random Token auswählen
+            const tokenIndex = Math.floor(Math.random() * parsedTokens.length);
+
+            // Random Winkel (360°)
+            const angle = Math.random() * Math.PI * 2;
+
+            // Position berechnen
+            const childX = parentNode.x + Math.cos(angle) * config.spacing;
+            const childY = parentNode.y + Math.sin(angle) * config.spacing;
+
+            createNode(childX, childY, tokenIndex, parentNode, angle);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // RANDOM SPAWN POSITION (über den ganzen Screen verteilt)
+        // ═══════════════════════════════════════════════════════════════════
+        function getRandomSpawnPosition() {
+            // Berechne sichtbaren Bereich basierend auf Zoom/Pan
+            const scale = worldContainer.scale.x;
+            const offsetX = worldContainer.position.x;
+            const offsetY = worldContainer.position.y;
+
+            // Sichtbarer Bereich in World-Koordinaten
+            const minX = -offsetX / scale;
+            const minY = -offsetY / scale;
+            const maxX = (app.screen.width - offsetX) / scale;
+            const maxY = (app.screen.height - offsetY) / scale;
+
+            // Random Position im sichtbaren Bereich (mit Padding)
+            const padding = 50;
+            return {
+                x: minX + padding + Math.random() * (maxX - minX - padding * 2),
+                y: minY + padding + Math.random() * (maxY - minY - padding * 2)
+            };
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SIMULATION LOOP
+        // ═══════════════════════════════════════════════════════════════════
+        function simulationStep() {
+            if (parsedTokens.length === 0) return;
+
+            // 1. Root Spawn aus dem Nichts (random auf dem Screen)
+            if (Math.random() < config.spawnChance) {
+                const pos = getRandomSpawnPosition();
+                const tokenIndex = Math.floor(Math.random() * parsedTokens.length);
+                createNode(pos.x, pos.y, tokenIndex, null, 0);
+            }
+
+            // 2. Für jeden lebenden Node
+            const currentNodes = Array.from(nodes.values());
+            for (const node of currentNodes) {
+                if (!node.alive) continue;
+
+                // Death Check
+                if (Math.random() < config.deathChance) {
+                    killNode(node);
+                    continue;
+                }
+
+                // Child Spawn Check
+                if (Math.random() < config.childSpawnChance) {
+                    spawnChild(node);
+                }
+            }
+        }
+
+        // Main Loop
+        app.ticker.add(() => {
+            if (!config.paused) {
+                simulationStep();
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CONTROLS PANEL
+        // ═══════════════════════════════════════════════════════════════════
+        const panel = Controls.createPanel({ position: 'left' });
+
+        // Header-Buttons: Pause und Reset
+        panel.addPauseButton({
+            paused: config.paused,
+            title: 'Play/Pause',
+            onChange: (paused) => config.paused = paused
+        });
+
+        panel.addResetButton({
+            icon: '↺',
+            title: 'Alles löschen',
+            onClick: () => {
+                for (const node of [...nodes.values()]) {
+                    if (!node.parent) killNode(node);
+                }
+            }
+        });
+
+        // Metriken-Overlay über dem Panel
+        panel.addMetricsOverlay('stats', {
+            label: '📊 Metriken',
+            collapsed: false,
+            showFps: true,
+            pixiApp: app,
+            updateInterval: 200,
+            getData: () => {
+                const counts = {};
+                for (const token of parsedTokens) {
+                    counts[token] = 0;
+                }
+                for (const node of nodes.values()) {
+                    if (node.alive && counts[node.token] !== undefined) {
+                        counts[node.token]++;
+                    }
+                }
+                return {
+                    items: parsedTokens.map(token => ({ label: token, value: counts[token] })),
+                    total: nodes.size,
+                    secondary: [{ label: 'Pool', value: spritePool.length }]
+                };
+            }
+        });
+
+        // Helper für Reset mit Neustart
+        const restart = () => { for (const n of [...nodes.values()]) if (!n.parent) killNode(n); };
+
+        panel
+            .addText('tokens', { label: 'Tokens', value: config.tokens, placeholder: '+0, *1', onChange: v => { config.tokens = v || '+0, *1'; parseTokens(); restart(); } })
+            .addDivider()
+            .addToggle('rotateText', { label: 'Ausrichtung', value: config.rotateText, labelOn: '↻ Rotiert', labelOff: '— Horizontal', onChange: v => { config.rotateText = v; restart(); } })
+            .addDivider()
+            .addRange('spawnChance',      { label: 'Root Spawn', min: 0, max: 1000, step: 1,    value: config.spawnChance,      decimals: 0, onChange: v => config.spawnChance = v })
+            .addRange('deathChance',      { label: 'Tod',        min: 0, max: 1,    step: 0.01, value: config.deathChance,      decimals: 2, onChange: v => config.deathChance = v })
+            .addRange('childSpawnChance', { label: 'Child %',    min: 0, max: 1,    step: 0.01, value: config.childSpawnChance, decimals: 2, onChange: v => config.childSpawnChance = v })
+            .addDivider()
+            .addStepper('maxChildren', { label: 'Max Kinder', min: 1,  max: 12,  step: 1, value: config.maxChildren, onChange: v => config.maxChildren = v })
+            .addRange('spacing',       { label: 'Abstand',    min: 20, max: 150, step: 5, value: config.spacing,     onChange: v => config.spacing = v })
+            .addRange('fontSize',      { label: 'Größe',      min: 10, max: 48,  step: 2, value: config.fontSize,    onChange: v => { config.fontSize = v; rebuildTextureCache(); } })
+        ;
+
+        // ═══════════════════════════════════════════════════════════════════
+        // INIT
+        // ═══════════════════════════════════════════════════════════════════
+        parseTokens();
+
+        // Farbe aktualisieren bei Theme-Wechsel
+        setInterval(() => {
+            const newColor = getTextColor();
+            if (newColor !== cachedFgColor) {
+                cachedFgColor = newColor;
+                rebuildTextureCache();
+            }
+        }, 1000);
+
+        // Resize
+        window.addEventListener('resize', () => {
+            zoom.setView({
+                offsetX: app.screen.width / 2,
+                offsetY: app.screen.height / 2
+            });
+        });
+
+    })();
+    </script>
+</body>
+</html>

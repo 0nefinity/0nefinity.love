@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Isochronic Tone Generator</title>
+
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js"></script>
+  <script src="/tools/controls.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #visualizer-container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      width: 90%;
+      max-width: 800px;
+      height: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div id="visualizer-container">
+    <canvas id="visualizer"></canvas>
+  </div>
+
+  <script>
+    // ============================================
+    // ISOCHRONIC TONE GENERATOR
+    // ============================================
+
+    class ToneGenerator {
+      constructor() {
+        this.audioContext = null;
+        this.oscillator = null;
+        this.gainNode = null;
+        this.analyser = null;
+        this.isPlaying = false;
+
+        // Parameters
+        this.frequency = 440;
+        this.pulseRate = 4; // Hz (pulses per second)
+        this.masterVolume = 0.3;
+
+        // Pulse state
+        this.lastPulseTime = 0;
+        this.pulseState = 0; // 0 = off, 1 = on
+
+        // Animation
+        this.animationId = null;
+      }
+
+      start() {
+        if (this.isPlaying) return;
+
+        // Create AudioContext
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Create oscillator (carrier frequency)
+        this.oscillator = this.audioContext.createOscillator();
+        this.oscillator.type = 'sine'; // Cleanest tone
+        this.oscillator.frequency.setValueAtTime(
+          Math.max(0.01, this.frequency),
+          this.audioContext.currentTime
+        );
+
+        // Create gain node for pulse modulation
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+
+        // Create analyser for visualization
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 2048;
+        this.analyser.smoothingTimeConstant = 0.8;
+
+        // Connect: Oscillator -> Gain -> Analyser -> Destination
+        this.oscillator.connect(this.gainNode);
+        this.gainNode.connect(this.analyser);
+        this.analyser.connect(this.audioContext.destination);
+
+        // Start oscillator
+        this.oscillator.start();
+
+        // Initialize pulse
+        this.isPlaying = true;
+        this.lastPulseTime = this.audioContext.currentTime;
+        this.pulseState = 0;
+
+        // Start animation loop
+        this.animate();
+      }
+
+      stop() {
+        if (!this.isPlaying) return;
+
+        this.isPlaying = false;
+
+        if (this.animationId) {
+          cancelAnimationFrame(this.animationId);
+        }
+
+        if (this.oscillator) {
+          this.oscillator.stop();
+          this.oscillator.disconnect();
+          this.oscillator = null;
+        }
+
+        if (this.gainNode) {
+          this.gainNode.disconnect();
+          this.gainNode = null;
+        }
+
+        if (this.analyser) {
+          this.analyser.disconnect();
+          this.analyser = null;
+        }
+
+        if (this.audioContext) {
+          this.audioContext.close();
+          this.audioContext = null;
+        }
+      }
+
+      setFrequency(freq) {
+        this.frequency = freq;
+        if (this.oscillator && this.audioContext) {
+          // Smooth frequency change to avoid clicks
+          this.oscillator.frequency.exponentialRampToValueAtTime(
+            Math.max(0.01, freq),
+            this.audioContext.currentTime + 0.01
+          );
+        }
+      }
+
+      setPulseRate(rate) {
+        this.pulseRate = rate;
+      }
+
+      setVolume(vol) {
+        this.masterVolume = vol;
+      }
+
+      animate() {
+        if (!this.isPlaying) return;
+
+        const currentTime = this.audioContext.currentTime;
+
+        // Calculate pulse interval
+        const pulseInterval = 1 / this.pulseRate;
+        const timeSinceLastPulse = currentTime - this.lastPulseTime;
+
+        // Toggle pulse state
+        if (timeSinceLastPulse >= pulseInterval / 2) {
+          this.pulseState = 1 - this.pulseState;
+          this.lastPulseTime = currentTime;
+
+          // Apply gain with smooth ramping to avoid clicks
+          const targetGain = this.pulseState * this.masterVolume;
+          const rampTime = Math.min(0.005, pulseInterval / 4); // 5ms or 1/4 pulse
+
+          this.gainNode.gain.cancelScheduledValues(currentTime);
+          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currentTime);
+          this.gainNode.gain.linearRampToValueAtTime(targetGain, currentTime + rampTime);
+        }
+
+        // Visualize
+        this.visualize();
+
+        // Continue animation
+        this.animationId = requestAnimationFrame(() => this.animate());
+      }
+
+      visualize() {
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        if (!this.analyser) return;
+
+        // Set canvas size
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        // Get waveform data
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        this.analyser.getByteTimeDomainData(dataArray);
+
+        // Get CSS colors
+        const styles = getComputedStyle(document.body);
+        const bgColor = styles.getPropertyValue('--bg-color') || '#000';
+        const textColor = styles.getPropertyValue('--text-color') || '#fff';
+
+        // Clear canvas
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw waveform
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = textColor;
+        ctx.beginPath();
+
+        const sliceWidth = canvas.width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = v * canvas.height / 2;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        ctx.stroke();
+      }
+    }
+
+    // ============================================
+    // SETUP
+    // ============================================
+
+    const generator = new ToneGenerator();
+
+    // Controls Panel (like 10sand.html)
+    const panel = Controls.createPanel({ position: 'left' });
+
+    panel.addToggle('playing', {
+      label: 'Ton',
+      value: false,
+      labelOn: 'An',
+      labelOff: 'Aus',
+      onChange: (v) => {
+        if (v) {
+          generator.start();
+        } else {
+          generator.stop();
+        }
+      }
+    });
+
+    panel.addRange('frequency', {
+      label: 'Frequenz (Hz)',
+      min: 0,
+      max: 20000,
+      step: 1,
+      value: 440,
+      decimals: 0,
+      onChange: (v) => generator.setFrequency(v)
+    });
+
+    panel.addRange('pulseRate', {
+      label: 'Pulse (Hz)',
+      min: 0,
+      max: 20000,
+      step: 1,
+      value: 1,
+      decimals: 0,
+      onChange: (v) => generator.setPulseRate(v)
+    });
+
+    panel.addRange('volume', {
+      label: 'Lautstärke',
+      min: 0,
+      max: 1,
+      step: 0.01,
+      value: 0.3,
+      decimals: 2,
+      onChange: (v) => generator.setVolume(v)
+    });
+  </script>
+</body>
+</html>

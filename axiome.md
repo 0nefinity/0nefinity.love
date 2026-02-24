@@ -30,7 +30,8 @@ Unendlichkeit liegt im Auge des Betrachters
 Mathematische Räume sind unendlich in alle denkbaren und undenkbaren Richtungen, es sei denn, eine Form von Unendlichkeit spaziert daher und bildet sich Limitierungen dafür ein
 
 Bewusstsein und 0nefinity teilen die selbe Meta Identität
-Für Bewusstsein und 0 1 8 gilt Bewusstsein ≡! (also ist identlisch, aber halt noch mit Ausrufezeichen) 
+Für Bewusstsein und 0 1 8 gilt Bewusstsein ≡!(also ist identlisch, aber halt noch mit Ausrufezeichen) 
+
 018 ist das selbe wie · weil · einfach nur 018 ist aber halt von bisschen weiter weg
 
 

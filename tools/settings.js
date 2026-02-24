@@ -105,6 +105,8 @@
     // Toggle Panel
     settingsButton.addEventListener('click', (e) => {
         e.stopPropagation();
+		// In case it was hidden by older code / external CSS tweaks, ensure it's not display:none
+		settingsPanel.style.display = '';
         isPanelOpen = !isPanelOpen;
         settingsPanel.classList.toggle('open', isPanelOpen);
         settingsButton.classList.toggle('open', isPanelOpen);
@@ -114,8 +116,9 @@
     document.addEventListener('click', (e) => {
         if (isPanelOpen && !settingsPanel.contains(e.target) && !settingsButton.contains(e.target)) {
             isPanelOpen = false;
-            settingsPanel.style.display = 'none';
-            settingsButton.classList.remove('open');
+			// Hide via CSS (transform/opacity) so it can be reopened reliably
+			settingsPanel.classList.remove('open');
+			settingsButton.classList.remove('open');
         }
     });
 
@@ -159,11 +162,16 @@
     // Menü-Verschiebung beobachten
     const menu = document.querySelector('.menu');
     if (menu) {
-        const observer = new MutationObserver(() => {
-            const isMenuOpen = menu.classList.contains('open');
-            settingsButton.classList.toggle('menu-open', isMenuOpen);
-            settingsPanel.classList.toggle('menu-open', isMenuOpen);
-        });
+		const syncMenuOpenState = () => {
+			const isMenuOpen = menu.classList.contains('open');
+			settingsButton.classList.toggle('menu-open', isMenuOpen);
+			settingsPanel.classList.toggle('menu-open', isMenuOpen);
+		};
+
+		// Initialer Zustand (falls das Menü schon offen ist, wenn settings.js lädt)
+		syncMenuOpenState();
+
+		const observer = new MutationObserver(syncMenuOpenState);
 
         observer.observe(menu, { attributes: true, attributeFilter: ['class'] });
     }

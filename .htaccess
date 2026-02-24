@@ -13,6 +13,9 @@ RewriteCond %{REQUEST_URI} !^/buyPi$
 RewriteRule ^buypi$ /buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ /README [R=302,L]
 
+# README.html -> README.php (server-side Markdown rendering)
+RewriteRule ^README\.html$ /README.php [L]
+
 # Pi-Quadrat Weiterleitung
 RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 
@@ -52,6 +55,15 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.md -f
 RewriteRule ^(.+)$ $1.md [L,QSA]
+
+# --- Color routes ---
+# If the request is exactly one path segment (e.g. /black, /%23ff00aa) and it
+# does not map to an existing file/dir or .html/.md, let tools/color.php decide.
+# tools/color.php will return 200 for valid colors and 404 for invalid tokens.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !\.
+RewriteRule ^([^/]+)/?$ /tools/color.php?c=$1 [L,QSA]
 
 # Offenes Directory Listing (bewusst)
 Options +Indexes

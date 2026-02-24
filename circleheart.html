@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js"></script>
+
+  <title>Circle Heart - Ein Kreis Herz Zusammenhang</title>
+  <!-- heart is a form of circle
+         circle is a form of heart
+         
+         heart is a subset of poking in a circle-->
+  <style>
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="_018-canvas">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const container = canvas.parentElement;
+
+    let w, h, r;
+    let deformationTop = 0;
+    let deformationBottom = 0;
+    let dragMode = 'both'; // 'both' | 'top' | 'bottom' | 'fractalCenter'
+    const GRAB_RADIUS = 20; // px Fangradius für Punkt-Greifen
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let hoveredPoint = null; // 'top' | 'bottom' | 'fractalCenter' | null
+
+    // Fraktal-Zentrum Offset (relativ zu cx, cy)
+    let fractalOffsetX = 0;
+    let fractalOffsetY = 0;
+    let bendMode = 'trueArc'; // 'geometric', 'cos', 'arc', 'sin2', 'trueArc'
+    let showCenter = false;
+    let snapEnabled = false;
+    const SNAP_THRESHOLD = 12; // px Schwelle fürs Einrasten
+
+    // Fraktal-State
+    let isFractal = false;
+    let fractalScale = 0.98; // Darf nun negativ und 0 bis ∞ sein
+    let fractalCount = 200;   // Erlaubt nun 0 und noch viel mehr
+    let mainOpacity = 1.0;
+    let fractalOpacity = 0.7;
+    let fractalRotation = 0; // Rotation pro Schritt in Grad
+
+    // Wave-Parameter
+    let waveFreq = 4;
+    let waveAmp = 0.1;
+
+    // History, Animation State & Toggles
+    let fractalDelay = 0;
+    let showInnerFractals = true;
+    let showOuterFractals = true;
+    const HISTORY_SIZE = 100000;
+    const historyTop = new Float32Array(HISTORY_SIZE);
+    const historyBottom = new Float32Array(HISTORY_SIZE);
+    const historyOffX = new Float32Array(HISTORY_SIZE);
+    const historyOffY = new Float32Array(HISTORY_SIZE);
+    let historyIndex = 0;
+
+    function getHistoricalState(framesAgo) {
+      if (framesAgo <= 0) {
+        return { top: deformationTop, bottom: deformationBottom, offX: fractalOffsetX, offY: fractalOffsetY };
+      }
+      if (framesAgo >= HISTORY_SIZE - 2) framesAgo = HISTORY_SIZE - 2;
+
+      // historyIndex ist der Slot, der als NÄCHSTES neu beschrieben wird
+      // Der jüngste, aktuellste Frame liegt bei historyIndex - 1
+      let idxFloat = historyIndex - 1 - framesAgo;
+
+      // Ins positive Fenster des Arrays rotieren
+      while (idxFloat < 0) idxFloat += HISTORY_SIZE;
+
+      const i1 = Math.floor(idxFloat); // der tiefere Index (entspricht dem älteren Fraktal-Zustand, da framesAgo größer ist)
+      let i2 = Math.ceil(idxFloat);    // der höhere Index (neuerer Fraktal-Zustand)
+      if (i2 >= HISTORY_SIZE) i2 -= HISTORY_SIZE;
+
+      const t = idxFloat - i1;
+
+      return {
+        top: historyTop[i1] * (1 - t) + historyTop[i2] * t,
+        bottom: historyBottom[i1] * (1 - t) + historyBottom[i2] * t,
+        offX: historyOffX[i1] * (1 - t) + historyOffX[i2] * t,
+        offY: historyOffY[i1] * (1 - t) + historyOffY[i2] * t
+      };
+    }
+
+    // Deformations-Funktionen: t ∈ [0,1] → Faktor [0,1]
+    const bendFunctions = {
+      cos: (t) => t,                          // 1 - |cos(θ)| direkt
+      arc: (t) => 1 - Math.sqrt(1 - t * t),   // Pseudo-Kreisbogen auf t
+      sin2: (t) => t * t,                       // sin²-artig (glatt, kein Knick)
+      spiky: (t) => t * t * t,                // Extrem spitzer Verlauf
+      stepped: (t) => Math.floor(t * 10) / 10,// Gestuft
+      wave: (t) => t + Math.sin(t * Math.PI * waveFreq) * waveAmp // Wellenförmig
+    };
+
+    // Zoom-State (wird von zoom.js aktualisiert)
+    let zoomState = { scale: 1, offsetX: 0, offsetY: 0 };
+
+    // Berechne die Bend-Werte für den oberen und unteren Extrempunkt
+    function getBendAtTop() {
+      // θ = π/2: cosT=0, sinT=1
+      if (bendMode === 'geometric') {
+        return 1 - Math.sqrt(0); // sinT - sqrt(|cos|*(1-|cos|)) = 1 - 0 = 1
+      } else if (bendMode === 'trueArc') {
+        return 1 - Math.sqrt(1 - 1 * 1); // t=1 → bend = 1 - 0 = 1
+      } else {
+        return bendFunctions[bendMode](1); // t = 1 - |cos(π/2)| = 1
+      }
+    }
+
+    function getBendAtBottom() {
+      // θ = 3π/2: cosT=0, sinT=-1
+      if (bendMode === 'geometric') {
+        return 1 - Math.sqrt(0); // |sinT| - sqrt(|cos|*(1-|cos|)) = 1 - 0 = 1
+      } else if (bendMode === 'trueArc') {
+        return 1 - Math.sqrt(1 - 1 * 1); // t=1 → bend = 1
+      } else {
+        return bendFunctions[bendMode](1); // t = 1
+      }
+    }
+
+    // Bildschirmposition des oberen/unteren Punktes berechnen
+    function getPointScreenPos(which) {
+      const scale = zoomState.scale;
+      const cx = w / 2;
+      const cy = h / 3;
+      let px, py;
+      if (which === 'top') {
+        // θ = π/2: x = cx + r*0 = cx, y = cy - r*1 + deformationTop * bendTop
+        px = cx;
+        py = cy - r + deformationTop * getBendAtTop();
+      } else {
+        // θ = 3π/2: x = cx + r*0 = cx, y = cy - r*(-1) + deformationBottom * bendBottom
+        px = cx;
+        py = cy + r + deformationBottom * getBendAtBottom();
+      }
+      // Zoom-Transformation anwenden: translate(cx,cy) → scale → translate(-cx,-cy)
+      const sx = cx + (px - cx) * scale;
+      const sy = cy + (py - cy) * scale;
+      return { x: sx, y: sy };
+    }
+
+    // Bildschirmposition des Fraktal-Zentrums berechnen
+    function getFractalCenterScreenPos() {
+      const scale = zoomState.scale;
+      const cx = w / 2;
+      const cy = h / 3;
+      const fcx = cx + fractalOffsetX;
+      const fcy = cy + fractalOffsetY;
+      const sx = cx + (fcx - cx) * scale;
+      const sy = cy + (fcy - cy) * scale;
+      return { x: sx, y: sy };
+    }
+
+    // Bestimme Drag-Modus anhand der Klickposition
+    function detectDragMode(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+
+      // Fraktal-Zentrum hat höchste Priorität (nur wenn Fraktal-Modus an)
+      if (isFractal) {
+        const fc = getFractalCenterScreenPos();
+        const distFC = Math.sqrt((mx - fc.x) ** 2 + (my - fc.y) ** 2);
+        if (distFC <= GRAB_RADIUS) return 'fractalCenter';
+      }
+
+      const top = getPointScreenPos('top');
+      const bottom = getPointScreenPos('bottom');
+
+      const distTop = Math.sqrt((mx - top.x) ** 2 + (my - top.y) ** 2);
+      const distBottom = Math.sqrt((mx - bottom.x) ** 2 + (my - bottom.y) ** 2);
+
+      if (distTop <= GRAB_RADIUS && distTop <= distBottom) return 'top';
+      if (distBottom <= GRAB_RADIUS && distBottom <= distTop) return 'bottom';
+      return 'both';
+    }
+
+    function resize() {
+      w = canvas.width = container.clientWidth;
+      h = canvas.height = container.clientHeight;
+      r = Math.min(w, h) * 0.2;
+      draw();
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Zoom via zoom.js (nur Scroll/Pinch, kein Pan, zentriert)
+    let zoomInstance = null;
+    let isResettingZoom = false;
+    zoomInstance = Zoom2D.createZoom2D({
+      container: container,
+      initialOffsetX: 0,
+      initialOffsetY: 0,
+      shouldIgnoreDrag: () => true,
+      onTransform: (state) => {
+        if (isResettingZoom) return;
+        zoomState.scale = state.scale;
+        // Offset zurücksetzen → Zoom bleibt zentriert
+        if (zoomInstance && (state.offsetX !== 0 || state.offsetY !== 0)) {
+          isResettingZoom = true;
+          zoomInstance.setView({ scale: state.scale, offsetX: 0, offsetY: 0 }, false);
+          isResettingZoom = false;
+        }
+        draw();
+      }
+    });
+
+    // Drag → Deformation (Maus)
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      dragMode = detectDragMode(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const scale = zoomState.scale;
+      if (dragMode === 'fractalCenter') {
+        fractalOffsetX += (e.clientX - lastX) / scale;
+        fractalOffsetY += (e.clientY - lastY) / scale;
+      } else {
+        const delta = (e.clientY - lastY) / scale;
+        if (dragMode === 'top' || dragMode === 'both') deformationTop += delta;
+        if (dragMode === 'bottom' || dragMode === 'both') deformationBottom += delta;
+        if (snapEnabled) {
+          deformationTop = applySnap(deformationTop);
+          deformationBottom = applySnap(deformationBottom);
+        }
+      }
+      lastX = e.clientX;
+      lastY = e.clientY;
+      draw();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      canvas.style.cursor = '';
+    });
+
+    // Cursor und Indikator bei Hover über greifbarem Punkt
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) return;
+      const mode = detectDragMode(e.clientX, e.clientY);
+      canvas.style.cursor = (mode !== 'both') ? 'grab' : '';
+      const newHovered = (mode !== 'both') ? mode : null;
+      if (newHovered !== hoveredPoint) {
+        hoveredPoint = newHovered;
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (hoveredPoint !== null) {
+        hoveredPoint = null;
+        draw();
+      }
+    });
+
+    // Drag → Deformation (Touch, nur 1 Finger)
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        dragMode = detectDragMode(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!isDragging || e.touches.length !== 1) return;
+      const scale = zoomState.scale;
+      if (dragMode === 'fractalCenter') {
+        fractalOffsetX += (e.touches[0].clientX - lastX) / scale;
+        fractalOffsetY += (e.touches[0].clientY - lastY) / scale;
+      } else {
+        const delta = (e.touches[0].clientY - lastY) / scale;
+        if (dragMode === 'top' || dragMode === 'both') deformationTop += delta;
+        if (dragMode === 'bottom' || dragMode === 'both') deformationBottom += delta;
+        if (snapEnabled) {
+          deformationTop = applySnap(deformationTop);
+          deformationBottom = applySnap(deformationBottom);
+        }
+      }
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+      draw();
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      isDragging = false;
+    });
+
+    function getSnapPoints() {
+      // Snap-Punkte: 0 (Kreis), r (50%), -r (inverse 50%)
+      return [0, r, -r];
+    }
+
+    function applySnap(val) {
+      const points = getSnapPoints();
+      for (const sp of points) {
+        if (Math.abs(val - sp) < SNAP_THRESHOLD) return sp;
+      }
+      return val;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+
+      const scale = zoomState.scale;
+      const cx = w / 2;
+      const cy = h / 3;
+      const numPoints = 360;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -cy);
+
+      function drawShapePath(defTop, defBottom) {
+        ctx.beginPath();
+        for (let i = 0; i <= numPoints; i++) {
+          const theta = (i / numPoints) * 2 * Math.PI;
+          const cosT = Math.cos(theta);
+          const sinT = Math.sin(theta);
+          const x = cx + r * cosT;
+          let y;
+
+          // Obere Hälfte (sinT >= 0) → deformationTop, untere → deformationBottom
+          const def = sinT >= 0 ? defTop : defBottom;
+
+          if (bendMode === 'geometric') {
+            const absCos = Math.abs(cosT);
+            const bend = Math.abs(sinT) - Math.sqrt(absCos * (1 - absCos));
+            y = cy - r * sinT + def * bend;
+          } else if (bendMode === 'trueArc') {
+            const thetaNorm = theta / (Math.PI / 2); // 0..4
+            const quadrant = Math.floor(thetaNorm);
+            const s = thetaNorm - quadrant;           // 0..1 innerhalb Quadrant
+            const t = (quadrant % 2 === 0) ? s : (1 - s); // 0→1→0→1→0
+            const bend = 1 - Math.sqrt(1 - t * t);   // konvexer Kreisbogen
+            y = cy - r * sinT + def * bend;
+          } else {
+            const t = 1 - Math.abs(cosT);
+            const bend = bendFunctions[bendMode](t);
+            y = cy - r * sinT + def * bend;
+          }
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      if (isFractal && fractalCount > 0 && Math.abs(fractalScale) > 0) {
+        // Optimierung für "unendlich" viele Spiegelungen:
+        // Culling: Wenn die Skalierung < 0.5px auf dem Bildschirm ist, Abbruch (zu klein)
+        //          Wenn die Skalierung > Max Viewport Size * 10 ist, Abbruch (zu groß/außerhalb)
+
+        const minScaleLimit = 0.5 / (r * scale);
+        const maxScaleLimit = (Math.max(w, h) / r) * 10 / scale;
+
+        const absScale = Math.abs(fractalScale);
+
+        // drawWithScale entfernt, die Logik ist jetzt direkt eingebettet für Inner/Outer Trennung
+
+        const outwardBase = absScale < 1 ? (1 / fractalScale) : fractalScale;
+        const inwardBase = absScale < 1 ? fractalScale : (1 / fractalScale);
+
+        if (Math.abs(Math.abs(fractalScale) - 1.0) > 0.001) {
+          // Outward Loop (äußere Fraktale, f wächst exponentiell)
+          if (showOuterFractals) {
+            for (let i = 1; i <= fractalCount; i++) {
+              const f = Math.pow(outwardBase, i);
+              if (Math.abs(f) > maxScaleLimit) break;
+
+              // Prinzip der Kausalität:
+              // - Zentrum/Offset zieht das absolut KLEINSTE/INNERSTE Fraktal: Delay wächst von innen nach außen.
+              //   Abstand vom innersten zum Target = fractalCount + i
+              const delayIndexOffs = fractalCount + i;
+
+              // - Ränder (Forms) zieht das ORIGINAL: Delay wächst vom Original nach außen (und nach innen).
+              //   Abstand vom Original = i
+              const delayIndexForms = i;
+
+              const stateForms = getHistoricalState(delayIndexForms * fractalDelay);
+              const stateOffs = getHistoricalState(delayIndexOffs * fractalDelay);
+
+              const drawFcx = cx + stateOffs.offX;
+              const drawFcy = cy + stateOffs.offY;
+
+              ctx.save();
+              ctx.translate(drawFcx, drawFcy);
+
+              const rotRad = (i * fractalRotation * Math.PI) / 180;
+              if (rotRad !== 0) ctx.rotate(rotRad);
+
+              ctx.scale(f, f);
+              ctx.translate(-drawFcx, -drawFcy);
+
+              ctx.strokeStyle = `rgba(255, 255, 255, ${fractalOpacity})`;
+              ctx.lineWidth = 2 / (scale * Math.abs(f));
+              drawShapePath(stateForms.top, stateForms.bottom);
+              ctx.restore();
+            }
+          }
+          // Inward Loop (innere Fraktale, f nähert sich 0)
+          if (showInnerFractals) {
+            const minDrawScale = 1.5 / (r * scale); // Mindestgröße: ~1.5px Radius
+            for (let i = 1; i <= fractalCount; i++) {
+              const f = Math.pow(inwardBase, i);
+
+              const delayIndexOffs = fractalCount - i;
+              const delayIndexForms = i;
+
+              const stateForms = getHistoricalState(delayIndexForms * fractalDelay);
+              const stateOffs = getHistoricalState(delayIndexOffs * fractalDelay);
+
+              const drawFcx = cx + stateOffs.offX;
+              const drawFcy = cy + stateOffs.offY;
+
+              // Mindestgröße erzwingen: Jedes Fraktal bleibt sichtbar
+              const absF = Math.abs(f);
+              const clampedAbsF = Math.max(absF, minDrawScale);
+              const drawF = f >= 0 ? clampedAbsF : -clampedAbsF;
+
+              ctx.save();
+              ctx.translate(drawFcx, drawFcy);
+
+              const rotRad = (i * fractalRotation * Math.PI) / 180;
+              if (rotRad !== 0) ctx.rotate(rotRad);
+
+              ctx.scale(drawF, drawF);
+              ctx.translate(-drawFcx, -drawFcy);
+
+              ctx.strokeStyle = `rgba(255, 255, 255, ${fractalOpacity})`;
+              ctx.lineWidth = 2 / (scale * clampedAbsF);
+              drawShapePath(stateForms.top, stateForms.bottom);
+              ctx.restore();
+
+              // Letztes Fraktal: Fläche füllen um Zentrum zu schließen
+              if (i === fractalCount && absF <= minDrawScale) {
+                ctx.save();
+                ctx.translate(drawFcx, drawFcy);
+                if (rotRad !== 0) ctx.rotate(rotRad);
+                ctx.scale(drawF, drawF);
+                ctx.translate(-drawFcx, -drawFcy);
+                ctx.fillStyle = `rgba(255, 255, 255, ${fractalOpacity})`;
+                ctx.fill();
+                ctx.restore();
+              }
+            }
+          }
+        } else if (fractalScale < 0) {
+          drawWithScale(-1, 1);
+        }
+      }
+
+      // Main shape
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${mainOpacity})`;
+      ctx.lineWidth = 2 / scale;
+      drawShapePath(deformationTop, deformationBottom);
+      ctx.restore();
+
+      // Mittelpunkt anzeigen
+      if (showCenter) {
+        const dotR = 5 / scale;
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, dotR, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255, 100, 100, 0.9)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(cx - dotR * 2, cy);
+        ctx.lineTo(cx + dotR * 2, cy);
+        ctx.moveTo(cx, cy - dotR * 2);
+        ctx.lineTo(cx, cy + dotR * 2);
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.5)';
+        ctx.lineWidth = 1 / scale;
+        ctx.stroke();
+      }
+
+      // Hover-Indikator für greifbare Punkte
+      if (hoveredPoint && !isDragging) {
+        let hx, hy;
+        if (hoveredPoint === 'fractalCenter') {
+          const fcx = cx + fractalOffsetX;
+          const fcy = cy + fractalOffsetY;
+          hx = fcx;
+          hy = fcy;
+        } else {
+          // top oder bottom
+          const theta = hoveredPoint === 'top' ? Math.PI / 2 : 3 * Math.PI / 2;
+          const cosT = Math.cos(theta);
+          const sinT = Math.sin(theta);
+          const def = hoveredPoint === 'top' ? deformationTop : deformationBottom;
+          const bendVal = hoveredPoint === 'top' ? getBendAtTop() : getBendAtBottom();
+          hx = cx + r * cosT;
+          hy = cy - r * sinT + def * bendVal;
+        }
+        // Indikator-Punkt
+        ctx.beginPath();
+        ctx.arc(hx, hy, 7 / scale, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function animate() {
+      historyTop[historyIndex] = deformationTop;
+      historyBottom[historyIndex] = deformationBottom;
+      historyOffX[historyIndex] = fractalOffsetX;
+      historyOffY[historyIndex] = fractalOffsetY;
+      historyIndex = (historyIndex + 1) % HISTORY_SIZE;
+
+      draw();
+      requestAnimationFrame(animate);
+    }
+
+    // Fill arrays initially
+    historyTop.fill(deformationTop);
+    historyBottom.fill(deformationBottom);
+    historyOffX.fill(fractalOffsetX);
+    historyOffY.fill(fractalOffsetY);
+
+    animate();
+
+    // Controls Panel
+    const panel = Controls.createPanel({ position: 'left' });
+
+    panel.addResetButton({
+      icon: '↺',
+      title: 'Reset',
+      onClick: () => {
+        location.reload();
+      }
+    });
+    // --- BASIS SEKTION ---
+    panel.beginSection('base');
+
+    panel.addSelect('bendMode', {
+      label: 'Rundung',
+      options: [
+        { value: 'geometric', label: 'Geometrisch' },
+        { value: 'cos', label: 'Cos' },
+        { value: 'sin2', label: 'Sin²' },
+        { value: 'arc', label: 'Pseudo-Kreisbogen' },
+        { value: 'trueArc', label: 'Echter Kreisbogen' },
+        { value: 'spiky', label: 'Spitz (Kubisch)' },
+        { value: 'stepped', label: 'Treppenstufe (Pixel)' },
+        { value: 'wave', label: 'Welle' },
+      ],
+      value: bendMode,
+      onChange: v => {
+        bendMode = v;
+        updateUI();
+        draw();
+      }
+    });
+
+    panel.addSlider('waveFreq', {
+      label: 'Wellen Frequenz',
+      min: -50, max: 50, step: 0.5, value: waveFreq, decimals: 1,
+      onChange: v => { waveFreq = v; draw(); }
+    });
+
+    panel.addSlider('waveAmp', {
+      label: 'Wellen Amplitude',
+      min: -5, max: 5, step: 0.01, value: waveAmp, decimals: 2,
+      onChange: v => { waveAmp = v; draw(); }
+    });
+
+    panel.addSlider('mainOpacity', {
+      label: 'Opacity',
+      min: 0, max: 1, step: 0.01, value: mainOpacity, decimals: 2,
+      onChange: v => { mainOpacity = v; draw(); }
+    });
+
+    panel.addToggle('showCenter', {
+      label: 'Mittelpunkt',
+      value: showCenter,
+      labelOn: 'An',
+      labelOff: 'Aus',
+      onChange: v => { showCenter = v; draw(); }
+    });
+
+    panel.addToggle('snapEnabled', {
+      label: 'Magnet',
+      value: snapEnabled,
+      labelOn: 'An',
+      labelOff: 'Aus',
+      onChange: v => {
+        snapEnabled = v;
+        if (v) {
+          deformationTop = applySnap(deformationTop);
+          deformationBottom = applySnap(deformationBottom);
+        }
+        draw();
+      }
+    });
+
+    panel.endSection();
+
+    // --- FRAKTAL SEKTION ---
+    panel.beginSection('fractal');
+
+    panel.addToggle('isFractal', {
+      label: 'Fraktal-Modus',
+      value: isFractal,
+      labelOn: 'An',
+      labelOff: 'Aus',
+      onChange: v => {
+        isFractal = v;
+        updateUI();
+        draw();
+      }
+    });
+
+
+
+
+
+    panel.addSlider('fractalScale', {
+      label: 'Fraktal Abstand',
+      min: -100, max: 100, step: 0.01, value: fractalScale, decimals: 2,
+      onChange: v => { fractalScale = v; draw(); }
+    });
+
+    panel.addSlider('fractalCount', {
+      label: 'Fraktal Anzahl',
+      min: 0, max: 1000, step: 1, value: fractalCount,
+      onChange: v => { fractalCount = v; draw(); }
+    });
+
+    panel.addSlider('fractalOpacity', {
+      label: 'Fraktal Opacity',
+      min: 0, max: 1, step: 0.01, value: fractalOpacity, decimals: 2,
+      onChange: v => { fractalOpacity = v; draw(); }
+    });
+
+    panel.addSlider('fractalRotation', {
+      label: 'Fraktal Rotation',
+      min: -1000, max: 1000, step: 0.1, value: fractalRotation, decimals: 1,
+      onChange: v => { fractalRotation = v; draw(); }
+    });
+
+    panel.addSlider('fractalDelay', {
+      label: 'Fraktal Verzögerung',
+      min: 0, max: 200, step: 0.01, value: fractalDelay, decimals: 2,
+      onChange: v => { fractalDelay = v; draw(); }
+    });
+
+
+    panel.endSection();
+
+    function updateUI() {
+      // Fractal visibility: only shows settings if mode is ON
+      // (The toggle itself is inside the section, so we need to be careful.
+      // Better: Keep the toggle outside or handle individual rows within the section.)
+      // Let's adjust: Keep the toggle OUTSIDE if it controls the section.
+
+      // For now, let's keep it simple: use showSection and show/hide individual rows if needed.
+      // But a cleaner way is to show/hide the whole section except the trigger.
+
+      // Let's refine the    function updateUI() {
+      const isWave = bendMode === 'wave' || bendMode === 'stepped';
+      panel.setRowVisibility('waveFreq', isWave);
+      panel.setRowVisibility('waveAmp', isWave);
+
+      panel.setRowVisibility('fractalScale', isFractal);
+      panel.setRowVisibility('fractalCount', isFractal);
+      panel.setRowVisibility('fractalOpacity', isFractal);
+      panel.setRowVisibility('fractalRotation', isFractal);
+      panel.setRowVisibility('fractalDelay', isFractal);
+      panel.setRowVisibility('showInnerFractals', isFractal);
+      panel.setRowVisibility('showOuterFractals', isFractal);
+    }
+
+    // Sofortige Ausblendung der Sektionen nach Erstellung
+    updateUI();
+
+  </script>
+</body>
+
+</html>

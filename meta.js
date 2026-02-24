@@ -1,11 +1,11 @@
 // meta.js
 
-// Settings laden
-//const settingsScript = document.createElement('script');
-//settingsScript.src = '/tools/settings.js';
-//settingsScript.defer = true;
-//document.head.appendChild(settingsScript);
+// Tools synchron laden (sofort verfügbar für alle Seiten)
+document.write('<script src="/tools/zoom.js"><\/script>');
+document.write('<script src="/tools/controls.js"><\/script>');
 
+// DOM-Manipulation erst wenn Body existiert
+document.addEventListener('DOMContentLoaded', () => {
 
 const menu = document.createElement('div');
 menu.classList.add('menu');
@@ -59,7 +59,7 @@ const priorityItems = [
     { type: 'heading', text: 'legal stuff first:' },
     { type: 'file', path: 'impressum-und-datenschutz.html', name: 'impressum-und-datenschutz' },
     { type: 'heading', text: 'now the party:' },
-    { type: 'file', path: 'README.html', name: 'README' }
+    { type: 'file', path: 'README.php', name: 'README' }
 ];
 
 // Files to exclude from dynamic content (already in priority items)
@@ -534,3 +534,5 @@ backButton.addEventListener('auxclick', (event) => {
         event.preventDefault();
     }
 });
+
+}); // Ende DOMContentLoaded

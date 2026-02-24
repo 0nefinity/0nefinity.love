@@ -1,0 +1,521 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+<script src="/meta.js"></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+<title>Sprinky - 0neother Slinky</title>
+<style>
+html,body{margin:0;padding:0;background:black;overflow:hidden;touch-action:none}
+canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+// ---------- PLAYFIELD BOUNDS (respektiert Menü) ----------
+let bounds = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+
+// Bestimme die sichtbare rechte Kante des Spielfelds.
+// Wichtig: das Menü kann per CSS transformiert/animiert sein, dann ist offsetWidth
+// NICHT gleich der sichtbaren Breite. getBoundingClientRect() ist hier stabiler.
+function getRightBoundFromMenu() {
+  const menu = document.querySelector('.menu');
+  if (!menu) return innerWidth;
+  const rect = menu.getBoundingClientRect();
+  // Wenn das Menü komplett außerhalb (rechts) ist, soll es keine Bounds wegnehmen.
+  if (!rect || rect.width <= 0 || rect.left >= innerWidth) return innerWidth;
+  return Math.max(0, Math.min(innerWidth, rect.left));
+}
+
+function updateBounds() {
+  bounds.left = 0;
+  // Oben wirklich bis zum sichtbaren Rand (keine Buttons dort)
+  bounds.top = 0;
+  // Rechts endet das sichtbare Spielfeld an der linken Kante des Menüs
+  bounds.right = getRightBoundFromMenu();
+  bounds.bottom = innerHeight;
+}
+
+function resize() {
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+  updateBounds();
+}
+addEventListener("resize", resize);
+
+// Menü-Änderungen beobachten
+function observeMenu() {
+  const menu = document.querySelector('.menu');
+  if (!menu) return;
+  const observer = new MutationObserver(updateBounds);
+  observer.observe(menu, { attributes: true, attributeFilter: ['class'] });
+}
+document.addEventListener('DOMContentLoaded', () => {
+  observeMenu();
+  updateBounds();
+});
+resize();
+
+// ---------- PARAMETERS (live anpassbar) ----------
+	let SEGMENTS = 80;           // Centerline-Segmente (unabhängig von Windungen)
+	let STIFF = 0.35;            // Längen-Feder (Achse)
+	let DAMP = 0.18;
+	let GRAVITY = 0.0;
+	let BEND = 0.25;             // Biege-"Stab" (glättet Krümmung)
+	let DIAMETER = 50;           // Breite des Slinkys
+	let WIRE = 3;                // Strangdicke / Pitch in Ruhe
+	let TURNS = 18;              // echte Anzahl Ringe (Option A)
+	let BOUNCE = 0.4;
+	let FRICTION = 0.9;
+
+	// Abgeleitet
+	let REST = 3;                // wird aus (TURNS*WIRE)/(SEGMENTS-1) berechnet
+	let RADIUS = DIAMETER / 2;
+	function updateDerived() {
+	  RADIUS = DIAMETER / 2;
+	  const L0 = Math.max(1e-6, TURNS * WIRE);
+	  REST = L0 / Math.max(1, (SEGMENTS - 1));
+	}
+	updateDerived();
+
+	// ---------- 3D STATE ----------
+	let pts=[], grabbed=null;
+	let projCache=[]; // pro Frame: projizierte Screen-Positionen für Picking
+
+	// Kamera (sehr simple Orbit-Kamera)
+	const cam = {
+	  yaw: 0.8,
+	  pitch: 0.25,
+	  dist: 900,
+	  fov: 700,
+	  target: { x: 0, y: 0, z: 0 },
+	  pos: { x: 0, y: 0, z: 0 },
+	  right: { x: 1, y: 0, z: 0 },
+	  up: { x: 0, y: -1, z: 0 },
+	  fwd: { x: 0, y: 0, z: 1 }
+	};
+
+	function dot(a,b){return a.x*b.x+a.y*b.y+a.z*b.z}
+	function cross(a,b){return {x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x}}
+	function len(a){return Math.hypot(a.x,a.y,a.z)}
+	function norm(a){const l=len(a)||1e-9; return {x:a.x/l,y:a.y/l,z:a.z/l}}
+	function sub(a,b){return {x:a.x-b.x,y:a.y-b.y,z:a.z-b.z}}
+	function add(a,b){return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z}}
+		function scale(a,s){return {x:a.x*s,y:a.y*s,z:a.z*s}}
+	function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z)}
+	function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+
+	function rotateAroundAxis(v, axis, angle){
+	  // Rodrigues
+	  const a = norm(axis);
+	  const cos = Math.cos(angle), sin = Math.sin(angle);
+	  const d = dot(a, v);
+	  const c = cross(a, v);
+	  return {
+	    x: v.x*cos + c.x*sin + a.x*d*(1-cos),
+	    y: v.y*cos + c.y*sin + a.y*d*(1-cos),
+	    z: v.z*cos + c.z*sin + a.z*d*(1-cos)
+	  };
+	}
+
+	function updateCamera(){
+	  // Welt-"up" für Bildschirm: y nach unten => up ist -y
+	  const upWorld = {x:0,y:-1,z:0};
+	  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+	  const cy=Math.cos(cam.yaw), sy=Math.sin(cam.yaw);
+	  // forward vom Kamera-Standpunkt zum Target (normiert)
+	  cam.fwd = norm({ x: sy*cp, y: -sp, z: cy*cp });
+	  cam.pos = add(cam.target, scale(cam.fwd, -cam.dist));
+		  // Rechtssystem: right = fwd × upWorld
+		  cam.right = norm(cross(cam.fwd, upWorld));
+		  cam.up = norm(cross(cam.right, cam.fwd));
+	}
+
+	function worldToScreen(p){
+	  const v = sub(p, cam.pos);
+	  const x = dot(v, cam.right);
+	  const y = dot(v, cam.up);
+	  const z = dot(v, cam.fwd);
+	  const zz = Math.max(1e-3, z);
+	  return {
+	    x: canvas.width/2 + (x/zz)*cam.fov,
+	    y: canvas.height/2 + (y/zz)*cam.fov,
+	    z: z
+	  };
+	}
+
+	function screenRay(sx, sy){
+	  const x = (sx - canvas.width/2) / cam.fov;
+	  const y = (sy - canvas.height/2) / cam.fov;
+	  // Ray in Kamera-Koords: (x,y,1)
+	  let dir = add(add(scale(cam.right, x), scale(cam.up, y)), cam.fwd);
+	  dir = norm(dir);
+	  return { origin: cam.pos, dir };
+	}
+
+	function intersectRayPlane(ray, planePoint, planeNormal){
+	  const denom = dot(ray.dir, planeNormal);
+	  if (Math.abs(denom) < 1e-6) return planePoint;
+	  const t = dot(sub(planePoint, ray.origin), planeNormal) / denom;
+	  return add(ray.origin, scale(ray.dir, t));
+	}
+
+function initPoints() {
+  pts = [];
+  // Startposition im sichtbaren Bereich (Mitte des Playfields)
+  const centerX = (bounds.left + bounds.right) / 2;
+  const startY = bounds.top + 50;
+	  updateDerived();
+	  cam.target.x = centerX;
+	  cam.target.y = startY + 120;
+	  cam.target.z = 0;
+  for(let i=0;i<SEGMENTS;i++){
+    pts.push({
+      x: centerX,
+	      y: startY + i*REST,
+	      z: 0,
+	      vx:0,vy:0,vz:0
+    });
+  }
+}
+initPoints();
+
+// ---------- INPUT ----------
+		let orbiting=false;
+		let orbitStart={x:0,y:0};
+		let orbitYaw=0, orbitPitch=0;
+		const ORBIT_SENS = 0.005;
+
+		function startOrbit(p){
+		  orbiting=true;
+		  orbitStart=p;
+		  orbitYaw=cam.yaw;
+		  orbitPitch=cam.pitch;
+		}
+		function doOrbit(p){
+		  const dx=p.x-orbitStart.x;
+		  const dy=p.y-orbitStart.y;
+		  cam.yaw = orbitYaw + dx*ORBIT_SENS;
+		  cam.pitch = clamp(orbitPitch - dy*ORBIT_SENS, -1.25, 1.25);
+		}
+
+	function pick(x,y){
+	  // pick in Screen-Space (projCache wird in draw() aktualisiert)
+	  let best=null, bestD=22;
+	  for(let i=0;i<pts.length;i++){
+	    const sp = projCache[i];
+	    if(!sp) continue;
+	    const d = Math.hypot(sp.x-x, sp.y-y);
+	    if(d < bestD){ bestD=d; best=pts[i]; }
+	  }
+	  return best;
+	}
+function pos(e){return e.touches?
+  {x:e.touches[0].clientX,y:e.touches[0].clientY}:
+  {x:e.clientX,y:e.clientY}}
+
+		canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+		canvas.onmousedown=e=>{
+		  const p = pos(e);
+		  // Left-click: point drag if possible, otherwise orbit
+		  if(e.button === 0){
+		    const hit = pick(p.x, p.y);
+		    if(hit){
+		      grabbed = hit;
+		      orbiting = false;
+		    } else {
+		      grabbed = null;
+		      startOrbit(p);
+		    }
+		  } else {
+		    // Right/middle click -> orbit
+		    grabbed = null;
+		    startOrbit(p);
+		  }
+		};
+		canvas.onmousemove=e=>{
+		  const p = pos(e);
+		  if(grabbed){
+		    updateCamera();
+		    const ray = screenRay(p.x, p.y);
+		    const hit = intersectRayPlane(ray, grabbed, cam.fwd);
+		    grabbed.x = hit.x; grabbed.y = hit.y; grabbed.z = hit.z;
+		    grabbed.vx=grabbed.vy=grabbed.vz=0;
+		    return;
+		  }
+		  if(orbiting) doOrbit(p);
+		};
+		onmouseup=()=>{ grabbed=null; orbiting=false; };
+
+		canvas.ontouchstart=e=>{
+		  e.preventDefault();
+		  const p = pos(e);
+		  const hit = pick(p.x, p.y);
+		  if(hit){
+		    grabbed = hit;
+		    orbiting = false;
+		  } else {
+		    grabbed = null;
+		    startOrbit(p);
+		  }
+		};
+		canvas.ontouchmove=e=>{
+		  e.preventDefault();
+		  const p = pos(e);
+		  if(grabbed){
+		    updateCamera();
+		    const ray = screenRay(p.x, p.y);
+		    const hit = intersectRayPlane(ray, grabbed, cam.fwd);
+		    grabbed.x = hit.x; grabbed.y = hit.y; grabbed.z = hit.z;
+		    grabbed.vx=grabbed.vy=grabbed.vz=0;
+		    return;
+		  }
+		  if(orbiting) doOrbit(p);
+		};
+		ontouchend=()=>{ grabbed=null; orbiting=false; };
+
+		canvas.addEventListener('wheel', (e)=>{
+		  e.preventDefault();
+		  const k = 1 + e.deltaY*0.001;
+		  cam.dist = clamp(cam.dist * k, 120, 1600);
+		}, {passive:false});
+
+// ---------- PHYSICS ----------
+function step(){
+	  pts.forEach(p=>{if(p!==grabbed)p.vy+=GRAVITY});
+
+  // springs
+  for(let i=0;i<pts.length-1;i++){
+    let a=pts[i], b=pts[i+1];
+	    let dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z;
+	    let d=Math.hypot(dx,dy,dz)||0.001;
+	    let nx=dx/d, ny=dy/d, nz=dz/d;
+    let f=(d-REST)*STIFF;
+	    let dv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny+(b.vz-a.vz)*nz;
+    f+=dv*DAMP;
+	    if(a!==grabbed){a.vx+=f*nx;a.vy+=f*ny;a.vz+=f*nz}
+	    if(b!==grabbed){b.vx-=f*nx;b.vy-=f*ny;b.vz-=f*nz}
+  }
+
+  // bending
+  for(let i=1;i<pts.length-1;i++){
+    let a=pts[i-1],b=pts[i],c=pts[i+1];
+	    let fx=(a.x+c.x-2*b.x)*BEND;
+	    let fy=(a.y+c.y-2*b.y)*BEND;
+	    let fz=(a.z+c.z-2*b.z)*BEND;
+	    if(b!==grabbed){b.vx+=fx;b.vy+=fy;b.vz+=fz}
+  }
+
+  // integrate + walls (respektiert bounds/Menü)
+	  // NOTE: Beim Rendern wird die Spirale um jeden Punkt um bis zu RADIUS
+  // versetzt (Helix-Offset). Damit am Boden/Seiten nicht "abgeschnitten" wird,
+  // kollidieren wir mit einem Padding.
+	  const pad = RADIUS + 6;
+
+  // Controls-Panel als Hindernis (damit Sprinky nicht darunter "durchläuft")
+  let panelRect = null;
+  try {
+    if (typeof panel !== 'undefined' && panel?.el?.getBoundingClientRect) {
+      panelRect = panel.el.getBoundingClientRect();
+    }
+  } catch (_) {}
+
+  pts.forEach(p=>{
+    if(p===grabbed)return;
+	    p.x+=p.vx; p.y+=p.vy; p.z+=p.vz;
+	    p.vx*=0.999; p.vy*=0.999; p.vz*=0.999;
+
+    // Wände mit dynamischen bounds
+    const leftWall = bounds.left + pad;
+    const rightWall = bounds.right - pad;
+    const topWall = bounds.top + pad;
+    const bottomWall = bounds.bottom - pad;
+
+    if(p.x < leftWall) {
+      p.x = leftWall;
+      p.vx *= -BOUNCE; p.vy *= FRICTION;
+    }
+    if(p.x > rightWall) {
+      p.x = rightWall;
+      p.vx *= -BOUNCE; p.vy *= FRICTION;
+    }
+    if(p.y < topWall) {
+      p.y = topWall;
+      p.vy *= -BOUNCE; p.vx *= FRICTION;
+    }
+    if(p.y > bottomWall) {
+      p.y = bottomWall;
+      p.vy *= -BOUNCE; p.vx *= FRICTION;
+    }
+
+    // Kollision mit dem Settings/Controls Panel (AABB, mit Padding)
+    if (panelRect) {
+      const rL = panelRect.left - pad;
+      const rR = panelRect.right + pad;
+      const rT = panelRect.top - pad;
+      const rB = panelRect.bottom + pad;
+      if (p.x > rL && p.x < rR && p.y > rT && p.y < rB) {
+        const dL = Math.abs(p.x - rL);
+        const dR = Math.abs(rR - p.x);
+        const dT = Math.abs(p.y - rT);
+        const dB = Math.abs(rB - p.y);
+        const m = Math.min(dL, dR, dT, dB);
+        if (m === dL) {
+          p.x = rL;
+          p.vx *= -BOUNCE; p.vy *= FRICTION;
+        } else if (m === dR) {
+          p.x = rR;
+          p.vx *= -BOUNCE; p.vy *= FRICTION;
+        } else if (m === dT) {
+          p.y = rT;
+          p.vy *= -BOUNCE; p.vx *= FRICTION;
+        } else {
+          p.y = rB;
+          p.vy *= -BOUNCE; p.vx *= FRICTION;
+        }
+      }
+    }
+  });
+}
+
+// ---------- RENDER (performance optimiert - kein shadowBlur!) ----------
+	function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+	  updateCamera();
+
+  // Zeichne Spirale mit 3D-Effekt + Regenbogenfarben
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+	  // arclength (für echte Windungen, Option A)
+	  const s = new Array(pts.length);
+	  s[0]=0;
+	  for(let i=0;i<pts.length-1;i++) s[i+1]=s[i]+dist(pts[i],pts[i+1]);
+	  const L = Math.max(1e-6, s[s.length-1]);
+
+	  // Parallel-Transport Frame entlang der Centerline (stabiler als Frenet)
+	  let tPrev = norm(sub(pts[1], pts[0]));
+	  let base = Math.abs(tPrev.z) < 0.9 ? {x:0,y:0,z:1} : {x:0,y:1,z:0};
+	  let nPrev = norm(cross(base, tPrev));
+	  if(len(nPrev) < 1e-6) nPrev = {x:1,y:0,z:0};
+
+	  projCache.length = pts.length;
+	  for(let i=0;i<pts.length;i++) projCache[i] = worldToScreen(pts[i]);
+
+  for(let i=0;i<pts.length-1;i++){
+	    const p=pts[i];
+	    const p2=pts[i+1];
+	    const tCur = norm(sub(p2, p));
+
+	    // Frame fortschreiben
+	    const axis = cross(tPrev, tCur);
+	    const axisLen = len(axis);
+	    if(axisLen > 1e-6){
+	      const ang = Math.atan2(axisLen, clamp(dot(tPrev, tCur), -1, 1));
+	      nPrev = rotateAroundAxis(nPrev, axis, ang);
+	      // orthonormalisieren
+	      const proj = dot(nPrev, tCur);
+	      nPrev = norm({x:nPrev.x - tCur.x*proj, y:nPrev.y - tCur.y*proj, z:nPrev.z - tCur.z*proj});
+	    }
+	    const bPrev = cross(tCur, nPrev);
+	    tPrev = tCur;
+
+	    // echte Windungen: θ über Bogenlänge
+	    const theta = 2*Math.PI * TURNS * (s[i] / L);
+	    const theta2 = 2*Math.PI * TURNS * (s[i+1] / L);
+	    const c1 = Math.cos(theta), s1 = Math.sin(theta);
+	    const c2 = Math.cos(theta2), s2 = Math.sin(theta2);
+	    const off1 = { x:(nPrev.x*c1 + bPrev.x*s1)*RADIUS, y:(nPrev.y*c1 + bPrev.y*s1)*RADIUS, z:(nPrev.z*c1 + bPrev.z*s1)*RADIUS };
+	    const off2 = { x:(nPrev.x*c2 + bPrev.x*s2)*RADIUS, y:(nPrev.y*c2 + bPrev.y*s2)*RADIUS, z:(nPrev.z*c2 + bPrev.z*s2)*RADIUS };
+	    const depth = s1; // -1..+1 (Front/Back-Effekt)
+
+    // Tiefeneffekt (ohne shadowBlur für Performance)
+    let alpha=0.5+depth*0.4;
+    let width=2+depth*2.5;
+
+    // Regenbogenfarbe
+	    let hue=(i/pts.length)*360;
+    ctx.strokeStyle=`hsla(${hue},100%,${55+depth*15}%,${Math.max(0.3,alpha)})`;
+    ctx.lineWidth=Math.max(1.5,width);
+
+	    // projiziere Offsets
+	    const sp1 = worldToScreen(add(p, off1));
+	    const sp2 = worldToScreen(add(p2, off2));
+	    ctx.beginPath();
+	    ctx.moveTo(sp1.x, sp1.y);
+	    ctx.lineTo(sp2.x, sp2.y);
+	    ctx.stroke();
+  }
+}
+
+// ---------- CONTROLS PANEL ----------
+const panel = Controls.createPanel({ position: 'center' });
+
+panel
+  .addToggle('gravity', {
+    label: 'Gravity',
+    value: false,
+    labelOn: 'AN',
+    labelOff: 'AUS',
+    onChange: v => GRAVITY = v ? 0.3 : 0
+  })
+  .addDivider()
+	  .addStepper('segments', {
+    label: 'Segmente',
+    min: 20, max: 150, step: 10, value: SEGMENTS,
+		    onChange: v => { SEGMENTS = v; updateDerived(); initPoints(); }
+  })
+	  .addStepper('diameter', {
+	    label: 'Durchmesser',
+	    min: 10, max: 160, step: 5, value: DIAMETER,
+	    onChange: v => { DIAMETER = v; updateDerived(); }
+	  })
+	  .addStepper('wire', {
+	    label: 'Strangdicke',
+	    min: 1, max: 12, step: 0.5, value: WIRE, decimals: 1,
+	    onChange: v => { WIRE = v; updateDerived(); }
+	  })
+	  .addStepper('turns', {
+	    label: 'Windungen',
+	    min: 3, max: 60, step: 1, value: TURNS,
+	    onChange: v => { TURNS = v; updateDerived(); }
+	  })
+  .addDivider()
+  .addStepper('stiff', {
+    label: 'Steifheit',
+    min: 0.05, max: 1, step: 0.05, value: STIFF, decimals: 2,
+    onChange: v => STIFF = v
+  })
+  .addStepper('damp', {
+    label: 'Dämpfung',
+    min: 0.01, max: 0.5, step: 0.02, value: DAMP, decimals: 2,
+    onChange: v => DAMP = v
+  })
+  .addStepper('bend', {
+    label: 'Biegung',
+    min: 0.05, max: 1, step: 0.05, value: BEND, decimals: 2,
+    onChange: v => BEND = v
+  })
+  .addDivider()
+	  // REST wird aus (Windungen*Strangdicke)/(Segmente-1) abgeleitet
+  .addStepper('bounce', {
+    label: 'Bounce',
+    min: 0, max: 1, step: 0.1, value: BOUNCE, decimals: 1,
+    onChange: v => BOUNCE = v
+  });
+
+// ---------- LOOP ----------
+(function loop(){
+  step(); draw();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

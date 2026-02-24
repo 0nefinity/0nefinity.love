@@ -1,0 +1,576 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+  <script src="/meta.js"></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+  <title>Sand Prototype</title>
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 1; image-rendering: pixelated; }
+    .hint {
+      position: fixed;
+      left: 1rem;
+      top: 1rem;
+      z-index: 2;
+      font: 12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      opacity: 0.75;
+      user-select: none;
+      pointer-events: none;
+      max-width: min(60ch, calc(100vw - 2rem));
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="hint">
+    Click to stamp text as sand. Shift+Click = erase. UI panels block sand.
+  </div>
+
+  <script>
+    // --- Canvas + grid simulation (CPU prototype) ---
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+
+	    const Material = { EMPTY: 0, SAND: 1, OBSTACLE: 2 };
+
+			    let cellSize = 10;     // px per cell (bigger = visible glyphs, less CPU)
+    let W = 0, H = 0;
+    let grid = null;      // Uint8Array W*H
+		    let glyph = null;     // Uint16Array W*H (Unicode codepoint per sand cell; 0 = none)
+		    let obstacle = null;  // Uint8Array W*H (1 = blocked by UI or floor)
+	    let viewW = 0, viewH = 0; // canvas pixel size
+
+			    // Glyph sprite cache (draw each sand grain as its own character)
+			    let glyphCacheKey = '';
+			    const glyphSpriteByCode = []; // codePoint:number -> HTMLCanvasElement (array is faster than Map)
+
+	    // UI params
+    let paused = false;
+    let stampTextValue = '0';
+		    let stampFontPx = 18; // in grid-cells (not screen pixels)
+		    let stampSuperSample = 2; // render text mask at higher res to preserve holes (0,8,9,...) when downsampling
+		    let grainMode = 'match'; // 'match' (small glyph follows stamped char) | 'fixed' (all grains use one glyph)
+		    let grainTextValue = '0';
+    let brushRadius = 6;  // in grid-cells
+
+    // Offscreen for text rasterization
+    const stampCanvas = document.createElement('canvas');
+    const stampCtx = stampCanvas.getContext('2d');
+
+			    // Cache pre-rasterized text masks so stamping while dragging is fast.
+			    // Keyed by text+fontPx+supersample. Does NOT depend on cellSize.
+			    const stampMaskCache = new Map();
+
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+	    function firstCodePoint(s, fallback = 48) {
+	      const arr = Array.from(String(s || ''));
+	      return (arr.length ? (arr[0].codePointAt(0) || fallback) : fallback);
+	    }
+	    let fixedGrainCp = firstCodePoint(grainTextValue, 48);
+
+			    function getGlyphSprite(codePoint, fgCss) {
+			      const cp = (codePoint && codePoint > 0) ? codePoint : 48; // fallback '0'
+			      let sprite = glyphSpriteByCode[cp];
+			      if (sprite) return sprite;
+			      const ch = String.fromCodePoint(cp);
+			      sprite = document.createElement('canvas');
+			      sprite.width = Math.max(1, cellSize);
+			      sprite.height = Math.max(1, cellSize);
+			      const gctx = sprite.getContext('2d');
+			      gctx.clearRect(0, 0, cellSize, cellSize);
+			      gctx.fillStyle = fgCss;
+			      gctx.textAlign = 'center';
+			      gctx.textBaseline = 'middle';
+			      gctx.font = `700 ${Math.max(8, Math.floor(cellSize * 1.05))}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+			      // Slight nudge to look visually centered across fonts
+			      gctx.fillText(ch, cellSize * 0.5, cellSize * 0.52);
+			      glyphSpriteByCode[cp] = sprite;
+			      return sprite;
+			    }
+
+    function resize() {
+      const ww = Math.max(1, window.innerWidth | 0);
+      const hh = Math.max(1, window.innerHeight | 0);
+
+	      // Canvas in screen pixels (so we can draw glyphs per cell)
+	      viewW = ww;
+	      viewH = hh;
+	      canvas.width = viewW;
+	      canvas.height = viewH;
+
+	      W = Math.max(40, Math.floor(viewW / cellSize));
+	      H = Math.max(40, Math.floor(viewH / cellSize));
+	      grid = new Uint8Array(W * H);
+		      glyph = new Uint16Array(W * H);
+		      obstacle = new Uint8Array(W * H);
+		      updateUiObstaclesIfNeeded(true);
+    }
+
+    function isUiElement(el) {
+      return !!(el && (el.closest('.menu') || el.closest('.ctrl-panel') || el.closest('.settings-panel') || el.closest('.settings-button') || el.closest('.back-button')));
+    }
+
+	    let uiObstacleSig = '';
+		let uiObsQueued = false;
+		let uiObsForce = false;
+		function queueUiObstacleUpdate(force = false) {
+		  uiObsForce = uiObsForce || !!force;
+		  if (uiObsQueued) return;
+		  uiObsQueued = true;
+		  Promise.resolve().then(() => {
+		    uiObsQueued = false;
+		    const f = uiObsForce;
+		    uiObsForce = false;
+		    updateUiObstaclesIfNeeded(f);
+		  });
+		}
+
+		let uiMoveObserver = null;
+		let uiBodyObserver = null;
+		function installUiObstacleObservers() {
+		  if (uiMoveObserver) return;
+		  const selector = '.menu, .ctrl-panel, .settings-panel, .settings-button, .back-button';
+		  uiMoveObserver = new MutationObserver(() => {
+		    // IMPORTANT: run as microtask (not rAF) so obstacles clear BEFORE the next draw()
+		    queueUiObstacleUpdate(false);
+		  });
+
+		  const observeEl = (el) => {
+		    if (!el || el.nodeType !== 1) return;
+		    if (el.__uiObstacleObserved) return;
+		    el.__uiObstacleObserved = true;
+		    uiMoveObserver.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+		  };
+
+		  // Observe current UI elements
+		  document.querySelectorAll(selector).forEach(observeEl);
+
+		  // Observe future UI elements (e.g. settings.js injected later)
+		  uiBodyObserver = new MutationObserver((mutations) => {
+		    for (const m of mutations) {
+		      for (const n of (m.addedNodes || [])) {
+		        if (!n || n.nodeType !== 1) continue;
+		        if (n.matches && n.matches(selector)) observeEl(n);
+		        if (n.querySelectorAll) n.querySelectorAll(selector).forEach(observeEl);
+		      }
+		    }
+		    queueUiObstacleUpdate(false);
+		  });
+		  uiBodyObserver.observe(document.body, { childList: true, subtree: true });
+		}
+
+	    function computeUiObstacleRects() {
+	      const selectors = ['.menu', '.ctrl-panel', '.settings-panel', '.settings-button', '.back-button'];
+	      const els = selectors.flatMap(sel => Array.from(document.querySelectorAll(sel)));
+	      const rects = [];
+	      for (const el of els) {
+	        const r = el.getBoundingClientRect();
+	        if (r.width <= 0 || r.height <= 0) continue;
+	        const x0 = clamp(Math.floor(r.left / cellSize), 0, W - 1);
+	        const y0 = clamp(Math.floor(r.top / cellSize), 0, H - 1);
+	        const x1 = clamp(Math.ceil(r.right / cellSize), 0, W);
+	        const y1 = clamp(Math.ceil(r.bottom / cellSize), 0, H);
+	        rects.push([x0, y0, x1, y1]);
+	      }
+	      return rects;
+	    }
+
+	    function updateUiObstaclesIfNeeded(force = false) {
+	      if (!grid || !obstacle) return;
+	      const rects = computeUiObstacleRects();
+	      const sig = `${W}x${H}|${cellSize}|` + rects.map(r => r.join(',')).join(';');
+	      if (!force && sig === uiObstacleSig) return;
+	      uiObstacleSig = sig;
+
+	      // Rebuild obstacle mask
+	      obstacle.fill(0);
+	      // Floor boundary
+	      const floorY = H - 1;
+	      for (let x = 0; x < W; x++) obstacle[floorY * W + x] = 1;
+
+	      // UI rectangles + clear sand under UI
+	      for (const [x0, y0, x1, y1] of rects) {
+	        for (let y = y0; y < y1; y++) {
+	          let idx = y * W + x0;
+	          for (let x = x0; x < x1; x++, idx++) {
+	            obstacle[idx] = 1;
+	            if (grid[idx] === Material.SAND) {
+	              grid[idx] = Material.EMPTY;
+	              glyph[idx] = 0;
+	            }
+	          }
+	        }
+	      }
+	    }
+
+    function stampCircle(gx, gy, radius, value) {
+      const r2 = radius * radius;
+      const x0 = clamp(gx - radius, 0, W - 1);
+      const x1 = clamp(gx + radius, 0, W - 1);
+      const y0 = clamp(gy - radius, 0, H - 2);
+      const y1 = clamp(gy + radius, 0, H - 2);
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const dx = x - gx, dy = y - gy;
+          if (dx * dx + dy * dy > r2) continue;
+          const i = y * W + x;
+	          if (obstacle && obstacle[i]) continue;
+          grid[i] = value;
+	          if (value !== Material.SAND) glyph[i] = 0;
+        }
+      }
+    }
+
+		    function getStampMask(text, fontPx, ss) {
+			      const t = (String(text || '0') || '0').slice(0, 64);
+			      const key = `${t}|${fontPx}|${ss}`;
+			      const cached = stampMaskCache.get(key);
+			      if (cached) return cached;
+			
+			      const chars = Array.from(t.length ? t : '0');
+			      const pad = 6;
+			
+			      // Measure text width in *grid cells*
+			      stampCtx.setTransform(1, 0, 0, 1, 0, 0);
+			      stampCtx.font = `700 ${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+			      const charWidths = chars.map(ch => Math.max(1, stampCtx.measureText(ch).width));
+			      const textW = charWidths.reduce((a, b) => a + b, 0);
+			      const w = Math.ceil(textW) + pad * 2;
+			      const h = Math.ceil(fontPx * 1.2) + pad * 2;
+			
+			      // Render into supersampled offscreen canvas (preserves holes in 0/8/9/P/A/...)
+			      stampCanvas.width = w * ss;
+			      stampCanvas.height = h * ss;
+			      // IMPORTANT: keep background transparent, otherwise alpha is 255 everywhere and we'd stamp a filled rectangle.
+			      stampCtx.setTransform(ss, 0, 0, ss, 0, 0);
+			      stampCtx.clearRect(0, 0, w, h);
+			      stampCtx.font = `700 ${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+			      stampCtx.textAlign = 'left';
+			      stampCtx.textBaseline = 'middle';
+			      stampCtx.fillStyle = 'white';
+			      stampCtx.fillText(t, pad, h / 2);
+			
+			      // Precompute x-ranges in *cell units* so each stamped cell can map to a character.
+			      const xEnds = new Array(chars.length);
+			      let cx = pad;
+			      for (let i = 0; i < chars.length; i++) {
+			        cx += charWidths[i];
+			        xEnds[i] = cx;
+			      }
+			      const xToCi = new Uint16Array(w);
+			      let ci = 0;
+			      for (let x = 0; x < w; x++) {
+			        const xc = x + 0.5;
+			        while (ci < xEnds.length - 1 && xc >= xEnds[ci]) ci++;
+			        xToCi[x] = ci;
+			      }
+			
+			      const img = stampCtx.getImageData(0, 0, w * ss, h * ss).data;
+			
+			      // Alpha threshold: higher avoids fuzzy fills + helps keep counters (holes) clean.
+			      const alphaThresh = 96;
+			      const dx = [];
+			      const dy = [];
+			      const cp = [];
+			      const xOff = -(w >> 1);
+			      const yOff = -(h >> 1);
+			
+			      for (let cy = 0; cy < h; cy++) {
+			        for (let cx2 = 0; cx2 < w; cx2++) {
+			          // Downsample ss×ss block => decide if this *cell* is part of the glyph.
+			          let maxA = 0;
+			          const base = (cy * ss) * (w * ss) + (cx2 * ss);
+			          for (let sy = 0; sy < ss; sy++) {
+			            let row = (base + sy * (w * ss)) * 4 + 3;
+			            for (let sx = 0; sx < ss; sx++, row += 4) {
+			              const a = img[row];
+			              if (a > maxA) maxA = a;
+			            }
+			          }
+			          if (maxA < alphaThresh) continue;
+			
+			          dx.push(xOff + cx2);
+			          dy.push(yOff + cy);
+			          const which = xToCi[cx2] | 0;
+			          cp.push(chars[which].codePointAt(0) || 48);
+			        }
+			      }
+			
+			      const mask = {
+			        dx: new Int16Array(dx),
+			        dy: new Int16Array(dy),
+			        cp: new Uint16Array(cp)
+			      };
+			      stampMaskCache.set(key, mask);
+			      return mask;
+		    }
+
+		    function stampTextAt(text, gx, gy, fontPx) {
+			      const ss = clamp(stampSuperSample | 0, 1, 4);
+			      const mask = getStampMask(text, fontPx | 0, ss);
+			      const fixedCp = fixedGrainCp;
+			
+			      for (let k = 0; k < mask.dx.length; k++) {
+			        const x = gx + mask.dx[k];
+			        const y = gy + mask.dy[k];
+			        if (x < 0 || x >= W || y < 0 || y >= H - 1) continue;
+			        const i = y * W + x;
+			        if (obstacle && obstacle[i]) continue;
+			        grid[i] = Material.SAND;
+			        glyph[i] = (grainMode === 'fixed') ? fixedCp : mask.cp[k];
+			      }
+		    }
+
+	    let dirFlip = false;
+	    let frameId = 0;
+	    let uiCheckCounter = 0;
+    function stepSand() {
+		      // Fallback (in case observers miss something): re-check occasionally.
+		      if ((uiCheckCounter++ & 31) === 0) updateUiObstaclesIfNeeded(false);
+	      frameId++;
+
+      const leftFirst = dirFlip;
+      dirFlip = !dirFlip;
+
+      for (let y = H - 2; y >= 0; y--) {
+        if (leftFirst) {
+          for (let x = 0; x < W; x++) updateCell(x, y);
+        } else {
+          for (let x = W - 1; x >= 0; x--) updateCell(x, y);
+        }
+      }
+    }
+
+    function updateCell(x, y) {
+      const i = y * W + x;
+      if (grid[i] !== Material.SAND) return;
+	      const gi = glyph[i];
+
+      const below = i + W;
+	      if (!obstacle[below] && grid[below] === Material.EMPTY) {
+        grid[below] = Material.SAND;
+	        glyph[below] = gi;
+        grid[i] = Material.EMPTY;
+	        glyph[i] = 0;
+        return;
+      }
+
+	      // Deterministic cheap pseudo-random: avoids calling performance.now() per cell.
+	      const rnd = (x * 73856093 ^ y * 19349663 ^ frameId) & 1;
+      const dxA = rnd ? -1 : 1;
+      const dxB = -dxA;
+
+      const xA = x + dxA;
+      if (xA >= 0 && xA < W) {
+        const ia = below + dxA;
+	        if (!obstacle[ia] && grid[ia] === Material.EMPTY) {
+          grid[ia] = Material.SAND;
+	          glyph[ia] = gi;
+          grid[i] = Material.EMPTY;
+	          glyph[i] = 0;
+          return;
+        }
+      }
+      const xB = x + dxB;
+      if (xB >= 0 && xB < W) {
+        const ib = below + dxB;
+	        if (!obstacle[ib] && grid[ib] === Material.EMPTY) {
+          grid[ib] = Material.SAND;
+	          glyph[ib] = gi;
+          grid[i] = Material.EMPTY;
+	          glyph[i] = 0;
+          return;
+        }
+      }
+    }
+
+    function draw() {
+		      const styles = getComputedStyle(document.body);
+		      const bgCss = (styles.getPropertyValue('--bg-color') || '#000').trim();
+		      const fgCss = (styles.getPropertyValue('--text-color') || '#fff').trim();
+		      const key = `${cellSize}|${fgCss}`;
+		      if (key !== glyphCacheKey) {
+		        glyphCacheKey = key;
+			        glyphSpriteByCode.length = 0;
+		      }
+
+	      // Clear background
+	      ctx.fillStyle = bgCss;
+	      ctx.fillRect(0, 0, viewW, viewH);
+
+			      // Draw each sand cell as its own glyph
+			      const fixedSprite = (grainMode === 'fixed') ? getGlyphSprite(fixedGrainCp, fgCss) : null;
+	      for (let y = 0; y < H; y++) {
+	        let idx = y * W;
+	        const py = y * cellSize;
+	        for (let x = 0; x < W; x++, idx++) {
+	          if (grid[idx] !== Material.SAND) continue;
+			          const sprite = fixedSprite || getGlyphSprite(glyph[idx] || 48, fgCss);
+			          ctx.drawImage(sprite, x * cellSize, py);
+	        }
+	      }
+    }
+
+    function loop() {
+	      // While holding (even without moving), keep stamping so sand flows continuously.
+	      if (pointerDown && pointerHasPos) {
+	        const now = performance.now();
+	        if ((now - lastHoldPaintAt) >= HOLD_PAINT_INTERVAL_MS) {
+	          lastHoldPaintAt = now;
+	          const rect = canvas.getBoundingClientRect();
+	          const gx = clamp(Math.floor((pointerClientX - rect.left) / cellSize), 0, W - 1);
+	          const gy = clamp(Math.floor((pointerClientY - rect.top) / cellSize), 0, H - 2);
+	          if (pointerShiftKey) {
+	            stampCircle(gx, gy, brushRadius, Material.EMPTY);
+	          } else {
+	            stampTextAt(stampTextValue, gx, gy, stampFontPx);
+	          }
+	        }
+	      }
+      if (!paused) stepSand();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // --- Interaction ---
+	    const HOLD_PAINT_INTERVAL_MS = 30; // ~33 stamps/sec max while holding
+    let pointerDown = false;
+	    let pointerHasPos = false;
+	    let pointerClientX = 0;
+	    let pointerClientY = 0;
+	    let pointerShiftKey = false;
+	    let lastHoldPaintAt = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+      const hovered = document.elementFromPoint(e.clientX, e.clientY);
+      if (isUiElement(hovered)) return;
+      pointerDown = true;
+	      pointerHasPos = true;
+	      pointerClientX = e.clientX;
+	      pointerClientY = e.clientY;
+	      pointerShiftKey = !!e.shiftKey;
+      canvas.setPointerCapture(e.pointerId);
+      onPointer(e);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pointerDown) return;
+	      pointerHasPos = true;
+	      pointerClientX = e.clientX;
+	      pointerClientY = e.clientY;
+	      pointerShiftKey = !!e.shiftKey;
+      onPointer(e);
+    });
+	    canvas.addEventListener('pointerup', () => { pointerDown = false; pointerHasPos = false; });
+	    canvas.addEventListener('pointercancel', () => { pointerDown = false; pointerHasPos = false; });
+
+	    let lastPaintGX = -9999;
+	    let lastPaintGY = -9999;
+	    let lastPaintShift = false;
+	    function onPointer(e) {
+	      // Save last position so holding without moving can keep painting.
+	      pointerHasPos = true;
+	      pointerClientX = e.clientX;
+	      pointerClientY = e.clientY;
+	      pointerShiftKey = !!e.shiftKey;
+
+      const rect = canvas.getBoundingClientRect();
+	      const gx = clamp(Math.floor((e.clientX - rect.left) / cellSize), 0, W - 1);
+	      const gy = clamp(Math.floor((e.clientY - rect.top) / cellSize), 0, H - 2);
+	      // Avoid doing expensive stamps repeatedly when pointer events report the same cell.
+	      if (gx === lastPaintGX && gy === lastPaintGY && !!e.shiftKey === lastPaintShift) return;
+	      lastPaintGX = gx;
+	      lastPaintGY = gy;
+	      lastPaintShift = !!e.shiftKey;
+	      // Prevent an immediate double-stamp (event + hold loop) in the same moment.
+	      lastHoldPaintAt = performance.now();
+      if (e.shiftKey) {
+        stampCircle(gx, gy, brushRadius, Material.EMPTY);
+      } else {
+        stampTextAt(stampTextValue, gx, gy, stampFontPx);
+      }
+    }
+
+    // --- Controls panel ---
+    const panel = (window.Controls && Controls.createPanel)
+      ? Controls.createPanel({ position: 'left' })
+      : null;
+
+    if (panel) {
+      panel.addToggle('pause', {
+        label: 'Pause', value: paused,
+        labelOn: 'An', labelOff: 'Aus',
+        onChange: v => paused = v
+      });
+		      // controls.js exposes addText() (textarea)
+	      panel.addText('text', {
+        label: 'Text',
+        value: stampTextValue,
+        placeholder: 'z.B. 0 oder 018',
+        onChange: v => stampTextValue = (v || '0').split('\n')[0]
+      });
+		      panel.addSelect('grainMode', {
+		        label: 'Korn',
+		        options: [
+		          { value: 'match', label: 'klein = groß (pro Ziffer)' },
+		          { value: 'fixed', label: 'klein = fix' }
+		        ],
+		        value: grainMode,
+		        onChange: v => grainMode = v
+		      });
+		      panel.addText('grainText', {
+		        label: 'Kleines Zeichen',
+		        value: grainTextValue,
+		        placeholder: 'z.B. 0 (nur 1 Zeichen wird benutzt)',
+		        onChange: v => {
+		          grainTextValue = (v || '0').split('\n')[0];
+		          fixedGrainCp = firstCodePoint(grainTextValue, 48);
+		        }
+		      });
+      panel.addStepper('font', {
+        label: 'Font',
+        min: 10, max: 90, step: 2, value: stampFontPx, decimals: 0,
+        onChange: v => stampFontPx = v | 0
+      });
+		      panel.addStepper('ss', {
+		        label: 'Holes',
+		        min: 1, max: 4, step: 1, value: stampSuperSample, decimals: 0,
+		        onChange: v => stampSuperSample = v | 0
+		      });
+      panel.addStepper('brush', {
+        label: 'Brush',
+        min: 2, max: 40, step: 1, value: brushRadius, decimals: 0,
+        onChange: v => brushRadius = v | 0
+      });
+      panel.addStepper('cell', {
+        label: 'Scale',
+	        min: 6, max: 28, step: 1, value: cellSize, decimals: 0,
+	        onChange: v => { cellSize = v | 0; resize(); }
+      });
+
+      // Clear button (custom row, styled like ctrl-toggle)
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.innerHTML = '<label class="ctrl-label">Reset</label><button class="ctrl-toggle">Clear</button>';
+      row.querySelector('button').addEventListener('click', () => {
+        grid.fill(Material.EMPTY);
+	        glyph.fill(0);
+		        updateUiObstaclesIfNeeded(true);
+      });
+      panel.bodyEl.appendChild(row);
+	      // Ensure UI obstacles are masked immediately after panel exists.
+		      updateUiObstaclesIfNeeded(true);
+		      installUiObstacleObservers();
+    }
+
+    // Init
+    window.addEventListener('resize', resize);
+    resize();
+    loop();
+  </script>
+</body>
+</html>

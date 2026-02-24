@@ -40,3 +40,8 @@ oder siebzehnminusfünf
 Oder 
 
 Jede Rechnung kann als Wort ausgedrückt werden und so kann jede Zahl aus beliebig vielen Kombinationen von Wörtern eindeutig (oder manchmal weniger eindeutig) kreiert werden.
+
+
+
+
+language delivers advanced unitär number system free of charge

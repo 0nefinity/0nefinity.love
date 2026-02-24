@@ -1,7 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+<script src="/meta.js"></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
 <title>Slinky Simulator 2D</title>
 <style>
 html,body{margin:0;padding:0;background:black;overflow:hidden}
@@ -116,24 +119,53 @@ function step(){
 // ---------- RENDER ----------
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.strokeStyle="cyan";
-  ctx.lineWidth=2;
-  ctx.shadowColor="cyan";
-  ctx.shadowBlur=15;
 
-  ctx.beginPath();
-  for(let i=0;i<pts.length;i++){
+  // Zeichne Spirale mit 3D-Effekt (aber 2D Physik!)
+  for(let i=0;i<pts.length-1;i++){
     let p=pts[i];
-    let t=i*SPIRAL_TURNS;
-    let n=i<pts.length-1?
-      {x:pts[i+1].y-p.y,y:-(pts[i+1].x-p.x)}:{x:0,y:0};
-    let l=Math.hypot(n.x,n.y)||1;
-    n.x/=l; n.y/=l;
-    let ox=n.x*Math.sin(t)*SPIRAL_RADIUS;
-    let oy=n.y*Math.sin(t)*SPIRAL_RADIUS;
-    i?ctx.lineTo(p.x+ox,p.y+oy):ctx.moveTo(p.x+ox,p.y+oy);
+    let t=i*SPIRAL_TURNS*Math.PI*2;
+
+    // Tangente (Richtung der Slinky-Achse)
+    let dx=pts[i+1].x-p.x, dy=pts[i+1].y-p.y;
+    let len=Math.hypot(dx,dy)||1;
+    let tx=dx/len, ty=dy/len;
+
+    // Normale (senkrecht zur Tangente)
+    let nx=-ty, ny=tx;
+
+    // 3D Helix: cos für X/Y offset, sin für Z-Tiefe
+    let cosT=Math.cos(t), sinT=Math.sin(t);
+    let ox=nx*cosT*SPIRAL_RADIUS;
+    let oy=ny*cosT*SPIRAL_RADIUS;
+    let oz=sinT*SPIRAL_RADIUS; // Z-Tiefe (nicht gerendert, nur für Effekte)
+
+    // Tiefeneffekt: vorne (oz>0) heller & dicker, hinten dunkler & dünner
+    let depth=oz/SPIRAL_RADIUS; // -1 bis +1
+    let alpha=0.4+depth*0.4; // 0.0 bis 0.8
+    let width=1+depth*1.5; // -0.5 bis 2.5
+
+    ctx.strokeStyle=`rgba(0,255,255,${Math.max(0.1,alpha)})`;
+    ctx.lineWidth=Math.max(0.5,width);
+    ctx.shadowColor="cyan";
+    ctx.shadowBlur=depth>0?15:5;
+
+    ctx.beginPath();
+    ctx.moveTo(p.x+ox,p.y+oy);
+
+    // Nächster Punkt
+    let p2=pts[i+1];
+    let t2=(i+1)*SPIRAL_TURNS*Math.PI*2;
+    let dx2=i<pts.length-2?pts[i+2].x-p2.x:dx;
+    let dy2=i<pts.length-2?pts[i+2].y-p2.y:dy;
+    let len2=Math.hypot(dx2,dy2)||1;
+    let nx2=-dy2/len2, ny2=dx2/len2;
+    let cosT2=Math.cos(t2), sinT2=Math.sin(t2);
+    let ox2=nx2*cosT2*SPIRAL_RADIUS;
+    let oy2=ny2*cosT2*SPIRAL_RADIUS;
+
+    ctx.lineTo(p2.x+ox2,p2.y+oy2);
+    ctx.stroke();
   }
-  ctx.stroke();
   ctx.shadowBlur=0;
 }
 
