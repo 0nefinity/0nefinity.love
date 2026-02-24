@@ -1,0 +1,1443 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+  <script src="/meta.js"></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
+
+  <title>1 Sand out of 0 (or what you want)</title>
+	<!-- 0    1    ∞ 
+	     1    0   sand-->
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    #pixi-container { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 1; }
+    #pixi-container canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="pixi-container"></div>
+
+  <script src="/tools/pixi.js"></script>
+  <script>
+    // --- PixiJS Sand Simulation ---
+
+    // PixiJS Application (wird async initialisiert)
+    let pixiApp = null;
+    let worldContainer = null;  // Container für Sand (wird gezoomt/gepannt)
+    let sandContainer = null;   // Container für Sand-Sprites
+
+    // Zoom/Pan State (focusWorld-Pattern wie in bibelaufnpunkt.html)
+    const ZOOM_CONFIG = {
+      min: 0.00001,
+      max: 10000,
+      speed: 0.03,
+      initial: 1.0,
+      // Damping (wie OrbitControls in shadows.html)
+      enableDamping: true,
+      dampingFactor: 0.5  // 0.1 = langsam stoppen, 0.5 = schnell stoppen
+    };
+    let focusWorld = { x: 0, y: 0 };  // Welcher World-Punkt ist im Bildschirm-Zentrum
+    let scale = ZOOM_CONFIG.initial;   // Zoom-Faktor (unbegrenzt)
+
+    // Zoom-Damping State
+    let targetScale = ZOOM_CONFIG.initial;  // Ziel-Scale (wohin wir zoomen wollen)
+    let targetFocusWorld = { x: 0, y: 0 };  // Ziel-FocusWorld
+
+    // Sprite-Pool für Performance
+    const spritePool = [];
+    let activeSprites = [];     // Aktuell verwendete Sprites
+
+    // Glyph-Textures (aus Atlas)
+    let glyphTextures = {};     // codePoint -> PIXI.Texture
+    let glyphAtlasTexture = null;
+
+	    // Font for sand glyphs: default to whatever the body/menu uses.
+	    const defaultSandFontFamily =
+	      (window.getComputedStyle ? getComputedStyle(document.body).fontFamily : '') ||
+	      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+	    let sandFontFamily = defaultSandFontFamily;
+
+		    const Material = { EMPTY: 0, SAND: 1, OBSTACLE: 2 };
+
+			    let cellSize = 10;     // px per cell (bigger = visible glyphs, less CPU)
+    let W = 0, H = 0;
+    // Grid-Offset: Erlaubt dem Grid in negative Richtungen zu wachsen
+    // gridOffsetX/Y = Wie viele Zellen das Grid nach links/oben verschoben ist
+    // World-Koordinate (0,0) entspricht Grid-Zelle (gridOffsetX, gridOffsetY)
+    let gridOffsetX = 0, gridOffsetY = 0;
+    let grid = null;      // Uint8Array W*H
+		    let glyph = null;     // Uint16Array W*H (Unicode codepoint per sand cell; 0 = none)
+		    let obstacle = null;  // Uint8Array W*H (1 = blocked by UI or floor)
+		    let velocity = null;  // Float32Array W*H (vertical velocity for gravity mode)
+	    let viewW = 0, viewH = 0; // canvas pixel size
+
+		    // === High-Resolution Glyph System ===
+		    // Rendert Glyphen in hoher Auflösung für scharfes Zoomen
+		    const HIRES_FONT_SIZE = 64;    // Hohe Auflösung für scharfe Glyphen
+		    const HIRES_PADDING = 4;       // Padding um Glyphen
+		    const GLYPH_ATLAS_COLS = 16;   // Spalten im Atlas
+		    const GLYPH_ATLAS_ROWS = 16;   // Zeilen im Atlas
+
+		    let hiresGlyphCache = [];      // codePoint -> { sx, sy, slotSize }
+		    let hiresAtlasCanvas = null;
+		    let hiresAtlasCtx = null;
+		    let hiresAtlasNextIndex = 0;
+		    let hiresAtlasTexture = null;
+		    let hiresCacheKey = '';        // Cache-Key für Font-Änderungen
+		    // Cache for resolved colors to avoid forcing layout on every frame
+			    let cachedBgCss = '#000';
+			    let cachedFgCss = '#fff';
+			    let lastFgCss = '#fff';         // Letzte verwendete Vordergrundfarbe für Atlas
+			    let lastStyleUpdateFrame = -1;
+			    const STYLE_REFRESH_INTERVAL_FRAMES = 30; // how often to refresh CSS colors from the DOM
+
+	    // UI params
+    let paused = false;
+    let stampTextValue = '0 1 ∞';
+		    let stampFontPx = 18; // in grid-cells (not screen pixels)
+		    let stampSuperSample = 1; // supersampling factor for text mask rendering
+		    let grainMode = 'match'; // 'match' (small glyph follows stamped char) | 'fixed' (all grains use one glyph)
+		    let grainTextValue = '0 1 ∞';
+
+    // Gravity params
+    let useGravity = false;       // toggle: false = constant fall, true = realistic gravity
+    let gravityMs2 = 9.8;         // gravity in m/s² (Earth = 9.8)
+    const CELLS_PER_METER = 10;   // scale: how many cells = 1 meter
+
+    // Offscreen for text rasterization
+    const stampCanvas = document.createElement('canvas');
+    const stampCtx = stampCanvas.getContext('2d');
+
+			    // Cache pre-rasterized text masks so stamping while dragging is fast.
+			    // Keyed by text+fontPx+supersample. Does NOT depend on cellSize.
+			    const stampMaskCache = new Map();
+
+		    // Pre-warm the stamp mask cache for given text.
+		    // Synchronous: die teure Berechnung passiert direkt nach dem Ändern,
+		    // damit das eigentliche Sand-Malen danach maximal flüssig ist.
+		    function prewarmStampCache(text) {
+		      if (!text) return;
+		      const ss = clamp(stampSuperSample | 0, 1, 4);
+		      const fontPx = stampFontPx | 0;
+		      // Nur EIN mal die vollständige Maske vorberechnen – keine extra Durchläufe pro Zeichen.
+		      getStampMask(text, fontPx, ss);
+		    }
+
+	    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    // Bresenham line algorithm - calls callback for each grid cell on the line
+    function forEachCellOnLine(x0, y0, x1, y1, callback) {
+      const dx = Math.abs(x1 - x0);
+      const dy = Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy;
+      let x = x0, y = y0;
+
+      while (true) {
+        callback(x, y);
+        if (x === x1 && y === y1) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+    }
+
+		    function firstCodePoint(s, fallback = 32 /* was 48 = '0' as fallback */) {
+		      const arr = Array.from(String(s || ''));
+		      return (arr.length ? (arr[0].codePointAt(0) || fallback) : fallback);
+		    }
+		    let fixedGrainCp = firstCodePoint(grainTextValue, 32 /* was 48 = '0' as fallback */);
+
+		    // Berechnet die Slot-Größe im Atlas
+		    function getHiresSlotSize() {
+		      return HIRES_FONT_SIZE + HIRES_PADDING * 2;
+		    }
+
+		    // Stellt sicher, dass der High-Res Atlas existiert und zum Font passt
+		    function ensureHiresAtlas() {
+		      const key = `${sandFontFamily}`;
+		      if (key !== hiresCacheKey) {
+		        hiresCacheKey = key;
+		        hiresGlyphCache = [];
+		        hiresAtlasNextIndex = 0;
+		        glyphTextures = {};
+		        hiresAtlasTexture = null;
+		      }
+		      if (!hiresAtlasCanvas) {
+		        const slotSize = getHiresSlotSize();
+		        hiresAtlasCanvas = document.createElement('canvas');
+		        hiresAtlasCanvas.width = GLYPH_ATLAS_COLS * slotSize;
+		        hiresAtlasCanvas.height = GLYPH_ATLAS_ROWS * slotSize;
+		        hiresAtlasCtx = hiresAtlasCanvas.getContext('2d');
+		      }
+		    }
+
+		    // Rendert eine Glyphe in hoher Auflösung in den Atlas
+		    function getHiresGlyph(codePoint, fgCss) {
+		      const cp = (codePoint && codePoint > 0) ? codePoint : 32;
+		      let data = hiresGlyphCache[cp];
+		      if (data) return data;
+
+		      ensureHiresAtlas();
+
+		      const slotSize = getHiresSlotSize();
+		      const maxSlots = GLYPH_ATLAS_COLS * GLYPH_ATLAS_ROWS;
+		      let index = hiresAtlasNextIndex++;
+		      if (index >= maxSlots) {
+		        // Atlas voll - leeren und von vorne
+		        hiresGlyphCache = [];
+		        hiresAtlasNextIndex = 0;
+		        hiresAtlasCtx.clearRect(0, 0, hiresAtlasCanvas.width, hiresAtlasCanvas.height);
+		        glyphTextures = {};
+		        hiresAtlasTexture = null;
+		        index = hiresAtlasNextIndex++;
+		      }
+
+		      const col = index % GLYPH_ATLAS_COLS;
+		      const row = Math.floor(index / GLYPH_ATLAS_COLS);
+		      const sx = col * slotSize;
+		      const sy = row * slotSize;
+
+		      // Glyphe in hoher Auflösung rendern
+		      const ch = String.fromCodePoint(cp);
+		      const ctx = hiresAtlasCtx;
+
+		      ctx.clearRect(sx, sy, slotSize, slotSize);
+		      ctx.fillStyle = fgCss;
+		      ctx.font = `700 ${HIRES_FONT_SIZE}px ${sandFontFamily}`;
+		      ctx.textAlign = 'center';
+		      ctx.textBaseline = 'middle';
+		      ctx.fillText(ch, sx + slotSize / 2, sy + slotSize / 2);
+
+		      data = { sx, sy, slotSize };
+		      hiresGlyphCache[cp] = data;
+		      return data;
+		    }
+
+    function resize() {
+      const ww = Math.max(1, window.innerWidth | 0);
+      const hh = Math.max(1, window.innerHeight | 0);
+
+      viewW = ww;
+      viewH = hh;
+
+      // PixiJS Renderer resizen (falls bereits initialisiert)
+      if (pixiApp && pixiApp.renderer) {
+        pixiApp.renderer.resize(viewW, viewH);
+      }
+
+      // Initiales Grid erstellen (falls noch nicht vorhanden)
+      if (!grid) {
+        W = Math.max(40, Math.floor(viewW / cellSize));
+        H = Math.max(40, Math.floor(viewH / cellSize));
+        // Grid-Offset so setzen, dass World (0,0) in der Mitte des Grids liegt
+        gridOffsetX = Math.floor(W / 2);
+        gridOffsetY = Math.floor(H / 2);
+        grid = new Uint8Array(W * H);
+        glyph = new Uint16Array(W * H);
+        obstacle = new Uint8Array(W * H);
+        velocity = new Float32Array(W * H);
+
+        // focusWorld auf (0,0) setzen - das ist die Mitte des Grids in World-Koordinaten
+        focusWorld.x = 0;
+        focusWorld.y = 0;
+      }
+      updateUiObstaclesIfNeeded(true);
+    }
+
+    // Hilfsfunktionen für Koordinaten-Umrechnung (focusWorld-Pattern)
+    function screenToWorld(screenX, screenY) {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      return {
+        x: focusWorld.x + (screenX - centerX) / scale,
+        y: focusWorld.y + (screenY - centerY) / scale
+      };
+    }
+
+    function worldToScreen(worldX, worldY) {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      return {
+        x: centerX + (worldX - focusWorld.x) * scale,
+        y: centerY + (worldY - focusWorld.y) * scale
+      };
+    }
+
+    // Konvertiert World-Koordinaten zu Grid-Indizes (berücksichtigt Offset)
+    function worldToGridIndex(worldX, worldY) {
+      const gx = Math.floor(worldX / cellSize) + gridOffsetX;
+      const gy = Math.floor(worldY / cellSize) + gridOffsetY;
+      return { gx, gy };
+    }
+
+    // Konvertiert Grid-Indizes zu World-Koordinaten (berücksichtigt Offset)
+    function gridIndexToWorld(gx, gy) {
+      return {
+        x: (gx - gridOffsetX) * cellSize,
+        y: (gy - gridOffsetY) * cellSize
+      };
+    }
+
+    // Prüft ob eine Zelle VOLLSTÄNDIG außerhalb des sichtbaren Bereichs ist
+    function isCellCompletelyOffscreen(gx, gy, topLeft, bottomRight) {
+      // World-Koordinaten der Zelle
+      const cellLeft = (gx - gridOffsetX) * cellSize;
+      const cellTop = (gy - gridOffsetY) * cellSize;
+      const cellRight = cellLeft + cellSize;
+      const cellBottom = cellTop + cellSize;
+
+      // Vollständig außerhalb wenn:
+      // - Rechte Kante links vom Bildschirm ODER
+      // - Linke Kante rechts vom Bildschirm ODER
+      // - Untere Kante über dem Bildschirm ODER
+      // - Obere Kante unter dem Bildschirm
+      return cellRight < topLeft.x ||
+             cellLeft > bottomRight.x ||
+             cellBottom < topLeft.y ||
+             cellTop > bottomRight.y;
+    }
+
+    // Synchronisiert das Grid mit dem sichtbaren Bildschirmbereich
+    // Wächst beim Rauszoomen, schrumpft beim Reinzoomen
+    // Zellen werden erst gelöscht wenn sie VOLLSTÄNDIG außerhalb des Bildschirms sind
+    function syncGridToScreen() {
+      if (!grid) return;
+
+      // Berechne den sichtbaren Bereich in World-Koordinaten
+      const topLeft = screenToWorld(0, 0);
+      const bottomRight = screenToWorld(viewW, viewH);
+
+      // Berechne die Grid-Grenzen für den sichtbaren Bereich (plus Puffer für teilweise sichtbare Zellen)
+      // Eine Zelle ist teilweise sichtbar wenn irgendein Teil davon im Bildschirm ist
+      const visMinGX = Math.floor(topLeft.x / cellSize);
+      const visMinGY = Math.floor(topLeft.y / cellSize);
+      const visMaxGX = Math.ceil(bottomRight.x / cellSize);
+      const visMaxGY = Math.ceil(bottomRight.y / cellSize);
+
+      // Das neue Grid muss mindestens den sichtbaren Bereich abdecken
+      // UND alle existierenden Zellen behalten, die nicht vollständig außerhalb sind
+      let newMinGX = visMinGX;
+      let newMinGY = visMinGY;
+      let newMaxGX = visMaxGX;
+      let newMaxGY = visMaxGY;
+
+      // Erweitere die Grenzen um existierende Zellen zu behalten, die noch teilweise sichtbar sind
+      if (grid) {
+        // Aktuelle Grid-Grenzen in World-Indizes
+        const oldMinGX = -gridOffsetX;
+        const oldMinGY = -gridOffsetY;
+        const oldMaxGX = oldMinGX + W;
+        const oldMaxGY = oldMinGY + H;
+
+        // Behalte Zellen die noch teilweise sichtbar sein könnten
+        // (Eine Zelle bei Index g hat World-Koordinaten g*cellSize bis (g+1)*cellSize)
+        // Sie ist teilweise sichtbar wenn (g+1)*cellSize > topLeft UND g*cellSize < bottomRight
+        newMinGX = Math.min(newMinGX, Math.max(oldMinGX, Math.floor(topLeft.x / cellSize) - 1));
+        newMinGY = Math.min(newMinGY, Math.max(oldMinGY, Math.floor(topLeft.y / cellSize) - 1));
+        newMaxGX = Math.max(newMaxGX, Math.min(oldMaxGX, Math.ceil(bottomRight.x / cellSize) + 1));
+        newMaxGY = Math.max(newMaxGY, Math.min(oldMaxGY, Math.ceil(bottomRight.y / cellSize) + 1));
+      }
+
+      const newW = Math.max(1, newMaxGX - newMinGX);
+      const newH = Math.max(1, newMaxGY - newMinGY);
+      const newOffsetX = -newMinGX;  // Grid-Index 0 entspricht newMinGX in World
+      const newOffsetY = -newMinGY;
+
+      // Prüfe ob Änderung nötig ist
+      if (newW === W && newH === H && newOffsetX === gridOffsetX && newOffsetY === gridOffsetY) {
+        return; // Keine Änderung nötig
+      }
+
+      console.log(`Grid sync: ${W}x${H} -> ${newW}x${newH} (offset: ${gridOffsetX},${gridOffsetY} -> ${newOffsetX},${newOffsetY})`);
+
+      // Neue Arrays erstellen
+      const newGrid = new Uint8Array(newW * newH);
+      const newGlyph = new Uint16Array(newW * newH);
+      const newObstacle = new Uint8Array(newW * newH);
+      const newVelocity = new Float32Array(newW * newH);
+
+      // Daten kopieren - nur Zellen löschen die VOLLSTÄNDIG außerhalb sind
+      for (let oldY = 0; oldY < H; oldY++) {
+        for (let oldX = 0; oldX < W; oldX++) {
+          const oldIdx = oldY * W + oldX;
+
+          // Nur Sand-Zellen prüfen ob sie außerhalb sind
+          if (grid[oldIdx] === Material.SAND) {
+            // Prüfe ob die Zelle vollständig außerhalb des Bildschirms ist
+            if (isCellCompletelyOffscreen(oldX, oldY, topLeft, bottomRight)) {
+              continue; // Diese Zelle nicht kopieren (löschen)
+            }
+          }
+
+          // Konvertiere alte Grid-Position zu neuer Grid-Position
+          const newX = oldX - gridOffsetX + newOffsetX;
+          const newY = oldY - gridOffsetY + newOffsetY;
+
+          // Prüfe ob diese Zelle im neuen Grid liegt
+          if (newX >= 0 && newX < newW && newY >= 0 && newY < newH) {
+            const newIdx = newY * newW + newX;
+            newGrid[newIdx] = grid[oldIdx];
+            newGlyph[newIdx] = glyph[oldIdx];
+            newObstacle[newIdx] = obstacle[oldIdx];
+            newVelocity[newIdx] = velocity[oldIdx];
+          }
+        }
+      }
+
+      // Arrays und Dimensionen aktualisieren
+      grid = newGrid;
+      glyph = newGlyph;
+      obstacle = newObstacle;
+      velocity = newVelocity;
+      W = newW;
+      H = newH;
+      gridOffsetX = newOffsetX;
+      gridOffsetY = newOffsetY;
+
+      // Texture-Cache leeren
+      glyphTextures = {};
+    }
+
+    function isUiElement(el) {
+      return !!(el && (el.closest('.menu') || el.closest('.ctrl-panel') || el.closest('.settings-panel') || el.closest('.settings-button') || el.closest('.back-button')));
+    }
+
+	    let uiObstacleSig = '';
+		let uiObsQueued = false;
+		let uiObsForce = false;
+		function queueUiObstacleUpdate(force = false) {
+		  uiObsForce = uiObsForce || !!force;
+		  if (uiObsQueued) return;
+		  uiObsQueued = true;
+		  Promise.resolve().then(() => {
+		    uiObsQueued = false;
+		    const f = uiObsForce;
+		    uiObsForce = false;
+		    updateUiObstaclesIfNeeded(f);
+		  });
+		}
+
+		let uiMoveObserver = null;
+		let uiBodyObserver = null;
+		function installUiObstacleObservers() {
+		  if (uiMoveObserver) return;
+		  const selector = '.menu, .ctrl-panel, .settings-panel, .settings-button, .back-button';
+		  uiMoveObserver = new MutationObserver(() => {
+		    // IMPORTANT: run as microtask (not rAF) so obstacles clear BEFORE the next draw()
+		    queueUiObstacleUpdate(false);
+		  });
+
+		  const observeEl = (el) => {
+		    if (!el || el.nodeType !== 1) return;
+		    if (el.__uiObstacleObserved) return;
+		    el.__uiObstacleObserved = true;
+		    uiMoveObserver.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+		  };
+
+		  // Observe current UI elements
+		  document.querySelectorAll(selector).forEach(observeEl);
+
+		  // Observe future UI elements (e.g. settings.js injected later)
+		  uiBodyObserver = new MutationObserver((mutations) => {
+		    for (const m of mutations) {
+		      for (const n of (m.addedNodes || [])) {
+		        if (!n || n.nodeType !== 1) continue;
+		        if (n.matches && n.matches(selector)) observeEl(n);
+		        if (n.querySelectorAll) n.querySelectorAll(selector).forEach(observeEl);
+		      }
+		    }
+		    queueUiObstacleUpdate(false);
+		  });
+		  uiBodyObserver.observe(document.body, { childList: true, subtree: true });
+		}
+
+	    // Berechnet UI-Rechtecke in Screen-Koordinaten
+	    function getUiScreenRects() {
+	      const selectors = ['.menu', '.ctrl-panel', '.settings-panel', '.settings-button', '.back-button'];
+	      const els = selectors.flatMap(sel => Array.from(document.querySelectorAll(sel)));
+	      const rects = [];
+	      for (const el of els) {
+	        const r = el.getBoundingClientRect();
+	        if (r.width <= 0 || r.height <= 0) continue;
+	        rects.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+	      }
+	      return rects;
+	    }
+
+	    // Prüft ob ein Punkt (Screen-Koordinaten) in einem der UI-Rechtecke liegt
+	    function isPointInUiRects(screenX, screenY, uiRects) {
+	      for (const r of uiRects) {
+	        if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom) {
+	          return true;
+	        }
+	      }
+	      return false;
+	    }
+
+	    // Prüft ob eine Zelle VOLLSTÄNDIG von UI-Rechtecken überdeckt ist
+	    function isCellFullyCoveredByUi(gx, gy, uiRects) {
+	      // Zellen-Ecken in World-Koordinaten
+	      const worldTopLeft = gridIndexToWorld(gx, gy);
+	      const worldBottomRight = { x: worldTopLeft.x + cellSize, y: worldTopLeft.y + cellSize };
+
+	      // Alle 4 Ecken in Screen-Koordinaten umrechnen
+	      const screenTL = worldToScreen(worldTopLeft.x, worldTopLeft.y);
+	      const screenTR = worldToScreen(worldBottomRight.x, worldTopLeft.y);
+	      const screenBL = worldToScreen(worldTopLeft.x, worldBottomRight.y);
+	      const screenBR = worldToScreen(worldBottomRight.x, worldBottomRight.y);
+
+	      // Alle 4 Ecken müssen in UI-Rechtecken liegen
+	      return isPointInUiRects(screenTL.x, screenTL.y, uiRects) &&
+	             isPointInUiRects(screenTR.x, screenTR.y, uiRects) &&
+	             isPointInUiRects(screenBL.x, screenBL.y, uiRects) &&
+	             isPointInUiRects(screenBR.x, screenBR.y, uiRects);
+	    }
+
+	    // Prüft ob eine Zelle TEILWEISE von UI-Rechtecken berührt wird (für Obstacle-Markierung)
+	    function isCellTouchingUi(gx, gy, uiRects) {
+	      // Zellen-Mittelpunkt in Screen-Koordinaten
+	      const worldCenter = gridIndexToWorld(gx, gy);
+	      worldCenter.x += cellSize / 2;
+	      worldCenter.y += cellSize / 2;
+	      const screenCenter = worldToScreen(worldCenter.x, worldCenter.y);
+	      return isPointInUiRects(screenCenter.x, screenCenter.y, uiRects);
+	    }
+
+	    function updateUiObstaclesIfNeeded(force = false) {
+	      if (!grid || !obstacle) return;
+	      const uiRects = getUiScreenRects();
+	      // Signatur enthält auch Offset und Transform, damit bei Zoom/Pan neu berechnet wird
+	      const sig = `${W}x${H}|${gridOffsetX},${gridOffsetY}|${scale.toFixed(4)}|${focusWorld.x.toFixed(1)},${focusWorld.y.toFixed(1)}|` +
+	                  uiRects.map(r => `${r.left.toFixed(0)},${r.top.toFixed(0)},${r.right.toFixed(0)},${r.bottom.toFixed(0)}`).join(';');
+	      if (!force && sig === uiObstacleSig) return;
+	      uiObstacleSig = sig;
+
+	      // Rebuild obstacle mask
+	      obstacle.fill(0);
+	      // No floor obstacle – sand stops naturally at y = H-1 via bounds check in updateCell()
+
+	      // Für jede Zelle prüfen
+	      for (let y = 0; y < H; y++) {
+	        for (let x = 0; x < W; x++) {
+	          const idx = y * W + x;
+
+	          // Obstacle markieren wenn Zellen-Mittelpunkt unter UI liegt
+	          if (isCellTouchingUi(x, y, uiRects)) {
+	            obstacle[idx] = 1;
+
+	            // Sand nur löschen wenn Zelle VOLLSTÄNDIG überdeckt ist
+	            if (grid[idx] === Material.SAND && isCellFullyCoveredByUi(x, y, uiRects)) {
+	              grid[idx] = Material.EMPTY;
+	              glyph[idx] = 0;
+	            }
+	          }
+	        }
+	      }
+	    }
+
+    // Clear sand under a screen-space rectangle (used for panel dragging)
+    function clearSandUnderRect(rect) {
+      if (!rect || !grid) return;
+      // Screen -> World -> Grid (mit Offset)
+      const topLeftWorld = screenToWorld(rect.left, rect.top);
+      const bottomRightWorld = screenToWorld(rect.right, rect.bottom);
+      const topLeftGrid = worldToGridIndex(topLeftWorld.x, topLeftWorld.y);
+      const bottomRightGrid = worldToGridIndex(bottomRightWorld.x, bottomRightWorld.y);
+      const x0 = clamp(topLeftGrid.gx, 0, W - 1);
+      const y0 = clamp(topLeftGrid.gy, 0, H - 1);
+      const x1 = clamp(bottomRightGrid.gx + 1, 0, W);
+      const y1 = clamp(bottomRightGrid.gy + 1, 0, H);
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = y * W + x;
+          if (grid[i] === Material.SAND) {
+            grid[i] = Material.EMPTY;
+            glyph[i] = 0;
+          }
+        }
+      }
+    }
+
+    // Clear sand along a path between two rectangles (interpolated)
+    function clearSandAlongRectPath(prevRect, rect) {
+      if (!prevRect || !rect) {
+        clearSandUnderRect(rect || prevRect);
+        return;
+      }
+      // Calculate movement delta
+      const dx = rect.left - prevRect.left;
+      const dy = rect.top - prevRect.top;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const steps = Math.max(1, Math.ceil(dist / cellSize));
+
+      for (let s = 0; s <= steps; s++) {
+        const t = steps > 0 ? s / steps : 0;
+        const interpRect = {
+          left: prevRect.left + dx * t,
+          top: prevRect.top + dy * t,
+          right: prevRect.right + dx * t,
+          bottom: prevRect.bottom + dy * t
+        };
+        clearSandUnderRect(interpRect);
+      }
+    }
+
+			    function getStampMask(text, fontPx, ss) {
+				      const raw = String(text || '');
+				      const t = raw.slice(0, 64);
+				      const key = `${t}|${fontPx}|${ss}|${sandFontFamily}`;
+				      const cached = stampMaskCache.get(key);
+				      if (cached) return cached;
+				
+				      const chars = Array.from(t);
+			      const pad = 6;
+			
+			      // Measure text width in *grid cells*
+			      stampCtx.setTransform(1, 0, 0, 1, 0, 0);
+			      stampCtx.font = `700 ${fontPx}px ${sandFontFamily}`;
+			      const charWidths = chars.map(ch => Math.max(1, stampCtx.measureText(ch).width));
+			      const textW = charWidths.reduce((a, b) => a + b, 0);
+			      const w = Math.ceil(textW) + pad * 2;
+			      const h = Math.ceil(fontPx * 1.2) + pad * 2;
+			
+			      // Render into supersampled offscreen canvas (preserves holes in 0/8/9/P/A/...)
+			      stampCanvas.width = w * ss;
+			      stampCanvas.height = h * ss;
+			      // IMPORTANT: keep background transparent, otherwise alpha is 255 everywhere and we'd stamp a filled rectangle.
+			      stampCtx.setTransform(ss, 0, 0, ss, 0, 0);
+			      stampCtx.clearRect(0, 0, w, h);
+			      stampCtx.font = `700 ${fontPx}px ${sandFontFamily}`;
+			      stampCtx.textAlign = 'left';
+			      stampCtx.textBaseline = 'middle';
+			      stampCtx.fillStyle = 'white';
+			      stampCtx.fillText(t, pad, h / 2);
+			
+			      // Precompute x-ranges in *cell units* so each stamped cell can map to a character.
+			      const xEnds = new Array(chars.length);
+			      let cx = pad;
+			      for (let i = 0; i < chars.length; i++) {
+			        cx += charWidths[i];
+			        xEnds[i] = cx;
+			      }
+			      const xToCi = new Uint16Array(w);
+			      let ci = 0;
+			      for (let x = 0; x < w; x++) {
+			        const xc = x + 0.5;
+			        while (ci < xEnds.length - 1 && xc >= xEnds[ci]) ci++;
+			        xToCi[x] = ci;
+			      }
+			
+				      const img = stampCtx.getImageData(0, 0, w * ss, h * ss).data;
+				
+					      // Alpha threshold: higher avoids fuzzy fills + helps keep counters (holes) clean.
+					      const alphaThresh = 96;
+					      const dxList = [];
+					      const dyList = [];
+					      const cpList = [];
+					      const xOff = -(w >> 1);
+					      const yOff = -(h >> 1);
+						
+					      for (let cy = 0; cy < h; cy++) {
+					        for (let cx2 = 0; cx2 < w; cx2++) {
+					          // Downsample ss×ss block => decide if this *cell* is part of the glyph.
+					          let maxA = 0;
+					          const base = (cy * ss) * (w * ss) + (cx2 * ss);
+					          for (let sy = 0; sy < ss; sy++) {
+					            let row = (base + sy * (w * ss)) * 4 + 3;
+					            for (let sx = 0; sx < ss; sx++, row += 4) {
+					              const a = img[row];
+					              if (a > maxA) maxA = a;
+					            }
+					          }
+					          if (maxA < alphaThresh) continue;
+						
+					          dxList.push(xOff + cx2);
+					          dyList.push(yOff + cy);
+					          const which = xToCi[cx2] | 0;
+					          const cp = chars[which].codePointAt(0) || 32; // fallback space instead of '0'
+					          cpList.push(cp);
+					        }
+					      }
+						
+					      const mask = {
+					        dx: new Int16Array(dxList),
+					        dy: new Int16Array(dyList),
+					        cp: new Uint16Array(cpList)
+					      };
+			      stampMaskCache.set(key, mask);
+			      return mask;
+		    }
+
+    // Stamp a single character as sand at grid position (gx, gy)
+    // Uses the current stampFontPx and stampSuperSample settings
+    function stampCharAt(char, gx, gy) {
+      if (!char || char.length === 0) return;
+      // Pre-warm cache for this character if not already cached
+      const ss = clamp(stampSuperSample | 0, 1, 4);
+      const fontPx = stampFontPx | 0;
+      const key = `${char}|${fontPx}|${ss}|${sandFontFamily}`;
+      if (!stampMaskCache.has(key)) {
+        getStampMask(char, fontPx, ss);
+      }
+      stampTextAt(char, gx, gy, fontPx);
+    }
+
+			    function stampTextAt(text, gx, gy, fontPx) {
+				      const ss = clamp(stampSuperSample | 0, 1, 4);
+				      const key = `${text}|${fontPx | 0}|${ss}|${sandFontFamily}`;
+				
+				      // W e4hrend der Interaktion KEINE teuren Neuberechnungen mehr!
+				      const mask = stampMaskCache.get(key);
+				      if (!mask) return;
+				
+				      const fixedCp = fixedGrainCp;
+				
+				      for (let k = 0; k < mask.dx.length; k++) {
+				        const x = gx + mask.dx[k];
+				        const y = gy + mask.dy[k];
+				        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+				        const i = y * W + x;
+				        if (obstacle && obstacle[i]) continue;
+				        grid[i] = Material.SAND;
+				        glyph[i] = (grainMode === 'fixed') ? fixedCp : mask.cp[k];
+				      }
+			    }
+
+	    let dirFlip = false;
+	    let frameId = 0;
+	    let uiCheckCounter = 0;
+	    let lastStepTime = performance.now();
+    function stepSand() {
+		      // Fallback (in case observers miss something): re-check occasionally.
+		      if ((uiCheckCounter++ & 31) === 0) updateUiObstaclesIfNeeded(false);
+	      frameId++;
+
+	      // Calculate delta time for gravity physics
+	      const now = performance.now();
+	      const dt = Math.min((now - lastStepTime) / 1000, 0.1); // cap at 100ms to avoid huge jumps
+	      lastStepTime = now;
+
+      const leftFirst = dirFlip;
+      dirFlip = !dirFlip;
+
+      for (let y = H - 2; y >= 0; y--) {
+        if (leftFirst) {
+          for (let x = 0; x < W; x++) updateCell(x, y, dt);
+        } else {
+          for (let x = W - 1; x >= 0; x--) updateCell(x, y, dt);
+        }
+      }
+    }
+
+    function updateCell(x, y, dt) {
+      const i = y * W + x;
+      if (grid[i] !== Material.SAND) return;
+	      const gi = glyph[i];
+	      const vi = velocity[i];
+
+      if (useGravity) {
+        // Realistic gravity mode: accelerate and move based on velocity
+        const gravityInCells = gravityMs2 * CELLS_PER_METER; // convert m/s² to cells/s²
+        const newVel = vi + gravityInCells * dt;
+        const distance = newVel * dt;
+
+        // Try to move straight down first
+        if (distance >= 1.0) {
+          const steps = Math.min(Math.floor(distance), H - 1 - y); // don't go past bottom
+          let actualSteps = 0;
+
+          // Check each cell on the way down
+          for (let s = 1; s <= steps; s++) {
+            const checkY = y + s;
+            const checkI = checkY * W + x;
+            if (obstacle[checkI] || grid[checkI] !== Material.EMPTY) {
+              break; // hit something
+            }
+            actualSteps = s;
+          }
+
+          if (actualSteps > 0) {
+            // Move down by actualSteps
+            const targetY = y + actualSteps;
+            const targetI = targetY * W + x;
+            grid[targetI] = Material.SAND;
+            glyph[targetI] = gi;
+            velocity[targetI] = newVel;
+            grid[i] = Material.EMPTY;
+            glyph[i] = 0;
+            velocity[i] = 0;
+            return;
+          } else {
+            // Hit something immediately - reset velocity
+            velocity[i] = 0;
+          }
+        } else {
+          // Not enough velocity to move a full cell yet - just accumulate
+          velocity[i] = newVel;
+          return;
+        }
+      } else {
+        // Classic mode: reset velocity
+        velocity[i] = 0;
+      }
+
+      // Try straight down (1 cell)
+      const below = i + W;
+	      if (!obstacle[below] && grid[below] === Material.EMPTY) {
+        grid[below] = Material.SAND;
+	        glyph[below] = gi;
+	        velocity[below] = useGravity ? velocity[i] : 0;
+        grid[i] = Material.EMPTY;
+	        glyph[i] = 0;
+	        velocity[i] = 0;
+        return;
+      }
+
+	      // Try diagonal
+	      const rnd = (x * 73856093 ^ y * 19349663 ^ frameId) & 1;
+      const dxA = rnd ? -1 : 1;
+      const dxB = -dxA;
+
+      const xA = x + dxA;
+      if (xA >= 0 && xA < W) {
+        const ia = below + dxA;
+	        if (!obstacle[ia] && grid[ia] === Material.EMPTY) {
+          grid[ia] = Material.SAND;
+	          glyph[ia] = gi;
+	          velocity[ia] = useGravity ? (velocity[i] * 0.5) : 0;
+          grid[i] = Material.EMPTY;
+	          glyph[i] = 0;
+	          velocity[i] = 0;
+          return;
+        }
+      }
+      const xB = x + dxB;
+      if (xB >= 0 && xB < W) {
+        const ib = below + dxB;
+	        if (!obstacle[ib] && grid[ib] === Material.EMPTY) {
+          grid[ib] = Material.SAND;
+	          glyph[ib] = gi;
+	          velocity[ib] = useGravity ? (velocity[i] * 0.5) : 0;
+          grid[i] = Material.EMPTY;
+	          glyph[i] = 0;
+	          velocity[i] = 0;
+          return;
+        }
+      }
+
+      // Stuck - reset velocity
+      velocity[i] = 0;
+    }
+
+		    function draw() {
+		      if (!pixiApp || !sandContainer) return;
+
+		      // Refresh CSS colors only occasionally to avoid layout thrash every frame
+		      if (lastStyleUpdateFrame < 0 || (frameId - lastStyleUpdateFrame) >= STYLE_REFRESH_INTERVAL_FRAMES) {
+		        lastStyleUpdateFrame = frameId;
+		        const styles = getComputedStyle(document.body);
+		        cachedBgCss = (styles.getPropertyValue('--bg-color') || '#000').trim();
+		        cachedFgCss = (styles.getPropertyValue('--text-color') || '#fff').trim();
+		        // Update PixiJS background color
+		        pixiApp.renderer.background.color = cachedBgCss;
+		        // Bei Farbwechsel: Atlas neu generieren (Farbe ist in den Glyphen gebacken)
+		        if (lastFgCss !== cachedFgCss) {
+		          lastFgCss = cachedFgCss;
+		          hiresGlyphCache = [];
+		          hiresAtlasNextIndex = 0;
+		          if (hiresAtlasCanvas && hiresAtlasCtx) {
+		            hiresAtlasCtx.clearRect(0, 0, hiresAtlasCanvas.width, hiresAtlasCanvas.height);
+		          }
+		          glyphTextures = {};
+		          hiresAtlasTexture = null;
+		        }
+		      }
+
+		      // High-Res-Atlas Texture aktualisieren
+		      updateHiresAtlasTexture();
+
+		      // Alle aktiven Sprites zurück in den Pool
+		      for (const sprite of activeSprites) {
+		        sprite.visible = false;
+		        spritePool.push(sprite);
+		      }
+		      activeSprites.length = 0;
+
+		      // Draw each sand cell as its own sprite
+		      const gridArr = grid;
+		      const glyphArr = glyph;
+		      const cs = cellSize;
+		      const WLocal = W;
+		      const HLocal = H;
+		      const fgCss = cachedFgCss;
+
+		      let sandCount = 0;
+		      let textureFailCount = 0;
+		      for (let y = 0; y < HLocal; y++) {
+		        let idx = y * WLocal;
+		        for (let x = 0; x < WLocal; x++, idx++) {
+		          if (gridArr[idx] !== Material.SAND) continue;
+		          sandCount++;
+
+		          const cp = (grainMode === 'fixed') ? fixedGrainCp : (glyphArr[idx] || 32);
+		          const texture = getHiresTexture(cp, fgCss);
+		          if (!texture) { textureFailCount++; continue; }
+
+		          // Sprite aus Pool holen oder neu erstellen
+		          let sprite = spritePool.pop();
+		          if (!sprite) {
+		            sprite = new PIXI.Sprite();
+		            sandContainer.addChild(sprite);
+		          }
+
+		          sprite.texture = texture;
+		          // World-Position berechnen (Grid-Index -> World, berücksichtigt Offset)
+		          const worldPos = gridIndexToWorld(x, y);
+		          sprite.x = worldPos.x;
+		          sprite.y = worldPos.y;
+		          sprite.width = cs;
+		          sprite.height = cs;
+		          sprite.visible = true;
+		          activeSprites.push(sprite);
+		        }
+		      }
+
+		      // Debug: Log wenn Texturen fehlen
+		      if (textureFailCount > 0) {
+		        console.warn(`Texture failures: ${textureFailCount}/${sandCount}, scale: ${scale.toFixed(2)}, grid: ${WLocal}x${HLocal}`);
+		      }
+
+		      // World-Container Transform anwenden (focusWorld-Pattern)
+		      // Container-Position: Bildschirmmitte - focusWorld * scale
+		      const centerX = viewW / 2;
+		      const centerY = viewH / 2;
+		      worldContainer.scale.set(scale);
+		      worldContainer.position.set(
+		        centerX - focusWorld.x * scale,
+		        centerY - focusWorld.y * scale
+		      );
+		    }
+
+		    // Konvertiert den High-Res-Atlas Canvas zu einer PixiJS-Texture
+		    function updateHiresAtlasTexture() {
+		      if (!hiresAtlasCanvas) return;
+		      if (!hiresAtlasTexture) {
+		        hiresAtlasTexture = PIXI.Texture.from(hiresAtlasCanvas);
+		      } else {
+		        hiresAtlasTexture.source.update();
+		      }
+		    }
+
+		    // Holt oder erstellt eine High-Res-Texture für einen Codepoint
+		    function getHiresTexture(codePoint, fgCss) {
+		      const cp = (codePoint && codePoint > 0) ? codePoint : 32;
+		      const key = `hires_${cp}`;
+
+		      if (glyphTextures[key]) return glyphTextures[key];
+
+		      // Stelle sicher, dass die Glyphe im Atlas ist
+		      const data = getHiresGlyph(cp, fgCss);
+		      if (!data) return null;
+
+		      // Atlas-Textur aktualisieren falls nötig (neue Glyphe wurde gerendert)
+		      updateHiresAtlasTexture();
+		      if (!hiresAtlasTexture) return null;
+
+		      // Erstelle Sub-Texture aus dem High-Res-Atlas
+		      const frame = new PIXI.Rectangle(data.sx, data.sy, data.slotSize, data.slotSize);
+		      const texture = new PIXI.Texture({ source: hiresAtlasTexture.source, frame });
+		      glyphTextures[key] = texture;
+		      return texture;
+		    }
+
+    // Konvertiert Screen-Koordinaten zu Grid-Indizes (berücksichtigt Zoom/Pan und Offset)
+    function screenToGrid(screenX, screenY) {
+      // Screen -> World (focusWorld-Pattern)
+      const world = screenToWorld(screenX, screenY);
+      // World -> Grid-Index (mit Offset)
+      const { gx, gy } = worldToGridIndex(world.x, world.y);
+
+      // Clamp auf gültige Grid-Koordinaten (Grid deckt immer exakt den Bildschirm ab)
+      return { gx: clamp(gx, 0, W - 1), gy: clamp(gy, 0, H - 1) };
+    }
+
+    // Konvertiert Grid-Indizes zu World-Koordinaten (berücksichtigt Offset)
+    function gridToWorld(gx, gy) {
+      return gridIndexToWorld(gx, gy);
+    }
+
+    function loop() {
+      // === Zoom Damping (wie OrbitControls in shadows.html) ===
+      if (ZOOM_CONFIG.enableDamping) {
+        const df = ZOOM_CONFIG.dampingFactor;
+        const scaleChanged = Math.abs(scale - targetScale) > 0.0001;
+        const focusChanged = Math.abs(focusWorld.x - targetFocusWorld.x) > 0.01 ||
+                             Math.abs(focusWorld.y - targetFocusWorld.y) > 0.01;
+
+        if (scaleChanged || focusChanged) {
+          // Interpoliere scale und focusWorld zum Target
+          scale += (targetScale - scale) * df;
+          focusWorld.x += (targetFocusWorld.x - focusWorld.x) * df;
+          focusWorld.y += (targetFocusWorld.y - focusWorld.y) * df;
+
+          // Grid synchronisieren wenn sich etwas geändert hat
+          syncGridToScreen();
+        }
+      } else {
+        // Ohne Damping: Sofort zum Target springen
+        if (scale !== targetScale || focusWorld.x !== targetFocusWorld.x || focusWorld.y !== targetFocusWorld.y) {
+          scale = targetScale;
+          focusWorld.x = targetFocusWorld.x;
+          focusWorld.y = targetFocusWorld.y;
+          syncGridToScreen();
+        }
+      }
+
+	      // While holding mouse (even without moving), keep stamping so sand flows continuously.
+	      if (pointerDown && pointerHasPos) {
+	        const now = performance.now();
+	        if ((now - lastHoldPaintAt) >= HOLD_PAINT_INTERVAL_MS) {
+	          lastHoldPaintAt = now;
+	          const { gx, gy } = screenToGrid(pointerClientX, pointerClientY);
+	          stampTextAt(stampTextValue, gx, gy, stampFontPx);
+	        }
+	      }
+
+	      // While holding a key, keep spawning sand at mouse position (with interpolation)
+	      if (heldKey && mouseInCanvas) {
+	        const now = performance.now();
+	        if ((now - lastKeyPaintAt) >= KEY_HOLD_PAINT_INTERVAL_MS) {
+	          const hovered = document.elementFromPoint(mouseClientX, mouseClientY);
+	          if (!isUiElement(hovered)) {
+	            lastKeyPaintAt = now;
+	            const { gx, gy } = screenToGrid(mouseClientX, mouseClientY);
+
+	            // Interpolate from last key position if available
+	            if (lastKeyGX >= 0 && lastKeyGY >= 0 && (gx !== lastKeyGX || gy !== lastKeyGY)) {
+	              forEachCellOnLine(lastKeyGX, lastKeyGY, gx, gy, (cx, cy) => {
+	                stampCharAt(heldKey, cx, cy);
+	              });
+	            } else {
+	              stampCharAt(heldKey, gx, gy);
+	            }
+	            lastKeyGX = gx;
+	            lastKeyGY = gy;
+	          }
+	        }
+	      }
+
+      if (!paused) stepSand();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // --- Interaction ---
+	    const HOLD_PAINT_INTERVAL_MS = 30; // ~33 stamps/sec max while holding
+    let pointerDown = false;
+	    let pointerHasPos = false;
+	    let pointerClientX = 0;
+	    let pointerClientY = 0;
+	    let lastHoldPaintAt = 0;
+
+    // Global mouse position tracking (for keyboard input)
+    let mouseClientX = 0;
+    let mouseClientY = 0;
+    let mouseInCanvas = false;
+
+    // Helper: get the PixiJS canvas element
+    function getPixiCanvas() {
+      return pixiApp && pixiApp.canvas ? pixiApp.canvas : null;
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      mouseClientX = e.clientX;
+      mouseClientY = e.clientY;
+      const pixiCanvas = getPixiCanvas();
+      if (pixiCanvas) {
+        const rect = pixiCanvas.getBoundingClientRect();
+        mouseInCanvas = e.clientX >= rect.left && e.clientX <= rect.right &&
+                        e.clientY >= rect.top && e.clientY <= rect.bottom;
+      }
+    });
+
+    // Keyboard hold state for continuous sand spawning
+    let heldKey = null; // The character currently held down
+    let lastKeyPaintAt = 0;
+    let lastKeyGX = -1; // Last grid position for key interpolation
+    let lastKeyGY = -1;
+    const KEY_HOLD_PAINT_INTERVAL_MS = 30; // Same rate as mouse hold
+
+    // Keyboard input: type characters directly as sand at mouse position
+    document.addEventListener('keydown', (e) => {
+      // Ignore if focus is on an input element (text fields, etc.)
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+      // Ignore modifier-only keys and special keys
+      if (e.key.length !== 1) return; // Only single printable characters
+      if (e.ctrlKey || e.altKey || e.metaKey) return; // Ignore with modifiers (except Shift)
+
+      // Track the held key (even if mouse not in canvas yet)
+      heldKey = e.key;
+
+      // Ignore if mouse is not over canvas
+      if (!mouseInCanvas) return;
+
+      // Ignore if hovering over UI element
+      const hovered = document.elementFromPoint(mouseClientX, mouseClientY);
+      if (isUiElement(hovered)) return;
+
+      // Get grid position from mouse (using zoom/pan aware conversion)
+      const { gx, gy } = screenToGrid(mouseClientX, mouseClientY);
+
+      // Stamp the character (e.key respects Shift for uppercase)
+      stampCharAt(e.key, gx, gy);
+      lastKeyPaintAt = performance.now();
+      lastKeyGX = gx; // Set initial position for interpolation
+      lastKeyGY = gy;
+
+      // Prevent default to avoid browser shortcuts
+      e.preventDefault();
+    });
+
+    document.addEventListener('keyup', (e) => {
+      // Clear held key when released
+      if (e.key === heldKey) {
+        heldKey = null;
+        lastKeyGX = -1; // Reset interpolation position
+        lastKeyGY = -1;
+      }
+    });
+
+    let lastPaintGX = -9999;
+    let lastPaintGY = -9999;
+    let isFirstStrokePoint = true; // Track if this is the first point of a new stroke
+
+    function onPointer(e) {
+      // Save last position so holding without moving can keep painting.
+      pointerHasPos = true;
+      pointerClientX = e.clientX;
+      pointerClientY = e.clientY;
+
+      const { gx, gy } = screenToGrid(e.clientX, e.clientY);
+
+      // If same cell, skip
+      if (gx === lastPaintGX && gy === lastPaintGY) return;
+
+      // Prevent an immediate double-stamp (event + hold loop) in the same moment.
+      lastHoldPaintAt = performance.now();
+
+      // Interpolate line from last position to current position
+      const prevGX = lastPaintGX;
+      const prevGY = lastPaintGY;
+      const doInterpolate = !isFirstStrokePoint && prevGX >= 0 && prevGY >= 0;
+
+      lastPaintGX = gx;
+      lastPaintGY = gy;
+      isFirstStrokePoint = false;
+
+      if (doInterpolate) {
+        // Draw line from previous to current position
+        forEachCellOnLine(prevGX, prevGY, gx, gy, (cx, cy) => {
+          stampTextAt(stampTextValue, cx, cy, stampFontPx);
+        });
+      } else {
+        // First point of stroke - just stamp here
+        stampTextAt(stampTextValue, gx, gy, stampFontPx);
+      }
+    }
+
+    // Pointer-Event-Handler werden nach PixiJS-Initialisierung registriert
+    function setupPointerEvents(pixiCanvas) {
+      pixiCanvas.addEventListener('pointerdown', (e) => {
+        const hovered = document.elementFromPoint(e.clientX, e.clientY);
+        if (isUiElement(hovered)) return;
+        pointerDown = true;
+        pointerHasPos = true;
+        pointerClientX = e.clientX;
+        pointerClientY = e.clientY;
+        isFirstStrokePoint = true; // Reset for new stroke
+        pixiCanvas.setPointerCapture(e.pointerId);
+        onPointer(e);
+      });
+      pixiCanvas.addEventListener('pointermove', (e) => {
+        if (!pointerDown) return;
+        pointerHasPos = true;
+        pointerClientX = e.clientX;
+        pointerClientY = e.clientY;
+        onPointer(e);
+      });
+      pixiCanvas.addEventListener('pointerup', () => {
+        pointerDown = false;
+        pointerHasPos = false;
+        isFirstStrokePoint = true; // Reset for next stroke
+      });
+      pixiCanvas.addEventListener('pointercancel', () => {
+        pointerDown = false;
+        pointerHasPos = false;
+        isFirstStrokePoint = true; // Reset for next stroke
+      });
+    }
+
+    // --- Controls panel ---
+    const panel = (window.Controls && Controls.createPanel)
+      ? Controls.createPanel({ position: 'left' })
+      : null;
+
+    if (panel) {
+      panel.addToggle('pause', {
+        label: 'Pause', value: paused,
+        labelOn: 'An', labelOff: 'Aus',
+        onChange: v => paused = v
+      });
+
+      panel.addToggle('gravity', {
+        label: 'Gravitation', value: useGravity,
+        labelOn: 'Echt', labelOff: 'Konstant',
+        onChange: v => {
+          useGravity = v;
+          // Reset all velocities when switching modes
+          if (velocity) velocity.fill(0);
+        }
+      });
+
+      panel.addStepper('gravityStrength', {
+        label: 'G (m/s²)',
+        min: 0, max: 100, step: 0.1, value: gravityMs2, decimals: 1,
+        onChange: v => gravityMs2 = v
+      });
+		      // controls.js exposes addText() (textarea)
+	      panel.addText('text', {
+        label: 'Text',
+        value: stampTextValue,
+        placeholder: 'z.B. 0 oder 018',
+        onChange: v => {
+          stampTextValue = (v || '0').split('\n')[0];
+          // Pre-warm cache immediately after text change to avoid stuttering
+          prewarmStampCache(stampTextValue);
+        }
+      });
+		      panel.addSelect('grainMode', {
+		        label: 'Korn',
+		        options: [
+		          { value: 'match', label: 'klein = groß (pro Ziffer)' },
+		          { value: 'fixed', label: 'klein = fix' }
+		        ],
+		        value: grainMode,
+		        onChange: v => grainMode = v
+		      });
+			      panel.addSelect('sandFont', {
+			        label: 'Schriftart',
+			        options: [
+			          { value: defaultSandFontFamily, label: 'wie Menü' },
+			          { value: '"Courier New", Courier, monospace', label: 'Monospace' },
+			          { value: 'Georgia, serif', label: 'Serif' },
+			          { value: 'Arial, Helvetica, sans-serif', label: 'Arial' }
+			        ],
+			        value: sandFontFamily,
+			        onChange: v => {
+			          sandFontFamily = v;
+			          // Reset High-Res + stamp caches so the new font takes full effect
+			          hiresCacheKey = '';
+			          hiresGlyphCache = [];
+			          hiresAtlasNextIndex = 0;
+			          if (hiresAtlasCanvas && hiresAtlasCtx) {
+			            hiresAtlasCtx.clearRect(0, 0, hiresAtlasCanvas.width, hiresAtlasCanvas.height);
+			          }
+			          glyphTextures = {};
+			          hiresAtlasTexture = null;
+			          stampMaskCache.clear();
+			          prewarmStampCache(stampTextValue);
+			          prewarmStampCache(grainTextValue);
+			        }
+			      });
+			      panel.addText('grainText', {
+		        label: 'Kleines Zeichen',
+		        value: grainTextValue,
+		        placeholder: 'z.B. 0 (nur 1 Zeichen wird benutzt)',
+		        onChange: v => {
+		          grainTextValue = (v || '0').split('\n')[0];
+			          // Do not treat '0' as a special fallback anymore; default to space (32) if empty.
+			          fixedGrainCp = firstCodePoint(grainTextValue, 32 /* was 48 = '0' as fallback */);
+		          // Pre-warm cache for grain text too
+		          prewarmStampCache(grainTextValue);
+		        }
+		      });
+	      panel.addStepper('font', {
+	        label: 'Size',
+        min: 0, max: 1000, step: 1, value: stampFontPx, decimals: 0,
+        onChange: v => {
+          stampFontPx = v | 0;
+          // Re-warm cache with new font size
+          prewarmStampCache(stampTextValue);
+          if (grainMode === 'fixed') prewarmStampCache(grainTextValue);
+        }
+      });
+      // Scale-Stepper entfernt - Zoom erfolgt jetzt via Mausrad/Pinch
+
+      // Clear button (custom row, styled like ctrl-toggle)
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.innerHTML = '<label class="ctrl-label">Reset</label><button class="ctrl-toggle">Clear</button>';
+      row.querySelector('button').addEventListener('click', () => {
+        grid.fill(Material.EMPTY);
+	        glyph.fill(0);
+		        updateUiObstaclesIfNeeded(true);
+      });
+      panel.bodyEl.appendChild(row);
+	      // Ensure UI obstacles are masked immediately after panel exists.
+		      updateUiObstaclesIfNeeded(true);
+		      installUiObstacleObservers();
+
+      // Listen for panel drag events to clear sand under the panel
+      panel.el.addEventListener('ctrl-panel-drag-move', (e) => {
+        const { rect, prevRect } = e.detail;
+        clearSandAlongRectPath(prevRect, rect);
+      });
+    }
+
+    // === Zoom/Pan Event Handlers (focusWorld-Pattern wie bibelaufnpunkt.html) ===
+
+    function clampScale(s) {
+      return Math.min(Math.max(ZOOM_CONFIG.min, s), ZOOM_CONFIG.max);
+    }
+
+    function setupZoomPanEvents(pixiCanvas) {
+      // Mausrad-Zoom (wie bibelaufnpunkt.html, mit Damping wie shadows.html)
+      pixiCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+
+        // Mausposition relativ zur Bildschirmmitte
+        const screenX = e.clientX - window.innerWidth / 2;
+        const screenY = e.clientY - window.innerHeight / 2;
+
+        // Welcher Weltpunkt ist unter der Maus? (basierend auf AKTUELLEM scale, nicht target)
+        const worldUnderMouse = {
+          x: targetFocusWorld.x + screenX / targetScale,
+          y: targetFocusWorld.y + screenY / targetScale
+        };
+
+        // Neuen Target-Scale berechnen
+        const factor = 1 + (e.deltaY > 0 ? -ZOOM_CONFIG.speed : ZOOM_CONFIG.speed);
+        const newTargetScale = clampScale(targetScale * factor);
+
+        if (newTargetScale !== targetScale) {
+          targetScale = newTargetScale;
+          // Target-Fokus so anpassen, dass der Weltpunkt unter der Maus bleibt
+          targetFocusWorld.x = worldUnderMouse.x - screenX / targetScale;
+          targetFocusWorld.y = worldUnderMouse.y - screenY / targetScale;
+        }
+      }, { passive: false });
+
+      // Touch - Simultanes Pan + Pinch-Zoom (wie bibelaufnpunkt.html)
+      let lastPinchDist = 0;
+      let lastPinchCenterX = 0;
+      let lastPinchCenterY = 0;
+
+      pixiCanvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          lastPinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+          lastPinchCenterX = (t1.clientX + t2.clientX) / 2;
+          lastPinchCenterY = (t1.clientY + t2.clientY) / 2;
+        }
+      }, { passive: false });
+
+      pixiCanvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+          const currentCenterX = (t1.clientX + t2.clientX) / 2;
+          const currentCenterY = (t1.clientY + t2.clientY) / 2;
+
+          // Altes Pinch-Zentrum relativ zur Bildschirmmitte
+          const oldScreenX = lastPinchCenterX - window.innerWidth / 2;
+          const oldScreenY = lastPinchCenterY - window.innerHeight / 2;
+
+          // Weltpunkt der unter dem alten Pinch-Zentrum lag (basierend auf target)
+          const worldUnderPinch = {
+            x: targetFocusWorld.x + oldScreenX / targetScale,
+            y: targetFocusWorld.y + oldScreenY / targetScale
+          };
+
+          // Neuer Target-Scale
+          if (lastPinchDist > 0) {
+            const factor = currentDist / lastPinchDist;
+            targetScale = clampScale(targetScale * factor);
+          }
+
+          // Neues Pinch-Zentrum relativ zur Bildschirmmitte
+          const newScreenX = currentCenterX - window.innerWidth / 2;
+          const newScreenY = currentCenterY - window.innerHeight / 2;
+
+          // Target-Fokus so anpassen, dass der Weltpunkt jetzt unter dem neuen Pinch-Zentrum liegt
+          targetFocusWorld.x = worldUnderPinch.x - newScreenX / targetScale;
+          targetFocusWorld.y = worldUnderPinch.y - newScreenY / targetScale;
+
+          lastPinchDist = currentDist;
+          lastPinchCenterX = currentCenterX;
+          lastPinchCenterY = currentCenterY;
+        }
+      }, { passive: false });
+
+      pixiCanvas.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+          lastPinchDist = 0;
+        }
+      }, { passive: true });
+    }
+
+    // === PixiJS Initialisierung ===
+    async function initPixi() {
+      pixiApp = new PIXI.Application();
+
+      await pixiApp.init({
+        resizeTo: window,
+        background: cachedBgCss,
+        antialias: true,  // Antialiasing für bessere Qualität
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true
+      });
+
+      // Canvas zum Container hinzufügen
+      document.getElementById('pixi-container').appendChild(pixiApp.canvas);
+
+      // Container-Hierarchie erstellen
+      worldContainer = new PIXI.Container();
+      sandContainer = new PIXI.Container();
+
+      worldContainer.addChild(sandContainer);
+      pixiApp.stage.addChild(worldContainer);
+
+      // High-Res-Atlas initialisieren
+      ensureHiresAtlas();
+
+      // Event-Handler registrieren
+      setupPointerEvents(pixiApp.canvas);
+      setupZoomPanEvents(pixiApp.canvas);
+
+      // Grid initialisieren
+      resize();
+
+      // Pre-warm cache for initial text values
+      prewarmStampCache(stampTextValue);
+      prewarmStampCache(grainTextValue);
+
+      // Loop starten
+      loop();
+    }
+
+    // Init
+    window.addEventListener('resize', resize);
+    initPixi();
+  </script>
+</body>
+</html>

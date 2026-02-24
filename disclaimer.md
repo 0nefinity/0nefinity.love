@@ -18,3 +18,9 @@ für 0 1 8 → er/sie ist bereits (ziemlich) groß geworden und steht mindestens
 KI hat vorgeschlagen noch Bewusstsein hinzuzufügen. 
 Nagut.
 
+
+
+
+An vielen Stellen ist augenscheinliche Limitierung eingebaut. Teils ist es dem geschuldet, dass KI offenbar "praktische" Limitierungen einbaut, die man teils nur mühselig, teils überhaupt nicht mehr rausbekommt. 
+Feel free to optimize code, the universe will be grateful for every unlimitation.
+

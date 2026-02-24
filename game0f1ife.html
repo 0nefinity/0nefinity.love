@@ -1,0 +1,846 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game0f1ife</title>
+    <!-- thx Conway -->
+    <link href="/meta.css" rel="stylesheet" />
+    <script src="/meta.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        #game-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            cursor: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+    <script>
+    /**
+     * Game 0f 1ife - Conway's Game of Life mit 0 und 1 (etc.)
+     * Ein potenziell unendliches Grid basierend auf Nullen und Einsen
+     * das klassische Conway's Game of Life mit ein paar Extras
+     * life and death are more random (but youre infinit, so you can choose)
+     */
+    (function() {
+        'use strict';
+
+        // === CONFIGURATION ===
+        const config = {
+            // Symbole mit Styling
+            life: {
+                symbol: '1',
+                color: '#ffffff',
+                opacity: 1,
+                background: 'transparent'
+            },
+            death: {
+                symbol: '0',
+                color: '#333333',
+                opacity: 1,
+                background: 'transparent'
+            },
+
+            // Conway Regeln
+            birthCount: 3,        // Exakt N Nachbarn für Geburt
+            survivalMin: 2,       // Minimum Nachbarn zum Überleben
+            survivalMax: 3,       // Maximum Nachbarn zum Überleben
+
+            // Randomness (0-1, wird als Prozent angezeigt)
+            spontaneousLife: 0.01, 
+            randomDeath: 0.000,     // 0.05% Chance für zufälligen Tod
+
+            // Simulation
+            speed: 10,            // Generationen pro Sekunde
+            paused: false,
+
+            // Rendering
+            cellSize: 16,         // Pixel pro Zelle
+            fontSize: 14,
+        };
+
+        // === PATTERN LIBRARY ===
+        // Alle Koordinaten sind verifiziert nach LifeWiki Standards
+        const patterns = [
+            // Still Lifes
+            { id: 'block', name: 'Block', cells: [[0,0], [1,0], [0,1], [1,1]] },
+            { id: 'beehive', name: 'Beehive', cells: [[1,0], [2,0], [0,1], [3,1], [1,2], [2,2]] },
+            { id: 'loaf', name: 'Loaf', cells: [[1,0], [2,0], [0,1], [3,1], [1,2], [3,2], [2,3]] },
+            { id: 'boat', name: 'Boat', cells: [[0,0], [1,0], [0,1], [2,1], [1,2]] },
+            { id: 'tub', name: 'Tub', cells: [[1,0], [0,1], [2,1], [1,2]] },
+
+            // Oscillators
+            { id: 'blinker', name: 'Blinker', cells: [[0,0], [1,0], [2,0]] },
+            { id: 'toad', name: 'Toad', cells: [[1,0], [2,0], [3,0], [0,1], [1,1], [2,1]] }, //toad is a boat for blocks. Or its grave
+            { id: 'beacon', name: 'Beacon', cells: [[0,0], [1,0], [0,1], [1,1], [2,2], [3,2], [2,3], [3,3]] },
+            { id: 'clock', name: 'Clock', cells: [[2,0], [0,1], [2,1], [1,2], [3,2], [1,3]] },
+            { id: 'pulsar', name: 'Pulsar', cells: [
+                [2,0], [3,0], [4,0], [8,0], [9,0], [10,0],
+                [0,2], [5,2], [7,2], [12,2],
+                [0,3], [5,3], [7,3], [12,3],
+                [0,4], [5,4], [7,4], [12,4],
+                [2,5], [3,5], [4,5], [8,5], [9,5], [10,5],
+                [2,7], [3,7], [4,7], [8,7], [9,7], [10,7],
+                [0,8], [5,8], [7,8], [12,8],
+                [0,9], [5,9], [7,9], [12,9],
+                [0,10], [5,10], [7,10], [12,10],
+                [2,12], [3,12], [4,12], [8,12], [9,12], [10,12]
+            ]},
+
+            // Spaceships
+            { id: 'glider', name: 'Glider', cells: [[1,0], [2,1], [0,2], [1,2], [2,2]] },
+            { id: 'lwss', name: 'LWSS', cells: [
+                [1,0], [2,0], [3,0], [4,0],
+                [0,1], [4,1],
+                [4,2],
+                [0,3], [3,3]
+            ]},
+            { id: 'mwss', name: 'MWSS', cells: [
+                [1,0], [2,0], [3,0], [4,0], [5,0],
+                [0,1], [5,1],
+                [5,2],
+                [0,3], [4,3],
+                [2,4]
+            ]},
+            { id: 'hwss', name: 'HWSS', cells: [
+                [1,0], [2,0], [3,0], [4,0], [5,0], [6,0],
+                [0,1], [6,1],
+                [6,2],
+                [0,3], [5,3],
+                [2,4], [3,4]
+            ]},
+
+            // Methuselahs
+            { id: 'rpentomino', name: 'R-pentomino', cells: [[1,0], [2,0], [0,1], [1,1], [1,2]] },
+            { id: 'acorn', name: 'Acorn', cells: [[1,0], [3,1], [0,2], [1,2], [4,2], [5,2], [6,2]] },
+            { id: 'diehard', name: 'Diehard', cells: [[6,0], [0,1], [1,1], [1,2], [5,2], [6,2], [7,2]] },
+            { id: 'bheptomino', name: 'B-heptomino', cells: [[0,0], [1,0], [2,0], [0,1], [1,1], [2,2], [1,3]] },
+
+            // Gun (Gosper Glider Gun) - korrekte Koordinaten
+            { id: 'glidergun', name: 'Glider Gun', cells: [
+                // Left block
+                [0,4], [0,5], [1,4], [1,5],
+                // Left part
+                [10,4], [10,5], [10,6], [11,3], [11,7], [12,2], [12,8], [13,2], [13,8],
+                [14,5], [15,3], [15,7], [16,4], [16,5], [16,6], [17,5],
+                // Right part
+                [20,2], [20,3], [20,4], [21,2], [21,3], [21,4], [22,1], [22,5],
+                [24,0], [24,1], [24,5], [24,6],
+                // Right block
+                [34,2], [34,3], [35,2], [35,3]
+            ]},
+
+            // Puffer 1 (Bill Gosper's puffer train)
+            { id: 'puffer1', name: 'Puffer 1', cells: [
+                [0,0], [0,1], [0,2], [0,3], [0,4],
+                [1,0], [1,4],
+                [2,4],
+                [3,0], [3,3],
+                [5,1], [5,2],
+                [6,1], [6,2],
+                [7,2]
+            ]},
+
+            // Spaceship flotilla
+            { id: 'flotilla', name: 'Flotilla', cells: [
+                // LWSS
+                [1,0], [2,0], [3,0], [4,0], [0,1], [4,1], [4,2], [0,3], [3,3],
+                // Second LWSS offset
+                [1,6], [2,6], [3,6], [4,6], [0,7], [4,7], [4,8], [0,9], [3,9]
+            ]},
+
+            // Pentadecathlon (period 15 oscillator)
+            { id: 'pentadecathlon', name: 'Pentadecathlon', cells: [
+                [1,0], [2,0], [3,0],
+                [0,1], [4,1],
+                [0,2], [4,2],
+                [1,3], [2,3], [3,3],
+                [1,6], [2,6], [3,6],
+                [0,7], [4,7],
+                [0,8], [4,8],
+                [1,9], [2,9], [3,9]
+            ]}
+        ];
+
+        // === GAME STATE ===
+        const state = {
+            cells: new Set(),     // Set<integer_key> (nur lebende Zellen)
+            generation: 0,
+            viewport: { x: 0, y: 0 },  // Offset in Zellen
+            // Placement mode
+            placementMode: null,  // { patternId, pattern, rotation }
+            mouseCell: null,      // { x, y } - current cell under mouse
+            // Worker state
+            workerBusy: false,    // Verhindert Überlastung des Workers
+        };
+
+        // === WEB WORKER SETUP ===
+        const worker = new Worker('/tools/workers/game0f1ife-worker.js');
+
+        // Worker-Nachrichten empfangen
+        worker.onmessage = function(e) {
+            const { type, cells, generation } = e.data;
+
+            if (type === 'cells') {
+                // Neue Zellen vom Worker übernehmen
+                state.cells = new Set(cells);
+                state.generation = generation;
+                state.workerBusy = false;
+            }
+        };
+
+        // Worker mit aktuellem State initialisieren
+        function initWorker() {
+            worker.postMessage({
+                type: 'init',
+                data: {
+                    cells: Array.from(state.cells),
+                    config: {
+                        birthCount: config.birthCount,
+                        survivalMin: config.survivalMin,
+                        survivalMax: config.survivalMax,
+                        spontaneousLife: config.spontaneousLife,
+                        randomDeath: config.randomDeath,
+                    },
+                    viewport: {
+                        x: state.viewport.x,
+                        y: state.viewport.y,
+                        cols: Math.ceil(canvas.width / config.cellSize),
+                        rows: Math.ceil(canvas.height / config.cellSize),
+                    }
+                }
+            });
+        }
+
+        // Config-Änderungen an Worker senden
+        function syncConfigToWorker() {
+            worker.postMessage({
+                type: 'config',
+                data: {
+                    birthCount: config.birthCount,
+                    survivalMin: config.survivalMin,
+                    survivalMax: config.survivalMax,
+                    spontaneousLife: config.spontaneousLife,
+                    randomDeath: config.randomDeath,
+                }
+            });
+        }
+
+        // Viewport-Änderungen an Worker senden
+        function syncViewportToWorker() {
+            worker.postMessage({
+                type: 'viewport',
+                data: {
+                    x: state.viewport.x,
+                    y: state.viewport.y,
+                    cols: Math.ceil(canvas.width / config.cellSize),
+                    rows: Math.ceil(canvas.height / config.cellSize),
+                }
+            });
+        }
+
+        // === CANVAS SETUP ===
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            syncViewportToWorker();
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // === GRID HELPERS ===
+        // Integer-Key System: Koordinaten -2^20 bis 2^20 (~1 Million in jede Richtung)
+        // Key = (x + OFFSET) + (y + OFFSET) * RANGE
+        const COORD_OFFSET = 0x100000;  // 2^20 = 1048576
+        const COORD_RANGE = 0x200000;   // 2^21 = 2097152
+
+        function cellKey(x, y) {
+            return (x + COORD_OFFSET) + (y + COORD_OFFSET) * COORD_RANGE;
+        }
+
+        function parseKey(key) {
+            const xOffset = key % COORD_RANGE;
+            const yOffset = Math.floor(key / COORD_RANGE);
+            return [xOffset - COORD_OFFSET, yOffset - COORD_OFFSET];
+        }
+
+        function isAlive(x, y) {
+            return state.cells.has(cellKey(x, y));
+        }
+
+        function setCell(x, y, alive) {
+            const key = cellKey(x, y);
+            if (alive) {
+                state.cells.add(key);
+            } else {
+                state.cells.delete(key);
+            }
+            // Auch an Worker senden
+            worker.postMessage({ type: 'setCell', data: { x, y, alive } });
+        }
+
+        function toggleCell(x, y) {
+            setCell(x, y, !isAlive(x, y));
+        }
+
+        // === PATTERN PLACEMENT ===
+        function rotatePoint(x, y, rotation) {
+            // Rotation: 0, 1, 2, 3 = 0°, 90°, 180°, 270°
+            switch (rotation % 4) {
+                case 0: return [x, y];
+                case 1: return [-y, x];
+                case 2: return [-x, -y];
+                case 3: return [y, -x];
+            }
+        }
+
+        function getPatternCells(pattern, rotation = 0) {
+            if (!pattern || !pattern.cells) return [];
+            return pattern.cells.map(([x, y]) => rotatePoint(x, y, rotation));
+        }
+
+        function placePattern(centerX, centerY) {
+            if (!state.placementMode) return;
+            const { pattern, rotation } = state.placementMode;
+            const cells = getPatternCells(pattern, rotation);
+
+            // Find center offset
+            const xs = cells.map(c => c[0]);
+            const ys = cells.map(c => c[1]);
+            const minX = Math.min(...xs), maxX = Math.max(...xs);
+            const minY = Math.min(...ys), maxY = Math.max(...ys);
+            const offsetX = Math.floor((maxX - minX + 1) / 2);
+            const offsetY = Math.floor((maxY - minY + 1) / 2);
+
+            // Sammle alle Positionen für Batch-Update
+            const positions = [];
+            for (const [dx, dy] of cells) {
+                const x = centerX + dx - offsetX - minX;
+                const y = centerY + dy - offsetY - minY;
+                positions.push([x, y]);
+                // Lokales Update für sofortiges Feedback
+                state.cells.add(cellKey(x, y));
+            }
+
+            // Batch-Update an Worker senden
+            worker.postMessage({ type: 'setCells', data: { positions } });
+        }
+
+        // === SIMULATION ===
+        // Die eigentliche Berechnung läuft im Web Worker.
+        // Diese Funktion triggert nur den Worker.
+        function nextGeneration() {
+            if (state.workerBusy) return;  // Verhindere Überlastung
+
+            state.workerBusy = true;
+            worker.postMessage({
+                type: 'step',
+                data: { generation: state.generation }
+            });
+        }
+
+        // === RENDERING ===
+        // Hilfsfunktion: Hex + Opacity zu rgba() String
+        function hexToRgba(hex, opacity = 1) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r},${g},${b},${opacity})`;
+        }
+
+        // === GLYPH ATLAS (wie 10sand) ===
+        // Pre-rendert Glyphen in ein Cache-Canvas für schnelles drawImage()
+        let glyphAtlasCanvas = null;
+        let glyphAtlasCtx = null;
+        let glyphCacheKey = '';
+        const GLYPH_ATLAS_SIZE = 2; // Nur 2 Glyphen: life und death
+
+        // Speichert {sx, sy} für life und death
+        let lifeGlyphRect = null;
+        let deathGlyphRect = null;
+
+        // Speichert die aktuelle Atlas-Zellgröße für korrektes drawImage
+        let atlasCellSize = 0;
+
+        function ensureGlyphAtlas() {
+            const cellSize = config.cellSize;
+            const cs = Math.ceil(cellSize);
+            const fontSize = Math.max(4, Math.min(cs * 0.9, 64));
+
+            // Cache-Key aus gerundeter Zellgröße (nicht Float!) und Style-Eigenschaften
+            const key = [
+                cs, // Wichtig: gerundete Größe verwenden, nicht Float!
+                config.life.symbol, config.life.color, config.life.opacity, config.life.background,
+                config.death.symbol, config.death.color, config.death.opacity, config.death.background
+            ].join('|');
+
+            if (key === glyphCacheKey && glyphAtlasCanvas) return;
+            glyphCacheKey = key;
+            atlasCellSize = cs; // Speichere die Atlas-Zellgröße
+
+            // Atlas erstellen/resizen
+            if (!glyphAtlasCanvas) {
+                glyphAtlasCanvas = document.createElement('canvas');
+                glyphAtlasCtx = glyphAtlasCanvas.getContext('2d');
+            }
+
+            glyphAtlasCanvas.width = cs * GLYPH_ATLAS_SIZE;
+            glyphAtlasCanvas.height = cs;
+            glyphAtlasCtx.clearRect(0, 0, glyphAtlasCanvas.width, glyphAtlasCanvas.height);
+
+            // Glyph 0: Life
+            const lifeX = 0;
+            if (config.life.background && config.life.background !== 'transparent') {
+                glyphAtlasCtx.fillStyle = config.life.background;
+                glyphAtlasCtx.fillRect(lifeX, 0, cs, cs);
+            }
+            glyphAtlasCtx.font = `${fontSize}px monospace`;
+            glyphAtlasCtx.textAlign = 'center';
+            glyphAtlasCtx.textBaseline = 'middle';
+            glyphAtlasCtx.fillStyle = hexToRgba(config.life.color, config.life.opacity);
+            glyphAtlasCtx.fillText(config.life.symbol, lifeX + cs / 2, cs / 2);
+            lifeGlyphRect = { sx: lifeX, sy: 0 };
+
+            // Glyph 1: Death
+            const deathX = cs;
+            if (config.death.background && config.death.background !== 'transparent') {
+                glyphAtlasCtx.fillStyle = config.death.background;
+                glyphAtlasCtx.fillRect(deathX, 0, cs, cs);
+            }
+            glyphAtlasCtx.fillStyle = hexToRgba(config.death.color, config.death.opacity);
+            glyphAtlasCtx.fillText(config.death.symbol, deathX + cs / 2, cs / 2);
+            deathGlyphRect = { sx: deathX, sy: 0 };
+        }
+
+        function render() {
+            const cellSize = config.cellSize;
+            const cs = Math.ceil(cellSize);
+            const cols = Math.ceil(canvas.width / cellSize) + 1;
+            const rows = Math.ceil(canvas.height / cellSize) + 1;
+
+            // Glyph-Atlas aktualisieren wenn nötig
+            ensureGlyphAtlas();
+
+            // Atlas-Zellgröße für korrektes drawImage (Quellgröße)
+            const acs = atlasCellSize;
+
+            // Hintergrund löschen
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Viewport-Offset berechnen (korrekt für negative Werte)
+            const vpX = state.viewport.x;
+            const vpY = state.viewport.y;
+            const startX = Math.floor(vpX);
+            const startY = Math.floor(vpY);
+            // Fraktionaler Offset: immer positiv zwischen 0 und 1
+            const vpOffsetX = vpX - startX;
+            const vpOffsetY = vpY - startY;
+
+            // Bei sehr kleinen Zellen (<10px) nur lebende Zellen zeichnen
+            const skipDeath = cellSize < 10;
+
+            // Alle sichtbaren Zellen zeichnen
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = startX + col;
+                    const y = startY + row;
+                    const alive = isAlive(x, y);
+
+                    // Tote Zellen überspringen wenn zu klein
+                    if (!alive && skipDeath) continue;
+
+                    const screenX = (col - vpOffsetX) * cellSize;
+                    const screenY = (row - vpOffsetY) * cellSize;
+
+                    // Glyph aus Atlas zeichnen (acs = Quellgröße, cs = Zielgröße)
+                    const rect = alive ? lifeGlyphRect : deathGlyphRect;
+                    ctx.drawImage(glyphAtlasCanvas, rect.sx, rect.sy, acs, acs, screenX, screenY, cs, cs);
+                }
+            }
+
+            // === GHOST PREVIEW ===
+            // Ghost rastet auf Grid ein - berechnet direkt aus Bildschirmposition
+            // Während Pan: Welt-Position bleibt fix (dragWorldPos)
+            if (mouseScreenPos) {
+                // Welt-Position: Während Drag die gespeicherte verwenden, sonst neu berechnen
+                let worldX, worldY;
+                if (isDraggingPan && dragWorldPos) {
+                    // Während Pan: Die Welt-Position bleibt konstant
+                    worldX = dragWorldPos.x;
+                    worldY = dragWorldPos.y;
+                } else {
+                    // Normal: Aus aktueller Bildschirmposition berechnen
+                    worldX = vpX + mouseScreenPos.x / cellSize;
+                    worldY = vpY + mouseScreenPos.y / cellSize;
+                }
+                const gridX = Math.floor(worldX);
+                const gridY = Math.floor(worldY);
+
+                // Bildschirmposition der Grid-Zelle (eingerastet)
+                const snappedScreenX = (gridX - vpX) * cellSize;
+                const snappedScreenY = (gridY - vpY) * cellSize;
+
+                if (state.placementMode) {
+                    // Pattern-Ghost (eingerastet auf Grid)
+                    const { pattern, rotation } = state.placementMode;
+                    const cells = getPatternCells(pattern, rotation);
+
+                    // Berechne Pattern-Offset für Zentrierung (wie in placePattern)
+                    const xs = cells.map(c => c[0]);
+                    const ys = cells.map(c => c[1]);
+                    const minX = Math.min(...xs), maxX = Math.max(...xs);
+                    const minY = Math.min(...ys), maxY = Math.max(...ys);
+                    const patternOffsetX = Math.floor((maxX - minX + 1) / 2);
+                    const patternOffsetY = Math.floor((maxY - minY + 1) / 2);
+
+                    // Ghost Opacity
+                    ctx.globalAlpha = 1;
+                    for (const [dx, dy] of cells) {
+                        const cellScreenX = snappedScreenX + (dx - patternOffsetX - minX) * cellSize;
+                        const cellScreenY = snappedScreenY + (dy - patternOffsetY - minY) * cellSize;
+
+                        // Life-Glyph aus Atlas zeichnen (acs = Quellgröße, cs = Zielgröße)
+                        ctx.drawImage(glyphAtlasCanvas, lifeGlyphRect.sx, lifeGlyphRect.sy, acs, acs, cellScreenX, cellScreenY, cs, cs);
+                    }
+                    ctx.globalAlpha = 1;
+                } else {
+                    // Einzelzellen-Ghost (eingerastet auf Grid)
+                    // Prüfe ob wir noch auf der zuletzt platzierten Zelle sind
+                    const onLastPlaced = lastPlacedCell &&
+                        lastPlacedCell.x === gridX &&
+                        lastPlacedCell.y === gridY;
+
+                    // Wenn wir uns von der zuletzt platzierten Zelle wegbewegt haben, zurücksetzen
+                    if (lastPlacedCell && !onLastPlaced) {
+                        lastPlacedCell = null;
+                    }
+
+                    // Ghost nur zeigen wenn nicht auf zuletzt platzierter Zelle
+                    if (!onLastPlaced) {
+                        // Zeige was passieren würde: toggle
+                        const willBe = !isAlive(gridX, gridY);
+
+                        // Ghost Opacity
+                        ctx.globalAlpha = 1;
+                        if (willBe) {
+                            // Wird leben -> Life-Glyph anzeigen (acs = Quellgröße, cs = Zielgröße)
+                            ctx.drawImage(glyphAtlasCanvas, lifeGlyphRect.sx, lifeGlyphRect.sy, acs, acs, snappedScreenX, snappedScreenY, cs, cs);
+                        } else {
+                            // Wird sterben -> Rot-getönter Death-Glyph
+                            ctx.fillStyle = '#500';
+                            ctx.fillRect(snappedScreenX, snappedScreenY, cs, cs);
+                        }
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+
+        // === INPUT HANDLING via zoom.js ===
+        // Basis-cellSize für scale=1 (aktueller Wert)
+        const baseCellSize = config.cellSize;
+
+        // Mouse tracking for ghost preview
+        // Speichert Bildschirm-Position und ob gerade gedraggt wird
+        let mouseScreenPos = null;
+        let isDraggingPan = false;
+        let dragWorldPos = null; // Welt-Position beim Start des Drags
+        let lastPlacedCell = null; // Zuletzt platzierte Zelle (Ghost dort nicht zeigen)
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseScreenPos = { x: e.clientX, y: e.clientY };
+        });
+        canvas.addEventListener('mouseleave', () => {
+            mouseScreenPos = null;
+            state.mouseCell = null;
+        });
+
+        // Drag-Tracking: Beim Mousedown Welt-Position und Bildschirmposition merken
+        let clickScreenPos = null; // Bildschirmposition für Klick-Erkennung
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                isDraggingPan = true;
+                clickScreenPos = { x: e.clientX, y: e.clientY };
+                // Welt-Position beim Drag-Start speichern
+                dragWorldPos = {
+                    x: state.viewport.x + e.clientX / config.cellSize,
+                    y: state.viewport.y + e.clientY / config.cellSize
+                };
+            }
+        });
+        window.addEventListener('mouseup', () => {
+            isDraggingPan = false;
+            // dragWorldPos und clickScreenPos werden im mouseup-Handler verwendet, dann gelöscht
+        });
+
+        // Keyboard: R = rotate, ESC = cancel placement
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'r' || e.key === 'R') {
+                if (state.placementMode) {
+                    state.placementMode.rotation = (state.placementMode.rotation + 1) % 4;
+                }
+            } else if (e.key === 'Escape') {
+                if (state.placementMode) {
+                    state.placementMode = null;
+                    // Update pattern picker UI
+                    const noneBtn = document.querySelector('.ctrl-pattern-btn.active');
+                    if (noneBtn) noneBtn.classList.remove('active');
+                    const firstBtn = document.querySelector('.ctrl-pattern-btn');
+                    if (firstBtn) firstBtn.classList.add('active');
+                }
+            }
+        });
+
+        // Klick-Erkennung (für Zellen-Toggle oder Pattern-Platzierung)
+        canvas.addEventListener('mouseup', (e) => {
+            // Nur bei kurzem Klick (kein Pan)
+            if (clickScreenPos && dragWorldPos) {
+                const dx = Math.abs(e.clientX - clickScreenPos.x);
+                const dy = Math.abs(e.clientY - clickScreenPos.y);
+
+                if (dx < 5 && dy < 5) {
+                    // Verwende die gespeicherte Welt-Position vom Mousedown
+                    const x = Math.floor(dragWorldPos.x);
+                    const y = Math.floor(dragWorldPos.y);
+
+                    if (state.placementMode) {
+                        // Pattern platzieren
+                        placePattern(x, y);
+                    } else {
+                        // Normale Zelle togglen
+                        toggleCell(x, y);
+                        // Merke diese Zelle, damit Ghost nicht sofort wieder erscheint
+                        lastPlacedCell = { x, y };
+                    }
+                }
+            }
+            // Aufräumen
+            clickScreenPos = null;
+            dragWorldPos = null;
+        });
+
+        // Rechtsklick = Placement abbrechen
+        canvas.addEventListener('contextmenu', (e) => {
+            if (state.placementMode) {
+                e.preventDefault();
+                state.placementMode = null;
+                const noneBtn = document.querySelector('.ctrl-pattern-btn.active');
+                if (noneBtn) noneBtn.classList.remove('active');
+                const firstBtn = document.querySelector('.ctrl-pattern-btn');
+                if (firstBtn) firstBtn.classList.add('active');
+            }
+        });
+
+        // Touch-Klick-Erkennung
+        let touchClickStart = null;
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                touchClickStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                // Update mouseCell for touch (konsistent mit mousemove)
+                const worldX = state.viewport.x + e.touches[0].clientX / config.cellSize;
+                const worldY = state.viewport.y + e.touches[0].clientY / config.cellSize;
+                state.mouseCell = {
+                    x: Math.floor(worldX),
+                    y: Math.floor(worldY)
+                };
+            }
+        }, { passive: true });
+        canvas.addEventListener('touchend', (e) => {
+            if (touchClickStart && e.changedTouches.length === 1) {
+                const touch = e.changedTouches[0];
+                if (Math.abs(touch.clientX - touchClickStart.x) < 10 && Math.abs(touch.clientY - touchClickStart.y) < 10) {
+                    // Konsistent mit mousemove/mouseup
+                    const worldX = state.viewport.x + touch.clientX / config.cellSize;
+                    const worldY = state.viewport.y + touch.clientY / config.cellSize;
+                    const x = Math.floor(worldX);
+                    const y = Math.floor(worldY);
+
+                    if (state.placementMode) {
+                        placePattern(x, y);
+                    } else {
+                        toggleCell(x, y);
+                    }
+                }
+            }
+            touchClickStart = null;
+        });
+
+        // Zoom2D Integration
+        const zoom = Zoom2D.createZoom2D({
+            container: canvas,
+            // Zoom-Grenzen: scale 0.025 (cellSize 0.5) bis scale 10 (cellSize 200)
+            minScale: 0.025,
+            maxScale: 10,
+            // Sanfterer Zoom
+            wheelSpeed: 0.12,
+            wheelThrottleMs: 50,
+            wheelDeltaThreshold: 5,
+            // Damping für smoothes Gefühl
+            enableDamping: true,
+            dampingFactor: 0.15,
+            // Callback statt CSS-Transform
+            onTransform: ({ scale, offsetX, offsetY }) => {
+                // Scale -> cellSize
+                config.cellSize = baseCellSize * scale;
+                // Offset -> viewport (in Zellen-Koordinaten)
+                state.viewport.x = -offsetX / config.cellSize;
+                state.viewport.y = -offsetY / config.cellSize;
+                // Worker über Viewport-Änderung informieren
+                syncViewportToWorker();
+            }
+        });
+
+        // === CONTROLS PANEL ===
+        const panel = Controls.createPanel({ position: 'left' });
+
+        panel.addPauseButton({
+            paused: config.paused,
+            onChange: (v) => { config.paused = v; }
+        });
+
+        panel.addResetButton({
+            onClick: () => {
+                state.cells.clear();
+                state.generation = 0;
+                state.viewport = { x: 0, y: 0 };
+                worker.postMessage({ type: 'clear' });
+            }
+        });
+
+        panel
+            .addPatternPicker('pattern', {
+                label: 'Patterns (R = rotate)',
+                patterns: patterns,
+                value: null,
+                buttonSize: 36,
+                columns: 4,
+                onChange: (patternId, pattern) => {
+                    if (pattern) {
+                        state.placementMode = { pattern, rotation: 0 };
+                    } else {
+                        state.placementMode = null;
+                    }
+                }
+            })
+            .addDivider()
+            .addTextStyled('life', {
+                label: 'Life =',
+                value: config.life.symbol,
+                placeholder: '1',
+                color: config.life.color,
+                opacity: config.life.opacity,
+                background: config.life.background,
+                onChange: (v) => {
+                    config.life.symbol = v.text || '1';
+                    config.life.color = v.color;
+                    config.life.opacity = v.opacity;
+                    config.life.background = v.background;
+                }
+            })
+            .addTextStyled('death', {
+                label: 'Death =',
+                value: config.death.symbol,
+                placeholder: '0',
+                color: config.death.color,
+                opacity: config.death.opacity,
+                background: config.death.background,
+                onChange: (v) => {
+                    config.death.symbol = v.text || '0';
+                    config.death.color = v.color;
+                    config.death.opacity = v.opacity;
+                    config.death.background = v.background;
+                }
+            })
+            .addDivider()
+            .addRange('spontaneousLife', {
+                label: 'random life',
+                min: 0, max: 1, step: 0.001,
+                value: config.spontaneousLife,
+                decimals: 3,
+                onChange: (v) => { config.spontaneousLife = v; syncConfigToWorker(); }
+            })
+            .addRange('randomDeath', {
+                label: 'random death',
+                min: 0, max: 1, step: 0.001,
+                value: config.randomDeath,
+                decimals: 3,
+                onChange: (v) => { config.randomDeath = v; syncConfigToWorker(); }
+            })
+            .addDivider()
+            .addStepper('birthCount', {
+                label: 'Birth',
+                min: 0, max: 8, step: 1,
+                value: config.birthCount,
+                onChange: (v) => { config.birthCount = v; syncConfigToWorker(); }
+            })
+            .addStepper('survivalMin', {
+                label: 'Surv Min',
+                min: 0, max: 8, step: 1,
+                value: config.survivalMin,
+                onChange: (v) => { config.survivalMin = v; syncConfigToWorker(); }
+            })
+            .addStepper('survivalMax', {
+                label: 'Surv Max',
+                min: 0, max: 8, step: 1,
+                value: config.survivalMax,
+                onChange: (v) => { config.survivalMax = v; syncConfigToWorker(); }
+            })
+            .addDivider()
+            .addRange('speed', {
+                label: 'Speed',
+                min: 1, max: 9999, step: 1,
+                value: config.speed,
+                decimals: 0,
+                onChange: (v) => { config.speed = v; }
+            })
+            .addMetrics('stats', {
+                label: '📊 Stats',
+                collapsed: false,
+                showFps: false,
+                updateInterval: 200,
+                getData: () => ({
+                    items: [
+                        { label: 'Generation', value: state.generation },
+                        { label: 'Lebende', value: state.cells.size },
+                    ]
+                })
+            });
+
+        // === GAME LOOP ===
+        let lastUpdate = 0;
+
+        // Worker initialisieren
+        initWorker();
+
+        function gameLoop(timestamp) {
+            const interval = 1000 / config.speed;
+
+            if (!config.paused && timestamp - lastUpdate >= interval) {
+                nextGeneration();
+                lastUpdate = timestamp;
+            }
+
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+
+    })();
+    </script>
+</body>
+</html>

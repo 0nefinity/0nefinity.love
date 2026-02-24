@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kaleidoskop Text Demo</title>
+
+    <link href="/meta.css" rel="stylesheet" />
+    <script src="/meta.js"></script>
+
+    <style>
+        /* Spezifisches Styling für diese Demo */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            /* Wie im Systemprompt gewünscht schwarz */
+            color: #fff;
+            overflow: hidden;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        .my-text {
+            position: absolute;
+            top: 10vmax;
+            left: 5vmax;
+
+            font-size: 8vmax;
+            font-weight: 900;
+            line-height: 0.9;
+            text-transform: uppercase;
+
+            /* Cyber-Glow Effekt auf dem Text */
+            background: linear-gradient(135deg, #00f0ff, #ff0055, #ffaa00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 15px rgba(0, 240, 255, 0.6));
+
+            white-space: nowrap;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        input[type=range] {
+            accent-color: #00f0ff;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Die Container-Klasse und die Konfigurations-Attribute! -->
+    <div class="kaleido-container" data-segments="16" data-spin="true" data-drift="true" data-speed="60s"
+        data-flow="15s" style="position: absolute; top:0; left:0; width:100%; height:100%;">
+        <div class="my-text">
+            <span>0ne</span><br>
+            <span>Finity</span><br>
+            <span style="font-size: 0.5em; opacity: 0.8; margin-left:1vmax;">Love</span>
+        </div>
+    </div>
+
+    <!-- UI -->
+    <div class="controls">
+        <label>
+            Segmente: <b id="segWert" style="display:inline-block; width: 25px; color: #fff;">16</b>
+            <input type="range" id="segSlider" min="2" max="256" step="2" value="16">
+        </label>
+    </div>
+
+    <!-- 1. Skript einbinden -->
+    <script src="tools/1kaleid0.js"></script>
+
+    <!-- 2. UI Slider (Nur zur Demo) -->
+    <script>
+        const slider = document.getElementById('segSlider');
+        const wertAnzeige = document.getElementById('segWert');
+
+        slider.addEventListener('input', (e) => {
+            const neu = parseInt(e.target.value);
+            wertAnzeige.innerText = neu;
+            if (window.kInstanzen) {
+                window.kInstanzen.forEach(k => k.updateSegments(neu));
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1507 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fourieous Text</title>
+
+    <link href="/meta.css" rel="stylesheet" />
+    <script src="/meta.js"></script>
+
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            z-index: 100;
+        }
+
+        .zoom-btn {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--bg-color) 90%, transparent);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid color-mix(in srgb, var(--text-color) 20%, transparent);
+            color: var(--text-color);
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .zoom-btn:hover {
+            background: color-mix(in srgb, var(--bg-color) 70%, transparent);
+        }
+
+        .zoom-btn:active {
+            transform: scale(0.95);
+        }
+
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            cursor: grab;
+        }
+
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        #canvas-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                bottom: 0.5rem;
+                left: 0.5rem;
+                padding: 0.5rem 0.75rem;
+                max-width: 220px;
+                font-size: 0.85rem;
+            }
+
+            .controls.collapsed {
+                transform: translateX(calc(-100% + 2rem));
+            }
+
+            .zoom-controls {
+                bottom: 0.5rem;
+                right: 0.5rem;
+            }
+
+            .zoom-btn {
+                width: 2rem;
+                height: 2rem;
+                font-size: 1rem;
+            }
+
+        }
+    </style>
+</head>
+<body>
+    <div class="zoom-controls">
+        <button class="zoom-btn" id="zoomInBtn" title="Reinzoomen">+</button>
+        <button class="zoom-btn" id="zoomOutBtn" title="Rauszoomen">−</button>
+        <button class="zoom-btn" id="resetViewBtn" title="Ansicht zurücksetzen">⌂</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+<script>
+// === FOURIEOUS ===
+// another funny artful mathematical way to draw text
+
+const app = {
+    canvas: null,
+    ctx: null,
+    // Trace-Punkte pro Zeichen (Array von Arrays mit {x, y, jump})
+    tracePointsPerChar: [],
+    fontFamily: 'Arial, sans-serif',
+    text: "0 ≡ 1 ≡ ∞",
+    coefficientsPerChar: [],        // Sortierte Koeffizienten (für Anzeige)
+    rawCoefficientsPerChar: [],     // Unsortierte Original-Koeffizienten
+    // Vorberechnete Zyklen: Array von {x, y, jump} pro Zeichen
+    precomputedCyclesPerChar: [],
+    numCircles: 2000,
+    speed: 3,
+    speedAccumulator: 0,  // Akkumulator für Bruchteile bei Speed < 1
+    circleStrokeWidth: 1,
+    armStrokeWidth: 1,
+    traceStrokeWidth: 1,
+    traceOpacity: 1,
+    circleOpacity: 1,
+    armOpacity: 1,
+    currentIndex: 0,      // Aktueller Index im vorberechneten Zyklus
+    isRunning: false,
+	    charOffsets: [],      // Position pro Buchstabe: { x, y } (legacy: number = x)
+    fontSize: 220,
+    animationId: null,
+    cycleLength: 400,     // Anzahl Punkte pro Zyklus
+    // Zoom (via tools/zoom.js)
+    zoomInstance: null,
+    zoomState: { scale: 1, offsetX: 0, offsetY: 0 },
+    // === FREIHEITSGRADE ===
+    sortMode: 'amplitude',  // 'amplitude', 'frequency', 'frequency-rev', 'random', 'phase'
+    startPhase: 0,          // Startpunkt der Animation (0-1, entspricht 0-2π)
+    randomSeed: 42,         // Seed für reproduzierbare Zufallsreihenfolge
+    skipGaps: true,         // Lücken zwischen Konturen nicht zeichnen (voreingestellt: an)
+    // === FREQUENZ-MANIPULATION ===
+    freqScale: 1.0,         // Frequenz-Skalierung (1 = normal, 2 = doppelt so schnell)
+    freqOffset: 0,          // Frequenz-Offset (verschiebt alle Frequenzen)
+    freqPower: 1.0,         // Frequenz-Potenz (1 = linear, 2 = quadratisch)
+    freqInvert: false,      // Frequenzen invertieren (positive ↔ negative)
+    freqAbsolute: false,    // Nur positive Frequenzen verwenden
+    freqModulo: 0,          // Frequenz-Modulo (0 = aus, >0 = wrap-around)
+    // === UNIFIED MODE ===
+    unifiedMode: false,     // false = separate Epizyklen pro Buchstabe, true = ein System für alles
+    drawOrder: 'ltr',       // 'ltr' = Links nach Rechts, 'optimized' = kürzeste Wege
+    // Unified Mode Daten
+    unifiedCoefficients: [],      // Sortierte Koeffizienten für Unified Mode
+    unifiedRawCoefficients: [],   // Unsortierte Original-Koeffizienten
+    unifiedCycle: [],             // Vorberechneter Zyklus für Unified Mode
+    unifiedPoints: [],            // Punkte mit globalen contourIds im Unified Mode
+    unifiedTotalPoints: 0,        // Gesamtanzahl Punkte im Unified Mode
+    unifiedCentroid: { x: 0, y: 0 },  // Schwerpunkt der Punkte (für Zentrierung)
+    // === ANZEIGE-MODUS ===
+    persistTrace: false           // Trace nach Zyklus-Ende behalten (nicht löschen)
+};
+
+// ============ CANVAS-BASIERTE KONTUREXTRAKTION ============
+
+function extractContourFromCanvas(char, fontFamily, fontSize) {
+    // Temporäres Canvas für den Buchstaben erstellen
+    const tempCanvas = document.createElement('canvas');
+    const padding = 20;
+    const size = fontSize + padding * 2;
+    tempCanvas.width = size;
+    tempCanvas.height = size;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Hintergrund transparent
+    tempCtx.clearRect(0, 0, size, size);
+
+    // Text zeichnen
+    tempCtx.font = `${fontSize}px ${fontFamily}`;
+    tempCtx.fillStyle = 'white';
+    tempCtx.textBaseline = 'middle';
+    tempCtx.textAlign = 'center';
+    tempCtx.fillText(char, size / 2, size / 2);
+
+    // Pixel-Daten holen
+    const imageData = tempCtx.getImageData(0, 0, size, size);
+    const data = imageData.data;
+
+    // Hilfsfunktion: Ist Pixel gefüllt?
+    const isFilled = (x, y) => {
+        if (x < 0 || x >= size || y < 0 || y >= size) return false;
+        return data[(y * size + x) * 4 + 3] > 128;
+    };
+
+    // Hilfsfunktion: Ist Pixel eine Kante? (gefüllt mit transparentem Nachbarn)
+    const isEdge = (x, y) => {
+        if (!isFilled(x, y)) return false;
+        return !isFilled(x-1, y) || !isFilled(x+1, y) ||
+               !isFilled(x, y-1) || !isFilled(x, y+1);
+    };
+
+    // Alle Konturen mit Moore-Neighbor Tracing finden
+    const contours = [];
+    const visited = new Set();
+
+    // Moore-Nachbarn im Uhrzeigersinn (Start: links)
+    const mooreNeighbors = [
+        [-1, 0], [-1, -1], [0, -1], [1, -1],
+        [1, 0], [1, 1], [0, 1], [-1, 1]
+    ];
+
+    for (let startY = 0; startY < size; startY++) {
+        for (let startX = 0; startX < size; startX++) {
+            if (!isEdge(startX, startY)) continue;
+            if (visited.has(`${startX},${startY}`)) continue;
+
+            // Neue Kontur starten - Moore-Neighbor Tracing
+            const contour = [];
+            let x = startX, y = startY;
+            let dir = 0; // Startrichtung: links
+
+            do {
+                contour.push({ x: x - size / 2, y: y - size / 2 });
+                visited.add(`${x},${y}`);
+
+                // Nächsten Kantenpunkt finden (im Uhrzeigersinn suchen)
+                let found = false;
+                // Starte Suche von der Richtung, aus der wir kamen + 1 (90° im Uhrzeigersinn)
+                const searchStart = (dir + 5) % 8; // +5 = -3 mod 8 = 135° zurück
+
+                for (let i = 0; i < 8; i++) {
+                    const checkDir = (searchStart + i) % 8;
+                    const [dx, dy] = mooreNeighbors[checkDir];
+                    const nx = x + dx, ny = y + dy;
+
+                    // Nur zu unbesuchten Kantenpunkten gehen (oder zurück zum Start)
+                    const isStart = (nx === startX && ny === startY);
+                    if (isEdge(nx, ny) && (isStart || !visited.has(`${nx},${ny}`))) {
+                        x = nx;
+                        y = ny;
+                        dir = checkDir;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) break;
+
+            } while (x !== startX || y !== startY);
+
+            if (contour.length >= 3) {
+                contours.push(contour);
+            }
+        }
+    }
+
+    if (contours.length === 0) return { points: [], totalPoints: 0 };
+
+    // Nach Größe sortieren (größte zuerst = äußere Kontur)
+    contours.sort((a, b) => b.length - a.length);
+
+    // Konturen zusammenführen - jeder Punkt bekommt seine Kontur-ID
+    return mergeContoursWithIds(contours);
+}
+
+// Konturen zusammenführen - jeder Punkt bekommt eine Kontur-ID
+function mergeContoursWithIds(contours) {
+    if (contours.length === 0) return { points: [], totalPoints: 0 };
+
+    const allPoints = [];
+
+    // Ziel: ca. 100 Punkte pro Komponente (mehr für größere)
+    const totalTargetPoints = 400;
+    const totalOriginalPoints = contours.reduce((sum, c) => sum + c.length, 0);
+
+    for (let contourId = 0; contourId < contours.length; contourId++) {
+        const comp = contours[contourId];
+
+        // Proportional resamplen
+        const targetForThis = Math.max(20, Math.round((comp.length / totalOriginalPoints) * totalTargetPoints));
+        const resampled = resampleContour(comp, targetForThis);
+
+        // Jeden Punkt mit seiner Kontur-ID versehen
+        for (const p of resampled) {
+            allPoints.push({ x: p.x, y: p.y, contourId });
+        }
+    }
+
+    return { points: allPoints, totalPoints: allPoints.length };
+}
+
+function resampleContour(points, targetCount) {
+    if (points.length <= targetCount) return points;
+
+    const step = points.length / targetCount;
+    const resampled = [];
+
+    for (let i = 0; i < targetCount; i++) {
+        const idx = Math.floor(i * step);
+        resampled.push(points[idx]);
+    }
+
+    return resampled;
+}
+
+function measureCharWidth(char, fontFamily, fontSize) {
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.font = `${fontSize}px ${fontFamily}`;
+    return tempCtx.measureText(char).width;
+}
+
+// ============ UNIFIED MODE: KONTUREN KOMBINIEREN ============
+
+// Kombiniert alle Buchstaben-Konturen zu einer einzigen Punktliste
+// charContours: Array von { points (mit contourId), offsetX, offsetY }
+// order: 'ltr' (links nach rechts) oder 'optimized' (kürzeste Wege)
+// centerPoints: wenn true, werden Punkte so verschoben dass Schwerpunkt bei (0,0) liegt
+function combineContoursForUnified(charContours, order, centerPoints = true) {
+    if (charContours.length === 0) return { points: [], totalPoints: 0, centroid: { x: 0, y: 0 } };
+
+    // Reihenfolge bestimmen
+    let orderedContours;
+    if (order === 'optimized') {
+        orderedContours = optimizeContourOrder(charContours);
+    } else {
+        // Links nach Rechts (Standard) - bereits nach X sortiert
+        orderedContours = [...charContours].sort((a, b) => {
+            if (a.offsetY !== b.offsetY) return a.offsetY - b.offsetY; // Zeile zuerst
+            return a.offsetX - b.offsetX; // Dann X
+        });
+    }
+
+    const allPoints = [];
+    let globalContourId = 0;  // Globale Kontur-ID über alle Buchstaben hinweg
+
+    for (let i = 0; i < orderedContours.length; i++) {
+        const contour = orderedContours[i];
+        const { points, offsetX, offsetY } = contour;
+
+        // Lokale Kontur-IDs auf globale umrechnen
+        // Finde die maximale lokale Kontur-ID in diesem Buchstaben
+        let maxLocalId = 0;
+        for (const p of points) {
+            if (p.contourId > maxLocalId) maxLocalId = p.contourId;
+        }
+
+        // Punkte mit Offset verschieben und globale Kontur-ID zuweisen
+        for (const p of points) {
+            allPoints.push({
+                x: p.x + offsetX,
+                y: p.y + offsetY,
+                contourId: globalContourId + p.contourId  // Lokale ID + Offset = globale ID
+            });
+        }
+
+        // Globale ID für nächsten Buchstaben erhöhen
+        globalContourId += maxLocalId + 1;
+    }
+
+    const totalPoints = allPoints.length;
+
+    // Schwerpunkt berechnen
+    let centroidX = 0, centroidY = 0;
+    for (const p of allPoints) {
+        centroidX += p.x;
+        centroidY += p.y;
+    }
+    centroidX /= allPoints.length;
+    centroidY /= allPoints.length;
+
+    const centroid = { x: centroidX, y: centroidY };
+
+    // Punkte zentrieren (Schwerpunkt auf 0,0 verschieben)
+    if (centerPoints) {
+        for (const p of allPoints) {
+            p.x -= centroidX;
+            p.y -= centroidY;
+        }
+    }
+
+    return { points: allPoints, totalPoints, centroid };
+}
+
+// Optimiert die Reihenfolge der Konturen (Nearest Neighbor TSP)
+function optimizeContourOrder(charContours) {
+    if (charContours.length <= 1) return charContours;
+
+    // Berechne Zentrum jeder Kontur
+    const contoursWithCenter = charContours.map(c => {
+        let cx = 0, cy = 0;
+        for (const p of c.points) {
+            cx += p.x + c.offsetX;
+            cy += p.y + c.offsetY;
+        }
+        cx /= c.points.length;
+        cy /= c.points.length;
+        return { ...c, centerX: cx, centerY: cy };
+    });
+
+    // Nearest Neighbor: Starte mit dem linkesten Buchstaben
+    const result = [];
+    const remaining = [...contoursWithCenter];
+
+    // Starte mit dem Buchstaben am weitesten links oben
+    remaining.sort((a, b) => {
+        if (a.offsetY !== b.offsetY) return a.offsetY - b.offsetY;
+        return a.offsetX - b.offsetX;
+    });
+
+    result.push(remaining.shift());
+
+    while (remaining.length > 0) {
+        const last = result[result.length - 1];
+
+        // Finde nächsten Nachbarn
+        let nearestIdx = 0;
+        let nearestDist = Infinity;
+
+        for (let i = 0; i < remaining.length; i++) {
+            const dx = remaining[i].centerX - last.centerX;
+            const dy = remaining[i].centerY - last.centerY;
+            const dist = dx * dx + dy * dy;
+
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestIdx = i;
+            }
+        }
+
+        result.push(remaining.splice(nearestIdx, 1)[0]);
+    }
+
+    return result;
+}
+
+// ============ DFT BERECHNUNG ============
+
+function computeDFT(points) {
+    const N = points.length;
+    if (N === 0) return [];
+
+    const coefficients = [];
+
+    // Berechne Koeffizienten für Frequenzen von -N/2 bis N/2
+    const halfN = Math.floor(N / 2);
+
+    for (let k = -halfN; k <= halfN; k++) {
+        let re = 0, im = 0;
+
+        for (let n = 0; n < N; n++) {
+            // Standard DFT: X_k = sum(x_n * e^(-2πikn/N))
+            const angle = (2 * Math.PI * k * n) / N;
+
+            // Punkt als komplexe Zahl: z_n = x_n + i*y_n
+            re += points[n].x * Math.cos(angle) + points[n].y * Math.sin(angle);
+            im += points[n].y * Math.cos(angle) - points[n].x * Math.sin(angle);
+        }
+
+        re /= N;
+        im /= N;
+
+        const amp = Math.sqrt(re * re + im * im);
+        const phase = Math.atan2(im, re);
+
+        // re und im werden gespeichert für DC-Manipulation
+        coefficients.push({ freq: k, amp, phase, re, im, originalIndex: coefficients.length });
+    }
+
+    // NICHT sortieren - das macht sortCoefficients()
+    return coefficients;
+}
+
+// ============ SORTIER-FUNKTIONEN (Freiheitsgrade!) ============
+
+// Seeded Random für reproduzierbare Zufallsreihenfolge
+function seededRandom(seed) {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+}
+
+function shuffleWithSeed(array, seed) {
+    const result = [...array];
+    let currentSeed = seed;
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(seededRandom(currentSeed++) * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+}
+
+function sortCoefficients(coefficients, mode, seed = 42) {
+    const sorted = [...coefficients];
+
+    switch (mode) {
+        case 'amplitude':
+            // Standard: größte Amplitude zuerst (beste Approximation)
+            sorted.sort((a, b) => b.amp - a.amp);
+            break;
+
+        case 'frequency':
+            // Nach Frequenz aufsteigend (0, 1, -1, 2, -2, ...)
+            sorted.sort((a, b) => {
+                const absA = Math.abs(a.freq);
+                const absB = Math.abs(b.freq);
+                if (absA !== absB) return absA - absB;
+                return a.freq - b.freq; // Bei gleicher |freq|: positive zuerst
+            });
+            break;
+
+        case 'frequency-rev':
+            // Nach Frequenz absteigend (höchste zuerst)
+            sorted.sort((a, b) => {
+                const absA = Math.abs(a.freq);
+                const absB = Math.abs(b.freq);
+                if (absA !== absB) return absB - absA;
+                return b.freq - a.freq;
+            });
+            break;
+
+        case 'phase':
+            // Nach Phase sortiert (erzeugt interessante Spiralmuster)
+            sorted.sort((a, b) => a.phase - b.phase);
+            break;
+
+        case 'random':
+            // Zufällige Reihenfolge (mit Seed für Reproduzierbarkeit)
+            return shuffleWithSeed(sorted, seed);
+
+        default:
+            sorted.sort((a, b) => b.amp - a.amp);
+    }
+
+    return sorted;
+}
+
+// ============ FREQUENZ-MANIPULATION ============
+
+// Manipuliert eine Frequenz basierend auf den aktuellen Einstellungen
+function manipulateFrequency(freq) {
+    let f = freq;
+
+    // 1. Invertieren (positive ↔ negative)
+    if (app.freqInvert) {
+        f = -f;
+    }
+
+    // 2. Absolut (nur positive)
+    if (app.freqAbsolute) {
+        f = Math.abs(f);
+    }
+
+    // 3. Potenz (nicht-lineare Skalierung)
+    if (app.freqPower !== 1.0 && f !== 0) {
+        const sign = Math.sign(f);
+        f = sign * Math.pow(Math.abs(f), app.freqPower);
+    }
+
+    // 4. Skalierung
+    f = f * app.freqScale;
+
+    // 5. Offset
+    f = f + app.freqOffset;
+
+    // 6. Modulo (wrap-around)
+    if (app.freqModulo > 0) {
+        // Symmetrisches Modulo: -mod/2 bis +mod/2
+        f = ((f % app.freqModulo) + app.freqModulo) % app.freqModulo;
+        if (f > app.freqModulo / 2) f -= app.freqModulo;
+    }
+
+    return f;
+}
+
+// ============ ZYKLUS VORBERECHNEN ============
+
+// Berechnet einen kompletten Zyklus mit exakten Sprung-Markierungen
+// WICHTIG: Verwendet immer ALLE Koeffizienten für korrekte Kurve!
+// sourcePoints: Original-Punkte mit contourId pro Punkt
+// startPhase: 0-1 verschiebt den Startpunkt der Animation
+function precomputeCycle(rawCoefficients, sourcePoints, cycleLength, offsetX, offsetY, maxCircles, startPhase = 0) {
+    const cycle = [];
+
+    // DC-Koeffizient separat behandeln (muss IMMER dabei sein!)
+    const dcCoeff = rawCoefficients.find(c => c.freq === 0);
+    const nonDCCoeffs = rawCoefficients.filter(c => c.freq !== 0);
+
+    // Für die Kurvenberechnung: Nach Amplitude sortieren und maxCircles nehmen
+    // DC wird separat hinzugefügt, also maxCircles-1 für die anderen
+    const sortedByAmp = [...nonDCCoeffs].sort((a, b) => b.amp - a.amp);
+    const numNonDC = Math.min(sortedByAmp.length, dcCoeff ? maxCircles - 1 : maxCircles);
+
+    // Koeffizienten für Berechnung: DC (falls vorhanden) + Top-N nach Amplitude
+    const coeffsToUse = dcCoeff ? [dcCoeff, ...sortedByAmp.slice(0, numNonDC)] : sortedByAmp.slice(0, numNonDC);
+    const numToDraw = coeffsToUse.length;
+
+    const numSourcePoints = sourcePoints.length;
+
+    for (let i = 0; i < cycleLength; i++) {
+        // Zeit für diesen Punkt (0 bis 2π) MIT Startphasen-Offset
+        const tNorm = (i / cycleLength) + startPhase; // 0 bis 1 (+ Phase)
+        const t = tNorm * 2 * Math.PI;
+
+        // Position berechnen - DC + wichtigste Koeffizienten nach Amplitude
+        let x = offsetX;
+        let y = offsetY;
+
+        for (let j = 0; j < numToDraw; j++) {
+            const c = coeffsToUse[j];
+            // Frequenz manipulieren (außer DC)
+            const freq = c.freq === 0 ? 0 : manipulateFrequency(c.freq);
+            const angle = freq * t + c.phase;
+            x += c.amp * Math.cos(angle);
+            y += c.amp * Math.sin(angle);
+        }
+
+        // Welcher Quellpunkt entspricht diesem und dem vorherigen Zyklusindex?
+        const sourceIdx = Math.floor((i / cycleLength) * numSourcePoints) % numSourcePoints;
+        const prevCycleIdx = (i - 1 + cycleLength) % cycleLength;
+        const prevSourceIdx = Math.floor((prevCycleIdx / cycleLength) * numSourcePoints) % numSourcePoints;
+
+        // Sprung wenn die Kontur-ID wechselt
+        const currentContour = sourcePoints[sourceIdx]?.contourId ?? 0;
+        const prevContour = sourcePoints[prevSourceIdx]?.contourId ?? 0;
+        const isJump = currentContour !== prevContour;
+
+        cycle.push({ x, y, jump: isJump });
+    }
+
+    return cycle;
+}
+
+// ============ EPIZYKLEN ZEICHNEN ============
+
+function drawEpicycles(coefficients, time, offsetX, offsetY, maxCircles, skipDC = false) {
+    const ctx = app.ctx;
+    let x = offsetX;
+    let y = offsetY;
+
+    // DC-Koeffizient separat behandeln (muss IMMER dabei sein für korrekte Position!)
+    const dcCoeff = coefficients.find(c => c.freq === 0);
+    const nonDCCoeffs = coefficients.filter(c => c.freq !== 0);
+
+    // Nach Amplitude sortieren, DC separat
+    const sortedNonDC = [...nonDCCoeffs].sort((a, b) => b.amp - a.amp);
+    const numNonDC = Math.min(sortedNonDC.length, dcCoeff ? maxCircles - 1 : maxCircles);
+
+    // Koeffizienten für Berechnung: DC (falls vorhanden) + Top-N nach Amplitude
+    const coeffsToUse = dcCoeff ? [dcCoeff, ...sortedNonDC.slice(0, numNonDC)] : sortedNonDC.slice(0, numNonDC);
+    if (coeffsToUse.length === 0) return { x, y };
+
+    // Set der zu verwendenden Koeffizienten
+    const coeffsToDrawSet = new Set(coeffsToUse);
+
+    // Filtere die Koeffizienten in der gewünschten Sortierung (für Anzeige-Reihenfolge)
+    const coeffsToDraw = coefficients.filter(c => coeffsToDrawSet.has(c));
+
+    const scale = app.zoomState.scale;
+    const ox = app.zoomState.offsetX;
+    const oy = app.zoomState.offsetY;
+
+    // Größte Amplitude für Normalisierung (ohne DC)
+    const maxAmp = (sortedNonDC.length > 0 ? sortedNonDC[0].amp : coeffsToUse[0]?.amp) || 1;
+
+    // Positionen in WELTKOORDINATEN berechnen
+    const worldPositions = [{x, y}];
+    const amps = [];
+    const strokeFactors = [];
+    const isDC = [];  // Markiert welche Koeffizienten DC sind
+
+    for (let i = 0; i < coeffsToDraw.length; i++) {
+        const c = coeffsToDraw[i];
+        // Frequenz manipulieren (außer DC)
+        const freq = c.freq === 0 ? 0 : manipulateFrequency(c.freq);
+        const angle = freq * time + c.phase;
+        x += c.amp * Math.cos(angle);
+        y += c.amp * Math.sin(angle);
+        worldPositions.push({x, y});
+        amps.push(c.amp);
+        isDC.push(c.freq === 0);
+
+        // Stroke-Faktor: 0.1 + 0.8 * amp^0.3 - sanfter Abfall
+        const normalizedAmp = c.amp / maxAmp;
+        strokeFactors.push(0.1 + 0.8 * Math.pow(normalizedAmp, 0.3));
+    }
+
+    const actualNumToDraw = coeffsToDraw.length;
+
+    // Transformation zurücksetzen - wir zeichnen in SCREEN-Koordinaten!
+    ctx.restore();
+    ctx.save();
+    // Keine Transformation - wir rechnen selbst um
+
+    // === KREISE ZEICHNEN in Screen-Koordinaten ===
+    if (app.circleStrokeWidth > 0 && app.circleOpacity > 0) {
+        ctx.strokeStyle = `rgba(255, 255, 255, ${app.circleOpacity})`;
+
+        for (let i = 0; i < actualNumToDraw; i++) {
+            // DC-Koeffizient überspringen wenn skipDC (kein Kreis, nur Position)
+            if (skipDC && isDC[i]) continue;
+
+            const amp = amps[i];
+            const screenRadius = amp * scale;
+
+            // Überspringe Kreise die zu klein sind (< 0.5 Pixel)
+            if (screenRadius < 0.5) continue;
+
+            const lineWidth = app.circleStrokeWidth * strokeFactors[i];
+            const worldPos = worldPositions[i];
+
+            // Welt -> Screen Transformation
+            const screenX = worldPos.x * scale + ox;
+            const screenY = worldPos.y * scale + oy;
+
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, screenRadius, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+    }
+
+    // === ARME ZEICHNEN in Screen-Koordinaten ===
+    if (app.armStrokeWidth > 0 && app.armOpacity > 0) {
+        ctx.strokeStyle = `rgba(255, 255, 255, ${app.armOpacity})`;
+
+        for (let i = 0; i < actualNumToDraw; i++) {
+            // DC-Koeffizient überspringen wenn skipDC (kein Arm vom Ursprung)
+            if (skipDC && isDC[i]) continue;
+
+            const lineWidth = app.circleStrokeWidth * strokeFactors[i];
+
+            const worldPos1 = worldPositions[i];
+            const worldPos2 = worldPositions[i + 1];
+
+            // Welt -> Screen Transformation
+            const screenX1 = worldPos1.x * scale + ox;
+            const screenY1 = worldPos1.y * scale + oy;
+            const screenX2 = worldPos2.x * scale + ox;
+            const screenY2 = worldPos2.y * scale + oy;
+
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            ctx.moveTo(screenX1, screenY1);
+            ctx.lineTo(screenX2, screenY2);
+            ctx.stroke();
+        }
+    }
+
+    // Transformation wiederherstellen für den Rest (Trace etc.)
+    ctx.restore();
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
+
+    return worldPositions[worldPositions.length - 1];
+}
+
+// Sammelt neue Trace-Punkte aus dem Zyklus
+function collectTracePoints(charIndex, cycle, fromIdx, toIdx) {
+    if (toIdx < 0 || !cycle || cycle.length === 0) return;
+
+    const startIdx = Math.max(0, fromIdx + 1);
+    if (toIdx < startIdx) return;
+
+    // Trace-Array für dieses Zeichen initialisieren falls nötig
+    if (!app.tracePointsPerChar[charIndex]) {
+        app.tracePointsPerChar[charIndex] = [];
+    }
+
+    const trace = app.tracePointsPerChar[charIndex];
+
+    for (let i = startIdx; i <= toIdx; i++) {
+        const point = cycle[i];
+        if (point) {
+            trace.push({ x: point.x, y: point.y, jump: point.jump });
+        }
+    }
+}
+
+// Zeichnet alle Trace-Punkte direkt auf das Hauptcanvas (scharf!)
+function drawTrace(ctx) {
+    if (app.traceStrokeWidth <= 0 || app.traceOpacity <= 0) return;
+
+    // Zoom-Kompensation für konstante Pixel-Breite
+    const zoomCompensation = 1 / app.zoomState.scale;
+
+    ctx.strokeStyle = `rgba(255, 255, 255, ${app.traceOpacity})`;
+    ctx.lineWidth = app.traceStrokeWidth * zoomCompensation;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (const trace of app.tracePointsPerChar) {
+        if (!trace || trace.length < 2) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(trace[0].x, trace[0].y);
+
+        for (let i = 1; i < trace.length; i++) {
+            const curr = trace[i];
+
+            // Lücken überspringen: NUR das diskrete jump-Flag verwenden
+            // (Sprung wenn die contourId wechselt - d.h. Übergang zu einer anderen Kontur)
+            if (app.skipGaps && curr.jump) {
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(curr.x, curr.y);
+            } else {
+                ctx.lineTo(curr.x, curr.y);
+            }
+        }
+
+        ctx.stroke();
+    }
+}
+
+// Löscht alle Trace-Punkte
+function clearTrace() {
+    app.tracePointsPerChar = [];
+}
+
+// Zeigt sofort den kompletten Trace an (für persistTrace = AN)
+function showFullTrace() {
+    clearTrace();
+
+    if (app.unifiedMode) {
+        if (app.unifiedCycle && app.unifiedCycle.length > 0) {
+            app.tracePointsPerChar = [[]];
+            // Kompletten Zyklus sammeln (von 0 bis Ende)
+            collectTracePoints(0, app.unifiedCycle, -1, app.cycleLength - 1);
+        }
+    } else {
+        for (let i = 0; i < app.precomputedCyclesPerChar.length; i++) {
+            const cycle = app.precomputedCyclesPerChar[i];
+            if (!cycle) continue;
+            collectTracePoints(i, cycle, -1, app.cycleLength - 1);
+        }
+    }
+    // lastCollectedIndex bleibt unverändert - Animation läuft normal weiter
+}
+
+// Baut den Trace bis zum aktuellen Index neu auf (für persistTrace = AUS)
+function rebuildTraceToCurrentIndex() {
+    const currentIdx = app.currentIndex % app.cycleLength;
+    clearTrace();
+
+    if (app.unifiedMode) {
+        if (app.unifiedCycle && app.unifiedCycle.length > 0) {
+            app.tracePointsPerChar = [[]];
+            collectTracePoints(0, app.unifiedCycle, -1, currentIdx);
+        }
+    } else {
+        for (let i = 0; i < app.precomputedCyclesPerChar.length; i++) {
+            const cycle = app.precomputedCyclesPerChar[i];
+            if (!cycle) continue;
+            collectTracePoints(i, cycle, -1, currentIdx);
+        }
+    }
+    lastCollectedIndex = currentIdx;
+}
+
+// ============ ANIMATION LOOP ============
+
+// Letzter gezeichneter Index (für inkrementelles Sammeln)
+let lastCollectedIndex = -1;
+
+// Permanenter Render-Loop (läuft immer für Zoom/Pan)
+function renderLoop() {
+    const ctx = app.ctx;
+
+    // Zoom-Damping immer aktualisieren (auch bei gestoppter Animation!)
+    if (app.zoomInstance) {
+        app.zoomInstance.update();
+    }
+
+    // Animation-Logik nur wenn running
+    if (app.isRunning) {
+        updateAnimation();
+    }
+
+    // Immer rendern (für Zoom/Pan Updates)
+    render();
+
+    app.animationId = requestAnimationFrame(renderLoop);
+}
+
+// Animation-State aktualisieren (nur wenn running)
+function updateAnimation() {
+    // Aktueller Index im Zyklus (mit Wrapping)
+    const idx = app.currentIndex % app.cycleLength;
+
+    // Bei Zyklus-Reset: Trace löschen (außer bei persistTrace) und bei Zufall neu würfeln
+    if (idx < lastCollectedIndex) {
+        // Trace nur löschen wenn persistTrace NICHT aktiv ist
+        if (!app.persistTrace) {
+            clearTrace();
+            if (app.unifiedMode) {
+                app.tracePointsPerChar = [[]];  // Ein Trace-Array für Unified
+            }
+        }
+        lastCollectedIndex = -1;
+
+        // Bei Zufalls-Sortierung: neuen Seed für nächsten Durchgang
+        if (app.sortMode === 'random') {
+            app.randomSeed = Math.floor(Math.random() * 100000);
+            if (app.unifiedMode) {
+                app.unifiedCoefficients = sortCoefficients(
+                    app.unifiedRawCoefficients, app.sortMode, app.randomSeed
+                );
+            } else {
+                for (let i = 0; i < app.charData.length; i++) {
+                    const data = app.charData[i];
+                    const sortedCoeffs = sortCoefficients(data.rawCoeffs, app.sortMode, app.randomSeed);
+                    data.coeffs = sortedCoeffs;
+                    app.coefficientsPerChar[i] = sortedCoeffs;
+                }
+            }
+        }
+    }
+
+    // Neue Punkte sammeln (inkrementell)
+    if (idx > lastCollectedIndex) {
+        if (app.unifiedMode) {
+            if (app.unifiedCycle && app.unifiedCycle.length > 0) {
+                collectTracePoints(0, app.unifiedCycle, lastCollectedIndex, idx);
+            }
+        } else {
+            for (let i = 0; i < app.precomputedCyclesPerChar.length; i++) {
+                const cycle = app.precomputedCyclesPerChar[i];
+                if (!cycle) continue;
+                collectTracePoints(i, cycle, lastCollectedIndex, idx);
+            }
+        }
+        lastCollectedIndex = idx;
+    }
+
+    // Index fortschreiten (bei Speed 0 anhalten)
+    if (app.speed > 0) {
+        app.speedAccumulator += app.speed;
+        const steps = Math.floor(app.speedAccumulator);
+        if (steps >= 1) {
+            app.currentIndex += steps;
+            app.speedAccumulator -= steps;
+        }
+    }
+}
+
+// Render-Funktion (wird immer aufgerufen, auch bei gestoppter Animation)
+function render() {
+    const ctx = app.ctx;
+    const idx = app.currentIndex % app.cycleLength;
+
+    // Hauptcanvas löschen
+    ctx.clearRect(0, 0, app.canvas.width, app.canvas.height);
+
+    // Transformation anwenden
+    ctx.save();
+    ctx.translate(app.zoomState.offsetX, app.zoomState.offsetY);
+    ctx.scale(app.zoomState.scale, app.zoomState.scale);
+
+    // Trace direkt zeichnen (immer scharf!)
+    drawTrace(ctx);
+
+    // Zeit für Epizyklen-Darstellung (MIT Startphasen-Offset!)
+    const time = ((idx / app.cycleLength) + app.startPhase) * 2 * Math.PI;
+
+    if (app.unifiedMode) {
+        // === UNIFIED MODE: Ein Epizyklen-System ===
+        if (app.unifiedCoefficients && app.unifiedCoefficients.length > 0) {
+            const scaledCircles = app.numCircles * app.charData.length;
+            const offsetX = app.unifiedCentroid.x;
+            const offsetY = app.unifiedCentroid.y;
+            drawEpicycles(app.unifiedCoefficients, time, offsetX, offsetY, scaledCircles, true);
+        }
+    } else {
+        // === SEPARATE MODE: Epizyklen pro Buchstabe ===
+        for (let i = 0; i < app.coefficientsPerChar.length; i++) {
+            const coeffs = app.coefficientsPerChar[i];
+            if (!coeffs || coeffs.length === 0) continue;
+
+            const pos = app.charOffsets[i];
+            const offsetX = (pos && typeof pos === 'object') ? pos.x : pos;
+            const offsetY = (pos && typeof pos === 'object') ? pos.y : (app.canvas.height / 2);
+
+            drawEpicycles(coeffs, time, offsetX, offsetY, app.numCircles);
+        }
+    }
+
+    ctx.restore();
+}
+
+// ============ TEXT VERARBEITEN ============
+
+function processText() {
+    app.coefficientsPerChar = [];
+    app.rawCoefficientsPerChar = [];
+    app.precomputedCyclesPerChar = [];
+    app.charOffsets = [];
+    app.currentIndex = 0;
+
+    // Trace zurücksetzen
+    clearTrace();
+    lastCollectedIndex = -1;
+
+		    const text = (app.text ?? '').toString();
+		    const fontFamily = app.fontFamily;
+		    const fontSize = app.fontSize;
+		    const tracking = 10;
+		    const spaceAdvance = fontSize * 0.3;
+		    const tabAdvance = spaceAdvance * 4;
+
+	    // Multiline: \n im Text wird als neue Zeile interpretiert
+	    const lines = text.split(/\r?\n/);
+	    const lineHeight = fontSize * 1.25;
+	    const totalHeight = Math.max(1, lines.length) * lineHeight;
+	    // Baseline pro Zeile: vertikal zentriert (Zeilenmitte)
+	    let currentY = (app.canvas.height - totalHeight) / 2 + (lineHeight / 2);
+
+	    // Temporäre Speicherung für zweiten Durchlauf
+	    const charData = [];
+
+	    for (const line of lines) {
+	        // Erst Zeilenbreite berechnen für Zentrierung
+	        let totalWidth = 0;
+	        const advances = [];
+		        for (const ch of line) {
+		            if (ch === ' ') {
+		                advances.push(spaceAdvance);
+		                totalWidth += spaceAdvance;
+		            } else if (ch === '\t') {
+		                advances.push(tabAdvance);
+		                totalWidth += tabAdvance;
+		            } else {
+		                const width = measureCharWidth(ch, fontFamily, fontSize);
+		                const adv = width + tracking;
+		                advances.push(adv);
+		                totalWidth += adv;
+		            }
+		        }
+
+	        // Startposition für Zentrierung (pro Zeile)
+	        let currentX = (app.canvas.width - totalWidth) / 2;
+	        let charIndex = 0;
+
+		        for (const ch of line) {
+		            if (ch === ' ' || ch === '\t') {
+		                currentX += advances[charIndex];
+		                charIndex++;
+		                continue;
+		            }
+
+	            // Kontur aus Canvas extrahieren (Punkte mit contourId)
+	            const { points, totalPoints } = extractContourFromCanvas(ch, fontFamily, fontSize);
+
+	            if (points.length === 0) {
+	                console.warn(`Keine Kontur für: "${ch}"`);
+	                currentX += advances[charIndex];
+	                charIndex++;
+	                continue;
+	            }
+
+	            // DFT berechnen (unsortiert!)
+	            const rawCoeffs = computeDFT(points);
+	            // Sortierte Version für Anzeige
+	            const sortedCoeffs = sortCoefficients(rawCoeffs, app.sortMode, app.randomSeed);
+
+	            charData.push({
+	                rawCoeffs,           // Original für spätere Neusortierung
+	                coeffs: sortedCoeffs,
+	                points,              // Original-Punkte mit contourId
+	                totalPoints,
+	                offsetX: currentX,
+	                offsetY: currentY
+	            });
+
+	            app.rawCoefficientsPerChar.push(rawCoeffs);
+	            app.coefficientsPerChar.push(sortedCoeffs);
+	            app.charOffsets.push({ x: currentX, y: currentY });
+
+	            currentX += advances[charIndex];
+	            charIndex++;
+	        }
+
+	        currentY += lineHeight;
+	    }
+
+    // charData für spätere Neuberechnung speichern
+    app.charData = charData;
+
+    // Jetzt Zyklen vorberechnen (mit korrekten Offsets)
+    recomputeCycles();
+
+	    console.log(`Verarbeitet: ${app.coefficientsPerChar.length} Buchstaben in ${lines.length} Zeile(n), Sortierung: ${app.sortMode}, Startphase: ${app.startPhase}`);
+}
+
+// Nur Zyklen neu berechnen (ohne Text neu zu verarbeiten)
+// Wird aufgerufen wenn sich numCircles, sortMode oder startPhase ändert
+function recomputeCycles() {
+    if (!app.charData || app.charData.length === 0) return;
+
+    // Aktuellen Index im Zyklus merken (für nahtlosen Übergang)
+    const currentIdx = app.currentIndex % app.cycleLength;
+
+    if (app.unifiedMode) {
+        // === UNIFIED MODE ===
+        recomputeUnifiedCycle(currentIdx);
+    } else {
+        // === SEPARATE MODE (wie bisher) ===
+        recomputeSeparateCycles(currentIdx);
+    }
+}
+
+// Separate Zyklen für jeden Buchstaben (Original-Modus)
+function recomputeSeparateCycles(currentIdx) {
+    // Koeffizienten neu sortieren
+    app.coefficientsPerChar = [];
+    for (let i = 0; i < app.charData.length; i++) {
+        const data = app.charData[i];
+        const sortedCoeffs = sortCoefficients(data.rawCoeffs, app.sortMode, app.randomSeed);
+        data.coeffs = sortedCoeffs;
+        app.coefficientsPerChar.push(sortedCoeffs);
+    }
+
+    // Neue Zyklen berechnen (mit Startphase!)
+    const newCycles = [];
+    for (const data of app.charData) {
+        const cycle = precomputeCycle(
+            data.rawCoeffs,
+            data.points,  // Punkte mit contourId
+            app.cycleLength,
+            data.offsetX,
+            data.offsetY,
+            app.numCircles,
+            app.startPhase
+        );
+        newCycles.push(cycle);
+    }
+
+    // Nahtlos austauschen
+    app.precomputedCyclesPerChar = newCycles;
+    clearTrace();
+
+    // Trace bis zum aktuellen Index sammeln
+    for (let i = 0; i < newCycles.length; i++) {
+        const cycle = newCycles[i];
+        if (!cycle) continue;
+        collectTracePoints(i, cycle, -1, currentIdx);
+    }
+    lastCollectedIndex = currentIdx;
+}
+
+// Ein einziger Zyklus für alle Buchstaben (Unified Mode)
+function recomputeUnifiedCycle(currentIdx) {
+    // Konturen für Unified Mode vorbereiten (Punkte haben bereits contourId)
+    const charContours = app.charData.map(data => ({
+        points: data.points,
+        offsetX: data.offsetX,
+        offsetY: data.offsetY
+    }));
+
+    // Alle Konturen kombinieren (mit Zentrierung) - Punkte bekommen globale contourIds
+    const { points: unifiedPoints, totalPoints, centroid } =
+        combineContoursForUnified(charContours, app.drawOrder, true);
+
+    if (unifiedPoints.length === 0) return;
+
+    // Schwerpunkt speichern (für Offset-Berechnung)
+    app.unifiedCentroid = centroid;
+
+    // DFT über die zentrierten Punkte
+    app.unifiedRawCoefficients = computeDFT(unifiedPoints);
+    app.unifiedCoefficients = sortCoefficients(
+        app.unifiedRawCoefficients,
+        app.sortMode,
+        app.randomSeed
+    );
+    app.unifiedPoints = unifiedPoints;  // Punkte mit globalen contourIds
+    app.unifiedTotalPoints = totalPoints;
+
+    // Automatisch skalierte Kreisanzahl: numCircles * Anzahl Buchstaben
+    const scaledCircles = app.numCircles * app.charData.length;
+
+    // Zyklus vorberechnen (mit Punkten für contourId-basierte Sprungerkennung)
+    app.unifiedCycle = precomputeCycle(
+        app.unifiedRawCoefficients,
+        unifiedPoints,  // Punkte mit contourId
+        app.cycleLength,
+        centroid.x,
+        centroid.y,
+        scaledCircles,
+        app.startPhase
+    );
+
+    // Trace zurücksetzen
+    clearTrace();
+    app.tracePointsPerChar = [[]];  // Ein einziges Trace-Array
+
+    // Trace bis zum aktuellen Index sammeln
+    collectTracePoints(0, app.unifiedCycle, -1, currentIdx);
+    lastCollectedIndex = currentIdx;
+}
+
+// ============ INITIALISIERUNG ============
+
+function resizeCanvas() {
+    app.canvas.width = window.innerWidth;
+    app.canvas.height = window.innerHeight;
+}
+
+function init() {
+    app.canvas = document.getElementById('canvas');
+    app.ctx = app.canvas.getContext('2d');
+    const container = document.getElementById('canvas-container');
+
+    resizeCanvas();
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        if (app.isRunning) {
+            processText(); // Neu zentrieren bei Resize
+        }
+    });
+
+    // ============ ZOOM UND PAN (via tools/zoom.js) ============
+
+    if (window.Zoom2D) {
+        app.zoomInstance = Zoom2D.createZoom2D({
+            container: container,
+            minScale: 1e-6,             // Extrem weit rauszoomen möglich
+            maxScale: 1e8,              // Extrem weit reinzoomen - bis zum kleinsten Kreis!
+            wheelSpeed: 0.15,
+            enableDamping: true,
+            dampingFactor: 0.15,        // Etwas schneller für responsiveres Gefühl
+            externalDamping: true,      // Kein interner rAF-Loop - wir rufen update() selbst auf
+            onTransform({ scale, offsetX, offsetY }) {
+                app.zoomState.scale = scale;
+                app.zoomState.offsetX = offsetX;
+                app.zoomState.offsetY = offsetY;
+            }
+        });
+    }
+
+    // Zoom-Buttons
+    document.getElementById('zoomInBtn').addEventListener('click', () => {
+        if (app.zoomInstance) app.zoomInstance.zoomIn();
+    });
+
+    document.getElementById('zoomOutBtn').addEventListener('click', () => {
+        if (app.zoomInstance) app.zoomInstance.zoomOut();
+    });
+
+    document.getElementById('resetViewBtn').addEventListener('click', () => {
+        if (app.zoomInstance) app.zoomInstance.reset();
+    });
+
+    // ============ CONTROLS PANEL (via controls.js) ============
+
+    const panel = Controls.createPanel({
+        position: 'left'
+    });
+
+    panel
+        .addText('text', {
+            label: 'Text',
+            value: app.text,
+            onChange: (val) => {
+                app.text = val || '0 ≡ 1 ≡ ∞';
+                if (app.isRunning) processText();
+            }
+        })
+        .addSelect('font', {
+            label: 'Font',
+            value: 'Arial, sans-serif',
+            options: [
+                { value: 'Arial, sans-serif', label: 'Arial' },
+                { value: 'Verdana, sans-serif', label: 'Verdana' },
+                { value: 'Georgia, serif', label: 'Georgia' },
+                { value: 'Times New Roman, serif', label: 'Times New Roman' },
+                { value: 'Courier New, monospace', label: 'Courier New' },
+                { value: 'Impact, sans-serif', label: 'Impact' },
+                { value: 'Comic Sans MS, cursive', label: 'Comic Sans' }
+            ],
+            onChange: (val) => {
+                app.fontFamily = val;
+                if (app.isRunning) processText();
+            }
+        })
+        .addStepper('fontSize', {
+            label: 'Größe',
+            min: 10, max: 1000, step: 10, value: app.fontSize, decimals: 0,
+            onChange: (val) => {
+                app.fontSize = val;
+                if (app.isRunning) processText();
+            }
+        })
+        .addDivider()
+        .addStepper('circles', {
+            label: 'Kreise',
+            min: 0, max: 9999, step: 1, value: app.numCircles,
+            onChange: (val) => {
+                app.numCircles = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addStepper('speed', {
+            label: 'Speed',
+            min: 0, max: 9999, step: 0.1, value: app.speed, decimals: 1,
+            onChange: (val) => { app.speed = val; }
+        })
+        .addDivider()
+        // === UNIFIED MODE ===
+        .addToggle('unifiedMode', {
+            label: 'Modus',
+            value: app.unifiedMode,
+            labelOn: 'Unified',
+            labelOff: 'Einzeln',
+            onChange: (val) => {
+                app.unifiedMode = val;
+                // Reihenfolge-Select ein-/ausblenden
+                panel.setRowVisibility('drawOrder', val);
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addSelect('drawOrder', {
+            label: 'Reihenfolge',
+            value: app.drawOrder,
+            options: [
+                { value: 'ltr', label: 'Links → Rechts' },
+                { value: 'optimized', label: 'Optimiert' }
+            ],
+            onChange: (val) => {
+                app.drawOrder = val;
+                if (app.isRunning && app.unifiedMode) recomputeCycles();
+            }
+        })
+        .addDivider()
+        // === FREIHEITSGRADE ===
+        .addSelect('sortMode', {
+            label: 'Sortierung',
+            value: app.sortMode,
+            options: [
+                { value: 'amplitude', label: 'Amplitude (Standard)' },
+                { value: 'frequency', label: 'Frequenz ↑' },
+                { value: 'frequency-rev', label: 'Frequenz ↓' },
+                { value: 'phase', label: 'Phase' },
+                { value: 'random', label: 'Zufall' }
+            ],
+            onChange: (val) => {
+                // Bei erneutem Klick auf "Zufall" → neu würfeln
+                if (val === 'random') {
+                    app.randomSeed = Math.floor(Math.random() * 100000);
+                }
+                app.sortMode = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addStepper('startPhase', {
+            label: 'Startpunkt',
+            min: 0, max: 1, step: 0.01, value: app.startPhase, decimals: 2,
+            onChange: (val) => {
+                app.startPhase = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addToggle('skipGaps', {
+            label: 'Lücken auslassen',
+            value: app.skipGaps,
+            labelOn: 'An',
+            labelOff: 'Aus',
+            onChange: (val) => { app.skipGaps = val; }
+        })
+        .addToggle('persistTrace', {
+            label: 'Spur behalten',
+            value: app.persistTrace,
+            labelOn: 'An',
+            labelOff: 'Aus',
+            onChange: (val) => {
+                app.persistTrace = val;
+                if (val) {
+                    // AN: Sofort kompletten Trace anzeigen (bis Zyklus-Ende sammeln)
+                    showFullTrace();
+                } else {
+                    // AUS: Trace auf aktuellen Zeitpunkt zurücksetzen
+                    rebuildTraceToCurrentIndex();
+                }
+            }
+        })
+        .addDivider()
+        // === FREQUENZ-MANIPULATION ===
+        .addStepper('freqScale', {
+            label: 'Freq-Skala',
+            min: -100, max: 100, step: 0.1, value: app.freqScale, decimals: 1,
+            onChange: (val) => {
+                app.freqScale = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addStepper('freqOffset', {
+            label: 'Freq-Offset',
+            min: -9999999, max: 9999999, step: 1, value: app.freqOffset, decimals: 0,
+            onChange: (val) => {
+                app.freqOffset = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addStepper('freqPower', {
+            label: 'Freq-Potenz',
+            min: 0, max: 9999, step: 0.1, value: app.freqPower, decimals: 1,
+            onChange: (val) => {
+                app.freqPower = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addStepper('freqModulo', {
+            label: 'Freq-Modulo',
+            min: 0, max: 9999, step: 1, value: app.freqModulo, decimals: 0,
+            onChange: (val) => {
+                app.freqModulo = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addToggle('freqInvert', {
+            label: 'Freq invertieren',
+            value: app.freqInvert,
+            labelOn: 'An',
+            labelOff: 'Aus',
+            onChange: (val) => {
+                app.freqInvert = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addToggle('freqAbsolute', {
+            label: 'Nur positiv',
+            value: app.freqAbsolute,
+            labelOn: 'An',
+            labelOff: 'Aus',
+            onChange: (val) => {
+                app.freqAbsolute = val;
+                if (app.isRunning) recomputeCycles();
+            }
+        })
+        .addDivider()
+        .addStepper('traceStroke', {
+            label: 'Zeichen-Strich',
+            min: 0, max: 9999, step: 0.1, value: app.traceStrokeWidth, decimals: 1,
+            onChange: (val) => { app.traceStrokeWidth = val; }
+        })
+        .addStepper('traceOpacity', {
+            label: 'Zeichen-Weiß',
+            min: 0, max: 1, step: 0.01, value: app.traceOpacity, decimals: 2,
+            onChange: (val) => { app.traceOpacity = val; }
+        })
+        .addStepper('circleStroke', {
+            label: 'Kreis-Strich',
+            min: 0, max: 9999, step: 0.1, value: app.circleStrokeWidth, decimals: 1,
+            onChange: (val) => { app.circleStrokeWidth = val; }
+        })
+        .addStepper('circleOpacity', {
+            label: 'Kreis-Weiß',
+            min: 0, max: 1, step: 0.01, value: app.circleOpacity, decimals: 2,
+            onChange: (val) => { app.circleOpacity = val; }
+        })
+        .addStepper('armStroke', {
+            label: 'Arm-Strich',
+            min: 0, max: 9999, step: 0.1, value: app.armStrokeWidth, decimals: 1,
+            onChange: (val) => { app.armStrokeWidth = val; }
+        })
+        .addStepper('armOpacity', {
+            label: 'Arm-Weiß',
+            min: 0, max: 1, step: 0.01, value: app.armOpacity, decimals: 2,
+            onChange: (val) => { app.armOpacity = val; }
+        })
+        .addDivider()
+        .addToggle('running', {
+            label: 'Animation',
+            value: true,
+            labelOn: 'Stop',
+            labelOff: 'Start',
+            onChange: (val) => {
+                if (val) {
+                    processText();
+                    app.isRunning = true;
+                } else {
+                    app.isRunning = false;
+                }
+                // Render-Loop läuft immer weiter - kein cancel nötig
+            }
+        });
+
+    // Reihenfolge-Select initial verstecken (da unifiedMode = false)
+    panel.setRowVisibility('drawOrder', app.unifiedMode);
+
+    // Auto-Start
+    processText();
+    app.isRunning = true;
+    renderLoop();  // Permanenter Render-Loop (läuft immer)
+}
+
+init();
+</script>
+</body>
+</html>

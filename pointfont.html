@@ -1,4 +1,4 @@
-<!-- pointfont.html -->
+﻿<!-- pointfont.html -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -7,9 +7,7 @@
 
     <title>Punktbasierter Textgenerator</title>
     <link href="/meta.css" rel="stylesheet">
-    <script src="/meta.js" defer></script>
-    <script src="/tools/zoom.js"></script>
-    <script src="/tools/controls.js"></script>
+    <script src="/meta.js"></script>
     <style>
 
         /* Basisstile für Body und HTML, um volle Höhe und Breite zu nutzen */
@@ -184,7 +182,7 @@
 	    		            },
 	    		            distribution: {
 	    		                maxCandidates: 2000,   // Max. Kandidaten für Max-Distance-Sampling
-	    		                viewMargin: 0.1,       // 10% Rand beim Fit-to-View
+	    		                viewMargin: 0.3,       // 10% Rand beim Fit-to-View
 	    		                bgExpandFactor: 2.0    // Puffer für BG-Punkte außerhalb des sichtbaren Bereichs
 	    		            }
 	    		        };
@@ -203,7 +201,7 @@
 
 		        // === CONTROLS PANEL ===
 		        const panel = Controls.createPanel({
-		            position: 'center',
+		            position: 'left',
 		            mobileContentElement: canvasContainer, // Canvas verschiebt sich mit Panel
 		            mobileContentMaxOffset: 15 // vh - wie weit der Canvas nach oben wandert
 		        });

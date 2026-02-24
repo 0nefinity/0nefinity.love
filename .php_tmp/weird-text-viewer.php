@@ -36,11 +36,19 @@ $fileName = basename($realPath);
 // Prüfe ob es eine Markdown-Datei ist
 $isMarkdown = preg_match('/\.md$/i', $realPath);
 
-// HTML-Escape für sichere Anzeige
-$escapedContent = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
-
 // Generiere Titel aus Dateinamen
 $title = $fileName;
+
+// Verarbeite Content je nach Dateityp
+if ($isMarkdown) {
+    // Parsedown für Markdown-Rendering einbinden
+    require_once __DIR__ . '/../tools/Parsedown.php';
+    $Parsedown = new Parsedown();
+    $renderedContent = $Parsedown->text($content);
+} else {
+    // Für Nicht-Markdown: HTML-Escape für sichere Anzeige
+    $renderedContent = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
+}
 
 ?><!DOCTYPE html>
 <html lang="de">
@@ -53,10 +61,6 @@ $title = $fileName;
 
   <title><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></title>
 
-<?php if ($isMarkdown): ?>
-  <script src="/tools/showdown.js"></script>
-<?php endif; ?>
-
 </head>
 <body>
 
@@ -65,27 +69,8 @@ $title = $fileName;
     <h1><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></h1>
   </div>
 
-  <div class="text-viewer-content" id="content"><?php echo $escapedContent; ?></div>
+  <div class="text-viewer-content"><?php echo $renderedContent; ?></div>
 </div>
-
-<?php if ($isMarkdown): ?>
-<script>
-(function () {
-  var el = document.getElementById('content');
-  if (!el || !window.showdown) return;
-
-  // Rohen Text aus dem HTML holen (behält Leerzeichen)
-  var markdown = el.innerHTML
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-
-  var converter = new showdown.Converter({ simpleLineBreaks: true });
-  var html = converter.makeHtml(markdown);
-  el.innerHTML = html;
-})();
-</script>
-<?php endif; ?>
 
 </body>
 </html>
