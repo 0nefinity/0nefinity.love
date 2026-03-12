@@ -52,24 +52,7 @@
             transform: scale(0.95);
         }
 
-        #canvas-container {
-            position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 1;
-            cursor: grab;
-        }
-
-        #canvas-container:active {
-            cursor: grabbing;
-        }
-
-        #canvas-container canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
+        /* _018-canvas Klasse wird von meta.css bereitgestellt */
 
         @media (max-width: 768px) {
             .controls {
@@ -105,7 +88,7 @@
         <button class="zoom-btn" id="resetViewBtn" title="Ansicht zurücksetzen">⌂</button>
     </div>
 
-    <div id="canvas-container">
+    <div class="_018-canvas">
         <canvas id="canvas"></canvas>
     </div>
 
@@ -1216,7 +1199,7 @@ function resizeCanvas() {
 function init() {
     app.canvas = document.getElementById('canvas');
     app.ctx = app.canvas.getContext('2d');
-    const container = document.getElementById('canvas-container');
+    const container = document.querySelector('._018-canvas');
 
     resizeCanvas();
     window.addEventListener('resize', () => {
@@ -1290,7 +1273,7 @@ function init() {
                 if (app.isRunning) processText();
             }
         })
-        .addStepper('fontSize', {
+        .addSlider('fontSize', {
             label: 'Größe',
             min: 10, max: 1000, step: 10, value: app.fontSize, decimals: 0,
             onChange: (val) => {
@@ -1299,7 +1282,7 @@ function init() {
             }
         })
         .addDivider()
-        .addStepper('circles', {
+        .addSlider('circles', {
             label: 'Kreise',
             min: 0, max: 9999, step: 1, value: app.numCircles,
             onChange: (val) => {
@@ -1307,7 +1290,7 @@ function init() {
                 if (app.isRunning) recomputeCycles();
             }
         })
-        .addStepper('speed', {
+        .addSlider('speed', {
             label: 'Speed',
             min: 0, max: 9999, step: 0.1, value: app.speed, decimals: 1,
             onChange: (val) => { app.speed = val; }
@@ -1359,7 +1342,7 @@ function init() {
                 if (app.isRunning) recomputeCycles();
             }
         })
-        .addStepper('startPhase', {
+        .addSlider('startPhase', {
             label: 'Startpunkt',
             min: 0, max: 1, step: 0.01, value: app.startPhase, decimals: 2,
             onChange: (val) => {
@@ -1392,7 +1375,7 @@ function init() {
         })
         .addDivider()
         // === FREQUENZ-MANIPULATION ===
-        .addStepper('freqScale', {
+        .addSlider('freqScale', {
             label: 'Freq-Skala',
             min: -100, max: 100, step: 0.1, value: app.freqScale, decimals: 1,
             onChange: (val) => {
@@ -1400,7 +1383,7 @@ function init() {
                 if (app.isRunning) recomputeCycles();
             }
         })
-        .addStepper('freqOffset', {
+        .addSlider('freqOffset', {
             label: 'Freq-Offset',
             min: -9999999, max: 9999999, step: 1, value: app.freqOffset, decimals: 0,
             onChange: (val) => {
@@ -1408,7 +1391,7 @@ function init() {
                 if (app.isRunning) recomputeCycles();
             }
         })
-        .addStepper('freqPower', {
+        .addSlider('freqPower', {
             label: 'Freq-Potenz',
             min: 0, max: 9999, step: 0.1, value: app.freqPower, decimals: 1,
             onChange: (val) => {
@@ -1416,7 +1399,7 @@ function init() {
                 if (app.isRunning) recomputeCycles();
             }
         })
-        .addStepper('freqModulo', {
+        .addSlider('freqModulo', {
             label: 'Freq-Modulo',
             min: 0, max: 9999, step: 1, value: app.freqModulo, decimals: 0,
             onChange: (val) => {
@@ -1445,32 +1428,32 @@ function init() {
             }
         })
         .addDivider()
-        .addStepper('traceStroke', {
+        .addSlider('traceStroke', {
             label: 'Zeichen-Strich',
             min: 0, max: 9999, step: 0.1, value: app.traceStrokeWidth, decimals: 1,
             onChange: (val) => { app.traceStrokeWidth = val; }
         })
-        .addStepper('traceOpacity', {
+        .addSlider('traceOpacity', {
             label: 'Zeichen-Weiß',
             min: 0, max: 1, step: 0.01, value: app.traceOpacity, decimals: 2,
             onChange: (val) => { app.traceOpacity = val; }
         })
-        .addStepper('circleStroke', {
+        .addSlider('circleStroke', {
             label: 'Kreis-Strich',
             min: 0, max: 9999, step: 0.1, value: app.circleStrokeWidth, decimals: 1,
             onChange: (val) => { app.circleStrokeWidth = val; }
         })
-        .addStepper('circleOpacity', {
+        .addSlider('circleOpacity', {
             label: 'Kreis-Weiß',
             min: 0, max: 1, step: 0.01, value: app.circleOpacity, decimals: 2,
             onChange: (val) => { app.circleOpacity = val; }
         })
-        .addStepper('armStroke', {
+        .addSlider('armStroke', {
             label: 'Arm-Strich',
             min: 0, max: 9999, step: 0.1, value: app.armStrokeWidth, decimals: 1,
             onChange: (val) => { app.armStrokeWidth = val; }
         })
-        .addStepper('armOpacity', {
+        .addSlider('armOpacity', {
             label: 'Arm-Weiß',
             min: 0, max: 1, step: 0.01, value: app.armOpacity, decimals: 2,
             onChange: (val) => { app.armOpacity = val; }

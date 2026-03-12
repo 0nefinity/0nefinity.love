@@ -10,30 +10,12 @@
     <script src="/meta.js"></script>
     <style>
 
-        /* Basisstile für Body und HTML, um volle Höhe und Breite zu nutzen */
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            box-sizing: border-box;
-            overflow-x: hidden; /* Verhindert horizontales Scrollen */
-            background-color: var(--bg-color);
-            color: var(--text-color);
-        }
+        /* _018-canvas Klasse wird von meta.css bereitgestellt */
 
 
 
 	    /* Container für Canvas */
-		    .canvas-container {
-		        position: relative;
-		        width: 100%;
-		        height: 100%;
-		        margin-top: 0; /* Wird dynamisch per JavaScript gesetzt */
-		        overflow: hidden;
-		        background: var(--bg-color); /* Hintergrundfarbe des Canvas-Containers */
-		        touch-action: none; /* Ermöglicht eigenes Touch-Zoom/Pan */
-		    }
+		    /* _018-canvas Klasse wird von meta.css bereitgestellt */
 
 		    /* Inhalt, der gezoomt/verschoben wird */
 		    .zoom-content {
@@ -88,7 +70,7 @@
     </style>
 </head>
 	    <body>
-	    <div class="canvas-container">
+	    <div class="_018-canvas">
 	        <div id="zoomContent" class="zoom-content">
 	            <canvas id="canvas"></canvas>
 	            <div id="textOverlay" class="text-overlay">
@@ -196,7 +178,7 @@
 
 		        const textOverlay = document.getElementById('textOverlay');
 		        const overlayText = document.querySelector('.overlay-text');
-		        const canvasContainer = document.querySelector('.canvas-container');
+		        const canvasContainer = document.querySelector('._018-canvas');
 		        const zoomContent = document.getElementById('zoomContent');
 
 		        // === CONTROLS PANEL ===
@@ -236,7 +218,7 @@
 		                value: CONFIG.controls.text.defaultValue,
 		                onChange: triggerRender
 		            })
-		            .addStepper('mainFontSize', {
+        .addSlider('mainFontSize', {
 		                label: 'Größe',
 		                min: CONFIG.controls.mainFontSize.min,
 		                max: CONFIG.controls.mainFontSize.max,
@@ -245,7 +227,7 @@
 		                decimals: 0,
 		                onChange: triggerRender
 		            })
-		            .addStepper('letterSpacing', {
+        .addSlider('letterSpacing', {
 		                label: 'Abstand',
 		                min: CONFIG.controls.letterSpacing.min,
 		                max: CONFIG.controls.letterSpacing.max,
@@ -261,7 +243,7 @@
 		                onChange: triggerRender
 		            })
 		            .addDivider()
-		            .addStepper('pointCount', {
+        .addSlider('pointCount', {
 		                label: 'Punkte',
 		                min: CONFIG.controls.pointCount.min,
 		                max: CONFIG.controls.pointCount.max,
@@ -281,7 +263,7 @@
 		                    triggerRender();
 		                }
 		            })
-		            .addStepper('pointSize', {
+        .addSlider('pointSize', {
 		                label: 'Symbolgr.',
 		                min: CONFIG.controls.pointSize.min,
 		                max: CONFIG.controls.pointSize.max,
@@ -325,7 +307,7 @@
 		                value: CONFIG.controls.bgText.defaultValue,
 		                onChange: triggerBgRender
 		            })
-		            .addStepper('bgTextCount', {
+        .addSlider('bgTextCount', {
 		                label: 'BG Dichte',
 		                min: CONFIG.controls.bgTextCount.min,
 		                max: CONFIG.controls.bgTextCount.max,
@@ -334,7 +316,7 @@
 		                decimals: 0,
 		                onChange: triggerBgRender
 		            })
-		            .addStepper('bgTextSize', {
+        .addSlider('bgTextSize', {
 		                label: 'BG Größe',
 		                min: CONFIG.controls.bgTextSize.min,
 		                max: CONFIG.controls.bgTextSize.max,

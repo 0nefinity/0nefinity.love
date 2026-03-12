@@ -428,8 +428,33 @@ canvas {
     interactionLayer.style.zIndex = '51'; // Über dem Canvas
     interactionLayer.style.borderRadius = '50%';
     interactionLayer.style.cursor = 'grab';
-    interactionLayer.style.touchAction = 'none'; // Wichtig für reibungsloses Pannen auf Mobile!
+    interactionLayer.style.touchAction = 'none';
     document.body.appendChild(interactionLayer);
+
+    let interactionLayerVisible = false;
+    let interactionCenterX = 0;
+    let interactionCenterY = 0;
+    let interactionHitRadius = 0;
+
+    function isTouchDevice() {
+      return window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    }
+
+    function isPointInsideSymbolHitArea(clientX, clientY) {
+      if (!interactionLayerVisible || interactionHitRadius <= 0) return false;
+      const dx = clientX - interactionCenterX;
+      const dy = clientY - interactionCenterY;
+      return (dx * dx + dy * dy) <= (interactionHitRadius * interactionHitRadius);
+    }
+
+    function getCurrentSymbolScreenPosition() {
+      const rect = symbolContainer.getBoundingClientRect();
+      return {
+        rect,
+        x: rect.left + zoomState.offsetX,
+        y: rect.top + zoomState.offsetY
+      };
+    }
 
     // Klicks auf das Symbol umleiten an die Sidebar (nur wichtig falls wir es auf Desktop/Mobile nutzen)
     // Auf Mobile war das Menü vorher deaktiviert, aber touchstart/click fängt das Layer nun ab
@@ -457,6 +482,11 @@ canvas {
         maxScale: 1,
         enableDamping: true,
         dampingFactor: 0.15,
+        shouldIgnoreDrag: (e) => !isPointInsideSymbolHitArea(e.clientX, e.clientY),
+        shouldIgnoreTouchDrag: (e) => {
+          const touch = e.touches && e.touches[0];
+          return !touch || !isPointInsideSymbolHitArea(touch.clientX, touch.clientY);
+        },
         onTransform: (state) => {
           // Nur Pan-Offset übernehmen, Scale kommt von unseren eigenen Handlern
           zoomState.offsetX = state.offsetX;
@@ -471,9 +501,7 @@ canvas {
       const zoomingIn = e.deltaY < 0; // Scroll up = reinzoomen
 
       // Absoluter Screen-Zentrum des Symbols im Viewport (fixed)
-      const rect = symbolContainer.getBoundingClientRect();
-      const symbolScreenX = rect.left + zoomState.offsetX;
-      const symbolScreenY = rect.top + zoomState.offsetY;
+      const { rect, x: symbolScreenX, y: symbolScreenY } = getCurrentSymbolScreenPosition();
 
       if (zoomingIn) {
         // === REINZOOMEN: Zoom-toward-cursor ===
@@ -507,28 +535,45 @@ canvas {
     }, { passive: false });
 
     // Zoom via Pinch (Mobile) – Symbol bleibt an seiner Position
-    let pinchData = { active: false, startDist: 0, startScale: 1 };
+    let pinchData = { active: false, startDist: 0, startScale: 1, worldX: 0, worldY: 0 };
 
     interactionLayer.addEventListener('touchstart', (e) => {
       if (e.touches.length === 2) {
+        if (!interactionLayerVisible) return;
+        e.preventDefault();
+        const { rect, x: symbolScreenX, y: symbolScreenY } = getCurrentSymbolScreenPosition();
+        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchData.active = true;
         pinchData.startDist = Math.sqrt(dx * dx + dy * dy);
         pinchData.startScale = zoomState.scale;
+        pinchData.worldX = (centerX - symbolScreenX) / zoomState.scale;
+        pinchData.worldY = (centerY - symbolScreenY) / zoomState.scale;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     interactionLayer.addEventListener('touchmove', (e) => {
       if (pinchData.active && e.touches.length === 2) {
+        e.preventDefault();
+        const { rect } = getCurrentSymbolScreenPosition();
+        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (pinchData.startDist > 0) {
-          zoomState.scale = Math.max(0.03, Math.min(100, pinchData.startScale * (dist / pinchData.startDist)));
+          const newScale = Math.max(0.03, Math.min(100, pinchData.startScale * (dist / pinchData.startDist)));
+          zoomState.offsetX = (centerX - pinchData.worldX * newScale) - rect.left;
+          zoomState.offsetY = (centerY - pinchData.worldY * newScale) - rect.top;
+          zoomState.scale = newScale;
+          if (zoomInstance) {
+            zoomInstance.setView({ offsetX: zoomState.offsetX, offsetY: zoomState.offsetY }, false);
+          }
         }
       }
-    }, { passive: true });
+    }, { passive: false });
 
     interactionLayer.addEventListener('touchend', (e) => {
       if (e.touches.length < 2) pinchData.active = false;
@@ -1388,13 +1433,29 @@ canvas {
         // Puffer leicht erhöhen für angenehmeres Greifen
         // Mindestradius für das Layer (z.B. 70px), damit es auf Mobile immer greifbar bleibt
         const baseRadius = (minDim * (triSize / 100) + minDim * (textSize / 100) * 0.8) * zoomState.scale;
-        const symbolRadius = Math.max(200, baseRadius);
+        const symbolRadius = Math.max(isTouchDevice() ? 140 : 200, baseRadius);
+        const layerWidth = symbolRadius * 2;
+        const layerHeight = symbolRadius * 2;
+        const layerLeft = symbolScreenX - layerWidth / 2;
+        const layerTop = symbolScreenY - layerHeight / 2;
+        const hitRadius = Math.max(48, baseRadius * 0.85);
+        const isVisible = triSize > 0 &&
+          layerLeft < window.innerWidth &&
+          layerLeft + layerWidth > 0 &&
+          layerTop < window.innerHeight &&
+          layerTop + layerHeight > 0;
 
-        // Layergröße und Position setzen
-        interactionLayer.style.width = (symbolRadius * 2) + 'px';
-        interactionLayer.style.height = (symbolRadius * 2) + 'px';
-        interactionLayer.style.left = (symbolScreenX - symbolRadius) + 'px';
-        interactionLayer.style.top = (symbolScreenY - symbolRadius) + 'px';
+        interactionLayerVisible = isVisible;
+        interactionCenterX = symbolScreenX;
+        interactionCenterY = symbolScreenY;
+        interactionHitRadius = hitRadius;
+        interactionLayer.style.width = layerWidth + 'px';
+        interactionLayer.style.height = layerHeight + 'px';
+        interactionLayer.style.left = layerLeft + 'px';
+        interactionLayer.style.top = layerTop + 'px';
+        interactionLayer.style.pointerEvents = isVisible ? 'auto' : 'none';
+        interactionLayer.style.opacity = isVisible ? '1' : '0';
+        interactionLayer.style.touchAction = 'none';
       }
 
       requestAnimationFrame(animate);

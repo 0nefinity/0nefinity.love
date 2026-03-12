@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Koordinaten-Verzerrung - Ein Kreis bleibt immer ein Kreis</title>
+    <link href="/meta.css" rel="stylesheet" />
+    <script src="/meta.js"></script>
+    <style>
+        /* _018-canvas aus meta.css wird verwendet */
+        /* Cursor-Styles für den Canvas */
+        #canvas {
+            cursor: crosshair;
+                touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        Ein Kreis bleibt ein Kreis, auch wenn der umliegende Raum sich verzerrt.
+    </div>
+    <canvas id="canvas" class="_018-canvas"></canvas>
+
+    <script>
+        // ============================================
+        // KOORDINATEN-VERZERRUNG - FULLSCREEN
+        // ============================================
+        
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY, scale;
+        
+        // Berechne den sichtbaren Bereich basierend auf dem Seitenverhältnis
+        // Radius 1 = 50% der kleineren Dimension
+        let xRange, yRange;
+        
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            centerX = width / 2;
+            centerY = height / 2;
+            
+            // Skalierung: Radius 1 = 25% der kleineren Dimension
+            // (damit Radius 1 bei 50% zwischen Mitte und Rand liegt)
+            scale = Math.min(width, height) * 0.25;
+            
+            // Berechne den mathematischen Bereich basierend auf dem Seitenverhältnis
+            // Wir wollen den GESAMTEN Bildschirm ausfüllen
+            xRange = (width / 2) / scale;  // Wie viele Einheiten passen von Mitte bis Rand X
+            yRange = (height / 2) / scale; // Wie viele Einheiten passen von Mitte bis Rand Y
+            
+            // Füge etwas Puffer hinzu für Überzeichnung
+            xRange += 0.5;
+            yRange += 0.5;
+            
+            draw();
+        }
+        
+        window.addEventListener('resize', resize);
+        
+        // ============================================
+        // DATENSTRUKTUREN
+        // ============================================
+        
+        let controlPoints = [];
+        
+        let isDragging = false;
+        let dragPoint = null;
+        let dragMode = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let hoverTarget = null;
+        let deleteAnchorPoint = null;
+        let activePointerId = null;
+
+        const interactionConfig = {
+            pointHitRadiusMouse: 10,
+            pointHitRadiusTouch: 18,
+            ringHitToleranceMouse: 10,
+            ringHitToleranceTouch: 18,
+            pointRadius: 6,
+            pointRadiusActive: 8,
+            deleteBadgeOffsetX: 14,
+            deleteBadgeOffsetY: -14,
+            deleteBadgeRadius: 8,
+            deleteCorridorWidth: 10
+        };
+        
+        const defaultEditorConfig = {
+            influenceRadius: 1.5,
+            applyToAll: false,
+            gridDensity: 0.2,
+            showControlPoints: false
+        };
+
+        const config = {
+            ...defaultEditorConfig,
+            circleResolution: 720,
+            resetSpeed: 0.1
+        };
+        
+        let isResetting = false;
+        let deletingPoints = new Set();
+        let isRelaxing = false;
+        let stateTransition = null;
+        let nextControlPointId = 1;
+        
+        // ============================================
+        // KOORDINATEN-TRANSFORMATION
+        // ============================================
+        
+        function screenToMath(sx, sy) {
+            return {
+                x: (sx - centerX) / scale,
+                y: -(sy - centerY) / scale
+            };
+        }
+        
+        function mathToScreen(mx, my) {
+            return {
+                x: centerX + mx * scale,
+                y: centerY - my * scale
+            };
+        }
+
+        function ensureControlPointId(cp) {
+            if (!cp.id) {
+                cp.id = `cp-${nextControlPointId++}`;
+            }
+            return cp.id;
+        }
+
+        function cloneControlPoint(cp) {
+            return {
+                id: ensureControlPointId(cp),
+                x: cp.x,
+                y: cp.y,
+                dx: cp.dx,
+                dy: cp.dy,
+                radius: cp.radius
+            };
+        }
+
+        function normalizeControlPoint(cp = {}) {
+            return {
+                id: cp.id || `cp-${nextControlPointId++}`,
+                x: typeof cp.x === 'number' ? cp.x : 0,
+                y: typeof cp.y === 'number' ? cp.y : 0,
+                dx: typeof cp.dx === 'number' ? cp.dx : 0,
+                dy: typeof cp.dy === 'number' ? cp.dy : 0,
+                radius: typeof cp.radius === 'number' ? Math.max(0, cp.radius) : defaultEditorConfig.influenceRadius
+            };
+        }
+
+        function normalizeEditorState(state) {
+            const source = Array.isArray(state) ? { controlPoints: state } : (state || {});
+            const sourceConfig = source.config || {};
+
+            return {
+                controlPoints: (source.controlPoints || []).map(normalizeControlPoint),
+                config: {
+                    influenceRadius: Math.max(0, typeof source.influenceRadius === 'number'
+                        ? source.influenceRadius
+                        : (typeof sourceConfig.influenceRadius === 'number' ? sourceConfig.influenceRadius : defaultEditorConfig.influenceRadius)),
+                    applyToAll: typeof sourceConfig.applyToAll === 'boolean' ? sourceConfig.applyToAll : defaultEditorConfig.applyToAll,
+                    showControlPoints: typeof sourceConfig.showControlPoints === 'boolean' ? sourceConfig.showControlPoints : defaultEditorConfig.showControlPoints,
+                    gridDensity: Math.max(0, typeof sourceConfig.gridDensity === 'number' ? sourceConfig.gridDensity : defaultEditorConfig.gridDensity)
+                }
+            };
+        }
+
+        function getStatePointRadius(state, cp) {
+            return state.config.applyToAll ? state.config.influenceRadius : (cp.radius ?? state.config.influenceRadius);
+        }
+
+        function statesAreEqual(a, b) {
+            return JSON.stringify(a) === JSON.stringify(b);
+        }
+
+        function getDisplayedPointMathPos(cp) {
+            return {
+                x: cp.x + cp.dx,
+                y: cp.y + cp.dy
+            };
+        }
+
+        function canEditRadiusByDrag() {
+            return config.showControlPoints;
+        }
+
+        function getPointerMetrics(e) {
+            const isTouch = e.pointerType === 'touch';
+            return {
+                pointHitRadiusPx: isTouch ? interactionConfig.pointHitRadiusTouch : interactionConfig.pointHitRadiusMouse,
+                ringHitTolerancePx: isTouch ? interactionConfig.ringHitToleranceTouch : interactionConfig.ringHitToleranceMouse
+            };
+        }
+
+        function getCursorForTarget(target) {
+            if (!target) return 'crosshair';
+            if (target.type === 'delete') return 'pointer';
+            return target.type === 'radius' ? 'ew-resize' : 'grab';
+        }
+
+        function syncSliderControl(key, value, decimals = 1) {
+            const panel = window.undoRedoPanel;
+            if (!panel?.bodyEl) return;
+
+            panel.params[key] = value;
+
+            const row = panel.bodyEl.querySelector(`[data-key="${key}"]`);
+            if (!row) return;
+
+            const range = row.querySelector('.ctrl-range');
+            const input = row.querySelector('.ctrl-value-input');
+            const display = row.querySelector('.ctrl-value-display');
+            const rounded = Number(value);
+
+            if (range) range.value = String(rounded);
+            if (input) input.value = rounded.toFixed(decimals);
+            if (display) display.textContent = rounded.toFixed(decimals);
+        }
+
+        function syncToggleControl(key, value, labelOn, labelOff) {
+            const panel = window.undoRedoPanel;
+            if (!panel?.bodyEl) return;
+
+            panel.params[key] = value;
+
+            const row = panel.bodyEl.querySelector(`[data-key="${key}"]`);
+            if (!row) return;
+
+            const btn = row.querySelector('.ctrl-toggle');
+            if (!btn) return;
+
+            btn.classList.toggle('active', value);
+            btn.textContent = value ? labelOn : labelOff;
+        }
+
+        function syncEditorControls() {
+            syncSliderControl('influenceRadius', config.influenceRadius, 1);
+            syncToggleControl('applyToAll', config.applyToAll, 'Ja', 'Nein');
+            syncToggleControl('showControlPoints', config.showControlPoints, 'Ja', 'Nein');
+            syncSliderControl('gridDensity', config.gridDensity, 1);
+        }
+
+        function syncInfluenceRadiusControl() {
+            syncSliderControl('influenceRadius', config.influenceRadius, 1);
+        }
+
+        function clearInteractionState() {
+            isDragging = false;
+            dragPoint = null;
+            dragMode = null;
+            dragOffsetX = 0;
+            dragOffsetY = 0;
+            hoverTarget = null;
+            deleteAnchorPoint = null;
+            activePointerId = null;
+            updateCanvasCursor(null);
+        }
+
+        function applyEditorState(state) {
+            const normalizedState = normalizeEditorState(state);
+            controlPoints = normalizedState.controlPoints.map(cloneControlPoint);
+            config.influenceRadius = normalizedState.config.influenceRadius;
+            config.applyToAll = normalizedState.config.applyToAll;
+            config.showControlPoints = normalizedState.config.showControlPoints;
+            config.gridDensity = normalizedState.config.gridDensity;
+            syncEditorControls();
+        }
+
+        function finishStateTransition() {
+            if (!stateTransition) return;
+
+            const targetState = stateTransition.targetState;
+            stateTransition = null;
+            applyEditorState(targetState);
+            clearInteractionState();
+            draw();
+        }
+
+        function startStateTransition(state) {
+            const targetState = normalizeEditorState(state);
+            const currentState = normalizeEditorState(getControlPointsState({ excludeDeleting: false }));
+
+            isResetting = false;
+            deletingPoints.clear();
+            isRelaxing = false;
+            clearInteractionState();
+
+            if (statesAreEqual(currentState, targetState)) {
+                stateTransition = null;
+                applyEditorState(targetState);
+                draw();
+                return;
+            }
+            stateTransition = {
+                sourceState: currentState,
+                targetState,
+                progress: 0
+            };
+
+            applyEditorState(targetState);
+            draw();
+
+            requestAnimationFrame(animateStateTransition);
+        }
+
+        function animateStateTransition() {
+            if (!stateTransition) return;
+
+            stateTransition.progress += (1 - stateTransition.progress) * config.resetSpeed;
+
+            draw();
+
+            if (1 - stateTransition.progress <= 0.001) {
+                finishStateTransition();
+                return;
+            }
+
+            requestAnimationFrame(animateStateTransition);
+        }
+
+        function isSameTarget(a, b) {
+            if (a === b) return true;
+            if (!a || !b) return false;
+            return a.type === b.type && a.cp === b.cp;
+        }
+
+        function setHoverState(target, nextDeleteAnchor = deleteAnchorPoint) {
+            const hoverChanged = !isSameTarget(hoverTarget, target);
+            const deleteChanged = deleteAnchorPoint !== nextDeleteAnchor;
+            if (!hoverChanged && !deleteChanged) return;
+
+            hoverTarget = target;
+            deleteAnchorPoint = nextDeleteAnchor;
+            draw();
+        }
+
+        function getDeleteBadgeScreenPos(cp) {
+            const center = mathToScreen(cp.x + cp.dx, cp.y + cp.dy);
+            return {
+                x: center.x + interactionConfig.deleteBadgeOffsetX,
+                y: center.y + interactionConfig.deleteBadgeOffsetY,
+                centerX: center.x,
+                centerY: center.y
+            };
+        }
+
+        function distanceToSegment(px, py, ax, ay, bx, by) {
+            const abx = bx - ax;
+            const aby = by - ay;
+            const abLenSq = abx * abx + aby * aby;
+
+            if (abLenSq === 0) {
+                return Math.hypot(px - ax, py - ay);
+            }
+
+            const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / abLenSq));
+            const closestX = ax + abx * t;
+            const closestY = ay + aby * t;
+            return Math.hypot(px - closestX, py - closestY);
+        }
+
+        function getDeleteBadgeState(screenPos, cp = deleteAnchorPoint) {
+            if (!cp || !config.showControlPoints) return null;
+
+            const badge = getDeleteBadgeScreenPos(cp);
+            const overDelete = Math.hypot(screenPos.x - badge.x, screenPos.y - badge.y) <= interactionConfig.deleteBadgeRadius;
+            const withinCorridor = distanceToSegment(
+                screenPos.x,
+                screenPos.y,
+                badge.centerX,
+                badge.centerY,
+                badge.x,
+                badge.y
+            ) <= interactionConfig.deleteCorridorWidth;
+
+            return {
+                cp,
+                overDelete,
+                keepVisible: overDelete || withinCorridor
+            };
+        }
+
+        function getResolvedHoverState(screenPos, mathPos, e) {
+            const target = getInteractionTarget(screenPos, mathPos, e);
+            const deleteState = getDeleteBadgeState(screenPos);
+
+            let nextDeleteAnchor = null;
+            if (target?.type === 'point' || target?.type === 'delete') {
+                nextDeleteAnchor = target.cp;
+            } else if (deleteState?.keepVisible) {
+                nextDeleteAnchor = deleteState.cp;
+            }
+
+            return { target, nextDeleteAnchor };
+        }
+
+        function removeControlPoint(cp) {
+            finishStateTransition();
+
+            const index = controlPoints.indexOf(cp);
+            if (index === -1 || deletingPoints.has(cp)) return;
+
+            if (window.undoRedoPanel) {
+                window.undoRedoPanel.saveState({
+                    controlPoints: controlPoints
+                        .filter(point => point !== cp && !deletingPoints.has(point))
+                        .map(cloneControlPoint),
+                    config: {
+                        influenceRadius: config.influenceRadius,
+                        applyToAll: config.applyToAll,
+                        showControlPoints: config.showControlPoints,
+                        gridDensity: config.gridDensity
+                    }
+                });
+            }
+
+            hoverTarget = null;
+            deleteAnchorPoint = null;
+
+            if (dragPoint === cp) {
+                isDragging = false;
+                dragPoint = null;
+                dragMode = null;
+                dragOffsetX = 0;
+                dragOffsetY = 0;
+                activePointerId = null;
+                updateCanvasCursor(null);
+            }
+
+            deletingPoints.add(cp);
+            startRelaxation();
+            draw();
+        }
+
+        function getInteractionTarget(screenPos, mathPos, e) {
+            if (isResetting || stateTransition) {
+                return null;
+            }
+
+            if (e.pointerType !== 'touch') {
+                const deleteState = getDeleteBadgeState(screenPos);
+                if (deleteState?.overDelete) {
+                    return { type: 'delete', cp: deleteState.cp };
+                }
+            }
+
+            const { pointHitRadiusPx, ringHitTolerancePx } = getPointerMetrics(e);
+            const pointHitRadiusMath = pointHitRadiusPx / scale;
+
+            for (let i = controlPoints.length - 1; i >= 0; i--) {
+                const cp = controlPoints[i];
+                if (deletingPoints.has(cp)) continue;
+
+                const center = getDisplayedPointMathPos(cp);
+                const pointDist = Math.hypot(mathPos.x - center.x, mathPos.y - center.y);
+
+                if (pointDist <= pointHitRadiusMath) {
+                    return { type: 'point', cp };
+                }
+
+                if (!canEditRadiusByDrag()) continue;
+
+                const radius = getPointRadius(cp);
+                if (radius <= 0) continue;
+
+                const screenCenter = mathToScreen(center.x, center.y);
+                const screenDistance = Math.hypot(screenPos.x - screenCenter.x, screenPos.y - screenCenter.y);
+
+                if (Math.abs(screenDistance - radius * scale) <= ringHitTolerancePx) {
+                    return { type: 'radius', cp };
+                }
+            }
+
+            return null;
+        }
+        
+        // ============================================
+        // RBF-INTERPOLATION
+        // ============================================
+        
+        function gaussian(distance, radius) {
+            if (radius === 0) return distance === 0 ? 1 : 0;
+            const t = distance / radius;
+            return Math.exp(-t * t);
+        }
+
+        function getDisplacementForState(state, mx, my) {
+            let dx = 0;
+            let dy = 0;
+
+            for (const cp of state.controlPoints) {
+                const dist = Math.hypot(mx - cp.x, my - cp.y);
+                const radius = getStatePointRadius(state, cp);
+                const weight = gaussian(dist, radius);
+                dx += cp.dx * weight;
+                dy += cp.dy * weight;
+            }
+
+            return { dx, dy };
+        }
+
+        function getTransitionProgress() {
+            return stateTransition ? stateTransition.progress : 1;
+        }
+
+        function getRenderedGridDensity() {
+            if (!stateTransition) return config.gridDensity;
+
+            const progress = getTransitionProgress();
+            const { sourceState, targetState } = stateTransition;
+            return sourceState.config.gridDensity + (targetState.config.gridDensity - sourceState.config.gridDensity) * progress;
+        }
+        
+        function getPointRadius(cp) {
+            return config.applyToAll ? config.influenceRadius : (cp.radius || config.influenceRadius);
+        }
+        
+        function getDisplacement(mx, my) {
+            if (stateTransition) {
+                const progress = getTransitionProgress();
+                const sourceDisp = getDisplacementForState(stateTransition.sourceState, mx, my);
+                const targetDisp = getDisplacementForState(stateTransition.targetState, mx, my);
+
+                return {
+                    dx: sourceDisp.dx + (targetDisp.dx - sourceDisp.dx) * progress,
+                    dy: sourceDisp.dy + (targetDisp.dy - sourceDisp.dy) * progress
+                };
+            }
+
+            return getDisplacementForState({ controlPoints, config }, mx, my);
+        }
+        
+        function transformPoint(mx, my) {
+            const disp = getDisplacement(mx, my);
+            return mathToScreen(mx + disp.dx, my + disp.dy);
+        }
+        
+        // ============================================
+        // RENDERING
+        // ============================================
+        
+        function draw() {
+            const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || 'black';
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, width, height);
+            
+            drawGrid();
+            drawAxes();
+            drawCircle();
+            drawControlPoints();
+        }
+        
+        function drawGrid() {
+            const step = getRenderedGridDensity();
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            
+            // 0nefinity: Bei Dichte 0 (oder negativ) wird das Gitter zum Kontinuum
+            // Unendlich viele Linien = ausgefüllte Fläche
+            // Negative Dichte würde eine Endlosschleife erzeugen!
+            if (step <= 0) {
+                ctx.save();
+                ctx.globalAlpha = 0.08;
+                ctx.fillStyle = textColor;
+                ctx.fillRect(0, 0, width, height);
+                ctx.restore();
+                return;
+            }
+            
+            ctx.save();
+            ctx.globalAlpha = 0.12;
+            ctx.strokeStyle = textColor;
+            ctx.lineWidth = 1;
+            
+            // Finde den Startpunkt, sodass 0 immer auf einer Gitterlinie liegt
+            // Für negative Richtung: größtes Vielfaches von step, das ≤ -xRange ist
+            const startX = Math.floor(-xRange / step) * step;
+            const startY = Math.floor(-yRange / step) * step;
+            
+            // Vertikale Linien (x = const)
+            for (let x = startX; x <= xRange; x += step) {
+                ctx.beginPath();
+                let first = true;
+                for (let y = -yRange; y <= yRange; y += 0.05) {
+                    const pos = transformPoint(x, y);
+                    if (first) {
+                        ctx.moveTo(pos.x, pos.y);
+                        first = false;
+                    } else {
+                        ctx.lineTo(pos.x, pos.y);
+                    }
+                }
+                ctx.stroke();
+            }
+            
+            // Horizontale Linien (y = const)
+            for (let y = startY; y <= yRange; y += step) {
+                ctx.beginPath();
+                let first = true;
+                for (let x = -xRange; x <= xRange; x += 0.05) {
+                    const pos = transformPoint(x, y);
+                    if (first) {
+                        ctx.moveTo(pos.x, pos.y);
+                        first = false;
+                    } else {
+                        ctx.lineTo(pos.x, pos.y);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+        
+        function drawAxes() {
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            
+            ctx.save();
+            ctx.globalAlpha = 0.4;
+            ctx.strokeStyle = textColor;
+            ctx.lineWidth = 2;
+            
+            // X-Achse (y = 0)
+            ctx.beginPath();
+            let first = true;
+            for (let x = -xRange; x <= xRange; x += 0.02) {
+                const pos = transformPoint(x, 0);
+                if (first) {
+                    ctx.moveTo(pos.x, pos.y);
+                    first = false;
+                } else {
+                    ctx.lineTo(pos.x, pos.y);
+                }
+            }
+            ctx.stroke();
+            
+            // Y-Achse (x = 0)
+            ctx.beginPath();
+            first = true;
+            for (let y = -yRange; y <= yRange; y += 0.02) {
+                const pos = transformPoint(0, y);
+                if (first) {
+                    ctx.moveTo(pos.x, pos.y);
+                    first = false;
+                } else {
+                    ctx.lineTo(pos.x, pos.y);
+                }
+            }
+            ctx.stroke();
+            ctx.restore();
+            
+            // Beschriftungen
+            ctx.save();
+            ctx.globalAlpha = 0.45;
+            ctx.fillStyle = textColor;
+            ctx.font = '14px system-ui';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // X bei 80% des sichtbaren Bereichs
+            const xLabelPos = transformPoint(xRange * 0.8, 0);
+            const yLabelPos = transformPoint(0, yRange * 0.8);
+            
+            ctx.fillText('x', xLabelPos.x, xLabelPos.y);
+            ctx.fillText('y', yLabelPos.x, yLabelPos.y);
+            ctx.restore();
+        }
+        
+        function drawCircle() {
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            
+            ctx.strokeStyle = textColor;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            
+            const resolution = config.circleResolution;
+            for (let i = 0; i <= resolution; i++) {
+                const angle = (i / resolution) * Math.PI * 2;
+                const mx = Math.cos(angle);
+                const my = Math.sin(angle);
+                
+                const pos = transformPoint(mx, my);
+                
+                if (i === 0) {
+                    ctx.moveTo(pos.x, pos.y);
+                } else {
+                    ctx.lineTo(pos.x, pos.y);
+                }
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+        
+        function drawControlPoints() {
+            if (!config.showControlPoints) return;
+            if (isResetting) return;
+            
+            // Hole die Textfarbe aus CSS
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            const isTransitioning = !!stateTransition;
+            
+            for (const cp of controlPoints) {
+                const radius = getPointRadius(cp);
+                const center = getDisplayedPointMathPos(cp);
+                const isDeleting = deletingPoints.has(cp);
+                if (isDeleting) continue;
+
+                const isHoveredPoint = hoverTarget?.type === 'point' && hoverTarget.cp === cp;
+                const isHoveredRadius = hoverTarget?.type === 'radius' && hoverTarget.cp === cp;
+                const isHoveredDelete = hoverTarget?.type === 'delete' && hoverTarget.cp === cp;
+                const isDraggingPoint = isDragging && dragMode === 'point' && dragPoint === cp;
+                const isDraggingRadius = isDragging && dragMode === 'radius' && dragPoint === cp;
+                const showDeleteBadge = !isTransitioning && !isDragging && !isDeleting && deleteAnchorPoint === cp;
+                const pointIsActive = isHoveredPoint || isDraggingPoint || showDeleteBadge;
+                const radiusIsActive = isHoveredRadius || isDraggingRadius;
+                
+                // Zeichne Einflussradius als gestrichelten Kreis
+                const screenCenter = mathToScreen(center.x, center.y);
+                const screenRadius = radius * scale;
+
+                ctx.save();
+                ctx.globalAlpha = radiusIsActive ? 0.82 : 0.38;
+                ctx.strokeStyle = textColor;
+                ctx.lineWidth = radiusIsActive ? 1.75 : 1;
+                ctx.setLineDash(radiusIsActive ? [8, 4] : [5, 5]);
+                ctx.beginPath();
+                ctx.arc(screenCenter.x, screenCenter.y, screenRadius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+
+                // Zeichne den Kontrollpunkt selbst
+                ctx.save();
+                ctx.globalAlpha = pointIsActive ? 1 : 0.9;
+                ctx.fillStyle = textColor;
+                ctx.beginPath();
+                ctx.arc(
+                    screenCenter.x,
+                    screenCenter.y,
+                    pointIsActive ? interactionConfig.pointRadiusActive : interactionConfig.pointRadius,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+                ctx.restore();
+
+                if (showDeleteBadge) {
+                    const badge = getDeleteBadgeScreenPos(cp);
+                    const crossSize = interactionConfig.deleteBadgeRadius * (isHoveredDelete ? 0.72 : 0.55);
+
+                    ctx.save();
+                    ctx.globalAlpha = isHoveredDelete ? 1 : 0.72;
+                    ctx.strokeStyle = textColor;
+                    ctx.lineWidth = 1.5;
+                    ctx.lineCap = 'round';
+
+                    ctx.beginPath();
+                    ctx.moveTo(badge.x - crossSize, badge.y - crossSize);
+                    ctx.lineTo(badge.x + crossSize, badge.y + crossSize);
+                    ctx.moveTo(badge.x + crossSize, badge.y - crossSize);
+                    ctx.lineTo(badge.x - crossSize, badge.y + crossSize);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                
+                // Zeichne Verbindungslinie zum Ursprung des Punktes
+                const originPos = mathToScreen(cp.x, cp.y);
+                ctx.save();
+                ctx.globalAlpha = (pointIsActive || radiusIsActive) ? 0.38 : 0.2;
+                ctx.strokeStyle = textColor;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(originPos.x, originPos.y);
+                ctx.lineTo(screenCenter.x, screenCenter.y);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        
+        // ============================================
+        // INTERAKTION
+        // ============================================
+        
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function updateCanvasCursor(target = hoverTarget) {
+            canvas.style.cursor = isDragging ? 'grabbing' : getCursorForTarget(target);
+        }
+        
+        function onPointerDown(e) {
+            if (stateTransition || isRelaxing || isResetting) {
+                e.preventDefault();
+                return;
+            }
+
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+            const pos = getPointerPos(e);
+            const mPos = screenToMath(pos.x, pos.y);
+            const target = getInteractionTarget(pos, mPos, e);
+
+            if (target?.type === 'delete') {
+                removeControlPoint(target.cp);
+                updateCanvasCursor(null);
+                e.preventDefault();
+                return;
+            }
+
+            if (target) {
+                dragPoint = target.cp;
+                dragMode = target.type;
+
+                if (dragMode === 'point') {
+                    const center = getDisplayedPointMathPos(target.cp);
+                    dragOffsetX = mPos.x - center.x;
+                    dragOffsetY = mPos.y - center.y;
+                } else {
+                    dragOffsetX = 0;
+                    dragOffsetY = 0;
+                }
+            } else {
+                dragPoint = {
+                    id: `cp-${nextControlPointId++}`,
+                    x: mPos.x,
+                    y: mPos.y,
+                    dx: 0,
+                    dy: 0,
+                    radius: config.influenceRadius
+                };
+                controlPoints.push(dragPoint);
+                dragMode = 'point';
+                dragOffsetX = 0;
+                dragOffsetY = 0;
+            }
+            
+            isDragging = true;
+            isResetting = false;
+
+            if (typeof e.pointerId === 'number') {
+                activePointerId = e.pointerId;
+                canvas.setPointerCapture(e.pointerId);
+            }
+
+            hoverTarget = target;
+            updateCanvasCursor(target);
+            draw();
+
+            e.preventDefault();
+        }
+        
+        function onPointerMove(e) {
+            if (isDragging && activePointerId !== null && e.pointerId !== activePointerId) return;
+
+            const pos = getPointerPos(e);
+            const mPos = screenToMath(pos.x, pos.y);
+
+            if (isDragging && dragPoint) {
+                if (dragMode === 'radius') {
+                    const center = getDisplayedPointMathPos(dragPoint);
+                    const newRadius = Math.max(0, Math.hypot(mPos.x - center.x, mPos.y - center.y));
+
+                    if (config.applyToAll) {
+                        config.influenceRadius = newRadius;
+                        syncInfluenceRadiusControl();
+                    } else {
+                        dragPoint.radius = newRadius;
+                    }
+                } else {
+                    dragPoint.dx = mPos.x - dragPoint.x - dragOffsetX;
+                    dragPoint.dy = mPos.y - dragPoint.y - dragOffsetY;
+                }
+
+                hoverTarget = { type: dragMode, cp: dragPoint };
+                updateCanvasCursor(hoverTarget);
+                draw();
+                e.preventDefault();
+                return;
+            }
+
+            if (e.pointerType === 'touch') return;
+
+            const { target, nextDeleteAnchor } = getResolvedHoverState(pos, mPos, e);
+            setHoverState(target, nextDeleteAnchor);
+            updateCanvasCursor(target);
+        }
+        
+        function onPointerUp(e) {
+            if (activePointerId !== null && typeof e.pointerId === 'number' && e.pointerId !== activePointerId) return;
+
+            const wasDragging = isDragging;
+
+            if (typeof e.pointerId === 'number' && canvas.hasPointerCapture(e.pointerId)) {
+                canvas.releasePointerCapture(e.pointerId);
+            }
+
+            isDragging = false;
+            dragPoint = null;
+            dragMode = null;
+            dragOffsetX = 0;
+            dragOffsetY = 0;
+            activePointerId = null;
+
+            if (e.pointerType === 'touch') {
+                setHoverState(null, null);
+                updateCanvasCursor(null);
+            } else {
+                const pos = getPointerPos(e);
+                const mPos = screenToMath(pos.x, pos.y);
+                const { target, nextDeleteAnchor } = getResolvedHoverState(pos, mPos, e);
+                setHoverState(target, nextDeleteAnchor);
+                updateCanvasCursor(target);
+            }
+
+            if (wasDragging && window.undoRedoPanel) {
+                window.undoRedoPanel.saveState(getControlPointsState());
+            }
+
+            draw();
+        }
+
+        function onPointerCancel(e) {
+            if (activePointerId !== null && typeof e.pointerId === 'number' && e.pointerId !== activePointerId) return;
+
+            if (typeof e.pointerId === 'number' && canvas.hasPointerCapture(e.pointerId)) {
+                canvas.releasePointerCapture(e.pointerId);
+            }
+
+            isDragging = false;
+            dragPoint = null;
+            dragMode = null;
+            dragOffsetX = 0;
+            dragOffsetY = 0;
+            activePointerId = null;
+            setHoverState(null, null);
+            updateCanvasCursor(null);
+            draw();
+        }
+        
+        canvas.addEventListener('pointerdown', onPointerDown);
+        canvas.addEventListener('pointermove', onPointerMove);
+        canvas.addEventListener('pointerup', onPointerUp);
+        canvas.addEventListener('pointercancel', onPointerCancel);
+        canvas.addEventListener('pointerleave', (e) => {
+            if (!isDragging && e.pointerType !== 'touch') {
+                setHoverState(null, null);
+                updateCanvasCursor(null);
+            }
+        });
+        
+        // ============================================
+        // RESET
+        // ============================================
+
+        function startRelaxation() {
+            if (isRelaxing) return;
+            isRelaxing = true;
+            requestAnimationFrame(animateReset);
+        }
+        
+        function startReset() {
+            finishStateTransition();
+
+            if (window.undoRedoPanel) {
+                window.undoRedoPanel.saveState({
+                    controlPoints: [],
+                    config: {
+                        influenceRadius: config.influenceRadius,
+                        applyToAll: config.applyToAll,
+                        showControlPoints: config.showControlPoints,
+                        gridDensity: config.gridDensity
+                    }
+                });
+            }
+
+            isResetting = true;
+            deletingPoints.clear();
+            hoverTarget = null;
+            deleteAnchorPoint = null;
+            updateCanvasCursor(null);
+            draw();
+            startRelaxation();
+        }
+        
+        function animateReset() {
+            const speed = config.resetSpeed;
+            let allZero = true;
+            let hasDeletingMotion = false;
+            const pointsToRemove = [];
+            
+            for (const cp of controlPoints) {
+                const shouldRelaxPoint = isResetting || deletingPoints.has(cp);
+                if (!shouldRelaxPoint) continue;
+
+                cp.dx *= (1 - speed);
+                cp.dy *= (1 - speed);
+
+                const stillMoving = Math.abs(cp.dx) > 0.001 || Math.abs(cp.dy) > 0.001;
+
+                if (isResetting && stillMoving) {
+                    allZero = false;
+                }
+
+                if (deletingPoints.has(cp)) {
+                    if (stillMoving) {
+                        hasDeletingMotion = true;
+                    } else {
+                        pointsToRemove.push(cp);
+                    }
+                }
+            }
+
+            if (!isResetting) {
+                allZero = false;
+            }
+
+            if (pointsToRemove.length > 0) {
+                for (const cp of pointsToRemove) {
+                    deletingPoints.delete(cp);
+                }
+
+                controlPoints = controlPoints.filter(cp => !pointsToRemove.includes(cp));
+            }
+            
+            draw();
+            
+            if (allZero) {
+                controlPoints = [];
+                isResetting = false;
+                deletingPoints.clear();
+                isRelaxing = false;
+
+                draw();
+            } else if (isResetting || hasDeletingMotion || deletingPoints.size > 0) {
+                requestAnimationFrame(animateReset);
+            } else {
+                isRelaxing = false;
+            }
+        }
+        
+        // ============================================
+        // CONTROLS PANEL (mit controls.js - addSlider!)
+        // ============================================
+        
+        // State für Undo/Redo
+        function getControlPointsState(options = {}) {
+            const { excludeDeleting = true } = options;
+            const points = excludeDeleting
+                ? controlPoints.filter(cp => !deletingPoints.has(cp))
+                : controlPoints;
+
+            return {
+                controlPoints: points.map(cp => cloneControlPoint(cp)),
+                config: {
+                    influenceRadius: config.influenceRadius,
+                    applyToAll: config.applyToAll,
+                    showControlPoints: config.showControlPoints,
+                    gridDensity: config.gridDensity
+                }
+            };
+        }
+        
+        function setControlPointsState(state) {
+            startStateTransition(state);
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const panel = Controls.createPanel({ position: 'left' });
+            
+            // Global referenzieren für mouseup-Handler
+            window.undoRedoPanel = panel;
+            
+            // Undo/Redo zuerst aktivieren (links)
+            panel.enableUndoRedo({
+                onUndo: (state) => setControlPointsState(state),
+                onRedo: (state) => setControlPointsState(state)
+            });
+            
+            // Dann Reset-Button (mittig)
+            panel.addResetButton({
+                icon: '↺',
+                title: 'Reset',
+                onClick: () => {
+                    startReset();
+                }
+            });
+            
+            panel
+                .addSlider('influenceRadius', {
+                    label: 'Einflussradius',
+                    min: 0,
+                    max: 5,
+                    step: 0.1,
+                    value: config.influenceRadius,
+                    decimals: 1,
+                    onChange: v => {
+                        finishStateTransition();
+                        config.influenceRadius = Math.max(0, v);
+                        syncEditorControls();
+                        panel.saveState(getControlPointsState());
+                        draw();
+                    }
+                })
+                .addToggle('applyToAll', {
+                    label: 'Auf alle anwenden',
+                    value: config.applyToAll,
+                    labelOn: 'Ja',
+                    labelOff: 'Nein',
+                    onChange: v => {
+                        finishStateTransition();
+                        config.applyToAll = v;
+                        syncEditorControls();
+                        panel.saveState(getControlPointsState());
+                        draw();
+                    }
+                })
+                .addDivider()
+                .addToggle('showControlPoints', {
+                    label: 'Punkte anzeigen',
+                    value: config.showControlPoints,
+                    labelOn: 'Ja',
+                    labelOff: 'Nein',
+                    onChange: v => {
+                        finishStateTransition();
+                        config.showControlPoints = v;
+                        syncEditorControls();
+                        panel.saveState(getControlPointsState());
+                        draw();
+                    }
+                })
+                .addDivider()
+                .addSlider('gridDensity', {
+                    label: 'Gitter-Dichte',
+                    min: 0,
+                    max: 1,
+                    step: 0.1,
+                    value: config.gridDensity,
+                    decimals: 1,
+                    onChange: v => {
+                        finishStateTransition();
+                        config.gridDensity = Math.max(0, v);
+                        syncEditorControls();
+                        panel.saveState(getControlPointsState());
+                        draw();
+                    }
+                })
+;
+            
+            // Speichere Initial-State (leere Kontrollpunkte)
+            panel.saveState(getControlPointsState());
+        });
+        
+        // Initialisierung
+        resize();
+    </script>
+</body>
+</html>

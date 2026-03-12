@@ -13,19 +13,9 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      overflow: hidden;
-      touch-action: none;
       background: #000;
     }
-    #container {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
-      overflow: hidden;
-      cursor: grab;
-      background: #000;
-    }
-    #container.dragging { cursor: grabbing; }
+    /* _018-canvas Klasse wird von meta.css bereitgestellt */
     .texture-layer {
       position: absolute;
       top: 50%;
@@ -111,6 +101,37 @@
       #bible-karussell .item.active {
         font-size: 18px;
       }
+      #mode-toggle {
+        font-size: 14px;
+        padding: 8px 16px;
+      }
+    }
+
+    /* Mode Toggle Button */
+    #mode-toggle {
+      background: transparent;
+      border: 1px solid #666;
+      color: #888;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s ease-out;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #mode-toggle:hover {
+      border-color: #fff;
+      color: #fff;
+    }
+    #mode-toggle.flat {
+      border-color: #f0f;
+      color: #f0f;
+    }
+    #mode-toggle .mode-icon {
+      font-size: 16px;
     }
   </style>
 </head>
@@ -124,9 +145,13 @@
       <div class="item inactive" id="nextItem1"></div>
       <div class="item more-inactive" id="nextItem2"></div>
     </div>
+    <button id="mode-toggle" title="Toggle between circle and flat mode">
+      <span class="mode-icon">◯</span>
+      <span class="mode-text">Kreis</span>
+    </button>
   </div>
 
-  <div id="container">
+  <div class="_018-canvas">
     <canvas id="base-layer" class="texture-layer"></canvas>
     <canvas id="native-layer" class="texture-layer"></canvas>
   </div>
@@ -158,7 +183,10 @@
         startFontSize: 3,    // Ab hier beginnt der Übergang (px)
         endFontSize: 10      // Hier ist der Übergang abgeschlossen (px)
         // Kein Blur mehr - nur sauberer Crossfade
-      }
+      },
+
+      // Flat-Modus Einstellungen
+      FLAT_LINE_WIDTH: 700  // Festes Pixel-Breite pro Zeile im Flat-Modus
     };
 
     // ============================================================
@@ -180,6 +208,9 @@
       baseFontSize: 0,
       baseCharWidth: 0,
       lineHeight: 0,
+
+      // Modus: 'circle' = normaler Kreis, 'flat' = flacher Streifen mit fester Zeilenbreite
+      lineWidthMode: 'circle',
 
       // Pre-computed: Zeilen-Layout
       lines: [],  // Array von { y, startIndex, charCount, rowWidth }
@@ -226,7 +257,7 @@
     // DOM ELEMENTS
     // ============================================================
     const elements = {
-      container: document.getElementById('container'),
+      container: document.querySelector('._018-canvas'),
       baseCanvas: document.getElementById('base-layer'),
       nativeCanvas: document.getElementById('native-layer'),
       get baseCtx() { return this.baseCanvas.getContext('2d'); },
@@ -326,65 +357,155 @@
       state.lines = [];
       let textIndex = 0;
       const lh = state.lineHeight;
-      const r = state.circleRadius;
       const cw = state.baseCharWidth;
 
-      for (let y = -r + lh / 2; y <= r - lh / 2; y += lh) {
-        const rowWidth = 2 * Math.sqrt(Math.max(0, r * r - y * y));
-        const charCount = Math.min(
-          Math.floor(rowWidth / cw),
-          state.textData.length - textIndex
-        );
+      if (state.lineWidthMode === 'flat') {
+        // Flat-Modus: Y geht von 0 nach unten (wie normaler Text)
+        const flatWidth = CONFIG.FLAT_LINE_WIDTH;
+        const flatCharCount = Math.floor(flatWidth / cw);
 
-        if (charCount > 0) {
-          state.lines.push({
-            y: y,
-            startIndex: textIndex,
-            charCount: charCount
-          });
-          textIndex += charCount;
+        // Berechne wie viele Zeilen wir brauchen
+        const totalChars = state.textData.length;
+        const numLines = Math.ceil(totalChars / flatCharCount);
+        
+        // Y-Positionen: von 0 nach unten wachsend
+        for (let i = 0; i < numLines; i++) {
+          const startIndex = i * flatCharCount;
+          const charCount = Math.min(flatCharCount, totalChars - startIndex);
+          const y = i * lh;
+
+          if (charCount > 0) {
+            state.lines.push({
+              y: y,
+              startIndex: startIndex,
+              charCount: charCount
+            });
+          }
         }
+        
+        console.log('[Flat] numLines:', numLines, 'flatCharCount:', flatCharCount, 'lineHeight:', lh);
+      } else {
+        // Circle-Modus: Zeilenbreite berechnet sich aus der Kreisgeometrie
+        const r = state.circleRadius;
 
-        if (textIndex >= state.textData.length) break;
+        for (let y = -r + lh / 2; y <= r - lh / 2; y += lh) {
+          const rowWidth = 2 * Math.sqrt(Math.max(0, r * r - y * y));
+          const charCount = Math.min(
+            Math.floor(rowWidth / cw),
+            state.textData.length - textIndex
+          );
+
+          if (charCount > 0) {
+            state.lines.push({
+              y: y,
+              startIndex: textIndex,
+              charCount: charCount
+            });
+            textIndex += charCount;
+          }
+
+          if (textIndex >= state.textData.length) break;
+        }
       }
     }
 
     // ============================================================
-    // BASIS-TEXTUR (einmal rendern, permanent vorhalten)
+    // BASIS-TEXTUR (einmal rendern, permanent vorhalten, dann auf Vollbild-Canvas zeichnen)
     // ============================================================
     function renderBaseTexture() {
       const scale = CONFIG.BASE_TEXTURE.scale;
-      // Padding für überhängende Zeichen am Rand (halbe Zeilenbreite)
-      const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
-      const padding = maxLineWidth * 0.5 * scale;
-      const baseSize = Math.ceil(state.circleRadius * 2 * scale);
-      const size = baseSize + padding * 2;
 
+      let size;
+
+      // Canvas-Größe basierend auf Modus
+      if (state.lineWidthMode === 'flat') {
+        // Flat-Modus: Canvas muss so groß sein, dass alle Zeilen reinpassen
+        const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
+        const maxY = Math.max(...state.lines.map(l => l.y));
+        const minY = Math.min(...state.lines.map(l => l.y));
+        
+        // Canvas ist zentriert (Mitte = size/2), also muss size beides abdecken:
+        // - von minY (kann negativ sein) bis 0
+        // - von 0 bis maxY
+        // Wir brauchen: size >= 2 * max(|minY|, maxY) * scale
+        const maxExtent = Math.max(Math.abs(minY), maxY);
+        const minSize = Math.ceil(maxY * scale);
+        const lineCount = state.lines.length;
+        
+        // Detaillierte Zeilen-Stats
+        const charWidth = state.baseCharWidth * scale;
+        const lineHeights = state.lines.map(l => l.y);
+        console.log('[Flat] baseCharWidth:', state.baseCharWidth, 'scale:', scale, 'charWidth:', charWidth);
+        console.log('[Flat] longestLine charCount:', Math.max(...state.lines.map(l => l.charCount)));
+        if (lineCount > 1) {
+          console.log('[Flat] avg line height:', (maxY - minY) / (lineCount - 1));
+        }
+        
+        // Draw first and last line positions for debugging
+        if (state.lines.length > 0) {
+          const firstLine = state.lines[0];
+          const lastLine = state.lines[state.lines.length - 1];
+          const firstScreenY = firstLine.y * scale;
+          const lastScreenY = lastLine.y * scale;
+          console.log('[Flat] first line y:', firstLine.y, '-> screenY:', firstScreenY);
+          console.log('[Flat] last line y:', lastLine.y, '-> screenY:', lastScreenY);
+          console.log('[Flat] focusWorld (for panning):', state.focusWorld.x, state.focusWorld.y);
+        }
+      } else {
+        // Circle-Modus: wie vorher
+        const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
+        const padding = maxLineWidth * 0.5 * scale;
+        const baseSize = Math.ceil(state.circleRadius * 2 * scale);
+        size = baseSize + padding * 2;
+        
+        console.log('[Circle] canvas size:', size);
+      }
+
+      // Canvas erstellen - Flat Mode kann rechteckig sein
+      let canvasWidth, canvasHeight;
+      const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
+      const maxY = Math.max(...state.lines.map(l => l.y));
+      if (state.lineWidthMode === 'flat') {
+        canvasWidth = Math.ceil(maxLineWidth * scale);
+        canvasHeight = Math.ceil(maxY * scale);
+        console.log('[Flat] canvas dimensions:', canvasWidth, 'x', canvasHeight);
+      } else {
+        canvasWidth = size;
+        canvasHeight = size;
+      }
+      
       const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
       const ctx = canvas.getContext('2d', { alpha: false });
 
       ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, size, size);
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
       const fontSize = Math.max(state.baseFontSize * scale, 1);
+      console.log('[Flat] baseFontSize:', state.baseFontSize, 'renderFontSize:', fontSize);
       ctx.fillStyle = '#fff';
       ctx.font = `${fontSize}px ${CONFIG.FONT_FAMILY}`;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
 
+      // Rendering basierend auf Modus
+      const isFlatMode = state.lineWidthMode === 'flat';
+      
       for (const line of state.lines) {
+        const xPos = isFlatMode ? canvasWidth / 2 : size / 2;
+        const yPos = isFlatMode ? line.y * scale : size / 2 + line.y * scale;
         ctx.fillText(
           state.textData.substr(line.startIndex, line.charCount),
-          size / 2,
-          size / 2 + line.y * scale
+          xPos,
+          yPos
         );
       }
 
       state.textures.base.canvas = canvas;
-      state.textures.base.size = size;
-      state.textures.base.padding = padding;
+      // Flat mode: speichere echte Dimensionen; Circle mode: max Dimension
+      state.textures.base.size = isFlatMode ? canvasHeight : size;
+      state.textures.base.padding = 0;
     }
 
     // ============================================================
@@ -403,7 +524,7 @@
 
     // ============================================================
     // NATIVES RENDERING - Rendert scharfe Textur für aktuellen Viewport
-    // Bei extremem Zoom: Einzelne Zeichen rendern
+    // MIT MARGIN - ursprüngliche funktionierende Logik
     // ============================================================
     function renderNativeTexture() {
       const w = window.innerWidth;
@@ -416,6 +537,8 @@
       // focusWorld ist in normalisierten Koordinaten - zurückrechnen auf Textur-Koordinaten
       const centerWorldX = state.focusWorld.x / state.normalizeScale;
       const centerWorldY = state.focusWorld.y / state.normalizeScale;
+      
+      console.log('[Native] focusWorld:', state.focusWorld.x, state.focusWorld.y, 'centerWorld:', centerWorldX, centerWorldY);
 
       // Cache-Canvas mit großem Margin für Bewegungsspielraum (weniger Re-Renders)
       const margin = 2.5;
@@ -466,7 +589,7 @@
 
         const lineText = state.textData.substr(line.startIndex, line.charCount);
 
-        // Position in Canvas-Koordinaten (mit effektivem Scale)
+        // Position in Canvas-Koordinaten (mit effektivem Scale) - URSPRÜNGLICHE LOGIK
         const screenX = cacheW / 2 + (0 - centerWorldX) * effScale * dpr;
         const screenY = cacheH / 2 + (line.y - centerWorldY) * effScale * dpr;
 
@@ -481,10 +604,10 @@
         }
       }
 
-      // Cache-Metadaten speichern (in normalisierten Koordinaten für Konsistenz)
+      // Cache-Metadaten speichern
       state.textures.native.centerX = state.focusWorld.x;
       state.textures.native.centerY = state.focusWorld.y;
-      state.textures.native.scale = state.scale;  // Basis-Scale speichern
+      state.textures.native.scale = state.scale;
       state.textures.native.width = w * margin;
       state.textures.native.height = h * margin;
     }
@@ -498,8 +621,9 @@
 
       if (!base.canvas) return;
 
-      baseCanvas.width = base.size;
-      baseCanvas.height = base.size;
+      // Handle rectangular canvases (Flat mode) vs square (Circle mode)
+      baseCanvas.width = base.canvas.width;
+      baseCanvas.height = base.canvas.height;
       elements.baseCtx.drawImage(base.canvas, 0, 0);
       baseCanvas.style.opacity = '1';
       baseCanvas.style.filter = 'none';
@@ -525,6 +649,12 @@
       const effectiveScale = getEffectiveScale() / CONFIG.BASE_TEXTURE.scale;
       elements.baseCanvas.style.transform =
         `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${effectiveScale})`;
+      
+      // Debug: log actual rendered size
+      const base = state.textures.base;
+      const screenW = base.canvas ? (base.canvas.width * effectiveScale) : 0;
+      const screenH = base.canvas ? (base.canvas.height * effectiveScale) : 0;
+      console.log('[Transform] effectiveScale:', effectiveScale.toFixed(4), 'screenSize:', screenW.toFixed(0), 'x', screenH.toFixed(0));
     }
 
     // Dynamisches Blend basierend auf Zoom-Level - einfacher Crossfade ohne Blur
@@ -577,6 +707,7 @@
       return { offsetX, offsetY, zoomRatio };
     }
 
+    // ============================================================
     // ============================================================
     // TRANSFORM - Zoom IMMER sofort, Rendering asynchron
     // ============================================================
@@ -879,6 +1010,7 @@
         state.circleRadius = calculateRadiusForText(state.textData.length, state.baseFontSize);
 
         // Normalisierung: Alle Kreise auf gleiche visuelle Größe skalieren
+        // GLEICH für beide Modi!
         state.normalizeScale = CONFIG.TARGET_CIRCLE_RADIUS / state.circleRadius;
 
         const measureCtx = document.createElement('canvas').getContext('2d');
@@ -1108,7 +1240,58 @@
 
     // === START ===
     init();
+
+    // ============================================================
+    // MODE TOGGLE - Flat/Circle Modus umschalten
+    // ============================================================
+    const modeToggleBtn = document.getElementById('mode-toggle');
+    const modeIcon = modeToggleBtn.querySelector('.mode-icon');
+    const modeText = modeToggleBtn.querySelector('.mode-text');
+
+    function toggleLineWidthMode() {
+      // Modus umschalten
+      state.lineWidthMode = state.lineWidthMode === 'circle' ? 'flat' : 'circle';
+
+      // Button-UI aktualisieren
+      if (state.lineWidthMode === 'flat') {
+        modeToggleBtn.classList.add('flat');
+        modeIcon.textContent = '▭';
+        modeText.textContent = 'Flach';
+      } else {
+        modeToggleBtn.classList.remove('flat');
+        modeIcon.textContent = '◯';
+        modeText.textContent = 'Kreis';
+      }
+
+      // Layout und Texturen neu berechnen
+      // Reset focus position für sauberen Übergang
+      state.focusWorld = { x: 0, y: 0 };
+
+      // Text neu berechnen (mit aktuellem Text, nicht neu laden)
+      state.baseFontSize = CONFIG.TARGET_FONT_SIZE;
+      state.circleRadius = calculateRadiusForText(state.textData.length, state.baseFontSize);
+
+      // Normalisierung setzen - GLEICH für beide Modi!
+      state.normalizeScale = CONFIG.TARGET_CIRCLE_RADIUS / state.circleRadius;
+
+      // Zeilen neu berechnen
+      const measureCtx = document.createElement('canvas').getContext('2d');
+      measureCtx.font = `${state.baseFontSize}px ${CONFIG.FONT_FAMILY}`;
+      state.baseCharWidth = measureCtx.measureText('M').width;
+      state.lineHeight = state.baseFontSize * CONFIG.LINE_HEIGHT_FACTOR;
+
+      computeLineLayout();
+      renderBaseTexture();
+      initBaseLayer();
+      hideNativeOverlay();
+
+      // Transform neu anwenden
+      applyTransform();
+
+      LOG.info(`Modus gewechselt zu: ${state.lineWidthMode}`);
+    }
+
+    modeToggleBtn.addEventListener('click', toggleLineWidthMode);
   </script>
 </body>
 </html>
-

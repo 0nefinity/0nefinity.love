@@ -766,14 +766,14 @@
                 }
             })
             .addDivider()
-            .addRange('spontaneousLife', {
+            .addSlider('spontaneousLife', {
                 label: 'random life',
                 min: 0, max: 1, step: 0.001,
                 value: config.spontaneousLife,
                 decimals: 3,
                 onChange: (v) => { config.spontaneousLife = v; syncConfigToWorker(); }
             })
-            .addRange('randomDeath', {
+            .addSlider('randomDeath', {
                 label: 'random death',
                 min: 0, max: 1, step: 0.001,
                 value: config.randomDeath,
@@ -781,26 +781,26 @@
                 onChange: (v) => { config.randomDeath = v; syncConfigToWorker(); }
             })
             .addDivider()
-            .addStepper('birthCount', {
+            .addSlider('birthCount', {
                 label: 'Birth',
                 min: 0, max: 8, step: 1,
                 value: config.birthCount,
                 onChange: (v) => { config.birthCount = v; syncConfigToWorker(); }
             })
-            .addStepper('survivalMin', {
+            .addSlider('survivalMin', {
                 label: 'Surv Min',
                 min: 0, max: 8, step: 1,
                 value: config.survivalMin,
                 onChange: (v) => { config.survivalMin = v; syncConfigToWorker(); }
             })
-            .addStepper('survivalMax', {
+            .addSlider('survivalMax', {
                 label: 'Surv Max',
                 min: 0, max: 8, step: 1,
                 value: config.survivalMax,
                 onChange: (v) => { config.survivalMax = v; syncConfigToWorker(); }
             })
             .addDivider()
-            .addRange('speed', {
+            .addSlider('speed', {
                 label: 'Speed',
                 min: 1, max: 9999, step: 1,
                 value: config.speed,
