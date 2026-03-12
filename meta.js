@@ -59,7 +59,7 @@ const priorityItems = [
     { type: 'heading', text: 'legal stuff first:' },
     { type: 'file', path: 'impressum-und-datenschutz.html', name: 'impressum-und-datenschutz' },
     { type: 'heading', text: 'now the party:' },
-    { type: 'file', path: 'README.php', name: 'README' }
+    { type: 'file', path: 'README.html', name: 'README' }
 ];
 
 // Files to exclude from dynamic content (already in priority items)
@@ -365,7 +365,77 @@ async function loadFileList() {
     }
 }
 
+function getLongestPreLine(text) {
+    return text
+        .replace(/\r/g, '')
+        .split('\n')
+        .reduce((longestLine, currentLine) => (
+            currentLine.length > longestLine.length ? currentLine : longestLine
+        ), '');
+}
+
+const preMeasureElement = document.createElement('span');
+preMeasureElement.setAttribute('aria-hidden', 'true');
+preMeasureElement.style.position = 'absolute';
+preMeasureElement.style.left = '-99999px';
+preMeasureElement.style.top = '0';
+preMeasureElement.style.visibility = 'hidden';
+preMeasureElement.style.pointerEvents = 'none';
+preMeasureElement.style.whiteSpace = 'pre';
+preMeasureElement.style.display = 'inline-block';
+document.body.appendChild(preMeasureElement);
+
+let preFitAnimationFrameId = null;
+
+function fitPreBlocksToTextWidth() {
+    document.querySelectorAll('pre').forEach(pre => {
+        pre.style.fontSize = '';
+
+        const computedStyle = window.getComputedStyle(pre);
+        const longestLine = getLongestPreLine(pre.textContent || '');
+        const availableWidth = pre.clientWidth;
+        const baseFontSizePx = parseFloat(computedStyle.fontSize);
+
+        if (!longestLine || !availableWidth || !Number.isFinite(baseFontSizePx) || baseFontSizePx <= 0) {
+            return;
+        }
+
+        preMeasureElement.style.fontFamily = computedStyle.fontFamily;
+        preMeasureElement.style.fontSize = computedStyle.fontSize;
+        preMeasureElement.style.fontStyle = computedStyle.fontStyle;
+        preMeasureElement.style.fontVariant = computedStyle.fontVariant;
+        preMeasureElement.style.fontWeight = computedStyle.fontWeight;
+        preMeasureElement.style.letterSpacing = computedStyle.letterSpacing;
+        preMeasureElement.style.textTransform = computedStyle.textTransform;
+        preMeasureElement.textContent = longestLine;
+
+        const measuredLineWidth = preMeasureElement.getBoundingClientRect().width;
+
+        if (!Number.isFinite(measuredLineWidth) || measuredLineWidth <= 0) {
+            return;
+        }
+
+        const fittedFontSizePx = baseFontSizePx * (availableWidth / measuredLineWidth);
+
+        if (fittedFontSizePx < baseFontSizePx) {
+            pre.style.fontSize = `${fittedFontSizePx}px`;
+        }
+    });
+}
+
+function scheduleFitPreBlocks() {
+    if (preFitAnimationFrameId !== null) {
+        cancelAnimationFrame(preFitAnimationFrameId);
+    }
+
+    preFitAnimationFrameId = requestAnimationFrame(() => {
+        preFitAnimationFrameId = null;
+        fitPreBlocksToTextWidth();
+    });
+}
+
 loadFileList();
+scheduleFitPreBlocks();
 
 // Button-Text
 function setMenuButtonText(expanded) {
@@ -516,6 +586,14 @@ window.addEventListener('wheel', (event) => {
     // Immer die eigentliche Liste scrollen, egal ob das Event z.B. vom Suchfeld kommt
     fileList.scrollTop += event.deltaY;
 }, { passive: false });
+
+window.addEventListener('load', scheduleFitPreBlocks);
+window.addEventListener('resize', scheduleFitPreBlocks);
+window.addEventListener('orientationchange', scheduleFitPreBlocks);
+
+if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+    document.fonts.ready.then(scheduleFitPreBlocks);
+}
 
 
 // Back-Button

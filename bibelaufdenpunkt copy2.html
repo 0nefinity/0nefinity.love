@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <!-- bibelaufdenpunkt.html 
  eine von unendlich random möglichkeiten, die Bibel und andere Bibeln zu rendern-->
 <html lang="de">
@@ -360,30 +360,43 @@
       const cw = state.baseCharWidth;
 
       if (state.lineWidthMode === 'flat') {
-        // Flat-Modus: Y geht von 0 nach unten (wie normaler Text)
+        // Flat-Modus: y geht von -r bis +r und WEITER wenn nötig
+        // So können alle Zeilen der Bibel dargestellt werden
+        // Ein Teil liegt dann außerhalb des sichtbaren Bereichs - das ist gewollt!
         const flatWidth = CONFIG.FLAT_LINE_WIDTH;
         const flatCharCount = Math.floor(flatWidth / cw);
+        const r = state.circleRadius;
 
-        // Berechne wie viele Zeilen wir brauchen
-        const totalChars = state.textData.length;
-        const numLines = Math.ceil(totalChars / flatCharCount);
-        
-        // Y-Positionen: von 0 nach unten wachsend
-        for (let i = 0; i < numLines; i++) {
-          const startIndex = i * flatCharCount;
-          const charCount = Math.min(flatCharCount, totalChars - startIndex);
-          const y = i * lh;
+        // Berechne zuerst wie viele Zeilen wir brauchen werden
+        let estimatedLines = 0;
+        let tempTextIndex = 0;
+        while (tempTextIndex < state.textData.length) {
+          tempTextIndex += flatCharCount;
+          estimatedLines++;
+        }
+
+        // Berechne die benötigte y-Range
+        const neededHeight = estimatedLines * lh;
+        const halfNeeded = neededHeight / 2;
+        // Wir brauchen mehr Platz als der Kreis, also erweitern wir nach unten
+        const startY = -r + lh / 2;
+        const endY = Math.max(r - lh / 2, halfNeeded);
+
+        textIndex = 0;
+        for (let y = startY; y <= endY; y += lh) {
+          const charCount = Math.min(flatCharCount, state.textData.length - textIndex);
 
           if (charCount > 0) {
             state.lines.push({
               y: y,
-              startIndex: startIndex,
+              startIndex: textIndex,
               charCount: charCount
             });
+            textIndex += charCount;
           }
+
+          if (textIndex >= state.textData.length) break;
         }
-        
-        console.log('[Flat] numLines:', numLines, 'flatCharCount:', flatCharCount, 'lineHeight:', lh);
       } else {
         // Circle-Modus: Zeilenbreite berechnet sich aus der Kreisgeometrie
         const r = state.circleRadius;
@@ -410,101 +423,45 @@
     }
 
     // ============================================================
-    // BASIS-TEXTUR (einmal rendern, permanent vorhalten, dann auf Vollbild-Canvas zeichnen)
+    // BASIS-TEXTUR (einmal rendern, permanent vorhalten)
     // ============================================================
     function renderBaseTexture() {
       const scale = CONFIG.BASE_TEXTURE.scale;
 
-      let size;
+      let size, centerOffset;
 
-      // Canvas-Größe basierend auf Modus
-      if (state.lineWidthMode === 'flat') {
-        // Flat-Modus: Canvas muss so groß sein, dass alle Zeilen reinpassen
-        const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
-        const maxY = Math.max(...state.lines.map(l => l.y));
-        const minY = Math.min(...state.lines.map(l => l.y));
-        
-        // Canvas ist zentriert (Mitte = size/2), also muss size beides abdecken:
-        // - von minY (kann negativ sein) bis 0
-        // - von 0 bis maxY
-        // Wir brauchen: size >= 2 * max(|minY|, maxY) * scale
-        const maxExtent = Math.max(Math.abs(minY), maxY);
-        const minSize = Math.ceil(maxY * scale);
-        const lineCount = state.lines.length;
-        
-        // Detaillierte Zeilen-Stats
-        const charWidth = state.baseCharWidth * scale;
-        const lineHeights = state.lines.map(l => l.y);
-        console.log('[Flat] baseCharWidth:', state.baseCharWidth, 'scale:', scale, 'charWidth:', charWidth);
-        console.log('[Flat] longestLine charCount:', Math.max(...state.lines.map(l => l.charCount)));
-        if (lineCount > 1) {
-          console.log('[Flat] avg line height:', (maxY - minY) / (lineCount - 1));
-        }
-        
-        // Draw first and last line positions for debugging
-        if (state.lines.length > 0) {
-          const firstLine = state.lines[0];
-          const lastLine = state.lines[state.lines.length - 1];
-          const firstScreenY = firstLine.y * scale;
-          const lastScreenY = lastLine.y * scale;
-          console.log('[Flat] first line y:', firstLine.y, '-> screenY:', firstScreenY);
-          console.log('[Flat] last line y:', lastLine.y, '-> screenY:', lastScreenY);
-          console.log('[Flat] focusWorld (for panning):', state.focusWorld.x, state.focusWorld.y);
-        }
-      } else {
-        // Circle-Modus: wie vorher
-        const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
-        const padding = maxLineWidth * 0.5 * scale;
-        const baseSize = Math.ceil(state.circleRadius * 2 * scale);
-        size = baseSize + padding * 2;
-        
-        console.log('[Circle] canvas size:', size);
-      }
-
-      // Canvas erstellen - Flat Mode kann rechteckig sein
-      let canvasWidth, canvasHeight;
+      // Canvas-Größe ist IDENTISCH für beide Modi - basierend auf circleRadius!
       const maxLineWidth = state.baseCharWidth * Math.max(...state.lines.map(l => l.charCount));
-      const maxY = Math.max(...state.lines.map(l => l.y));
-      if (state.lineWidthMode === 'flat') {
-        canvasWidth = Math.ceil(maxLineWidth * scale);
-        canvasHeight = Math.ceil(maxY * scale);
-        console.log('[Flat] canvas dimensions:', canvasWidth, 'x', canvasHeight);
-      } else {
-        canvasWidth = size;
-        canvasHeight = size;
-      }
-      
+      const padding = maxLineWidth * 0.5 * scale;
+      const baseSize = Math.ceil(state.circleRadius * 2 * scale);
+      size = baseSize + padding * 2;
+      centerOffset = { x: 0, y: 0 };
+
       const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
+      canvas.width = size;
+      canvas.height = size;
       const ctx = canvas.getContext('2d', { alpha: false });
 
       ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      ctx.fillRect(0, 0, size, size);
 
       const fontSize = Math.max(state.baseFontSize * scale, 1);
-      console.log('[Flat] baseFontSize:', state.baseFontSize, 'renderFontSize:', fontSize);
       ctx.fillStyle = '#fff';
       ctx.font = `${fontSize}px ${CONFIG.FONT_FAMILY}`;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
 
-      // Rendering basierend auf Modus
-      const isFlatMode = state.lineWidthMode === 'flat';
-      
       for (const line of state.lines) {
-        const xPos = isFlatMode ? canvasWidth / 2 : size / 2;
-        const yPos = isFlatMode ? line.y * scale : size / 2 + line.y * scale;
+        // Beide Modi: y-Position mit scale skalieren
         ctx.fillText(
           state.textData.substr(line.startIndex, line.charCount),
-          xPos,
-          yPos
+          size / 2,
+          size / 2 + line.y * scale
         );
       }
 
       state.textures.base.canvas = canvas;
-      // Flat mode: speichere echte Dimensionen; Circle mode: max Dimension
-      state.textures.base.size = isFlatMode ? canvasHeight : size;
+      state.textures.base.size = size;
       state.textures.base.padding = 0;
     }
 
@@ -524,7 +481,7 @@
 
     // ============================================================
     // NATIVES RENDERING - Rendert scharfe Textur für aktuellen Viewport
-    // MIT MARGIN - ursprüngliche funktionierende Logik
+    // Bei extremem Zoom: Einzelne Zeichen rendern
     // ============================================================
     function renderNativeTexture() {
       const w = window.innerWidth;
@@ -537,8 +494,6 @@
       // focusWorld ist in normalisierten Koordinaten - zurückrechnen auf Textur-Koordinaten
       const centerWorldX = state.focusWorld.x / state.normalizeScale;
       const centerWorldY = state.focusWorld.y / state.normalizeScale;
-      
-      console.log('[Native] focusWorld:', state.focusWorld.x, state.focusWorld.y, 'centerWorld:', centerWorldX, centerWorldY);
 
       // Cache-Canvas mit großem Margin für Bewegungsspielraum (weniger Re-Renders)
       const margin = 2.5;
@@ -589,9 +544,18 @@
 
         const lineText = state.textData.substr(line.startIndex, line.charCount);
 
-        // Position in Canvas-Koordinaten (mit effektivem Scale) - URSPRÜNGLICHE LOGIK
-        const screenX = cacheW / 2 + (0 - centerWorldX) * effScale * dpr;
-        const screenY = cacheH / 2 + (line.y - centerWorldY) * effScale * dpr;
+        // Position in Canvas-Koordinaten (mit effektivem Scale)
+        let screenX, screenY;
+
+        if (state.lineWidthMode === 'flat') {
+          // Flat-Modus: y-Position ist relativ zum Anfang
+          screenX = cacheW / 2 + (0 - centerWorldX) * effScale * dpr;
+          screenY = cacheH / 2 + (line.y - centerWorldY) * effScale * dpr;
+        } else {
+          // Circle-Modus
+          screenX = cacheW / 2 + (0 - centerWorldX) * effScale * dpr;
+          screenY = cacheH / 2 + (line.y - centerWorldY) * effScale * dpr;
+        }
 
         if (fontScaleFactor < 1) {
           ctx.save();
@@ -604,10 +568,10 @@
         }
       }
 
-      // Cache-Metadaten speichern
+      // Cache-Metadaten speichern (in normalisierten Koordinaten für Konsistenz)
       state.textures.native.centerX = state.focusWorld.x;
       state.textures.native.centerY = state.focusWorld.y;
-      state.textures.native.scale = state.scale;
+      state.textures.native.scale = state.scale;  // Basis-Scale speichern
       state.textures.native.width = w * margin;
       state.textures.native.height = h * margin;
     }
@@ -621,9 +585,8 @@
 
       if (!base.canvas) return;
 
-      // Handle rectangular canvases (Flat mode) vs square (Circle mode)
-      baseCanvas.width = base.canvas.width;
-      baseCanvas.height = base.canvas.height;
+      baseCanvas.width = base.size;
+      baseCanvas.height = base.size;
       elements.baseCtx.drawImage(base.canvas, 0, 0);
       baseCanvas.style.opacity = '1';
       baseCanvas.style.filter = 'none';
@@ -649,12 +612,6 @@
       const effectiveScale = getEffectiveScale() / CONFIG.BASE_TEXTURE.scale;
       elements.baseCanvas.style.transform =
         `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${effectiveScale})`;
-      
-      // Debug: log actual rendered size
-      const base = state.textures.base;
-      const screenW = base.canvas ? (base.canvas.width * effectiveScale) : 0;
-      const screenH = base.canvas ? (base.canvas.height * effectiveScale) : 0;
-      console.log('[Transform] effectiveScale:', effectiveScale.toFixed(4), 'screenSize:', screenW.toFixed(0), 'x', screenH.toFixed(0));
     }
 
     // Dynamisches Blend basierend auf Zoom-Level - einfacher Crossfade ohne Blur
@@ -707,7 +664,6 @@
       return { offsetX, offsetY, zoomRatio };
     }
 
-    // ============================================================
     // ============================================================
     // TRANSFORM - Zoom IMMER sofort, Rendering asynchron
     // ============================================================

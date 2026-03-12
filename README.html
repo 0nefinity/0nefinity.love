@@ -13,22 +13,55 @@
   <title>README - 0nefinity</title>
 
   <style>
-    body { text-align: left; }
-    h1, h2, h3, h4, h5, h6 { text-align: center; }
+	    pre {
+	      overflow-x: auto;
+	      -webkit-overflow-scrolling: touch;
+	      padding-bottom: 0.2rem;
+	    }
+
+	    #hero-ascii {
+	      line-height: 1.15;
+		      display: inline-block;
+		      cursor: pointer;
+		      user-select: none;
+	    }
+
+		    #hero-ascii:focus-visible {
+		      outline: 2px solid currentColor;
+		      outline-offset: 0.25rem;
+		    }
+
+	    @media (max-width: 768px) {
+	      pre {
+	        font-size: 0.95rem !important;
+	      }
+
+	      #hero-ascii {
+	        font-size: clamp(1rem, 4.2vw, 1.2rem) !important;
+	      }
+	    }
+
   </style>
 </head>
-<body>
   <div class="O18">
-
     <h2>0 1 ∞</h2>
-
-
-
-
     <h1>0nefinity</h1>
 
+		<pre id="hero-ascii" tabindex="0" role="button" aria-controls="hero-controls" aria-expanded="false" title="Klicken, um den Animationsregler ein- oder auszublenden">
+  01∞        1      01∞      ∞10  
+∞     0    0 ∞    ∞     0  1     ∞
+1     1      0    1      10      1
+0     ∞      1    0     ∞  1     0
+  ∞10        ∞      ∞10      ∞01  
+</pre>
+		<div id="hero-controls" class="meta-slider-wrap" hidden>
+		  <input id="hero-intensity" class="meta-range" type="range" min="0" max="100" step="0.1" value="10" aria-label="Animationsintensität des ASCII-Headers" />
+		  <input id="hero-text" class="meta-text-input" type="text" value="01∞" aria-label="Testeingabe für das ASCII-Symbol" autocomplete="off" autocapitalize="off" spellcheck="false" />
+		</div>
+
+
     0nefinity ist eine Wortneuschöpfung aus einer Transfusion der Zahl Null und den englischen Bezeichnungen für Eins und Unendlich.
-    Es symbolisiert das fundamentale vereinigt Sein der drei grundlegendsten natürlichen Konstanten 0 1 und ∞ 
+    Es symbolisiert mathematisch und philosophisch das fundamentale vereinigt Sein der drei grundlegendsten natürlichen Konstanten 0 1 und ∞ 
 
     0 ≡ 1 ≡ ∞ (Null ist identisch mit Eins ist identisch mit Unendlich)
 
@@ -86,16 +119,6 @@
     0nefinity geht auch über das mathematische hinaus (was eigentlich ein Widerspruch in sich ist, da Mathematik so umfassend verstanden werden kann, dass letztendlich das gesamte Dasein sich als eine einzige mathematische Maschine offenbart).
 
     Es geht auch um Erleuchtung. Darum, spirituelle, mystische Erfahrungen zu verstehen. Viele berichten von Einheit, von einem unendlichen Licht, von dem einen Bewusstsein, von einer alles durchdringenden Leerheit oder Stille, oder dem einen Jetzt, dem Ewig unendlichem Moment, Eins werden mit der Quelle, mit der Pracht Gottes, unendlicher Frieden, Auflösung der Getrenntheit, sich auflösen in die unendliche Liebe, Singularität, 0 1 ∞, 0nefinity
-
-<pre>
-  000        1      ∞∞∞      ∞∞∞  
-0     0    1 1    ∞     ∞  ∞     ∞
-0     0      1    ∞      ∞∞      ∞
-0     0      1    ∞     ∞  ∞     ∞
-  000        1      ∞∞∞      ∞∞∞  
-</pre>
-
-
     Die Gesamtheit des hier vorliegenden Werkes kann nur an der Oberfläche von 0nefinity kratzen
 
 
@@ -123,8 +146,8 @@ irgendwas * 1 * 1 * 1 * 1 * 1 * ... *∞1
 irgendwas - 0 - 0 - 0 - 0 - 0 - ... -∞0
 irgendwas / 1 / 1 / 1 / 1 / 1 / ... /∞1
             ͚ ₁
-          ₁¹
-irgendwas¹
+          ₁¹  
+irgendwas¹    
 </pre>
 
     irgendwas + 0 * 1 - 0 / 1¹
@@ -149,9 +172,9 @@ irgendwas¹
     dann dürfte ich mich neben den beantworteten Aufgaben in der Matheklausur ja auch noch völlig frei ausdrücken
 
 <pre>
-Ergebnis + 0
-          + 0¹
-           + 0
+Ergebnis + 0   
+          + 0¹ 
+           + 0 
             + 0
 </pre>
 
@@ -159,13 +182,13 @@ Ergebnis + 0
 
 
 <pre>
-      +0                       *∞1/1+0
-   +0 +0          /1          +0      -0
+      +0                       *∞1/1+0   
+   +0 +0          /1          +0      -0 
 +0    +0          +0         /1        /1
       +0      +0*1+∞0¹/1     *1        *1
       *1          *1         -0        +0
-      +0          -0          /1      *1
-      +0                        log₀(1)
+      +0          -0          /1      *1 
+      +0                        log₀(1)  
 </pre>
     ‒ valider Ausdruck
 
@@ -173,24 +196,25 @@ Ergebnis + 0
 
 
     Was ist mit dem?:
+
 <pre>
-      +0
-   +0 +0
-+0    +0
-      +0
-      *1
-      +0
-      +0
-
+      +0    
+   +0 +0    
++0    +0    
+      +0    
+      *1    
+      +0    
+      +0    
+            
 +0*1+∞0¹/1+0
-
-   *1*1*1
- *1      *1
+            
+   *1*1*1   
+ *1      *1 
 *1        *1
 *1        *1
 *1        *1
- *1      +0
-   *1*1*1
+ *1      +0 
+   *1*1*1   
 </pre>
     ‒ immer noch ein valider Ausdruck? Ich denke nicht/schon/irgendwas.
 
@@ -207,17 +231,17 @@ Ergebnis + 0
     Wenn man diese jetzt noch wild miteinander kombinierte und beliebig anordnet, dann kann man sich glücklich schätzen dass man in der Mathematik so beliebig mit Unendlichkeit umspringen kann.
 
     Unendlichkeit kann auf jeden Fall schnell unübersichtlich werden.
-
-    irgendwas / sich selbst = 1
-    irgendwas * sich selbst = sich selbst selbst
-    irgendwas - sich selbst = 0
-    irgendwas + (sich selbst - sich selbst) = sich selbst
-    irgendwas + sich selbst = 2 sich selbst
-    irgendwas + sich selbst + sich selbst = 3 sich selbst
-    irgendwas + ∞ sich selbst = ∞ sich selbst
-    irgendwas * ∞ sich selbst = sich ∞ selbst
-    (bisschen random)
-
+<pre>
+irgendwas / sich selbst = 1                          
+irgendwas * sich selbst = sich selbst selbst         
+irgendwas - sich selbst = 0                          
+irgendwas + (sich selbst - sich selbst) = sich selbst
+irgendwas + sich selbst = 2 sich selbst              
+irgendwas + sich selbst + sich selbst = 3 sich selbst
+irgendwas + ∞ sich selbst = ∞ sich selbst            
+irgendwas * ∞ sich selbst = sich ∞ selbst            
+(bisschen random)                                    
+</pre>
 
     Jedes Zeichen hier auf dieser Seite ist einmal vorhanden. Diese 1 ist einfach überall, man!
 
@@ -225,23 +249,23 @@ Ergebnis + 0
     Was ist eigentlich damit, einfach mal 0 zu rechnen?
     Was passiert mit dem, was mathematisch solch grundgütig vernichtet wird?
 
-    Eigentlich könnte sogar immer und überall Alles*0
+    Eigentlich könnte sogar immer und überall Alles*0 stehen.
 <pre>
-bzw. (Alles)0*0*0*0*0*0*0
-                     *0*0
-    *0*0           *0*0*0
-    *0*0         *0*0*0*0
-*0*0*0*0*0*0   *0*0  *0*0
-*0*0*0*0*0*0         *0*0
-    *0*0             *0*0
-    *0*0             *0*0
-                     *0*0
+bzw. (Alles)*0*0*0*0*0*0*0
+                      *0*0
+    *0*0            *0*0*0
+    *0*0          *0*0*0*0
+*0*0*0*0*0*0    *0*0  *0*0
+*0*0*0*0*0*0          *0*0
+    *0*0              *0*0
+    *0*0              *0*0
+                      *0*0
 </pre>
-    stehen, sodass in dem, was es tatsächlich gibt, noch ein ungleich viel größeres Potenzial gibt von dem, was mathematisch alles negiert werden könnte.
+    Sodass in dem, was es tatsächlich gibt, noch ein ungleich viel größeres Potenzial gibt von dem, was mathematisch alles negiert werden könnte.
 
     Ist die Realität somit immer größer, als es mathematisch zunächst scheint?
 
-    Was ist, wenn ich etwas was es nicht gibt so unendlichfach negiere, dass darin selbst wieder Universen entstehen?
+    Was ist, wenn man etwas, was es nicht gibt, so unendlichfach negiere, dass darin selbst wieder Universen entstehen?
 
 
 
@@ -249,7 +273,7 @@ bzw. (Alles)0*0*0*0*0*0*0
 
     Man könnte auch bei 2 starten und runter zählen, wenn man rauf zählt.
 
-    unendlich Möglichkeiten
+    unendliche Möglichkeiten
 
 
     0 1 ∞ sind mathematische Konstanten, die nie getrennt voneinander auftreten.
@@ -261,14 +285,14 @@ bzw. (Alles)0*0*0*0*0*0*0
     0nefinity ist sogar die eigentliche Identität des Mathematikers.
 
     1 Mathematiker
-    unendliches Schaffenspotenzial
+    ∞ Schaffenspotenzial
     0 Relevanz im wirklich großen Spiel des Seins
 
     0nefinity ist 0
     0nefinity ist 1
     0nefinity ist ∞
 
-    0 ist 1 ist ∞ ist 01∞ ist 0nefinity ist alles
+    0 ist 1 ist ∞ ist 01∞ ist 0nefinity ist alles, ist eins ist nichts
 
     Nehme irgendeinen mathematischen Ausdruck (oder generell irgendwas).
     Erkenne, dass er Eins ist.
@@ -292,11 +316,12 @@ bzw. (Alles)0*0*0*0*0*0*0
     Erkenne du bist Eins, Einheit, Das Eine
     Erkenne du bist Unendlich, Unendlichkeit, Alles
 
-    Du bist Ein Unendiches Bewusstsein - Nichts
+    Du bist Ein Unendiches Bewusstsein - Nichts, Alles, Eins
 
 
 
     Bewusstsein ist 0nefinity ist Bewusstsein
+    Ein Bewusstsein. Unendlich Leer und unedlich voll.
 
 
     Alles enthät Einheit, Alles enthält Unendlichkeit, Alles enthält Nichts
@@ -310,7 +335,7 @@ bzw. (Alles)0*0*0*0*0*0*0
 
 
 
-    0nefinity steht für das Ganze. Das
+    0nefinity steht für das Ganze.
 
     0nefinity zeigt die unendliche Fraktalität auf, die in allem liegt.
     0nefinity beschreibt selbst sowas wie das Metafraktal welches dieses Universum kreiert.
@@ -321,12 +346,12 @@ bzw. (Alles)0*0*0*0*0*0*0
 
     Man nehme etwas, irgendetwas, sagen wir, eine 1 oder irgend1 anderes Ding.
 
-    Wie viele Nullen könnte ich addieren? Wie viele Subtrahieren?
+    Wie viele Nullen könnte ich dazu addieren? Wie viele Subtrahieren?
     Wie oft könnte ich diese mal 1 rechnen, oder dadurch teilen?
-    Auf wie viele Arten könnte ich diese 1 hinschreiben?
-    Könnte ich sie Anmalen? Mit wie vielen Farben?
+    Auf wie viele Arten könnte ich dieses hinschreiben, benennen, oder betrachten?
+    Könnte ich sie Anmalen? Mit wie vielen Farben und mit wie vielen Kombinationen aus Farben?
     Mit wie vielen Mustern?
-    Könnte ich sie auch drehen? In Wie viele Richtungen könnte ich sie drehen?
+    Könnte ich sie auch drehen? In Wie viele Richtungen könnte ich sie drehen und wie häufig? Wie viel in 2 Dimensionen und wie viel erst in 3?
     Mit wie vielen unterschiedlichen Symbolen könnte ich die 1 repräsentieren?
     Welche Bedeutungen könnten diese ganzen Symbole jeweils noch für jemand andere haben?
     Wie viele andere könnte es geben die sich potenziell mit anderen darüber austauschen könnten?
@@ -348,10 +373,10 @@ bzw. (Alles)0*0*0*0*0*0*0
     Wie viele Dinge könnte ich mir vorstellen auf die man sie schreiben könnte?
     Was ist eigentlich mit den ganzen Nullen, die wir seit beginn dieses Textes addieren?
     Was, wenn diese Nullen Muster formen und sich zusätzlich noch mit den ganzen Einsen verswirlen?
-    Welche Meta-Muster könnten die potenziellen Muster formen?
-    Könnten die ganzen Nullen und Einsen nicht sogar beabsichtigt oder unbeabsichtigt ganze Bibliotheken aus Computerprogrammen erzeugen?
+    Welche Meta-Muster könnten die potenziellen Muster formen und könnte man diese auch wieder mit 0 addieren?
+    Könnten die ganzen Nullen und Einsen nicht sogar beabsichtigt oder unbeabsichtigt ganze Bibliotheken aus Computerprogrammen oder sonstiges erzeugen?
     Könnten sie ein Bild von einem Huhn formen?
-    Könnten sie ein ganzes 3D Abbild von einem Huhn formen?
+    Könnten sie ein ganzes 3D Abbild von einer Hühnerfarm formen?
     Könnten sie das Huhn nicht sogar in einer viel größeren Auflösung abbilden, als es tatsächlich da wäre?
     Könnten sie nicht in jedem Huhn-Atom ein eigenes Universum abbilden, welches wiederum Herdenweise Hühner enthielte?
     Wie viele verschiedene Universen könnten man in jedem Atom dieser Unterhühner aus den Subuniversen abbilden?
@@ -359,7 +384,8 @@ bzw. (Alles)0*0*0*0*0*0*0
 
     Und kann ich nicht auch noch jede dieser unendlich Nullen und Einsen wieder mal 1 oder +0 rechnen und das unedlich mal? Und zu jeder multiplizierten 1 wieder Null addieren?
 
-    Wie Absurd groß kann Unendlichkeit eigentlich werden, wenn man es ihr erlaubte?
+    Wie Absurd groß kann Unendlichkeit eigentlich werden, wenn man es ihr erlaubt?
+    Und was sagt das über den aus, der zu all diesen Vorstellungen in der Lage ist?
 
 
     0 1 ∞ sind untrennbar miteinander verwoben
@@ -604,7 +630,7 @@ bzw. (Alles)0*0*0*0*0*0*0
     0 ≡ 1 ≡ ∞
 
 
-    Eine mathematische Formel, die adäquat, meine Erfahrungen und das Dasein beschreiben zu vermag.
+    Eine mathematische Formel, die adäquat, meine Erfahrungen und das Dasein als ganzes, sowie alle seine Teile beschreiben zu vermag.
 
     Eine Formel die hindeutet auf das, was Mystiker seit Jahrtausenden versuchen zu erklären.
 
@@ -633,13 +659,13 @@ bzw. (Alles)0*0*0*0*0*0*0
     (Mathematisch: PUNKT)
 
 
-    Eine Leerheit, ein Bewusstsein, ein leeres Blatt Papier, beschreibt uns eine Wahrheit. Wie viele Nullen ließen sich hier wohl malen?
+    Eine Leerheit, ein Bewusstsein, ein leeres Blatt Papier, beschreibt uns eine Wahrheit. Wie viele Nullen ließen sich in diese unendliche Einheit hier wohl malen?
 
     Vor allem auch übereinander und außen herum.
     Um uns, das Blatt und mich, den Mathematiker, oder auch das Mathematik erlebende Subjekt.
     Welches durch das mathematische tun selbst mit den Mathematischen Objekt zu einem Sobjekt (Grüße an der Stelle an Hartmut) verschmilzt, einem System aus einem Mathematiker und Mathematik, ein einziges Mathematizieren.
     Ein werdendes Mathematikum.
-    Ein Mathematisches Universum das sich mathematisch untersucht, sich sieht, sich erkennt, sich erechnet, sich liebt.
+    Ein Mathematisches Universum, das sich mathematisch untersucht, sich sieht, sich erkennt, sich erechnet, sich liebt.
 
     Am Ende ist Mathematik sich selbst. Und ich mittendrin.
 
@@ -650,13 +676,13 @@ bzw. (Alles)0*0*0*0*0*0*0
 
     Wenn eine Mücke begreift sie hat unendlich Möglichkeiten ihren nächsten Moment zu gestalten. Genügend Blut gesammelt um damit einen Elefanten zu malen.
 
-    Wer wird ein Individuum der das Eine wird?
+    Wer wird ein Individuum der das Keine Eine Viele wird?
 
     Sich selbst zu lieben bedeutet mehr als nur zu masturbieren. Alles zu sein bedeutet seine Liebe in die Welt zu ballern. Mit dem Schönsten, was man ist. Das bin ich hier in dieser Welt. Ein wandelndes Fraktal. Kreativität die sich ausdrücken will. Dinge zeigen will. Was ich liebe lieben und es herauslieben für die Liebe allen Liebens.
 
 
 
-    Wenn hier nur einer verweilt und schmunzelt und begreift und erkennt und sagt OMGWTF *insert breaktrough meme*
+    Wenn hier nur einer verweilt und schmunzelt und begreift und erkennt und sagt OMDGWTDF<!-- OMdoubbleGWTdoubleF --> *insert breaktrough meme*
 
     Dann sah ich, dass es gut war
 
@@ -665,7 +691,7 @@ bzw. (Alles)0*0*0*0*0*0*0
 
     <h2>warum 0nefinity?</h2>
 
-    Es war an der Zeit dass sich jemand an einem Computer einmal ernsthaft mit Nullen und Einsen auseinandersetzt.
+    Es war wohl an der Zeit dass sich jemand an einem Computer einmal ernsthaft mit Nullen und Einsen auseinandersetzt.
 
     Es mangelte halt auch einfach irgendwie an einem soliden mathemathischen Modell mit dem sich wirklich die gesamte Wirklichkeit inkl. diesem ganzen Erleuchtungsscheiß beschreiben lässt?
 
@@ -699,9 +725,7 @@ bzw. (Alles)0*0*0*0*0*0*0
 
 
     <h2>Dinge, um die es hier auch geht:</h2>
-
-
-    <img src="assets/memes/1SN00PDOGG.png" alt="Snoop Dogg: doin some crazy stuff with Zeros n' Ones, maan" style="max-width: 400px; height: auto; display: block; margin: 20px auto;" />
+	  <img src="assets/memes/1SN00PDOGG.png" alt="Snoop Dogg: doin some crazy stuff with Zeros n' Ones, maan"/>
 
     Um irgendwelche Metawitze
 
@@ -812,7 +836,7 @@ bzw. (Alles)0*0*0*0*0*0*0
 
     machen wir es uns hier schön, so als wären wir auch alle anderen
 
-    lasst uns blühen, kleines Licht
+    und lasst uns blühen, kleines Licht
 
 
 
@@ -821,11 +845,145 @@ bzw. (Alles)0*0*0*0*0*0*0
     wisset (oder auch nicht, bzw. wisst ihr eh), wir sind 0 1 ∞
 
 
-    Zum Abschluss folgt, die wahre Größe, das Antlitz von 0nefinity:
-    <!-- hier evtl ein Spiegel hinkleben/ein Button um die Frontkamera zu aktivieren.
-     Ist aber eigentlich nur ein Gag weil gemeint ist natürlich alles sonstige, da ist es verwirrend ins Gesicht von irgendso einem Norbert zu schauen -->
+    Zum Abschluss folgt die wahre Größe, das Antlitz von 0nefinity:
+<!-- hier evtl ein Spiegel hinkleben/ein Button um die Frontkamera zu aktivieren. Ist aber eigentlich nur ein Gag weil gemeint ist natürlich alles sonstige, da ist es evtl. etwas verwirrend ins Gesicht von irgend so einem Norbert zu schauen -->
+</div>
 
-  </div>
+	  <script>
+	    (() => {
+	      const pre = document.getElementById('hero-ascii');
+	      const controls = document.getElementById('hero-controls');
+	      const intensityInput = document.getElementById('hero-intensity');
+	      const textInput = document.getElementById('hero-text');
+	      if (!pre || !controls || !intensityInput || !textInput) return;
+
+	      const prefersReducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+	      let manualMotionOverride = false;
+	      let intensity = Number(intensityInput.value) / 100;
+	      let isHeroVisible = true;
+	      let rafId = 0;
+
+	      const symbols = ['0', '1', '∞'];
+	      const templateChars = Array.from(pre.textContent);
+	      const mutableIndices = [];
+	      let chars = templateChars.slice();
+	      let charPool = Array.from(textInput.value);
+
+	      for (let index = 0; index < templateChars.length; index += 1) {
+	        if (symbols.includes(templateChars[index])) mutableIndices.push(index);
+	      }
+
+	      function pickRandomFromPool() {
+	        if (charPool.length === 0) return '';
+	        return charPool[Math.floor(Math.random() * charPool.length)];
+	      }
+
+	      function rerollHero() {
+	        chars = templateChars.slice();
+	        for (let i = 0; i < mutableIndices.length; i += 1) {
+	          chars[mutableIndices[i]] = pickRandomFromPool();
+	        }
+	        pre.textContent = chars.join('');
+	      }
+
+	      function syncIntensityAccessibility() {
+	        const value = String(Math.round(intensity * 100));
+	        intensityInput.setAttribute('aria-valuenow', value);
+	        intensityInput.setAttribute('aria-valuetext', `${value}%`);
+	        intensityInput.title = `${value}%`;
+	      }
+
+	      function motionAllowed() {
+	        return !prefersReducedMotionQuery.matches || manualMotionOverride;
+	      }
+
+	      function shouldAnimate() {
+	        return intensity > 0 && charPool.length > 0 && !document.hidden && isHeroVisible && motionAllowed();
+	      }
+
+	      function stopLoop() {
+	        if (!rafId) return;
+	        window.cancelAnimationFrame(rafId);
+	        rafId = 0;
+	      }
+
+	      function renderFrame() {
+	        if (!shouldAnimate()) {
+	          rafId = 0;
+	          return;
+	        }
+
+	        let hasChanges = false;
+
+	        for (let i = 0; i < mutableIndices.length; i += 1) {
+	          if (Math.random() >= intensity) continue;
+	          const index = mutableIndices[i];
+	          chars[index] = pickRandomFromPool();
+	          hasChanges = true;
+	        }
+
+	        if (hasChanges) pre.textContent = chars.join('');
+
+	        rafId = window.requestAnimationFrame(renderFrame);
+	      }
+
+	      function ensureLoop() {
+	        if (!shouldAnimate() || rafId) return;
+	        rafId = window.requestAnimationFrame(renderFrame);
+	      }
+
+	      function syncLoopState() {
+	        if (shouldAnimate()) ensureLoop();
+	        else stopLoop();
+	      }
+
+	      function toggleControls() {
+	        const isOpen = !controls.hidden;
+	        controls.hidden = isOpen;
+	        pre.setAttribute('aria-expanded', String(!isOpen));
+	      }
+
+	      pre.addEventListener('click', toggleControls);
+
+	      pre.addEventListener('keydown', event => {
+	        if (event.key !== 'Enter' && event.key !== ' ') return;
+	        event.preventDefault();
+	        toggleControls();
+	      });
+
+	      intensityInput.addEventListener('input', () => {
+	        manualMotionOverride = true;
+	        intensity = Number(intensityInput.value) / 100;
+	        syncIntensityAccessibility();
+	        syncLoopState();
+	      });
+
+	      textInput.addEventListener('input', () => {
+	        charPool = Array.from(textInput.value);
+	        rerollHero();
+	        syncLoopState();
+	      });
+
+	      document.addEventListener('visibilitychange', syncLoopState);
+
+	      const observer = new IntersectionObserver(entries => {
+	        isHeroVisible = entries.some(entry => entry.isIntersecting);
+	        syncLoopState();
+	      }, { threshold: 0.05 });
+
+	      observer.observe(pre);
+
+	      if (typeof prefersReducedMotionQuery.addEventListener === 'function') {
+	        prefersReducedMotionQuery.addEventListener('change', syncLoopState);
+	      } else if (typeof prefersReducedMotionQuery.addListener === 'function') {
+	        prefersReducedMotionQuery.addListener(syncLoopState);
+	      }
+
+	      rerollHero();
+	      syncIntensityAccessibility();
+	      syncLoopState();
+	    })();
+	  </script>
 
   <script src="/0nefinity.js" defer></script>
 </body>

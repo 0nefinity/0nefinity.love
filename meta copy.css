@@ -1,5 +1,7 @@
 /* meta.css */
 
+
+
 :root {
     --bg-color: black;
     --text-color: white;
@@ -13,7 +15,6 @@
 /* Universelle Leerzeichen-Erhaltung */
 * {
     white-space: pre-wrap;
-    -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -91,13 +92,6 @@ p {
     margin: 1.25rem 0; /* ca. 20px / 16 */
 }
 
-img {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-}
-
 a {
     color: var(--text-color);
     text-decoration: underline;
@@ -127,155 +121,6 @@ button:active {
 
 button:focus {
     outline: none;
-}
-
-.meta-slider-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
-}
-
-.meta-slider-wrap[hidden] {
-    display: none;
-}
-
-.meta-range {
-    width: min(26rem, 100%);
-    margin: 0 auto;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 6px;
-    background: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-    border-radius: 3px;
-    outline: none;
-    cursor: pointer;
-}
-
-.meta-text-input {
-    width: min(26rem, 100%);
-    margin: 0 auto;
-    padding: 0.6rem 1rem;
-    background: color-mix(in srgb, var(--bg-color, #111) 86%, transparent);
-    color: var(--text-color, #fff);
-    border: 1px solid color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-    border-radius: 9999px;
-    outline: none;
-    font: inherit;
-    text-align: center;
-    transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.meta-text-input:hover {
-    border-color: color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
-}
-
-.meta-text-input:focus {
-    background: color-mix(in srgb, var(--bg-color, #111) 95%, transparent);
-    border-color: color-mix(in srgb, var(--text-color, #fff) 50%, transparent);
-}
-
-.meta-card {
-    width: min(32rem, 100%);
-    margin: 0 auto;
-    padding: 1.25rem;
-    border: 1px solid color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-    border-radius: 1.25rem;
-    background: color-mix(in srgb, var(--bg-color, #111) 88%, transparent);
-}
-
-.meta-stack {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-}
-
-.meta-form-grid {
-    width: 100%;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.75rem 1rem;
-    align-items: center;
-}
-
-.meta-label {
-    text-align: left;
-    opacity: 0.8;
-}
-
-.meta-input {
-    width: 100%;
-    min-width: 0;
-    padding: 0.6rem 0.9rem;
-    background: color-mix(in srgb, var(--bg-color, #111) 86%, transparent);
-    color: var(--text-color, #fff);
-    border: 1px solid color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-    border-radius: 0.85rem;
-    outline: none;
-    font: inherit;
-    transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.meta-input:hover {
-    border-color: color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
-}
-
-.meta-input:focus {
-    background: color-mix(in srgb, var(--bg-color, #111) 95%, transparent);
-    border-color: color-mix(in srgb, var(--text-color, #fff) 50%, transparent);
-}
-
-.meta-actions {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-    .meta-form-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .meta-label {
-        text-align: center;
-    }
-}
-
-.meta-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--text-color, #fff);
-    border-radius: 50%;
-    cursor: pointer;
-    transition: transform 0.1s ease;
-}
-
-.meta-range::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
-}
-
-.meta-range::-moz-range-track {
-    height: 6px;
-    background: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-    border: none;
-    border-radius: 3px;
-}
-
-.meta-range::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    background: var(--text-color, #fff);
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
 }
 
 .back-button {
@@ -813,23 +658,16 @@ body:has(._018-canvas) {
 
 /* Media Query für kleinere Geräte */
 /* Pre-Element Styling */
-/* Hinweis: meta.js passt die font-size von <pre> zusätzlich so an,
-   dass zu breite Blöcke auf die verfügbare Breite des umgebenden Textblocks eingepasst werden. */
 pre {
-    display: block;
-    width: 100%;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-kerning: none;
-    font-variant-ligatures: none;
-    white-space: pre;
     max-width: 100%;
     box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
     margin: 0;
     padding: 0;
-    line-height: normal;
-    -moz-tab-size: 4;
-    tab-size: 4;
-    font-size: clamp(0.5rem, 2vw, 1.5rem);
+    font-family: monospace;
+    /* Dynamische Schriftgröße basierend auf Viewport-Breite */
+    font-size: clamp(0.7rem, 1.5vw, 1rem);
 }
 
 @media (max-width: 480px) {

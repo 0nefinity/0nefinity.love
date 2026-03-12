@@ -1,71 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
   <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="/meta.css" rel="stylesheet">
+    <script src="/meta.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <style>
-      body { margin: 0; }
-      .checkbox-label {
-        color: rgb(0, 0, 0);    
-        font-family: Verdana, Geneva, Tahoma, sans-serif;   
-        text-shadow:         /* Erzeugt eine Umrandung mit Schatten */
-          -1px -1px 0 #ffffff,
-          1px -1px 0 #ffffff,
-          -1px 1px 0 #ffffff,
-          1px 1px 0 #ffffff;
-      }
-    </style>
+    <title>whitelines - 0nefinity</title>
   </head>
   <body>
+    <div id="canvasContainer" class="_018-canvas"></div>
+
     <script>
+      const config = {
+        changeAngles: false,
+        preventNewLines: false,
+        linesPerFrame: 10,
+        strokeWeight: 0.01
+      };
+
       let lines = [];
-      let changeAnglesCheckbox;
-      let preventNewLinesCheckbox;
-      let linesPerFrameSlider;
-      let strokeWeightSlider;
+      let canvasContainer;
 
       function setup() {
-        createCanvas(windowWidth, windowHeight);
+        canvasContainer = document.getElementById('canvasContainer');
+
+        const canvas = createCanvas(windowWidth, windowHeight);
+        if (canvasContainer) canvas.parent(canvasContainer);
+
         background(0);
         angleMode(DEGREES);
 
-        // Checkbox zum Ändern der Winkel
-        changeAnglesCheckbox = createCheckbox('Winkel ändern', false);
-        changeAnglesCheckbox.position(10, 10);
-        changeAnglesCheckbox.class('checkbox-label'); // Füge die Klasse hinzu
+        if (window.Controls && Controls.createPanel) {
+          const panel = Controls.createPanel({
+            position: 'left',
+            mobileContentElement: canvasContainer,
+            mobileContentMaxOffset: 12
+          });
 
-        // Checkbox zum Verhindern neuer Linien
-        preventNewLinesCheckbox = createCheckbox('Keine neuen Linien', false);
-        preventNewLinesCheckbox.position(10, 30);
-        preventNewLinesCheckbox.class('checkbox-label'); // Füge die Klasse hinzu
-
-        // Slider für die Anzahl der Linien pro Frame
-        linesPerFrameSlider = createSlider(1, 100, 10);
-        linesPerFrameSlider.position(10, 50);
-
-        // Slider für die Strichstärke
-        strokeWeightSlider = createSlider(0, 1, 0.001, 0.001);
-        strokeWeightSlider.position(10, 70);
+          panel
+            .addToggle('changeAngles', {
+              label: 'Winkel ändern',
+              value: config.changeAngles,
+              onChange: value => { config.changeAngles = value; }
+            })
+            .addToggle('preventNewLines', {
+              label: 'Keine neuen Linien',
+              value: config.preventNewLines,
+              onChange: value => { config.preventNewLines = value; }
+            })
+            .addSlider('linesPerFrame', {
+              label: 'Linien / Frame',
+              min: 1,
+              max: 100,
+              step: 1,
+              value: config.linesPerFrame,
+              decimals: 0,
+              onChange: value => { config.linesPerFrame = value; }
+            })
+            .addSlider('strokeWeight', {
+              label: 'Strichstärke',
+              min: 0,
+              max: 1,
+              step: 0.01,
+              value: config.strokeWeight,
+              decimals: 3,
+              onChange: value => { config.strokeWeight = value; }
+            });
+        }
       }
 
       function draw() {
-        if (!preventNewLinesCheckbox.checked()) {
-          for (let i = 0; i < linesPerFrameSlider.value(); i++) {
-            let angle = random(360);
-            lines.push(angle);
+        if (!config.preventNewLines) {
+          for (let i = 0; i < config.linesPerFrame; i += 1) {
+            lines.push(random(360));
           }
         }
 
-        if (changeAnglesCheckbox.checked()) {
+        if (config.changeAngles) {
           lines = lines.map(() => random(360));
         }
 
         background(0);
         translate(width / 2, height / 2);
         stroke(255);
-        strokeWeight(strokeWeightSlider.value());
+        strokeWeight(config.strokeWeight);
+
         lines.forEach(angle => {
           line(0, 0, cos(angle) * 1000, sin(angle) * 1000);
         });
+      }
+
+      function windowResized() {
+        resizeCanvas(windowWidth, windowHeight);
       }
     </script>
   </body>

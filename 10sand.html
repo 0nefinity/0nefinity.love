@@ -11,13 +11,11 @@
 	<!-- 0    1    ∞ 
 	     1    0   sand-->
   <style>
-    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-    #pixi-container { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 1; }
-    #pixi-container canvas { display: block; }
+    /* _018-canvas Klasse wird von meta.css bereitgestellt */
   </style>
 </head>
 <body>
-  <div id="pixi-container"></div>
+  <div id="pixi-container" class="_018-canvas"></div>
 
   <script src="/tools/pixi.js"></script>
   <script>
@@ -1205,7 +1203,7 @@
         }
       });
 
-      panel.addStepper('gravityStrength', {
+      panel.addSlider('gravityStrength', {
         label: 'G (m/s²)',
         min: 0, max: 100, step: 0.1, value: gravityMs2, decimals: 1,
         onChange: v => gravityMs2 = v
@@ -1267,7 +1265,7 @@
 		          prewarmStampCache(grainTextValue);
 		        }
 		      });
-	      panel.addStepper('font', {
+	      panel.addSlider('font', {
 	        label: 'Size',
         min: 0, max: 1000, step: 1, value: stampFontPx, decimals: 0,
         onChange: v => {

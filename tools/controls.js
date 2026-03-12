@@ -19,10 +19,10 @@
  *       .addDivider()
  *       .addToggle('active', { label: 'Active', value: config.active, labelOn: 'ON', labelOff: 'OFF', onChange: v => config.active = v })
  *       .addDivider()
- *       .addRange('speed',   { label: 'Speed',  min: 0, max: 100, step: 1, value: config.speed, decimals: 0, onChange: v => config.speed = v })
- *       .addRange('opacity', { label: 'Alpha',  min: 0, max: 1,   step: 0.01, value: config.opacity, decimals: 2, onChange: v => config.opacity = v })
+ *       .addSlider('speed',   { label: 'Speed',  min: 0, max: 100, step: 1, value: config.speed, decimals: 0, onChange: v => config.speed = v })
+ *       .addSlider('opacity', { label: 'Alpha',  min: 0, max: 1,   step: 0.01, value: config.opacity, decimals: 2, onChange: v => config.opacity = v })
  *       .addDivider()
- *       .addStepper('count', { label: 'Count',  min: 1, max: 10, step: 1, value: config.count, onChange: v => config.count = v })
+ *       .addSlider('count', { label: 'Count',  min: 1, max: 10, step: 1, value: config.count, onChange: v => config.count = v })
  *   ;
  * ─────────────────────────────────────────────────────
  */
@@ -39,7 +39,27 @@
     left: 50%;
     transform: translateX(-50%);
     padding: 0.75rem 1rem;
-    background: rgba(0, 0, 0, 0.85);
+    --ctrl-panel-bg: color-mix(in srgb, var(--bg-color, #111) 86%, transparent);
+    --ctrl-panel-bg-strong: color-mix(in srgb, var(--bg-color, #111) 95%, transparent);
+    --ctrl-border-soft: color-mix(in srgb, var(--text-color, #fff) 10%, transparent);
+    --ctrl-border: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
+    --ctrl-border-strong: color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
+    --ctrl-border-stronger: color-mix(in srgb, var(--text-color, #fff) 50%, transparent);
+    --ctrl-fill-05: color-mix(in srgb, var(--text-color, #fff) 5%, transparent);
+    --ctrl-fill-08: color-mix(in srgb, var(--text-color, #fff) 8%, transparent);
+    --ctrl-fill-10: color-mix(in srgb, var(--text-color, #fff) 10%, transparent);
+    --ctrl-fill-12: color-mix(in srgb, var(--text-color, #fff) 12%, transparent);
+    --ctrl-fill-14: color-mix(in srgb, var(--text-color, #fff) 14%, transparent);
+    --ctrl-fill-15: color-mix(in srgb, var(--text-color, #fff) 15%, transparent);
+    --ctrl-fill-20: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
+    --ctrl-fill-25: color-mix(in srgb, var(--text-color, #fff) 25%, transparent);
+    --ctrl-fill-30: color-mix(in srgb, var(--text-color, #fff) 30%, transparent);
+    --ctrl-text-30: color-mix(in srgb, var(--text-color, #fff) 30%, transparent);
+    --ctrl-text-40: color-mix(in srgb, var(--text-color, #fff) 40%, transparent);
+    --ctrl-text-70: color-mix(in srgb, var(--text-color, #fff) 70%, transparent);
+    --ctrl-text-80: color-mix(in srgb, var(--text-color, #fff) 80%, transparent);
+    --ctrl-text-90: color-mix(in srgb, var(--text-color, #fff) 90%, transparent);
+    background: var(--ctrl-panel-bg);
     border-radius: 12px;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -52,6 +72,7 @@
     width: fit-content;
     min-width: 280px;
     max-width: calc(100vw - 6rem); /* Platz für Menü lassen */
+    isolation: isolate;
 }
 
 .ctrl-panel.dragging { opacity: 0.9; }
@@ -85,7 +106,7 @@
     justify-content: center;
     padding: 0.5rem 0;
     margin-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--ctrl-border-soft);
     cursor: grab;
     gap: 0.5rem;
     position: relative;
@@ -98,7 +119,7 @@
 .ctrl-drag-indicator {
     width: 40px;
     height: 4px;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--ctrl-text-30);
     border-radius: 2px;
 }
 
@@ -109,30 +130,58 @@
     display: flex;
     gap: 4px;
     align-items: center;
+    isolation: isolate;
 }
 
 /* Header Button (shared style) */
 .ctrl-header-btn {
     width: 22px;
     height: 22px;
-    background: transparent;
-    border: none;
-    color: rgba(255,255,255,0.4);
+    background: transparent !important;
+    border: none !important;
+    color: var(--ctrl-text-40);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    transition: color 0.15s, background 0.15s;
+    transition: color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease;
     padding: 0;
     border-radius: 4px;
+    box-shadow: none !important;
+    outline: none;
+    transform: none !important;
+    scale: 1 !important;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    will-change: background-color, color, opacity;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 .ctrl-header-btn:hover {
-    color: rgba(255,255,255,0.9);
-    background: rgba(255,255,255,0.1);
+    color: var(--ctrl-text-90);
+    background: var(--ctrl-fill-08) !important;
+}
+.ctrl-header-btn:focus,
+.ctrl-header-btn:focus-visible {
+    color: var(--ctrl-text-90);
+    background: var(--ctrl-fill-08) !important;
+    outline: none;
+}
+.ctrl-header-btn:active {
+    color: var(--text-color, #fff);
+    background: var(--ctrl-fill-14) !important;
 }
 .ctrl-header-btn.danger:hover {
-    background: rgba(255,100,100,0.3);
+    background: var(--ctrl-fill-20) !important;
+}
+.ctrl-header-btn.danger:focus,
+.ctrl-header-btn.danger:focus-visible {
+    background: var(--ctrl-fill-20) !important;
+}
+.ctrl-header-btn.danger:active {
+    background: var(--ctrl-fill-25) !important;
 }
 
 /* Layout Toggle Button (legacy class, now uses shared style) */
@@ -162,7 +211,7 @@
     justify-content: center;
     gap: 0.4rem;
     padding-right: 0.4rem;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid var(--ctrl-border-soft);
 }
 .ctrl-panel.bar-mode .ctrl-drag-indicator {
     width: 4px;
@@ -220,17 +269,16 @@
     display: block;
     width: 1px;
     height: 20px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--ctrl-fill-15);
     margin: 0 0.25rem;
 }
 
 /* Compact controls in bar mode */
 /* Consistent width for controls in bar mode to create a grid feel */
 .ctrl-panel.bar-mode .ctrl-slider-group,
-.ctrl-panel.bar-mode .ctrl-stepper,
 .ctrl-panel.bar-mode .ctrl-textarea,
 .ctrl-panel.bar-mode .ctrl-button:not(.ctrl-toggle) {
-    width: 220px;
+    width: 240px;
     flex: 0 0 auto;
 }
 .ctrl-panel.bar-mode .ctrl-select {
@@ -255,7 +303,7 @@
 
 /* Section Dividers in Normal Mode */
 .ctrl-panel:not(.bar-mode) .ctrl-section + .ctrl-section {
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-top: 1px solid var(--ctrl-fill-15);
     margin-top: 0.75rem;
     padding-top: 0.75rem;
 }
@@ -274,7 +322,7 @@
     background: transparent; /* Strictly black */
 }
 .ctrl-panel.bar-mode .ctrl-section + .ctrl-section {
-    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 1px solid var(--ctrl-fill-12);
     margin-left: 0.25rem;
 }
 
@@ -290,6 +338,7 @@
 
 /* Row */
 .ctrl-row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -306,13 +355,6 @@
     text-overflow: ellipsis;
     font-size: 13px;
     opacity: 0.8;
-}
-
-/* Stepper Container */
-.ctrl-stepper {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
 }
 
 .ctrl-stepper-btn {
@@ -350,6 +392,7 @@
 }
 
 .ctrl-slider-group {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.3rem;
@@ -377,19 +420,17 @@
     border-bottom: 1px solid transparent;
 }
 .ctrl-value-input:hover {
-    border-bottom-color: rgba(255,255,255,0.3);
+    border-bottom-color: var(--ctrl-border-strong);
 }
 .ctrl-value-input:focus {
-    border-bottom-color: rgba(255,255,255,0.6);
-    background: rgba(255,255,255,0.05);
-}
-    background: rgba(255,255,255,0.05);
+    border-bottom-color: var(--ctrl-border-stronger);
+    background: var(--ctrl-fill-05);
 }
 
 /* Textarea - resizable in both directions */
 .ctrl-textarea {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.2);
+    background: var(--ctrl-fill-05);
+    border: 1px solid var(--ctrl-border);
     border-radius: 4px;
     color: var(--text-color, #fff);
     font-size: 16px; /* Prevents iOS zoom */
@@ -409,8 +450,8 @@
     line-height: 1.3;
 }
 .ctrl-textarea:focus {
-    border-color: rgba(255,255,255,0.5);
-    background: rgba(255,255,255,0.08);
+    border-color: var(--ctrl-border-stronger);
+    background: var(--ctrl-fill-08);
 }
 /* Allow textarea to overflow panel bounds */
 .ctrl-row:has(.ctrl-textarea) {
@@ -420,8 +461,8 @@
 /* Toggle Button */
 .ctrl-toggle {
     padding: 0.3rem 1rem;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.3);
+    background: var(--ctrl-fill-10);
+    border: 1px solid var(--ctrl-border-strong);
     color: var(--text-color, #fff);
     border-radius: 4px;
     cursor: pointer;
@@ -429,8 +470,8 @@
     transition: all 0.2s;
 }
 .ctrl-toggle.active {
-    background: rgba(255,255,255,0.3);
-    border-color: rgba(255,255,255,0.6);
+    background: var(--ctrl-fill-30);
+    border-color: var(--ctrl-border-stronger);
 }
 
 /* Range Slider */
@@ -439,7 +480,7 @@
     height: 6px;
     -webkit-appearance: none;
     appearance: none;
-    background: rgba(255,255,255,0.2);
+    background: var(--ctrl-fill-20);
     border-radius: 3px;
     outline: none;
     cursor: pointer;
@@ -467,9 +508,9 @@
 .ctrl-select {
     flex: 1;
     height: 32px;
-    background: var(--bg-color, #111);
+    background: var(--ctrl-fill-05);
     color: var(--text-color, #fff);
-    border: 1px solid rgba(255,255,255,0.3);
+    border: 1px solid var(--ctrl-border-strong);
     border-radius: 6px;
     padding: 0 0.5rem;
     font-size: 13px;
@@ -480,9 +521,9 @@
 .ctrl-button {
     flex: 0 0 auto;
     height: 32px;
-    background: rgba(255,255,255,0.1);
+    background: var(--ctrl-fill-10);
     color: var(--text-color, #fff);
-    border: 1px solid rgba(255,255,255,0.3);
+    border: 1px solid var(--ctrl-border-strong);
     border-radius: 6px;
     padding: 0 0.75rem;
     font-size: 13px;
@@ -490,21 +531,25 @@
     transition: background 0.15s, border-color 0.15s;
 }
 .ctrl-button:hover {
-    background: rgba(255,255,255,0.2);
-    border-color: rgba(255,255,255,0.5);
+    background: var(--ctrl-fill-20);
+    border-color: var(--ctrl-border-stronger);
 }
 .ctrl-button:active {
-    background: rgba(255,255,255,0.25);
+    background: var(--ctrl-fill-25);
 }
 
 /* Verhindert, dass meta.css-Button-Globalstyles (scale, transition: all)
    ins Control-Panel durchschlagen und einen Scrollbar-Flash auslösen */
 .ctrl-panel button {
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 .ctrl-panel button:hover,
 .ctrl-panel button:active {
     scale: 1;
+}
+.ctrl-panel button:focus,
+.ctrl-panel button:focus-visible {
+    outline: none;
 }
 
 /* Value Display */
@@ -520,7 +565,7 @@
 /* Section Divider */
 .ctrl-divider {
     height: 1px;
-    background: rgba(255,255,255,0.15);
+    background: var(--ctrl-fill-15);
     margin: 0.75rem 0;
 }
 
@@ -561,7 +606,7 @@
     font-size: 0.9em;
 }
 .ctrl-metrics-row.total {
-    border-top: 1px solid rgba(255,255,255,0.2);
+    border-top: 1px solid var(--ctrl-border);
     padding-top: 0.25rem;
     margin-top: 0.15rem;
     font-weight: bold;
@@ -588,7 +633,7 @@
 }
 .ctrl-pattern-btn {
     aspect-ratio: 1;
-    background: rgba(255,255,255,0.08);
+    background: var(--ctrl-fill-08);
     border: 2px solid transparent;
     border-radius: 6px;
     cursor: pointer;
@@ -599,12 +644,12 @@
     padding: 2px;
 }
 .ctrl-pattern-btn:hover {
-    background: rgba(255,255,255,0.15);
+    background: var(--ctrl-fill-15);
     transform: scale(1.05);
 }
 .ctrl-pattern-btn.active {
-    border-color: rgba(255,255,255,0.8);
-    background: rgba(255,255,255,0.2);
+    border-color: var(--ctrl-text-80);
+    background: var(--ctrl-fill-20);
 }
 .ctrl-pattern-btn canvas {
     width: 100%;
@@ -618,8 +663,8 @@
     bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0,0,0,0.9);
-    color: #fff;
+    background: var(--ctrl-panel-bg-strong);
+    color: var(--text-color, #fff);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 11px;
@@ -634,7 +679,7 @@
     bottom: 100%;
     left: 0;
     right: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: var(--ctrl-panel-bg);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-radius: 8px 8px 0 0;
@@ -667,7 +712,7 @@
     height: 24px;
     background: transparent;
     border: none;
-    color: rgba(255,255,255,0.4);
+    color: var(--ctrl-text-40);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -680,12 +725,12 @@
     flex-shrink: 0;
 }
 .ctrl-text-styled-btn:hover {
-    color: rgba(255,255,255,0.9);
-    background: rgba(255,255,255,0.1);
+    color: var(--ctrl-text-90);
+    background: var(--ctrl-fill-10);
 }
 .ctrl-text-styled-btn.active {
-    color: rgba(255,255,255,0.9);
-    background: rgba(255,255,255,0.15);
+    color: var(--ctrl-text-90);
+    background: var(--ctrl-fill-15);
 }
 
 /* Popup for style options */
@@ -694,8 +739,8 @@
     top: 100%;
     right: 0;
     margin-top: 4px;
-    background: rgba(0, 0, 0, 0.95);
-    border: 1px solid rgba(255,255,255,0.2);
+    background: var(--ctrl-panel-bg-strong);
+    border: 1px solid var(--ctrl-border);
     border-radius: 8px;
     padding: 0.5rem;
     z-index: 200;
@@ -722,7 +767,7 @@
 .ctrl-style-popup input[type="color"] {
     width: 28px;
     height: 24px;
-    border: 1px solid rgba(255,255,255,0.2);
+    border: 1px solid var(--ctrl-border);
     border-radius: 4px;
     background: transparent;
     cursor: pointer;
@@ -740,7 +785,7 @@
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
-    background: rgba(255,255,255,0.2);
+    background: var(--ctrl-fill-20);
     border-radius: 2px;
     outline: none;
     cursor: pointer;
@@ -749,7 +794,7 @@
     -webkit-appearance: none;
     width: 12px;
     height: 12px;
-    background: #fff;
+    background: var(--text-color, #fff);
     border-radius: 50%;
     cursor: pointer;
 }
@@ -759,6 +804,108 @@
     min-width: 28px;
     text-align: right;
     font-variant-numeric: tabular-nums;
+}
+
+/* ========== SLIDER CONFIG MENU ========== */
+/* Drei-Punkte-Button - standardmäßig ausgeblendet */
+.ctrl-config-trigger {
+    width: 16px;
+    height: 16px;
+    background: transparent;
+    border: none;
+    color: var(--ctrl-text-30);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 0;
+    transition: color 0.15s, background 0.15s, opacity 0.15s;
+    padding: 0;
+    margin-left: 4px;
+    border-radius: 3px;
+    opacity: 0;
+    flex-shrink: 0;
+}
+
+/* Bei Hover über der Row einblenden */
+.ctrl-row:hover .ctrl-config-trigger {
+    opacity: 1;
+}
+
+.ctrl-config-trigger:hover {
+    color: var(--ctrl-text-90);
+    background: var(--ctrl-fill-10);
+}
+
+/* Popup-Menü - fixed für Bar-Mode Kompatibilität */
+.ctrl-config-popup {
+    position: fixed;
+    background: var(--ctrl-panel-bg-strong);
+    border: 1px solid var(--ctrl-border);
+    border-radius: 6px;
+    padding: 0.5rem 0.4rem;
+    z-index: 10000;
+    min-width: 130px;
+    display: none;
+    flex-direction: column;
+    gap: 0.35rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.ctrl-config-popup.open {
+    display: flex;
+}
+
+/* Row im Popup */
+.ctrl-config-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.ctrl-config-label {
+    font-size: 12px;
+    opacity: 0.7;
+    flex: 0 0 30px;
+}
+
+/* Input-Felder im Popup */
+.ctrl-config-input {
+    width: 55px;
+    background: var(--ctrl-fill-10);
+    border: 1px solid var(--ctrl-border);
+    border-radius: 3px;
+    color: var(--text-color, #fff);
+    padding: 0.2rem 0.25rem;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.ctrl-config-input:focus {
+    border-color: var(--ctrl-border-stronger);
+    background: var(--ctrl-fill-15);
+}
+
+/* Reset-Button */
+.ctrl-config-reset {
+    margin-top: 0.2rem;
+    padding: 0.25rem 0.4rem;
+    background: transparent;
+    border: 1px solid var(--ctrl-border);
+    border-radius: 3px;
+    color: var(--ctrl-text-70);
+    cursor: pointer;
+    font-size: 11px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.ctrl-config-reset:hover {
+    background: var(--ctrl-fill-10);
+    color: var(--text-color, #fff);
 }
 `;
 
@@ -842,6 +989,11 @@
         min-height: 44px;
         font-size: 16px;
     }
+
+    /* Config-Menu auf Mobile immer sichtbar */
+    .ctrl-config-trigger {
+        opacity: 1 !important;
+    }
 }
 
 @media (max-width: 380px) {
@@ -871,6 +1023,29 @@
         return Number(val).toFixed(decimals);
     }
 
+    function getThemeColor(variableName, fallback = '') {
+        return getComputedStyle(document.documentElement).getPropertyValue(variableName).trim() || fallback;
+    }
+
+    function colorToHex(color, fallback = '#000000') {
+        const probe = document.createElement('span');
+        probe.style.position = 'absolute';
+        probe.style.visibility = 'hidden';
+        probe.style.pointerEvents = 'none';
+        probe.style.color = fallback;
+        probe.style.color = color || fallback;
+        (document.body || document.documentElement).appendChild(probe);
+        const resolved = getComputedStyle(probe).color;
+        probe.remove();
+
+        const match = resolved.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!match) return fallback;
+
+        return '#' + [match[1], match[2], match[3]]
+            .map((value) => Number(value).toString(16).padStart(2, '0'))
+            .join('');
+    }
+
     function isMobile() {
         return window.innerWidth <= 768;
     }
@@ -890,6 +1065,7 @@
             };
             this.params = {};
             this.callbacks = {};
+            this._sliderConfigs = {};  // Speichert Original-Konfiguration pro Key für Config-Menü
             this.el = null;
             this.headerEl = null;
             this.bodyEl = null;
@@ -899,8 +1075,136 @@
             this._mobileY = 0;
             this._sections = {};
             this._currentContainer = null; // Will be set to bodyEl in _create
+            this._activeConfigKey = null; // Aktuell geöffnetes Config-Menü
 
             this._create();
+        }
+
+        // Globales Config-Popup erstellen (singleton)
+        _getGlobalConfigPopup() {
+            let popup = document.getElementById('ctrl-global-config-popup');
+            if (!popup) {
+                popup = document.createElement('div');
+                popup.id = 'ctrl-global-config-popup';
+                popup.className = 'ctrl-config-popup';
+                popup.style.position = 'fixed';
+                document.body.appendChild(popup);
+                
+                // Click außerhalb schließt Popup
+                document.addEventListener('click', (e) => {
+                    if (!popup.contains(e.target) && !e.target.classList.contains('ctrl-config-trigger')) {
+                        popup.classList.remove('open');
+                        this._activeConfigKey = null;
+                    }
+                });
+            }
+            return popup;
+        }
+
+        // Config-Popup öffnen für einen bestimmten Slider
+        _openConfigPopup(key, triggerEl) {
+            const cfg = this._sliderConfigs[key];
+            if (!cfg) return;
+            
+            const popup = this._getGlobalConfigPopup();
+            
+            // Popup-Inhalt aktualisieren
+            popup.innerHTML = `
+                <div class="ctrl-config-row">
+                    <span class="ctrl-config-label">Min</span>
+                    <input type="number" class="ctrl-config-input" data-config="min" value="${cfg.min}" step="any">
+                </div>
+                <div class="ctrl-config-row">
+                    <span class="ctrl-config-label">Max</span>
+                    <input type="number" class="ctrl-config-input" data-config="max" value="${cfg.max}" step="any">
+                </div>
+                <div class="ctrl-config-row">
+                    <span class="ctrl-config-label">Step</span>
+                    <input type="number" class="ctrl-config-input" data-config="step" value="${cfg.step}" step="any">
+                </div>
+                <button class="ctrl-config-reset">Reset</button>
+            `;
+            
+            // Event-Handler für Inputs
+            popup.querySelectorAll('.ctrl-config-input').forEach(input => {
+                input.addEventListener('change', () => {
+                    const configType = input.dataset.config;
+                    let newVal = parseFloat(input.value);
+                    if (!isNaN(newVal)) {
+                        cfg[configType] = newVal;
+                        // Wert clampen und UI aktualisieren
+                        this._updateSliderFromConfig(key);
+                    }
+                });
+            });
+            
+            // Reset-Button
+            popup.querySelector('.ctrl-config-reset').addEventListener('click', () => {
+                cfg.min = cfg.defaultMin;
+                cfg.max = cfg.defaultMax;
+                cfg.step = cfg.defaultStep;
+                popup.querySelector('[data-config="min"]').value = cfg.defaultMin;
+                popup.querySelector('[data-config="max"]').value = cfg.defaultMax;
+                popup.querySelector('[data-config="step"]').value = cfg.defaultStep;
+                this._updateSliderFromConfig(key);
+            });
+            
+            // Positionieren
+            const triggerRect = triggerEl.getBoundingClientRect();
+            const popupWidth = 130;
+            const viewportHeight = window.innerHeight;
+            const viewportWidth = window.innerWidth;
+            
+            let left = triggerRect.right - popupWidth;
+            if (left < 5) left = 5;
+            if (left + popupWidth > viewportWidth - 5) left = viewportWidth - popupWidth - 5;
+            popup.style.left = `${left}px`;
+            
+            // Popup anzeigen um Höhe zu messen
+            popup.style.visibility = 'hidden';
+            popup.classList.add('open');
+            const popupHeight = popup.offsetHeight || 150;
+            
+            const spaceBelow = viewportHeight - triggerRect.bottom - 5;
+            const spaceAbove = triggerRect.top - 5;
+            
+            if (spaceBelow >= popupHeight || spaceBelow >= spaceAbove) {
+                popup.style.top = `${triggerRect.bottom + 2}px`;
+                popup.style.bottom = 'auto';
+            } else {
+                popup.style.bottom = `${viewportHeight - triggerRect.top + 2}px`;
+                popup.style.top = 'auto';
+            }
+            
+            popup.style.visibility = '';
+            this._activeConfigKey = key;
+        }
+        
+        // Slider-Wert und UI nach Config-Änderung aktualisieren
+        _updateSliderFromConfig(key) {
+            const cfg = this._sliderConfigs[key];
+            const row = this.bodyEl.querySelector(`[data-key="${key}"]`);
+            if (!row || !cfg) return;
+            
+            const range = row.querySelector('.ctrl-range');
+            const input = row.querySelector('.ctrl-value-input');
+            const display = row.querySelector('.ctrl-value-display');
+            
+            if (range) {
+                range.min = cfg.min;
+                range.max = cfg.max;
+                range.step = cfg.step;
+            }
+            
+            // Wert clampen
+            const clampedValue = clamp(this.params[key], cfg.min, cfg.max);
+            if (clampedValue !== this.params[key]) {
+                this.params[key] = clampedValue;
+                if (range) range.value = clampedValue;
+                if (input) input.value = formatValue(clampedValue, cfg.decimals);
+                if (display) display.textContent = formatValue(clampedValue, cfg.decimals);
+                if (this.callbacks[key]) this.callbacks[key](clampedValue);
+            }
         }
 
         _create() {
@@ -964,6 +1268,10 @@
 
             // Initial height calculation (after DOM is ready)
             requestAnimationFrame(() => this._updateBodyHeight());
+        }
+
+        _isHeaderButtonTarget(target) {
+            return target instanceof Element && !!target.closest('.ctrl-header-buttons');
         }
 
         // Toggle between panel and bar layout
@@ -1073,7 +1381,7 @@
 
             // Desktop drag
             this.headerEl.addEventListener('mousedown', (e) => {
-                if (isMobile()) return;
+                if (isMobile() || this._isHeaderButtonTarget(e.target)) return;
                 this._isDragging = true;
                 this.el.classList.add('dragging');
                 const rect = this.el.getBoundingClientRect();
@@ -1247,8 +1555,9 @@
             window.addEventListener('resize', initPosition);
 
             // Tap to toggle: closed -> half -> open -> closed
-            this.headerEl.addEventListener('click', () => {
+            this.headerEl.addEventListener('click', (e) => {
                 if (!isMobile()) return;
+                if (this._isHeaderButtonTarget(e.target)) return;
                 const maxY = getMaxY();
                 const halfY = maxY * 0.5;
                 if (this._mobileY > halfY) {
@@ -1263,6 +1572,7 @@
             // Touch drag
             this.headerEl.addEventListener('touchstart', (e) => {
                 if (!isMobile()) return;
+                if (this._isHeaderButtonTarget(e.target)) return;
                 isTouchDragging = false;
                 touchStartY = e.touches[0].clientY;
                 this.el.style.transition = 'none';
@@ -1271,6 +1581,7 @@
 
             this.headerEl.addEventListener('touchmove', (e) => {
                 if (!isMobile()) return;
+                if (this._isHeaderButtonTarget(e.target)) return;
                 isTouchDragging = true;
                 const deltaY = e.touches[0].clientY - touchStartY;
                 const newY = clampY(this._mobileY + deltaY);
@@ -1280,6 +1591,7 @@
 
             this.headerEl.addEventListener('touchend', (e) => {
                 if (!isMobile()) return;
+                if (this._isHeaderButtonTarget(e.target)) return;
                 if (isTouchDragging) {
                     const endY = e.changedTouches[0].clientY;
                     const deltaY = endY - touchStartY;
@@ -1334,138 +1646,18 @@
         // === ROW CREATION METHODS ===
 
         /**
-         * Add a stepper row (− input +)
-         */
-        addStepper(key, config) {
-            const { label, min, max, step, value, decimals = 0, onChange } = config;
-            this.params[key] = value;
-            if (onChange) this.callbacks[key] = onChange;
-
-            const row = document.createElement('div');
-            row.className = 'ctrl-row';
-            row.dataset.key = key;
-            row.innerHTML = `
-                <label class="ctrl-label">${label}</label>
-                <div class="ctrl-stepper">
-                    <button class="ctrl-stepper-btn" data-action="dec">−</button>
-                    <input type="text" class="ctrl-value-input" value="${formatValue(value, decimals)}">
-                    <button class="ctrl-stepper-btn" data-action="inc">+</button>
-                </div>
-            `;
-
-            const input = row.querySelector('input');
-            const decBtn = row.querySelector('[data-action="dec"]');
-            const incBtn = row.querySelector('[data-action="inc"]');
-
-            const updateValue = (newVal, updateInput = true) => {
-                // newVal = clamp(newVal, min, max); // Let the universe be unlimited!
-                const factor = Math.pow(10, decimals);
-                newVal = Math.round(newVal * factor) / factor;
-                this.params[key] = newVal;
-                if (updateInput) {
-                    input.value = formatValue(newVal, decimals);
-                }
-                if (this.callbacks[key]) this.callbacks[key](newVal, key);
-            };
-
-            decBtn.addEventListener('click', () => updateValue(this.params[key] - step));
-            incBtn.addEventListener('click', () => updateValue(this.params[key] + step));
-
-            // Long-press for continuous change
-            let holdInterval = null;
-            let holdTimeout = null;
-            let isHolding = false;
-
-            const startHold = (delta) => {
-                if (isHolding) return; // Bereits aktiv
-                isHolding = true;
-                holdInterval = setInterval(() => updateValue(this.params[key] + delta), 100);
-            };
-            const stopHold = () => {
-                isHolding = false;
-                if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
-                if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
-            };
-
-            [decBtn, incBtn].forEach((btn, i) => {
-                const delta = i === 0 ? -step : step;
-
-                // Mouse events
-                btn.addEventListener('mousedown', () => {
-                    stopHold(); // Sicherstellen dass nichts läuft
-                    holdTimeout = setTimeout(() => { if (btn.matches(':active')) startHold(delta); }, 300);
-                });
-                btn.addEventListener('mouseup', stopHold);
-                btn.addEventListener('mouseleave', stopHold);
-
-                // Touch events
-                btn.addEventListener('touchstart', (e) => {
-                    stopHold(); // Sicherstellen dass nichts läuft
-                    holdTimeout = setTimeout(() => startHold(delta), 300);
-                }, { passive: true });
-                btn.addEventListener('touchend', stopHold);
-                btn.addEventListener('touchcancel', stopHold);
-            });
-
-            input.addEventListener('input', () => {
-                const parsed = parseFloat(input.value);
-                if (!isNaN(parsed)) updateValue(parsed, false);
-            });
-            input.addEventListener('blur', () => {
-                // Bei Blur: Falls ungültig, zurücksetzen
-                const parsed = parseFloat(input.value);
-                if (isNaN(parsed)) {
-                    input.value = formatValue(this.params[key], decimals);
-                } else {
-                    updateValue(parsed, true);
-                }
-            });
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') input.blur();
-            });
-
-            this._currentContainer.appendChild(row);
-            return this;
-        }
-
-        /**
-         * Add a range slider row
-         */
-        addRange(key, config) {
-            const { label, min, max, step, value, decimals = 0, onChange } = config;
-            this.params[key] = value;
-            if (onChange) this.callbacks[key] = onChange;
-
-            const row = document.createElement('div');
-            row.className = 'ctrl-row';
-            row.dataset.key = key;
-            row.innerHTML = `
-                <label class="ctrl-label">${label}</label>
-                <input type="range" class="ctrl-range" min="${min}" max="${max}" step="${step}" value="${value}">
-                <span class="ctrl-value-display">${formatValue(value, decimals)}</span>
-            `;
-
-            const range = row.querySelector('input');
-            const display = row.querySelector('.ctrl-value-display');
-
-            range.addEventListener('input', () => {
-                const val = parseFloat(range.value);
-                this.params[key] = val;
-                display.textContent = formatValue(val, decimals);
-                if (this.callbacks[key]) this.callbacks[key](val, key);
-            });
-
-            this._currentContainer.appendChild(row);
-            return this;
-        }
-
-        /**
          * Add a unified Slider + Stepper row (Slider + [-] [input] [+])
          */
         addSlider(key, config) {
             const { label, min, max, step, value, decimals = 0, onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
+
+            // Slider-Config für Config-Menü speichern
+            this._sliderConfigs[key] = {
+                min, max, step, decimals,
+                defaultMin: min, defaultMax: max, defaultStep: step
+            };
 
             const row = document.createElement('div');
             row.className = 'ctrl-row';
@@ -1477,6 +1669,7 @@
                     <input type="range" class="ctrl-range" min="${min}" max="${max}" step="${step}" value="${value}">
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
                     <input type="text" class="ctrl-value-input" value="${formatValue(value, decimals)}">
+                    <button class="ctrl-config-trigger" title="Einstellungen">⋮</button>
                 </div>
             `;
 
@@ -1484,16 +1677,19 @@
             const input = row.querySelector('.ctrl-value-input');
             const decBtn = row.querySelector('[data-action="dec"]');
             const incBtn = row.querySelector('[data-action="inc"]');
+            const configTrigger = row.querySelector('.ctrl-config-trigger');
 
             const updateValue = (newVal, updateInput = true) => {
                 // newVal = clamp(newVal, min, max); // Let the universe be unlimited!
-                const factor = Math.pow(10, decimals);
+                const cfg = this._sliderConfigs[key];
+                const decs = cfg ? cfg.decimals : decimals;
+                const factor = Math.pow(10, decs);
                 newVal = Math.round(newVal * factor) / factor;
                 this.params[key] = newVal;
 
                 range.value = newVal;
                 if (updateInput) {
-                    input.value = formatValue(newVal, decimals);
+                    input.value = formatValue(newVal, decs);
                 }
 
                 if (this.callbacks[key]) this.callbacks[key](newVal, key);
@@ -1512,8 +1708,10 @@
             });
             input.addEventListener('blur', () => {
                 const parsed = parseFloat(input.value);
+                const cfg = this._sliderConfigs[key];
+                const decs = cfg ? cfg.decimals : decimals;
                 if (isNaN(parsed)) {
-                    input.value = formatValue(this.params[key], decimals);
+                    input.value = formatValue(this.params[key], decs);
                 } else {
                     updateValue(parsed, true);
                 }
@@ -1523,17 +1721,30 @@
             });
 
             // Button Events (Including Hold)
-            // Button Events (Including Hold)
             let holdInterval = null;
             let holdTimeout = null;
             let isHolding = false;
 
             const startHold = (delta, initialEvent) => {
                 if (isHolding) return;
+                // Nicht starten wenn wir schon am Minimum/Maximum sind
+                const newVal = this.params[key] + delta;
+                const cfg = this._sliderConfigs[key];
+                const currentMin = cfg ? cfg.min : min;
+                const currentMax = cfg ? cfg.max : max;
+                if (newVal < currentMin || newVal > currentMax) return;
+                
                 isHolding = true;
                 // Sofort ein erster Schritt
-                updateValue(this.params[key] + delta);
-                holdInterval = setInterval(() => updateValue(this.params[key] + delta), 80);
+                updateValue(newVal);
+                holdInterval = setInterval(() => {
+                    const nextVal = this.params[key] + delta;
+                    if (nextVal < currentMin || nextVal > currentMax) {
+                        stopHold();
+                        return;
+                    }
+                    updateValue(nextVal);
+                }, 80);
             };
 
             const stopHold = () => {
@@ -1543,7 +1754,11 @@
             };
 
             [decBtn, incBtn].forEach((btn, i) => {
-                const delta = i === 0 ? -step : step;
+                const getDelta = () => {
+                    const cfg = this._sliderConfigs[key];
+                    const currentStep = cfg ? cfg.step : step;
+                    return i === 0 ? -currentStep : currentStep;
+                };
 
                 // Pointer Events (ersetzt mousedown, touchstart)
                 btn.addEventListener('pointerdown', (e) => {
@@ -1551,15 +1766,29 @@
                     btn.setPointerCapture(e.pointerId);
                     stopHold();
 
+                    // Prüfen ob wir überhaupt weiter können
+                    const delta = getDelta();
+                    const newVal = this.params[key] + delta;
+                    const cfg = this._sliderConfigs[key];
+                    const currentMin = cfg ? cfg.min : min;
+                    const currentMax = cfg ? cfg.max : max;
+                    if (newVal < currentMin || newVal > currentMax) return;
+
                     // Manuelles Click Handling (anstelle von on('click')) sorgt für sofortige Reaktion
-                    // Wir triggern den Startwert sofort über startHold und warten dann 400ms vor dem Loop
                     holdTimeout = setTimeout(() => { startHold(delta, e); }, 400);
                 });
 
                 btn.addEventListener('pointerup', (e) => {
                     // Wenn wir noch nicht lange gehalten haben, war es ein einfacher Click
                     if (!isHolding && holdTimeout) {
-                        updateValue(this.params[key] + delta);
+                        const delta = getDelta();
+                        const newVal = this.params[key] + delta;
+                        const cfg = this._sliderConfigs[key];
+                        const currentMin = cfg ? cfg.min : min;
+                        const currentMax = cfg ? cfg.max : max;
+                        if (newVal >= currentMin && newVal <= currentMax) {
+                            updateValue(newVal);
+                        }
                     }
                     stopHold();
                     btn.releasePointerCapture(e.pointerId);
@@ -1568,6 +1797,12 @@
                 btn.addEventListener('pointercancel', stopHold);
                 // click-Event blockieren, da wir es über pointerdown/-up selbst handhaben
                 btn.addEventListener('click', (e) => e.preventDefault());
+            });
+
+            // Config-Menü: Globales Popup öffnen
+            configTrigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._openConfigPopup(key, configTrigger);
             });
 
             this._currentContainer.appendChild(row);
@@ -1669,17 +1904,19 @@
          * @param {string} config.label - Label text
          * @param {string} config.value - Text value
          * @param {string} config.placeholder - Placeholder text
-         * @param {string} config.color - Text color (default: '#ffffff')
+         * @param {string} config.color - Text color (default: current --text-color)
          * @param {number} config.opacity - Text opacity 0-1 (default: 1)
          * @param {string} config.background - Background color (default: 'transparent')
          * @param {Function} config.onChange - Callback (values) => void, values = { text, color, opacity, background }
          */
         addTextStyled(key, config) {
+            const themeTextColor = colorToHex(getThemeColor('--text-color', '#ffffff'), '#ffffff');
+            const themeBgColor = colorToHex(getThemeColor('--bg-color', '#000000'), '#000000');
             const {
                 label,
                 value = '',
                 placeholder = '',
-                color = '#ffffff',
+                color = themeTextColor,
                 opacity = 1,
                 background = 'transparent',
                 onChange
@@ -1709,7 +1946,7 @@
                         </div>
                         <div class="ctrl-style-popup-row">
                             <span class="ctrl-style-popup-label">Hintergrund</span>
-                            <input type="color" class="ctrl-bg-input" value="${background === 'transparent' ? '#000000' : background}">
+                            <input type="color" class="ctrl-bg-input" value="${background === 'transparent' ? themeBgColor : background}">
                         </div>
                     </div>
                 </div>
@@ -1803,17 +2040,18 @@
          * @param {string} config.value - Currently selected pattern id (null = none)
          * @param {number} config.buttonSize - Size of each button in px (default: 36)
          * @param {number} config.columns - Number of columns (default: 4)
-         * @param {string} config.cellColor - Color for cells (default: '#fff')
+         * @param {string} config.cellColor - Color for cells (default: current --text-color)
          * @param {Function} config.onChange - Callback (patternId, pattern) => void
          */
         addPatternPicker(key, config) {
+            const themeTextColor = getThemeColor('--text-color', '#fff');
             const {
                 label = '',
                 patterns = [],
                 value = null,
                 buttonSize = 36,
                 columns = 4,
-                cellColor = '#fff',
+                cellColor = themeTextColor,
                 onChange
             } = config;
 
@@ -1847,7 +2085,9 @@
 
                 if (!cells || cells.length === 0) {
                     // Empty pattern = X icon
-                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    ctx.strokeStyle = color;
                     ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.moveTo(size * 0.25, size * 0.25);
@@ -1855,6 +2095,7 @@
                     ctx.moveTo(size * 0.75, size * 0.25);
                     ctx.lineTo(size * 0.25, size * 0.75);
                     ctx.stroke();
+                    ctx.restore();
                     return canvas;
                 }
 
@@ -2149,7 +2390,210 @@
          */
         addResetButton(config) {
             const { icon = '↺', title = 'Reset', onClick } = config;
-            return this.addHeaderButton({ icon, title, onClick, className: 'danger' });
+            const btn = document.createElement('button');
+            btn.className = 'ctrl-header-btn danger';
+            btn.title = title;
+            btn.textContent = icon;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (onClick) onClick();
+            });
+            
+            // Insert before layout toggle (same logic as enableUndoRedo)
+            const layoutToggle = this.headerButtonsEl.querySelector('.ctrl-layout-toggle');
+            if (layoutToggle) {
+                this.headerButtonsEl.insertBefore(btn, layoutToggle);
+            } else {
+                this.headerButtonsEl.appendChild(btn);
+            }
+            return this;
+        }
+
+        /**
+         * Enable Undo/Redo functionality with header buttons and keyboard shortcuts
+         * @param {Object} config - { onUndo, onRedo, onCanUndoChange, onCanRedoChange }
+         */
+        enableUndoRedo(config) {
+            const { onUndo, onRedo, onCanUndoChange, onCanRedoChange } = config;
+            
+            // History Stack
+            this._undoHistory = [];
+            this._redoHistory = [];
+            this._undoRedoEnabled = true;
+            this._onUndo = onUndo;
+            this._onRedo = onRedo;
+            this._onCanUndoChange = onCanUndoChange;
+            this._onCanRedoChange = onCanRedoChange;
+            
+            // Create Undo Button - simple, reliable
+            this._undoBtn = document.createElement('button');
+            this._undoBtn.className = 'ctrl-header-btn';
+            this._undoBtn.title = 'Undo (Ctrl+Z)';
+            this._undoBtn.textContent = '↩';
+            this._undoBtn.disabled = true;
+            this._undoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.undo();
+            });
+            
+            // Create Redo Button
+            this._redoBtn = document.createElement('button');
+            this._redoBtn.className = 'ctrl-header-btn';
+            this._redoBtn.title = 'Redo (Ctrl+Shift+Z)';
+            this._redoBtn.textContent = '↪';
+            this._redoBtn.disabled = true;
+            this._redoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.redo();
+            });
+            
+            // Add to header (before layout toggle button if it exists)
+            const layoutToggle = this.headerButtonsEl.querySelector('.ctrl-layout-toggle');
+            if (layoutToggle) {
+                this.headerButtonsEl.insertBefore(this._redoBtn, layoutToggle);
+                this.headerButtonsEl.insertBefore(this._undoBtn, this._redoBtn);
+            } else {
+                this.headerButtonsEl.appendChild(this._undoBtn);
+                this.headerButtonsEl.appendChild(this._redoBtn);
+            }
+            
+            // Global keyboard shortcuts
+            this._keyHandler = (e) => {
+                if (!this._undoRedoEnabled) return;
+                
+                const key = e.key.toLowerCase();
+                
+                // Ctrl+Z = Undo (ohne Shift)
+                if (e.ctrlKey && key === 'z' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.undo();
+                }
+                // Ctrl+Shift+Z = Redo
+                else if (e.ctrlKey && key === 'z' && e.shiftKey) {
+                    e.preventDefault();
+                    this.redo();
+                }
+                // Ctrl+Y = Redo (alternative)
+                else if (e.ctrlKey && key === 'y') {
+                    e.preventDefault();
+                    this.redo();
+                }
+            };
+            
+            document.addEventListener('keydown', this._keyHandler);
+            
+            return this;
+        }
+        
+        /**
+         * Save current state to undo history
+         * @param {*} state - Any serializable state object
+         */
+        saveState(state) {
+            if (!this._undoRedoEnabled) return this;
+            
+            // Deep clone the state to avoid reference issues
+            const clonedState = JSON.parse(JSON.stringify(state));
+            
+            // Don't save if identical to last state
+            if (this._undoHistory.length > 0) {
+                const lastState = this._undoHistory[this._undoHistory.length - 1];
+                if (JSON.stringify(lastState) === JSON.stringify(clonedState)) {
+                    return this;
+                }
+            }
+            
+            this._undoHistory.push(clonedState);
+            
+            // Clear redo history when new action happens
+            this._redoHistory = [];
+            
+            this._updateUndoRedoButtons();
+            return this;
+        }
+        
+        /**
+         * Perform undo operation
+         */
+        undo() {
+            if (!this._undoRedoEnabled || this._undoHistory.length === 0) return;
+            
+            // Move current state to redo
+            const currentState = this._undoHistory.pop();
+            this._redoHistory.push(currentState);
+            
+            // Get previous state
+            const previousState = this._undoHistory.length > 0 
+                ? this._undoHistory[this._undoHistory.length - 1] 
+                : null;
+            
+            if (this._onUndo) {
+                // Deep clone before passing to callback
+                const clonedPrevious = previousState ? JSON.parse(JSON.stringify(previousState)) : null;
+                this._onUndo(clonedPrevious, JSON.parse(JSON.stringify(currentState)));
+            }
+            
+            this._updateUndoRedoButtons();
+        }
+        
+        /**
+         * Perform redo operation
+         */
+        redo() {
+            if (!this._undoRedoEnabled || this._redoHistory.length === 0) return;
+            
+            // Move from redo to undo
+            const state = this._redoHistory.pop();
+            this._undoHistory.push(state);
+            
+            if (this._onRedo) {
+                // Deep clone before passing to callback
+                this._onRedo(JSON.parse(JSON.stringify(state)));
+            }
+            
+            this._updateUndoRedoButtons();
+        }
+        
+        /**
+         * Check if undo is available
+         */
+        canUndo() {
+            return this._undoRedoEnabled && this._undoHistory.length > 0;
+        }
+        
+        /**
+         * Check if redo is available
+         */
+        canRedo() {
+            return this._undoRedoEnabled && this._redoHistory.length > 0;
+        }
+        
+        /**
+         * Clear all undo/redo history
+         */
+        clearHistory() {
+            if (!this._undoRedoEnabled) return;
+            this._undoHistory = [];
+            this._redoHistory = [];
+            this._updateUndoRedoButtons();
+        }
+        
+        /**
+         * Update undo/redo button states
+         */
+        _updateUndoRedoButtons() {
+            const canUndo = this.canUndo();
+            const canRedo = this.canRedo();
+            
+            if (this._undoBtn) {
+                this._undoBtn.disabled = !canUndo;
+            }
+            if (this._redoBtn) {
+                this._redoBtn.disabled = !canRedo;
+            }
+            
+            if (this._onCanUndoChange) this._onCanUndoChange(canUndo);
+            if (this._onCanRedoChange) this._onCanRedoChange(canRedo);
         }
 
         /**
@@ -2215,6 +2659,12 @@
          * Remove the panel from DOM
          */
         destroy() {
+            // Remove global keyboard handler if undo/redo was enabled
+            if (this._keyHandler) {
+                document.removeEventListener('keydown', this._keyHandler);
+                this._keyHandler = null;
+            }
+            
             if (this.el && this.el.parentNode) {
                 this.el.parentNode.removeChild(this.el);
             }

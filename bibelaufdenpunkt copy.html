@@ -13,19 +13,9 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      overflow: hidden;
-      touch-action: none;
       background: #000;
     }
-    #container {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
-      overflow: hidden;
-      cursor: grab;
-      background: #000;
-    }
-    #container.dragging { cursor: grabbing; }
+    /* _018-canvas Klasse wird von meta.css bereitgestellt */
     .texture-layer {
       position: absolute;
       top: 50%;
@@ -41,18 +31,97 @@
       pointer-events: none;
       opacity: 0;
     }
+
+    /* Bible Karussell UI */
+    #bible-selector-wrapper {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      font-family: monospace;
+      user-select: none;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      max-width: 90vw;
+      padding: 0 10px;
+      pointer-events: auto;
+    }
+    #bible-selector-wrapper .title {
+      color: #fff;
+      font-size: 20px;
+      line-height: 1.2;
+      flex-shrink: 0;
+    }
+    #bible-karussell {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      /* Breite wird per JS gesetzt basierend auf längstem Namen */
+    }
+    #bible-karussell .item {
+      transition: all 0.2s ease-out;
+      cursor: pointer;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    #bible-karussell .item.active {
+      font-size: 20px;
+      opacity: 1;
+      color: #fff;
+    }
+    #bible-karussell .item.inactive {
+      font-size: 14px;
+      opacity: 0.5;
+      color: #888;
+    }
+    #bible-karussell .item.more-inactive {
+      font-size: 10px;
+      opacity: 0.25;
+      color: #666;
+    }
+
+    /* Mobile: Titel zentriert oben, Karussell darunter */
+    @media (max-width: 500px) {
+      #bible-selector-wrapper {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 12px;
+      }
+      #bible-selector-wrapper .title {
+        font-size: 16px;
+      }
+      #bible-karussell {
+        align-items: center;
+      }
+      #bible-karussell .item.active {
+        font-size: 18px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div id="container">
+  <div id="bible-selector-wrapper">
+    <div class="title">choose your type of</div>
+    <div id="bible-karussell">
+      <div class="item more-inactive" id="prevItem2"></div>
+      <div class="item inactive" id="prevItem1"></div>
+      <div class="item active" id="activeItem"></div>
+      <div class="item inactive" id="nextItem1"></div>
+      <div class="item more-inactive" id="nextItem2"></div>
+    </div>
+  </div>
+
+  <div class="_018-canvas">
     <canvas id="base-layer" class="texture-layer"></canvas>
     <canvas id="native-layer" class="texture-layer"></canvas>
   </div>
 
   <script>
-    // ============================================================
-    // CONFIGURATION - Alle Magic Numbers an einem Ort
-    // ============================================================
     const CONFIG = {
       // Zoom Einstellungen
       ZOOM: {
@@ -64,6 +133,7 @@
 
       // Text-Rendering
       TARGET_FONT_SIZE: 12,   // Lesbare Schriftgröße im Kreis
+      TARGET_CIRCLE_RADIUS: 10000,  // Normalisierter visueller Radius für alle Texte
       LINE_HEIGHT_FACTOR: 1.2,
       FONT_FAMILY: 'monospace',
 
@@ -96,6 +166,7 @@
     const state = {
       textData: '',
       circleRadius: 0,
+      normalizeScale: 1,  // Skalierungsfaktor um alle Kreise auf gleiche Größe zu bringen
       baseFontSize: 0,
       baseCharWidth: 0,
       lineHeight: 0,
@@ -145,7 +216,7 @@
     // DOM ELEMENTS
     // ============================================================
     const elements = {
-      container: document.getElementById('container'),
+      container: document.querySelector('._018-canvas'),
       baseCanvas: document.getElementById('base-layer'),
       nativeCanvas: document.getElementById('native-layer'),
       get baseCtx() { return this.baseCanvas.getContext('2d'); },
@@ -328,11 +399,13 @@
       const w = window.innerWidth;
       const h = window.innerHeight;
       const dpr = window.devicePixelRatio || 1;
-      const scale = state.scale;
 
-      // Viewport-Zentrum in Welt-Koordinaten (direkt aus focusWorld)
-      const centerWorldX = state.focusWorld.x;
-      const centerWorldY = state.focusWorld.y;
+      // Effektiver Scale (mit Normalisierung) für die Darstellung
+      const effScale = getEffectiveScale();
+
+      // focusWorld ist in normalisierten Koordinaten - zurückrechnen auf Textur-Koordinaten
+      const centerWorldX = state.focusWorld.x / state.normalizeScale;
+      const centerWorldY = state.focusWorld.y / state.normalizeScale;
 
       // Cache-Canvas mit großem Margin für Bewegungsspielraum (weniger Re-Renders)
       const margin = 2.5;
@@ -352,16 +425,14 @@
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, cacheW, cacheH);
 
-      // Sichtbarer Bereich in Welt-Koordinaten
-      const halfW = (w * margin / 2) / scale;
-      const halfH = (h * margin / 2) / scale;
-      const leftWorldX = centerWorldX - halfW;
-      const rightWorldX = centerWorldX + halfW;
+      // Sichtbarer Bereich in Textur-Welt-Koordinaten
+      const halfW = (w * margin / 2) / effScale;
+      const halfH = (h * margin / 2) / effScale;
       const topWorldY = centerWorldY - halfH;
       const bottomWorldY = centerWorldY + halfH;
 
       // Font setzen - mit Maximum um Browser-Limits zu respektieren
-      const rawFontSize = state.baseFontSize * scale * dpr;
+      const rawFontSize = state.baseFontSize * effScale * dpr;
       const maxCanvasFontSize = 500; // Browser-Limit für sinnvolles Text-Rendering
       const actualFontSize = Math.min(rawFontSize, maxCanvasFontSize);
       const fontScaleFactor = actualFontSize / rawFontSize; // Falls wir limitieren mussten
@@ -371,25 +442,23 @@
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
 
-      // Padding für Sichtbarkeitsprüfung: Bei extremem Zoom können Zeichen weit über ihre Y-Position hinausragen
-      // Wir nehmen das Maximum aus Zeilenhöhe und halber Viewport-Höhe in Weltkoordinaten
-      const viewportHeightWorld = h / scale;
+      // Padding für Sichtbarkeitsprüfung
+      const viewportHeightWorld = h / effScale;
       const yPadding = Math.max(state.lineHeight, viewportHeightWorld);
 
-      LOG.nativeRender(centerWorldX, centerWorldY, scale, false);
+      LOG.nativeRender(centerWorldX, centerWorldY, effScale, false);
 
       const startIdx = findFirstVisibleLine(topWorldY, yPadding);
 
       for (let i = startIdx; i < state.lines.length; i++) {
         const line = state.lines[i];
-        // Prüfe ob Zeile (mit großzügigem Padding) noch sichtbar sein könnte
         if (line.y - yPadding > bottomWorldY) break;
 
         const lineText = state.textData.substr(line.startIndex, line.charCount);
 
-        // Immer ganze Zeile rendern - konsistente Positionierung bei jedem Zoom-Level
-        const screenX = cacheW / 2 + (0 - centerWorldX) * scale * dpr;
-        const screenY = cacheH / 2 + (line.y - centerWorldY) * scale * dpr;
+        // Position in Canvas-Koordinaten (mit effektivem Scale)
+        const screenX = cacheW / 2 + (0 - centerWorldX) * effScale * dpr;
+        const screenY = cacheH / 2 + (line.y - centerWorldY) * effScale * dpr;
 
         if (fontScaleFactor < 1) {
           ctx.save();
@@ -402,10 +471,10 @@
         }
       }
 
-      // Cache-Metadaten speichern
-      state.textures.native.centerX = centerWorldX;
-      state.textures.native.centerY = centerWorldY;
-      state.textures.native.scale = scale;
+      // Cache-Metadaten speichern (in normalisierten Koordinaten für Konsistenz)
+      state.textures.native.centerX = state.focusWorld.x;
+      state.textures.native.centerY = state.focusWorld.y;
+      state.textures.native.scale = state.scale;  // Basis-Scale speichern
       state.textures.native.width = w * margin;
       state.textures.native.height = h * margin;
     }
@@ -427,6 +496,7 @@
     }
 
     // Berechnet pan aus focusWorld (Screen-Offset vom Zentrum)
+    // focusWorld ist in normalisierten Koordinaten (nach normalizeScale)
     function getPan() {
       return {
         x: -state.focusWorld.x * state.scale,
@@ -434,9 +504,15 @@
       };
     }
 
+    // Effektiver Scale für visuelle Darstellung (mit Normalisierung)
+    function getEffectiveScale() {
+      return state.scale * state.normalizeScale;
+    }
+
     function updateBaseTransform() {
       const pan = getPan();
-      const effectiveScale = state.scale / CONFIG.BASE_TEXTURE.scale;
+      // normalizeScale bringt alle Kreise auf die gleiche visuelle Größe
+      const effectiveScale = getEffectiveScale() / CONFIG.BASE_TEXTURE.scale;
       elements.baseCanvas.style.transform =
         `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${effectiveScale})`;
     }
@@ -474,16 +550,16 @@
 
     function updateNativeTransform() {
       const native = state.textures.native;
-      const scale = state.scale;
 
       if (!native.scale) return null;
 
-      // Offset in Welt-Koordinaten berechnen, dann in Screen umrechnen
+      // Beide sind in normalisierten Koordinaten
       const worldOffsetX = native.centerX - state.focusWorld.x;
       const worldOffsetY = native.centerY - state.focusWorld.y;
-      const offsetX = worldOffsetX * scale;
-      const offsetY = worldOffsetY * scale;
-      const zoomRatio = scale / native.scale;
+      // Offset in Screen-Pixel umrechnen
+      const offsetX = worldOffsetX * state.scale;
+      const offsetY = worldOffsetY * state.scale;
+      const zoomRatio = state.scale / native.scale;
 
       elements.nativeCanvas.style.transform =
         `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${zoomRatio})`;
@@ -495,7 +571,8 @@
     // TRANSFORM - Zoom IMMER sofort, Rendering asynchron
     // ============================================================
     function applyTransform() {
-      const screenFontSize = state.baseFontSize * state.scale;
+      // screenFontSize muss den effektiven Scale nutzen (mit Normalisierung)
+      const screenFontSize = state.baseFontSize * getEffectiveScale();
       const { startFontSize } = CONFIG.BLEND;
       const shouldBeNative = screenFontSize >= startFontSize;
 
@@ -582,9 +659,10 @@
 
       window.addEventListener('mousemove', e => {
         if (!state.drag.active) return;
-        // Screen-Delta in Welt-Delta umrechnen
+        // Screen-Delta in normalisierte Welt-Delta umrechnen
         const dx = e.clientX - state.drag.lastX;
         const dy = e.clientY - state.drag.lastY;
+        // focusWorld ist in normalisierten Koordinaten, daher durch state.scale teilen (nicht effScale)
         state.focusWorld.x -= dx / state.scale;
         state.focusWorld.y -= dy / state.scale;
         state.drag.lastX = e.clientX;
@@ -600,6 +678,9 @@
       // === WHEEL ZOOM ===
       container.addEventListener('wheel', e => {
         e.preventDefault();
+
+        // Wenn gerade das Karussell gescrollt wird, Zoom blockieren
+        if (typeof karussellScrolling !== 'undefined' && karussellScrolling) return;
 
         // Mausposition relativ zur Bildschirmmitte
         const screenX = e.clientX - window.innerWidth / 2;
@@ -722,21 +803,73 @@
     // ============================================================
     // INITIALIZATION
     // ============================================================
-    async function init() {
+    let eventsInitialized = false;
+    const textCache = new Map(); // Cache für vorgeladene Texte
+    let currentLoadId = 0;
+
+    // Text aus Cache oder vom Server holen
+    async function fetchBibleText(filename) {
+      if (textCache.has(filename)) {
+        return textCache.get(filename);
+      }
+      const response = await fetch(`/assets/bibeln/${filename}?raw=1`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const text = (await response.text()).replace(/\s+/g, ' ').trim();
+      textCache.set(filename, text);
+      return text;
+    }
+
+    // Alle Texte im Hintergrund vorladen (nur Text, kein Rendering)
+    async function preloadAllBibles() {
+      for (const bible of bibles) {
+        try {
+          if (!textCache.has(bible.file)) {
+            await fetchBibleText(bible.file);
+            LOG.info(`Text vorgeladen: ${bible.name}`);
+          }
+        } catch (e) {
+          console.warn(`Vorladen fehlgeschlagen: ${bible.file}`, e);
+        }
+      }
+    }
+
+    async function loadBible(filename, isFirstLoad = false) {
+      const loadId = ++currentLoadId;
+
       try {
-        const response = await fetch('/assets/bibeln/bibel.txt?raw=1');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Text laden (aus Cache oder Netzwerk)
+        const text = await fetchBibleText(filename);
+
+        // Abbrechen wenn inzwischen ein anderer Text geladen wird
+        if (loadId !== currentLoadId) {
+          return;
         }
 
-        state.textData = (await response.text()).replace(/\s+/g, ' ').trim();
-
-        if (!state.textData) {
+        if (!text) {
           throw new Error('Textdokument ist leer');
         }
 
+        // State aktualisieren
+        state.textData = text;
+        state.lines = [];
+        state.renderMode = 'texture';
+
+        // Position nur beim allerersten Laden zurücksetzen
+        if (isFirstLoad) {
+          state.scale = CONFIG.ZOOM.initial;
+          state.focusWorld = { x: 0, y: 0 };
+        }
+
+        // Native Textur zurücksetzen (wichtig!)
+        state.textures.native = { canvas: null, centerX: 0, centerY: 0, scale: 0, width: 0, height: 0 };
+
         state.baseFontSize = CONFIG.TARGET_FONT_SIZE;
         state.circleRadius = calculateRadiusForText(state.textData.length, state.baseFontSize);
+
+        // Normalisierung: Alle Kreise auf gleiche visuelle Größe skalieren
+        state.normalizeScale = CONFIG.TARGET_CIRCLE_RADIUS / state.circleRadius;
 
         const measureCtx = document.createElement('canvas').getContext('2d');
         measureCtx.font = `${state.baseFontSize}px ${CONFIG.FONT_FAMILY}`;
@@ -747,20 +880,220 @@
         renderBaseTexture();
         initBaseLayer();
         hideNativeOverlay();
-        setupEvents();
+
+        if (!eventsInitialized) {
+          setupEvents();
+          eventsInitialized = true;
+        }
+
         applyTransform();
 
-        LOG.info(`${state.textData.length.toLocaleString()} Zeichen, ${state.lines.length} Zeilen, r=${state.circleRadius}px`);
+        LOG.info(`${filename}: ${state.textData.length.toLocaleString()} Zeichen, r=${state.circleRadius}px, normalize=${state.normalizeScale.toFixed(2)}`);
 
       } catch (error) {
-        console.error('Fehler beim Initialisieren:', error);
-        document.body.innerHTML = `
-          <div style="color: #f55; padding: 2rem; font-family: monospace;">
-            <h2>Fehler beim Laden</h2>
-            <p>${error.message}</p>
-          </div>
-        `;
+        if (loadId !== currentLoadId) return;
+        console.error('Fehler beim Laden:', error);
       }
+    }
+
+    // ============================================================
+    // BIBLE KARUSSELL - Lädt automatisch alle .txt aus /assets/bibeln/
+    // ============================================================
+    let bibles = [];
+    let currentBibleIndex = 0;
+
+    const karussellEl = document.getElementById('bible-karussell');
+    const prevItem2 = document.getElementById('prevItem2');
+    const prevItem1 = document.getElementById('prevItem1');
+    const activeItem = document.getElementById('activeItem');
+    const nextItem1 = document.getElementById('nextItem1');
+    const nextItem2 = document.getElementById('nextItem2');
+
+    // Bereinigt Dateinamen für die Anzeige
+    function cleanDisplayName(file) {
+      let name = file.split('/').pop();
+      name = decodeURIComponent(name);
+      name = name.replace(/\.txt$/i, '');
+      name = name.replace(/_/g, ' ');
+      return name;
+    }
+
+    // Setzt feste Breite basierend auf längstem Namen
+    function setKarussellWidth() {
+      const tempSpan = document.createElement('span');
+      tempSpan.style.cssText = 'position:absolute;visibility:hidden;font:20px monospace;white-space:nowrap;';
+      document.body.appendChild(tempSpan);
+
+      let maxWidth = 150;
+      for (const bible of bibles) {
+        tempSpan.textContent = bible.name;
+        maxWidth = Math.max(maxWidth, tempSpan.offsetWidth);
+      }
+      document.body.removeChild(tempSpan);
+
+      karussellEl.style.minWidth = (maxWidth + 20) + 'px';
+    }
+
+    // Lädt Liste der Texte - versucht erst Directory Listing, dann JSON als Fallback
+    async function loadBibleList() {
+      try {
+        let txtFiles = [];
+
+        // 1. Versuch: Directory Listing parsen (dynamisch, erkennt neue Dateien automatisch)
+        try {
+          const response = await fetch('/assets/bibeln/');
+          const html = await response.text();
+          const regex = /href="([^"]+\.txt)"/gi;
+          let match;
+          while ((match = regex.exec(html)) !== null) {
+            txtFiles.push(match[1]);
+          }
+          if (txtFiles.length > 0) {
+            LOG.info('Bibel-Liste aus Directory Listing geladen');
+          }
+        } catch (e) {
+          LOG.info('Directory Listing nicht verfügbar, versuche bibles.json...');
+        }
+
+        // 2. Fallback: bibles.json laden (für Server ohne Directory Listing)
+        if (txtFiles.length === 0) {
+          try {
+            const jsonResponse = await fetch(`/assets/bibeln/bibles.json?t=${Date.now()}`);
+            if (jsonResponse.ok) {
+              txtFiles = await jsonResponse.json();
+              LOG.info('Bibel-Liste aus bibles.json geladen');
+            }
+          } catch (e) {
+            LOG.info('bibles.json nicht verfügbar');
+          }
+        }
+
+        bibles = txtFiles.map(file => ({
+          file: file,
+          name: cleanDisplayName(file)
+        }));
+
+        if (bibles.length === 0) {
+          throw new Error('Keine Bibel-Dateien gefunden');
+        }
+
+        // Feste Breite setzen
+        setKarussellWidth();
+
+      } catch (error) {
+        console.error('Fehler beim Laden der Bibel-Liste:', error);
+        bibles = [{ file: 'bibel.txt', name: 'bibel' }];
+      }
+    }
+
+    function getWrappedBible(offset) {
+      if (bibles.length === 0) return '';
+      const idx = (currentBibleIndex + offset + bibles.length * 100) % bibles.length;
+      return bibles[idx]?.name || '';
+    }
+
+    function updateKarussell() {
+      prevItem2.textContent = getWrappedBible(-2);
+      prevItem1.textContent = getWrappedBible(-1);
+      activeItem.textContent = getWrappedBible(0);
+      nextItem1.textContent = getWrappedBible(1);
+      nextItem2.textContent = getWrappedBible(2);
+    }
+
+    // Scroll-Handling mit strikter Kontrolle
+    let loadBibleTimeout = null;
+    let wheelEnabled = true;
+    let wheelDisableTimeout = null;
+    let karussellScrolling = false;  // Blockiert Zoom während Karussell-Scroll
+    let karussellScrollTimeout = null;
+
+    function scrollBible(steps, immediate = false) {
+      currentBibleIndex = (currentBibleIndex + steps + bibles.length * 100) % bibles.length;
+      updateKarussell();
+
+      clearTimeout(loadBibleTimeout);
+      if (immediate) {
+        loadBible(bibles[currentBibleIndex].file);
+      } else {
+        loadBibleTimeout = setTimeout(() => {
+          loadBible(bibles[currentBibleIndex].file);
+        }, 150);
+      }
+    }
+
+    // Wheel-Handler: Strikte Kontrolle - 1 Scroll pro Geste
+    // Reagiert sofort, dann Sperre bis 300ms keine Events mehr kommen
+    function handleWheel(e) {
+      const direction = Math.sign(e.deltaY);
+      if (direction === 0) return;
+
+      if (wheelEnabled) {
+        scrollBible(direction);
+        wheelEnabled = false;
+      }
+
+      // Reset-Timer: Erst nach 300ms Ruhe wieder freigeben
+      clearTimeout(wheelDisableTimeout);
+      wheelDisableTimeout = setTimeout(() => {
+        wheelEnabled = true;
+      }, 300);
+    }
+
+    // Klick auf Items - direkte Navigation (sofort laden)
+    prevItem2.addEventListener('click', () => scrollBible(-2, true));
+    prevItem1.addEventListener('click', () => scrollBible(-1, true));
+    nextItem1.addEventListener('click', () => scrollBible(1, true));
+    nextItem2.addEventListener('click', () => scrollBible(2, true));
+
+    // Scroll-Events für Karussell
+    karussellEl.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Karussell-Scroll blockiert Zoom für kurze Zeit
+      karussellScrolling = true;
+      clearTimeout(karussellScrollTimeout);
+      karussellScrollTimeout = setTimeout(() => {
+        karussellScrolling = false;
+      }, 400);
+
+      handleWheel(e);
+    }, { passive: false });
+
+    // Touch-Events für Karussell
+    let karussellTouchStartY = 0;
+    let touchScrolled = false;
+    karussellEl.addEventListener('touchstart', (e) => {
+      karussellTouchStartY = e.touches[0].clientY;
+      touchScrolled = false;
+      karussellScrolling = true;  // Touch auf Karussell blockiert Zoom
+    }, { passive: true });
+
+    karussellEl.addEventListener('touchmove', (e) => {
+      e.stopPropagation();
+      const diff = karussellTouchStartY - e.touches[0].clientY;
+
+      // Nur einmal pro Touch-Geste scrollen (reduzierte Schwelle)
+      if (!touchScrolled && Math.abs(diff) > 25) {
+        touchScrolled = true;
+        scrollBible(diff > 0 ? 1 : -1);
+      }
+    }, { passive: true });
+
+    karussellEl.addEventListener('touchend', () => {
+      // Nach Touch-Ende kurz warten, dann Zoom wieder freigeben
+      setTimeout(() => {
+        karussellScrolling = false;
+      }, 200);
+    }, { passive: true });
+
+    async function init() {
+      await loadBibleList();
+      updateKarussell();
+      await loadBible(bibles[currentBibleIndex].file, true);  // isFirstLoad = true
+
+      // Alle anderen Texte im Hintergrund vorladen
+      preloadAllBibles();
     }
 
     // === START ===

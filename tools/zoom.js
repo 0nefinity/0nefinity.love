@@ -241,6 +241,10 @@
         pinch.worldX = w.x;
         pinch.worldY = w.y;
       } else if (e.touches.length === 1) {
+        if (typeof opts.shouldIgnoreTouchDrag === 'function' && opts.shouldIgnoreTouchDrag(e)) {
+          isDragging = false;
+          return;
+        }
         e.preventDefault();
         isDragging = true;
         lastX = e.touches[0].clientX;

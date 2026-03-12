@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+  <link href="/meta.css" rel="stylesheet" />
+  <script src="/meta.js"></script>
+  <!-- math.js für wissenschaftliche Berechnungen -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.0/math.min.js"></script>
+  <!-- MathJax für hübsche mathematische Notation -->
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        packages: {'[+]': ['ams']}
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false,
+        scale: 1.0,
+        mtextInheritFont: true,
+        styles: {
+          '.MathJax': {
+            color: '#fff',
+            fontSize: '100%'
+          },
+          '.MathJax svg': {
+            color: '#fff !important'
+          }
+        }
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+
+  <title>0nefinity Taschenrechner</title>
+
+  <style>
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden !important;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+    }
+
+    /* Taschenrechner Container */
+    .calculator {
+      /* Desktop: Begrenzte Breite wie echter Casio, volle Höhe nutzbar */
+      width: min(400px, 95vw);
+      height: min(850px, 95vh);
+      padding: 0.8rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      overflow: hidden !important;
+      background: #000;
+    }
+
+    /* Display Bereich - komplett schwarz, keine Umrandung */
+    .calc-display {
+      background: #000;
+      border: none;
+      border-radius: 0;
+      padding: 0.5rem;
+      text-align: right;
+      flex: 0 0 180px;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: none;
+    }
+
+    /* Alle Zeilen (History + aktuelle) in einem scrollbaren Container */
+    .calc-lines {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding-right: 0.3rem;
+      font-family: 'Courier New', monospace;
+      scrollbar-width: thin;
+      scrollbar-color: #555 #000;
+    }
+
+    .calc-lines::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .calc-lines::-webkit-scrollbar-track {
+      background: #000;
+      border-radius: 2px;
+    }
+
+    .calc-lines::-webkit-scrollbar-thumb {
+      background: #555;
+      border-radius: 2px;
+    }
+
+    .calc-lines::-webkit-scrollbar-thumb:hover {
+      background: #777;
+    }
+
+    /* Eine Zeile: Formel links, Ergebnis rechts - aber getrennt */
+    .calc-line {
+      display: flex;
+      flex-direction: column;
+      padding: 0.1rem 0;
+      min-height: 1.2rem;
+      line-height: 1.4;
+    }
+
+    /* History-Zeilen */
+    .calc-line.history {
+      opacity: 0.7;
+    }
+
+    .calc-line .line-expression {
+      color: #888;
+      font-size: clamp(0.8rem, 3vw, 1.1rem);
+      text-align: left;
+      font-family: 'Courier New', monospace;
+    }
+
+    .calc-line .line-expression sup {
+      color: #888;
+      font-size: 0.7em;
+      vertical-align: baseline;
+      line-height: 1;
+    }
+
+    .calc-line .line-result {
+      color: #fff;
+      font-size: clamp(1rem, 4vw, 1.4rem);
+      font-weight: bold;
+      text-align: right;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Aktuelle Zeile (wird getippt) - KEINE Box, schwarz */
+    .calc-line.current {
+      background: transparent;
+      padding: 0;
+      margin: 0;
+    }
+
+    .calc-line.current .line-expression {
+      color: #fff;
+      font-size: clamp(1.2rem, 5vw, 1.8rem);
+    }
+
+    .calc-line.current .line-expression sup {
+      color: #fff;
+      font-size: 0.7em;
+      vertical-align: baseline;
+      line-height: 1;
+    }
+
+    /* Keine separate Formula/Result Elemente mehr - alles in Zeilen */
+    .calc-history,
+    .calc-formula,
+    .calc-result {
+      display: none;
+    }
+
+    /* Button Grid */
+    .calc-buttons {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Button Styling */
+    .calc-btn {
+      background: #000;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 0.3rem 0.15rem;
+      font-size: clamp(1rem, 3vw, 1.3rem);
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      min-height: 48px;
+      height: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .calc-btn:hover {
+      background: radial-gradient(circle at center, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.05) 40%, transparent 70%);
+      border-color: #fff;
+      box-shadow: 0 0 15px rgba(255,255,255,0.3);
+    }
+
+    .calc-btn:active {
+      transform: scale(0.95);
+      background: radial-gradient(circle at center, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.1) 50%, transparent 80%);
+    }
+
+    .calc-btn.operator {
+      color: #fff;
+      border-color: #666;
+    }
+
+    .calc-btn.operator:hover {
+      border-color: #fff;
+    }
+
+    .calc-btn.func {
+      color: #aaa;
+      font-size: clamp(0.8rem, 2.2vw, 1rem);
+    }
+
+    .calc-btn.func:hover {
+      color: #fff;
+      border-color: #aaa;
+    }
+
+    .calc-btn.equals {
+      background: #222;
+      border-color: #fff;
+    }
+
+    .calc-btn.equals:hover {
+      background: radial-gradient(circle at center, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.1) 40%, transparent 70%);
+    }
+
+    .calc-btn.clear {
+      color: #ff6b6b;
+    }
+
+    .calc-btn.clear:hover {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    .calc-btn.shift {
+      color: #ff9500;
+    }
+
+    .calc-btn.shift:hover {
+      border-color: #ff9500;
+      color: #ff9500;
+    }
+
+    .calc-btn.alpha {
+      color: #ff6b6b;
+    }
+
+    .calc-btn.alpha:hover {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    .calc-btn.ac {
+      color: #ff9500;
+      border-color: #ff9500;
+    }
+
+    .calc-btn.ac:hover {
+      background: radial-gradient(circle at center, rgba(255,149,0,0.3) 0%, rgba(255,149,0,0.1) 40%, transparent 70%);
+    }
+
+
+
+    /* Kleine Bildschirme */
+    @media (max-width: 360px) {
+      .calculator {
+        width: 95vw;
+        height: 95vh;
+        padding: 0.4rem;
+        gap: 0.4rem;
+      }
+
+      .calc-display {
+        flex: 0 0 150px;
+        padding: 0.6rem;
+        border-radius: 8px;
+      }
+
+      .calc-formula {
+        font-size: 0.8rem;
+        margin-bottom: 0.3rem;
+      }
+
+      .calc-result {
+        font-size: 1.8rem;
+      }
+
+      .calc-buttons {
+        gap: 4px;
+      }
+
+      .calc-btn {
+        padding: 0.25rem 0.1rem;
+        font-size: 1rem;
+        min-height: 44px;
+        border-radius: 5px;
+      }
+
+      .calc-btn.func {
+        font-size: 0.75rem;
+      }
+    }
+
+    /* Extrem kleine Querformate */
+    @media (orientation: landscape) and (max-height: 400px) {
+      .calculator {
+        width: 95vw;
+        height: 95vh;
+        padding: 0.3rem;
+        gap: 0.25rem;
+      }
+
+      .calc-display {
+        flex: 0 0 100px;
+        padding: 0.4rem;
+        border-radius: 6px;
+      }
+
+      .calc-formula {
+        font-size: 0.7rem;
+        margin-bottom: 0.2rem;
+      }
+
+      .calc-result {
+        font-size: 1.4rem;
+      }
+
+      .calc-btn {
+        padding: 0.15rem 0.08rem;
+        font-size: 0.9rem;
+        min-height: 40px;
+        border-radius: 4px;
+      }
+
+      .calc-buttons {
+        gap: 2px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="calculator">
+    <div class="calc-display">
+      <div class="calc-lines" id="lines">
+        <!-- Hier kommen alle Zeilen rein: History + aktuelle -->
+      </div>
+    </div>
+
+    <div class="calc-buttons">
+      <button class="calc-btn shift" data-action="shift">SHIFT</button>
+      <button class="calc-btn alpha" data-action="alpha">ALPHA</button>
+      <button class="calc-btn" data-action="mode">MODE</button>
+      <button class="calc-btn" data-action="setup">SETUP</button>
+      <button class="calc-btn" data-action="on">ON</button>
+
+      <button class="calc-btn func" data-action="calc">CALC</button>
+      <button class="calc-btn func" data-action="fraction">/=</button>
+      <button class="calc-btn func" data-action="inv">x⁻¹</button>
+      <button class="calc-btn func" data-action="log">log</button>
+      <button class="calc-btn func" data-action="loga">logₐ</button>
+
+      <button class="calc-btn func" data-action="int">∫</button>
+      <button class="calc-btn func" data-action="sqrt">√</button>
+      <button class="calc-btn func" data-action="fraction" data-symbol="⊓">⅞</button>
+      <button class="calc-btn func" data-action="x2">x²</button>
+      <button class="calc-btn func" data-action="xy">xʸ</button>
+      <button class="calc-btn func" data-action="ln">ln</button>
+
+      <button class="calc-btn func" data-action="alpha">α</button>
+      <button class="calc-btn func" data-action="abs">abs</button>
+      <button class="calc-btn func" data-action="hyp">hyp</button>
+      <button class="calc-btn func" data-action="sin">sin</button>
+      <button class="calc-btn func" data-action="cos">cos</button>
+
+      <button class="calc-btn func" data-action="negate">(−)</button>
+      <button class="calc-btn func" data-action="rcl">RCL</button>
+      <button class="calc-btn func" data-action="eng">ENG</button>
+      <button class="calc-btn func" data-action="(">(</button>
+      <button class="calc-btn func" data-action=")">)</button>
+
+      <button class="calc-btn func" data-action="const">CONST</button>
+      <button class="calc-btn func" data-action="conv">CONV</button>
+      <button class="calc-btn func" data-action="rantot">Ran#</button>
+      <button class="calc-btn func" data-action="sd">S↔D</button>
+      <button class="calc-btn func" data-action="mplus">M+</button>
+
+      <button class="calc-btn" data-value="7">7</button>
+      <button class="calc-btn" data-value="8">8</button>
+      <button class="calc-btn" data-value="9">9</button>
+      <button class="calc-btn" data-action="del">DEL</button>
+      <button class="calc-btn ac" data-action="clear">AC</button>
+
+      <button class="calc-btn" data-value="4">4</button>
+      <button class="calc-btn" data-value="5">5</button>
+      <button class="calc-btn" data-value="6">6</button>
+      <button class="calc-btn operator" data-value="×">×</button>
+      <button class="calc-btn operator" data-value="÷">÷</button>
+
+      <button class="calc-btn" data-value="1">1</button>
+      <button class="calc-btn" data-value="2">2</button>
+      <button class="calc-btn" data-value="3">3</button>
+      <button class="calc-btn operator" data-value="+">+</button>
+      <button class="calc-btn operator" data-value="-">-</button>
+
+      <button class="calc-btn" data-value="0">0</button>
+      <button class="calc-btn" data-value=".">.</button>
+      <button class="calc-btn func" data-action="exp">×10ˣ</button>
+      <button class="calc-btn func" data-action="ans">Ans</button>
+      <button class="calc-btn equals" data-action="equals">=</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Alle Zeilen: {expression, result}
+      let lines = [];
+      let currentExpression = '';
+      let liveResult = '0';
+      let lastAnswer = '0';
+      let justPressedEquals = false;
+      let lastClearTime = 0;
+
+      const linesEl = document.getElementById('lines');
+
+      // Expression für math.evaluate vorbereiten
+      function prepareExpression(expr) {
+        return expr
+          .replace(/×/g, '*')
+          .replace(/÷/g, '/')
+          .replace(/π/g, 'pi')
+          .replace(/√/g, 'sqrt')
+          .replace(/∛/g, 'cbrt')
+          .replace(/(\d+)!/g, 'factorial($1)')
+          .replace(/\(\//g, '/'); // Bruch (/ -> / für Berechnung
+      }
+
+      // Konvertiere Expression für echte MathJax/LaTeX-Anzeige
+      function toMathJax(expr) {
+        if (!expr) return '';
+        
+        let result = expr;
+        
+        // Grundlegende Operatoren
+        result = result.replace(/×/g, '\\times');
+        result = result.replace(/÷/g, '\\div');
+        result = result.replace(/π/g, '\\pi');
+        
+        // Quadratwurzel: sqrt( → \sqrt{ und ) → } für MathJax
+        // Wir müssen alle ) nach sqrt( durch } ersetzen
+        result = result.replace(/sqrt\(/g, '\\sqrt{');
+        
+        // Alle ) ersetzen die nach sqrt kommen - aber das ist tricky
+        // Besser: alle ) durch } ersetzen wenn eine offene { existiert
+        // Und dann fehlende } am Ende ergänzen
+        
+        // Kubikwurzel: cbrt( → \sqrt[3]{
+        result = result.replace(/cbrt\(/g, '\\sqrt[3]{');
+        
+        // Exponenten: ^2 → ^{2}, ^3 → ^{3}, ^(n) → ^{n}
+        result = result.replace(/\^2/g, '^{2}');
+        result = result.replace(/\^3/g, '^{3}');
+        result = result.replace(/\^(\d+)/g, '^{$1}');
+        result = result.replace(/\^\(([^)]+)\)/g, '^{$1}');
+        
+        // Brüche: (/ → \frac{ (echter Bruch)
+        result = result.replace(/\(\//g, '\\frac{');
+        // Schließe Bruch - ) nach (/ → }
+        result = result.replace(/\)\}/g, '}}');
+        
+        // Funktionen: sin(x) → \\sin(x)
+        result = result.replace(/sin\(/g, '\\sin(');
+        result = result.replace(/cos\(/g, '\\cos(');
+        result = result.replace(/tan\(/g, '\\tan(');
+        result = result.replace(/log\(/g, '\\log(');
+        result = result.replace(/ln\(/g, '\\ln(');
+        
+        // Schließen von Wurzeln/Brüchen (ersetze ) → } nur wenn nach { steht)
+        let openBraces = 0;
+        let processed = '';
+        for (let i = 0; i < result.length; i++) {
+          const char = result[i];
+          if (char === '{') openBraces++;
+          if (char === '}' && openBraces > 0) openBraces--;
+          
+          // Alle ) ersetzen die nach { kommen durch }
+          if (char === ')' && openBraces > 0) {
+            processed += '}';
+            openBraces--;
+          } else if (char === ')' && openBraces === 0) {
+            // Normale Klammer die nicht zu { gehört - bleibt )
+            processed += char;
+          } else {
+            processed += char;
+          }
+        }
+        
+        // Fehlende Schließklammern ergänzen
+        while (openBraces > 0) {
+          processed += '}';
+          openBraces--;
+        }
+        
+        return processed;
+      }
+
+      // Einfache HTML-Konvertierung für Live-Anzeige (ohne MathJax)
+      function toPrettyDisplay(expr) {
+        if (!expr) return '';
+        
+        let result = expr;
+        
+        // Operatoren
+        result = result.replace(/×/g, '×');
+        result = result.replace(/÷/g, '÷');
+        result = result.replace(/π/g, 'π');
+        
+        // Quadratwurzel: sqrt( → √(
+        result = result.replace(/sqrt\(/g, '√(');
+        
+        // Kubikwurzel
+        result = result.replace(/cbrt\(/g, '∛(');
+        
+        // Exponenten: ^2 → ², ^3 → ³ (erst die einfachen ersetzen)
+        result = result.replace(/\^2(?![0-9^(])/g, '²');
+        result = result.replace(/\^3(?![0-9^(])/g, '³');
+        // Für höhere Exponenten: ^n → ⁿ oder <sup>n</sup>
+        result = result.replace(/\^(\d+)/g, '<sup>$1</sup>');
+        // Für Ausdrücke in Klammern: ^(x) → <sup>x</sup>
+        result = result.replace(/\^\(([^)]+)\)/g, '<sup>$1</sup>');
+        
+        // Brüche: (/ → Bruchsymbol
+        result = result.replace(/\(\//g, ' ÷ ');
+        // Normale Brüche
+        result = result.replace(/(\d+)\/(\d+)/g, '$1÷$2');
+        
+        return result;
+      }
+
+      // Live-Berechnung während des Tippens
+      function calculateLive(expr) {
+        if (!expr) return ' ';
+        
+        // Wenn Expression mit Operator endet, nichts anzeigen
+        if (/[+\-×÷^]$/.test(expr)) return ' ';
+        // Wenn zu viele offene Klammern, nichts anzeigen
+        if ((expr.match(/\(/g) || []).length > (expr.match(/\)/g) || []).length) return ' ';
+        
+        try {
+          const prepared = prepareExpression(expr);
+          const calcResult = math.evaluate(prepared);
+          
+          if (typeof calcResult === 'number') {
+            if (!isFinite(calcResult)) {
+              return calcResult > 0 ? '∞' : (calcResult < 0 ? '-∞' : 'Error');
+            } else if (isNaN(calcResult)) {
+              return ' ';
+            } else {
+              return math.format(calcResult, { precision: 14 });
+            }
+          } else {
+            return String(calcResult);
+          }
+        } catch (e) {
+          return ' ';
+        }
+      }
+
+      // Komplette Zeile berechnen (für '=')
+      function calculateFull(expr) {
+        if (!expr) return '0';
+        
+        try {
+          const prepared = prepareExpression(expr);
+          const calcResult = math.evaluate(prepared);
+          
+          if (typeof calcResult === 'number') {
+            if (!isFinite(calcResult)) {
+              return calcResult > 0 ? '∞' : (calcResult < 0 ? '-∞' : 'Error');
+            } else if (isNaN(calcResult)) {
+              return 'Error';
+            } else {
+              return math.format(calcResult, { precision: 14 });
+            }
+          } else {
+            return String(calcResult);
+          }
+        } catch (e) {
+          return 'Error';
+        }
+      }
+
+      // Display aktualisieren: Alle Zeilen + aktuelle Zeile
+      function updateDisplay() {
+        // History-Zeilen (abgeschlossen) - jede hat 2 Zeilen: Formel + Ergebnis
+        let html = lines.map(line => 
+          `<div class="calc-line history">
+            <span class="line-expression">$${toMathJax(line.expression)}$</span>
+            <span class="line-result">${line.result}</span>
+          </div>`
+        ).join('');
+
+        // Aktuelle Zeile (wird getippt) - auch 2 Zeilen
+        if (currentExpression || justPressedEquals) {
+          liveResult = currentExpression ? calculateLive(currentExpression) : lastAnswer;
+          html += `<div class="calc-line current">
+            <span class="line-expression">$${toMathJax(currentExpression) || ''}$</span>
+            <span class="line-result">${liveResult}</span>
+          </div>`;
+        } else {
+          // Zeige leere aktuelle Zeile mit 0
+          html += `<div class="calc-line current">
+            <span class="line-expression"></span>
+            <span class="line-result">0</span>
+          </div>`;
+        }
+
+        linesEl.innerHTML = html;
+        
+        // Scroll nach unten (neueste Zeile)
+        linesEl.scrollTop = linesEl.scrollHeight;
+        
+        // MathJax rendern
+        renderMathJax();
+      }
+
+      // MathJax rendern (für finale Ergebnisse nach '=')
+      function renderMathJax() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          MathJax.typesetPromise([linesEl]).catch(err => {
+            console.log('MathJax error:', err);
+          });
+        }
+      }
+
+      // Prüfen ob Operator am Zeilenanfang - dann lastAnswer davor setzen
+      function handleOperatorAtStart(value) {
+        if (!currentExpression && lastAnswer !== '0' && lastAnswer !== 'Error') {
+          currentExpression = lastAnswer + value;
+        } else {
+          currentExpression += value;
+        }
+      }
+
+      document.querySelector('.calc-buttons').addEventListener('click', function(e) {
+        const btn = e.target.closest('.calc-btn');
+        if (!btn) return;
+
+        const action = btn.dataset.action;
+        const value = btn.dataset.value;
+
+        // ON: Alles löschen
+        if (action === 'on') {
+          lines = [];
+          currentExpression = '';
+          liveResult = '0';
+          lastAnswer = '0';
+          justPressedEquals = false;
+          updateDisplay();
+          return;
+        }
+
+        // AC: Alles löschen (doppelklick) oder nur aktuelle Zeile
+        if (action === 'clear') {
+          const now = Date.now();
+          if (now - lastClearTime < 1500 && (lines.length > 0 || currentExpression)) {
+            // Doppelklick: Alles löschen
+            lines = [];
+            currentExpression = '';
+            lastAnswer = '0';
+          } else {
+            // Einfach: nur aktuelle Expression löschen
+            currentExpression = '';
+          }
+          justPressedEquals = false;
+          lastClearTime = now;
+          updateDisplay();
+          return;
+        }
+
+        // DEL: Zeichen löschen
+        if (action === 'del') {
+          if (justPressedEquals) {
+            // Nach '=': nichts löschen, bleibt so
+            justPressedEquals = false;
+          } else {
+            currentExpression = currentExpression.slice(0, -1);
+          }
+          updateDisplay();
+          return;
+        }
+
+        // '=': Zeile speichern, NICHTS anderes!
+        if (action === 'equals') {
+          if (currentExpression) {
+            // Zeile speichern
+            const result = calculateFull(currentExpression);
+            lines.push({ expression: currentExpression, result: result });
+            lastAnswer = result;
+            justPressedEquals = true;
+          }
+          // currentExpression bleibt für nächsten Tastendruck
+          updateDisplay();
+          return;
+        }
+
+        // Nach '=': neuer Tastendruck erstellt neue Zeile
+        if (justPressedEquals) {
+          // Wenn Operator gedrückt wird: lastAnswer davor setzen
+          if (value && ['×', '÷', '+', '-'].includes(value)) {
+            currentExpression = lastAnswer + value;
+            justPressedEquals = false;
+            updateDisplay();
+            return;
+          }
+          // Wenn Zahl oder anderes: neue Expression (nicht anhängen)
+          if (value && !action) {
+            currentExpression = value;
+            justPressedEquals = false;
+            updateDisplay();
+            return;
+          }
+          // Funktionen: starte neu
+          currentExpression = '';
+          justPressedEquals = false;
+        }
+
+        // Operatoren am Zeilenanfang
+        if (value && ['×', '÷', '+', '-'].includes(value)) {
+          handleOperatorAtStart(value);
+          updateDisplay();
+          return;
+        }
+
+        // Zahlen
+        if (value && !action) {
+          currentExpression += value;
+          updateDisplay();
+          return;
+        }
+
+        // Dezimalpunkt
+        if (value === '.') {
+          const lastNumberMatch = currentExpression.match(/[\d.]+$/);
+          if (!lastNumberMatch || !lastNumberMatch[0].includes('.')) {
+            if (!lastNumberMatch) {
+              currentExpression += '0.';
+            } else {
+              currentExpression += '.';
+            }
+          }
+          updateDisplay();
+          return;
+        }
+
+        // Spezielle Funktionen
+        if (action === 'ans') {
+          currentExpression += lastAnswer;
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'negate') {
+          // Letzte Zahl negieren
+          const match = currentExpression.match(/(-?[\d.]+)$/);
+          if (match) {
+            const numStr = match[1];
+            const prefix = currentExpression.slice(0, -numStr.length);
+            if (numStr.startsWith('-')) {
+              currentExpression = prefix + numStr.slice(1);
+            } else {
+              currentExpression = prefix + '-' + numStr;
+            }
+          } else if (currentExpression.endsWith('(')) {
+            currentExpression += '-';
+          }
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'inv') {
+          currentExpression += '1/(';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'fraction') {
+          // Echter Bruch: (/ fügt einen echten Bruch ein
+          if (btn.dataset.symbol) {
+            // Bruch-Button mit Symbol - echter Bruch
+            currentExpression += '(/';
+          } else {
+            // / = Button - normale Division
+            currentExpression += '/';
+          }
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'sqrt') {
+          currentExpression += 'sqrt(';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'x2') {
+          currentExpression += '^2';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'xy') {
+          currentExpression += '^';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'pi') {
+          currentExpression += 'π';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'e') {
+          currentExpression += 'e';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'exp') {
+          currentExpression += 'e';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'rantot') {
+          const random = Math.random();
+          currentExpression += math.format(random, { precision: 10 });
+          updateDisplay();
+          return;
+        }
+
+        if (action === '(') {
+          currentExpression += '(';
+          updateDisplay();
+          return;
+        }
+
+        if (action === ')') {
+          currentExpression += ')';
+          updateDisplay();
+          return;
+        }
+
+        if (action === 'sin' || action === 'cos' || action === 'tan' || 
+            action === 'log' || action === 'ln') {
+          currentExpression += action + '(';
+          updateDisplay();
+          return;
+        }
+      });
+
+      // Keyboard support
+      document.addEventListener('keydown', function(e) {
+        const key = e.key;
+
+        // Pfeiltasten für Scroll
+        if (key === 'ArrowUp') {
+          e.preventDefault();
+          linesEl.scrollTop = Math.max(0, linesEl.scrollTop - 50);
+          return;
+        } else if (key === 'ArrowDown') {
+          e.preventDefault();
+          linesEl.scrollTop = Math.min(linesEl.scrollHeight, linesEl.scrollTop + 50);
+          return;
+        }
+
+        if (key >= '0' && key <= '9') {
+          document.querySelector(`[data-value="${key}"]`)?.click();
+        } else if (key === '.' || key === ',') {
+          document.querySelector('[data-value="."]')?.click();
+        } else if (key === '+') {
+          document.querySelector('[data-value="+"]')?.click();
+        } else if (key === '-') {
+          document.querySelector('[data-value="-"]')?.click();
+        } else if (key === '*') {
+          document.querySelector('[data-value="×"]')?.click();
+        } else if (key === '/') {
+          document.querySelector('[data-value="÷"]')?.click();
+        } else if (key === 'Enter' || key === '=') {
+          e.preventDefault();
+          document.querySelector('[data-action="equals"]')?.click();
+        } else if (key === 'Escape') {
+          document.querySelector('[data-action="clear"]')?.click();
+        } else if (key === 'Backspace') {
+          document.querySelector('[data-action="del"]')?.click();
+        } else if (key === '(') {
+          document.querySelector('[data-action="("]')?.click();
+        } else if (key === ')') {
+          document.querySelector('[data-action=")"]')?.click();
+        } else if (key === '^') {
+          document.querySelector('[data-action="xy"]')?.click();
+        }
+      });
+
+      // Initial anzeigen
+      updateDisplay();
+    })();
+  </script>
+</body>
+
+</html>

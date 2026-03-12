@@ -260,7 +260,7 @@
       }
     });
 
-    panel.addRange('frequency', {
+      panel.addSlider('frequency', {
       label: 'Frequenz (Hz)',
       min: 0,
       max: 20000,
@@ -270,7 +270,7 @@
       onChange: (v) => generator.setFrequency(v)
     });
 
-    panel.addRange('pulseRate', {
+      panel.addSlider('pulseRate', {
       label: 'Pulse (Hz)',
       min: 0,
       max: 20000,
@@ -280,7 +280,7 @@
       onChange: (v) => generator.setPulseRate(v)
     });
 
-    panel.addRange('volume', {
+      panel.addSlider('volume', {
       label: 'Lautstärke',
       min: 0,
       max: 1,

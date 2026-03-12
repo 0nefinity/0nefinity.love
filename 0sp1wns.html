@@ -417,13 +417,13 @@
             .addDivider()
             .addToggle('rotateText', { label: 'Ausrichtung', value: config.rotateText, labelOn: '↻ Rotiert', labelOff: '— Horizontal', onChange: v => { config.rotateText = v; restart(); } })
             .addDivider()
-            .addRange('spawnChance',      { label: 'Root Spawn', min: 0, max: 1000, step: 1,    value: config.spawnChance,      decimals: 0, onChange: v => config.spawnChance = v })
-            .addRange('deathChance',      { label: 'Tod',        min: 0, max: 1,    step: 0.01, value: config.deathChance,      decimals: 2, onChange: v => config.deathChance = v })
-            .addRange('childSpawnChance', { label: 'Child %',    min: 0, max: 1,    step: 0.01, value: config.childSpawnChance, decimals: 2, onChange: v => config.childSpawnChance = v })
+            .addSlider('spawnChance',      { label: 'Root Spawn', min: 0, max: 1000, step: 1,    value: config.spawnChance,      decimals: 0, onChange: v => config.spawnChance = v })
+            .addSlider('deathChance',      { label: 'Tod',        min: 0, max: 1,    step: 0.01, value: config.deathChance,      decimals: 2, onChange: v => config.deathChance = v })
+            .addSlider('childSpawnChance', { label: 'Child %',    min: 0, max: 1,    step: 0.01, value: config.childSpawnChance, decimals: 2, onChange: v => config.childSpawnChance = v })
             .addDivider()
-            .addStepper('maxChildren', { label: 'Max Kinder', min: 1,  max: 12,  step: 1, value: config.maxChildren, onChange: v => config.maxChildren = v })
-            .addRange('spacing',       { label: 'Abstand',    min: 20, max: 150, step: 5, value: config.spacing,     onChange: v => config.spacing = v })
-            .addRange('fontSize',      { label: 'Größe',      min: 10, max: 48,  step: 2, value: config.fontSize,    onChange: v => { config.fontSize = v; rebuildTextureCache(); } })
+            .addSlider('maxChildren', { label: 'Max Kinder', min: 1,  max: 12,  step: 1, value: config.maxChildren, onChange: v => config.maxChildren = v })
+            .addSlider('spacing',       { label: 'Abstand',    min: 20, max: 150, step: 5, value: config.spacing,     onChange: v => config.spacing = v })
+            .addSlider('fontSize',      { label: 'Größe',      min: 10, max: 48,  step: 2, value: config.fontSize,    onChange: v => { config.fontSize = v; rebuildTextureCache(); } })
         ;
 
         // ═══════════════════════════════════════════════════════════════════

@@ -13,9 +13,6 @@ RewriteCond %{REQUEST_URI} !^/buyPi$
 RewriteRule ^buypi$ /buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ /README [R=302,L]
 
-# README.html -> README.php (server-side Markdown rendering)
-RewriteRule ^README\.html$ /README.php [L]
-
 # Pi-Quadrat Weiterleitung
 RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 

@@ -281,44 +281,44 @@ panel
     onChange: v => GRAVITY = v ? 0.3 : 0
   })
   .addDivider()
-  .addStepper('segments', {
+        .addSlider('segments', {
     label: 'Segmente',
     min: 20, max: 150, step: 10, value: SEGMENTS,
     onChange: v => { SEGMENTS = v; initPoints(); }
   })
-  .addStepper('radius', {
+        .addSlider('radius', {
     label: 'Radius',
     min: 5, max: 60, step: 5, value: SPIRAL_RADIUS,
     onChange: v => SPIRAL_RADIUS = v
   })
-  .addStepper('turns', {
+        .addSlider('turns', {
     label: 'Windungen',
     min: 0.2, max: 4, step: 0.2, value: SPIRAL_TURNS, decimals: 1,
     onChange: v => SPIRAL_TURNS = v
   })
   .addDivider()
-  .addStepper('stiff', {
+        .addSlider('stiff', {
     label: 'Steifheit',
     min: 0.05, max: 1, step: 0.05, value: STIFF, decimals: 2,
     onChange: v => STIFF = v
   })
-  .addStepper('damp', {
+        .addSlider('damp', {
     label: 'Dämpfung',
     min: 0.01, max: 0.5, step: 0.02, value: DAMP, decimals: 2,
     onChange: v => DAMP = v
   })
-  .addStepper('bend', {
+        .addSlider('bend', {
     label: 'Biegung',
     min: 0.05, max: 1, step: 0.05, value: BEND, decimals: 2,
     onChange: v => BEND = v
   })
   .addDivider()
-  .addStepper('rest', {
+        .addSlider('rest', {
     label: 'Ruheabst.',
     min: 1, max: 10, step: 0.5, value: REST, decimals: 1,
     onChange: v => REST = v
   })
-  .addStepper('bounce', {
+        .addSlider('bounce', {
     label: 'Bounce',
     min: 0, max: 1, step: 0.1, value: BOUNCE, decimals: 1,
     onChange: v => BOUNCE = v
