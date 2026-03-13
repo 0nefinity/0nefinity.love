@@ -857,8 +857,6 @@ bzw. (Alles)*0*0*0*0*0*0*0
 	      const textInput = document.getElementById('hero-text');
 	      if (!pre || !controls || !intensityInput || !textInput) return;
 
-	      const prefersReducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-	      let manualMotionOverride = false;
 	      let intensity = Number(intensityInput.value) / 100;
 	      let isHeroVisible = true;
 	      let rafId = 0;
@@ -893,12 +891,8 @@ bzw. (Alles)*0*0*0*0*0*0*0
 	        intensityInput.title = `${value}%`;
 	      }
 
-	      function motionAllowed() {
-	        return !prefersReducedMotionQuery.matches || manualMotionOverride;
-	      }
-
 	      function shouldAnimate() {
-	        return intensity > 0 && charPool.length > 0 && !document.hidden && isHeroVisible && motionAllowed();
+		        return intensity > 0 && charPool.length > 0 && !document.hidden && isHeroVisible;
 	      }
 
 	      function stopLoop() {
@@ -929,7 +923,7 @@ bzw. (Alles)*0*0*0*0*0*0*0
 
 	      function ensureLoop() {
 	        if (!shouldAnimate() || rafId) return;
-	        rafId = window.requestAnimationFrame(renderFrame);
+		        renderFrame();
 	      }
 
 	      function syncLoopState() {
@@ -952,7 +946,6 @@ bzw. (Alles)*0*0*0*0*0*0*0
 	      });
 
 	      intensityInput.addEventListener('input', () => {
-	        manualMotionOverride = true;
 	        intensity = Number(intensityInput.value) / 100;
 	        syncIntensityAccessibility();
 	        syncLoopState();
@@ -972,12 +965,6 @@ bzw. (Alles)*0*0*0*0*0*0*0
 	      }, { threshold: 0.05 });
 
 	      observer.observe(pre);
-
-	      if (typeof prefersReducedMotionQuery.addEventListener === 'function') {
-	        prefersReducedMotionQuery.addEventListener('change', syncLoopState);
-	      } else if (typeof prefersReducedMotionQuery.addListener === 'function') {
-	        prefersReducedMotionQuery.addListener(syncLoopState);
-	      }
 
 	      rerollHero();
 	      syncIntensityAccessibility();
