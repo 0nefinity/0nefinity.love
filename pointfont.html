@@ -160,7 +160,10 @@
 	    		            },
 	    		            // Rendering-Konstanten
 	    		            sprite: {
-	    		                shadowPadding: 4       // Platz für shadowBlur + Offset
+				                padding: 2,
+				                masterFontSize: 256,
+				                masterPadding: 32,
+				                pixelSnapThreshold: 8
 	    		            },
 	    		            distribution: {
 	    		                maxCandidates: 2000,   // Max. Kandidaten für Max-Distance-Sampling
@@ -183,9 +186,7 @@
 
 		        // === CONTROLS PANEL ===
 		        const panel = Controls.createPanel({
-		            position: 'left',
-		            mobileContentElement: canvasContainer, // Canvas verschiebt sich mit Panel
-		            mobileContentMaxOffset: 15 // vh - wie weit der Canvas nach oben wandert
+		            position: 'left'
 		        });
 
 		        // Distribution Mode Options
@@ -286,7 +287,7 @@
 		            })
 		            .addDivider()
 		            .addToggle('bgEnabled', {
-		                label: 'Hintergrund',
+		                label: 'Hintergrund aktiv',
 		                value: CONFIG.controls.bgEnabled.defaultValue,
 		                onChange: (active) => {
 		                    updateBgControlsVisibility();
@@ -295,7 +296,7 @@
 		                }
 		            })
 		            .addToggle('bgSync', {
-		                label: 'BG Sync',
+		                label: 'BG mit Punkten syncen',
 		                value: CONFIG.controls.bgSyncWithPoints.defaultValue,
 		                onChange: (active) => {
 		                    if (active) syncBgWithPoints();
@@ -359,14 +360,27 @@
         // Statt bei jedem Punkt fillText() aufzurufen (sehr langsam),
         // rendern wir das Symbol einmal auf ein OffscreenCanvas und
         // kopieren es dann mit drawImage() (5-10x schneller).
-        let spriteCache = {
-            canvas: null,
-            key: null,           // Cache-Key: font|size|color|symbol
-            width: 0,
-            height: 0,
-            offsetX: 0,          // Offset zum Zentrieren
-            offsetY: 0
-        };
+	        function createSpriteCacheObject() {
+	            return {
+	                canvas: null,
+	                key: null,           // Cache-Key: font|size|color|symbol
+	                width: 0,
+	                height: 0,
+	                offsetX: 0,
+	                offsetY: 0,
+	                masterCanvas: null,
+	                masterKey: null,
+	                masterWidth: 0,
+	                masterHeight: 0,
+	                masterSourceX: 0,
+	                masterSourceY: 0,
+	                masterSourceWidth: 0,
+	                masterSourceHeight: 0,
+	                masterFontSize: CONFIG.sprite.masterFontSize
+	            };
+	        }
+
+	        let spriteCache = createSpriteCacheObject();
 		        // Cache speziell für den Packungs-Modus, damit wir bei +/-1 Punkten
 		        // nicht jedes Mal eine komplett neue Zufallsverteilung erzeugen.
 		        let packedCache = {
@@ -387,6 +401,105 @@
 	            return getComputedStyle(document.body).getPropertyValue(variable).trim();
 	        }
 
+		        function findAlphaBounds(ctx, width, height) {
+		            const imageData = ctx.getImageData(0, 0, width, height);
+		            const data = imageData.data;
+		            let minX = width;
+		            let minY = height;
+		            let maxX = -1;
+		            let maxY = -1;
+
+		            for (let y = 0; y < height; y++) {
+		                for (let x = 0; x < width; x++) {
+		                    const alpha = data[(y * width + x) * 4 + 3];
+		                    if (alpha <= 0) continue;
+		                    if (x < minX) minX = x;
+		                    if (x > maxX) maxX = x;
+		                    if (y < minY) minY = y;
+		                    if (y > maxY) maxY = y;
+		                }
+		            }
+
+		            if (maxX < minX || maxY < minY) {
+		                return { x: 0, y: 0, width: 1, height: 1 };
+		            }
+
+		            return {
+		                x: minX,
+		                y: minY,
+		                width: maxX - minX + 1,
+		                height: maxY - minY + 1
+		            };
+		        }
+
+		        function createOrGetMasterSprite(cacheObj, keyPrefix, font, symbolLines, lineHeightRatio) {
+		            const safeLines = (symbolLines && symbolLines.length) ? symbolLines : [''];
+		            const safeRatio = Math.max(0.1, lineHeightRatio || 1);
+		            const masterKey = `${keyPrefix}${font}|${safeRatio.toFixed(4)}|${safeLines.join('\\n')}`;
+
+		            if (cacheObj.masterKey === masterKey && cacheObj.masterCanvas) {
+		                return cacheObj;
+		            }
+
+		            const masterFontSize = CONFIG.sprite.masterFontSize;
+		            const masterLineHeight = masterFontSize * safeRatio;
+		            const linesCount = safeLines.length || 1;
+		            const padding = CONFIG.sprite.masterPadding;
+
+		            const measureCanvas = document.createElement('canvas');
+		            const measureCtx = measureCanvas.getContext('2d');
+		            measureCtx.font = `${masterFontSize}px ${font}`;
+
+		            let maxWidth = 0;
+		            for (const line of safeLines) {
+		                const w = measureCtx.measureText(line || ' ').width;
+		                if (w > maxWidth) maxWidth = w;
+		            }
+
+		            const masterWidth = Math.max(1, Math.ceil(maxWidth + padding * 2));
+		            const masterHeight = Math.max(1, Math.ceil(masterLineHeight * linesCount + padding * 2));
+
+		            let masterCanvas = cacheObj.masterCanvas;
+		            if (!masterCanvas) {
+		                masterCanvas = document.createElement('canvas');
+		            }
+		            masterCanvas.width = masterWidth;
+		            masterCanvas.height = masterHeight;
+
+		            const masterCtx = masterCanvas.getContext('2d');
+		            masterCtx.clearRect(0, 0, masterWidth, masterHeight);
+		            masterCtx.fillStyle = '#FFFFFF';
+		            masterCtx.font = `${masterFontSize}px ${font}`;
+		            masterCtx.textAlign = 'center';
+		            masterCtx.textBaseline = 'middle';
+
+		            const centerX = masterWidth / 2;
+		            const centerY = masterHeight / 2;
+		            if (linesCount === 1) {
+		                masterCtx.fillText(safeLines[0] || '', centerX, centerY);
+		            } else {
+		                const totalHeight = masterLineHeight * linesCount;
+		                const startY = centerY - (totalHeight - masterLineHeight) / 2;
+		                for (let i = 0; i < linesCount; i++) {
+		                    masterCtx.fillText(safeLines[i] || '', centerX, startY + i * masterLineHeight);
+		                }
+		            }
+
+		            const bounds = findAlphaBounds(masterCtx, masterWidth, masterHeight);
+
+		            cacheObj.masterCanvas = masterCanvas;
+		            cacheObj.masterKey = masterKey;
+		            cacheObj.masterWidth = masterWidth;
+		            cacheObj.masterHeight = masterHeight;
+		            cacheObj.masterSourceX = bounds.x;
+		            cacheObj.masterSourceY = bounds.y;
+		            cacheObj.masterSourceWidth = bounds.width;
+		            cacheObj.masterSourceHeight = bounds.height;
+		            cacheObj.masterFontSize = masterFontSize;
+
+		            return cacheObj;
+		        }
+
 	        // ===== SPRITE-ERSTELLUNG =====
 	        // Generische Funktion zum Erstellen eines gecachten Sprites.
 	        // cacheObj: Referenz auf spriteCache oder bgSpriteCache
@@ -399,61 +512,69 @@
 	                return cacheObj;
 	            }
 
-	            // Cache-Miss: neues Sprite erstellen
-	            const linesCount = symbolLines.length || 1;
+		            const safeLines = (symbolLines && symbolLines.length) ? symbolLines : [''];
+		            const safeFontSize = Math.max(0, fontSize || 0);
+		            const safeLineHeight = Math.max(0, lineHeight || 0);
 
-	            // Temporärer Canvas zum Messen
-	            const measureCanvas = document.createElement('canvas');
-	            const measureCtx = measureCanvas.getContext('2d');
-	            measureCtx.font = `${fontSize}px ${font}`;
+		            let spriteCanvas = cacheObj.canvas;
+		            if (!spriteCanvas) {
+		                spriteCanvas = document.createElement('canvas');
+		            }
 
-	            // Maximale Breite aller Zeilen ermitteln
-	            let maxWidth = 0;
-	            for (const line of symbolLines) {
-	                const w = measureCtx.measureText(line || ' ').width;
-	                if (w > maxWidth) maxWidth = w;
-	            }
+		            if (safeFontSize <= 0 || safeLineHeight <= 0) {
+		                spriteCanvas.width = 1;
+		                spriteCanvas.height = 1;
+		                cacheObj.canvas = spriteCanvas;
+		                cacheObj.key = key;
+		                cacheObj.width = 1;
+		                cacheObj.height = 1;
+		                cacheObj.offsetX = 0.5;
+		                cacheObj.offsetY = 0.5;
+		                return cacheObj;
+		            }
 
-	            // Sprite-Dimensionen mit Padding für Schatten
-	            const spriteWidth = Math.ceil(maxWidth + CONFIG.sprite.shadowPadding * 2);
-	            const spriteHeight = Math.ceil(lineHeight * linesCount + CONFIG.sprite.shadowPadding * 2);
+		            const lineHeightRatio = safeLineHeight / Math.max(safeFontSize, 0.0001);
+		            createOrGetMasterSprite(cacheObj, keyPrefix, font, safeLines, lineHeightRatio);
 
-	            // Sprite-Canvas erstellen
-	            let spriteCanvas = cacheObj.canvas;
-	            if (!spriteCanvas) {
-	                spriteCanvas = document.createElement('canvas');
-	            }
+		            const padding = CONFIG.sprite.padding;
+		            const scaleFactor = safeFontSize / cacheObj.masterFontSize;
+		            const contentWidth = Math.max(1, cacheObj.masterSourceWidth * scaleFactor);
+		            const contentHeight = Math.max(1, cacheObj.masterSourceHeight * scaleFactor);
+		            const spriteWidth = Math.max(1, Math.ceil(contentWidth + padding * 2));
+		            const spriteHeight = Math.max(1, Math.ceil(contentHeight + padding * 2));
+
 	            spriteCanvas.width = spriteWidth;
 	            spriteCanvas.height = spriteHeight;
 
 	            const spriteCtx = spriteCanvas.getContext('2d');
 	            spriteCtx.clearRect(0, 0, spriteWidth, spriteHeight);
+		            spriteCtx.imageSmoothingEnabled = true;
+		            if ('imageSmoothingQuality' in spriteCtx) {
+		                spriteCtx.imageSmoothingQuality = 'high';
+		            }
 
-	            // Schatten-Einstellungen
-	            spriteCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-	            spriteCtx.shadowBlur = 2;
-	            spriteCtx.shadowOffsetX = 1;
-	            spriteCtx.shadowOffsetY = 1;
+		            // Schatten komplett deaktiviert
+		            spriteCtx.shadowColor = 'transparent';
+		            spriteCtx.shadowBlur = 0;
+		            spriteCtx.shadowOffsetX = 0;
+		            spriteCtx.shadowOffsetY = 0;
 
-	            // Text-Einstellungen
-	            spriteCtx.fillStyle = color;
-	            spriteCtx.font = `${fontSize}px ${font}`;
-	            spriteCtx.textAlign = 'center';
-	            spriteCtx.textBaseline = 'middle';
+		            spriteCtx.drawImage(
+		                cacheObj.masterCanvas,
+		                cacheObj.masterSourceX,
+		                cacheObj.masterSourceY,
+		                cacheObj.masterSourceWidth,
+		                cacheObj.masterSourceHeight,
+		                padding,
+		                padding,
+		                contentWidth,
+		                contentHeight
+		            );
 
-	            // Zentriert auf das Sprite zeichnen
-	            const centerX = spriteWidth / 2;
-	            const centerY = spriteHeight / 2;
-
-	            if (linesCount === 1) {
-	                spriteCtx.fillText(symbolLines[0] || '', centerX, centerY);
-	            } else {
-	                const totalHeight = lineHeight * linesCount;
-	                const startY = centerY - (totalHeight - lineHeight) / 2;
-	                for (let i = 0; i < linesCount; i++) {
-	                    spriteCtx.fillText(symbolLines[i] || '', centerX, startY + i * lineHeight);
-	                }
-	            }
+		            spriteCtx.globalCompositeOperation = 'source-in';
+		            spriteCtx.fillStyle = color;
+		            spriteCtx.fillRect(0, 0, spriteWidth, spriteHeight);
+		            spriteCtx.globalCompositeOperation = 'source-over';
 
 	            // Cache-Objekt in-place aktualisieren
 	            cacheObj.canvas = spriteCanvas;
@@ -606,10 +727,16 @@
 	    		    renderPoints();
 	    		}
 
-        // Event Listener für Fenstergrößenänderungen
-        window.addEventListener('resize', resizeCanvas);
-        // Nach vollständigem Laden der Seite noch einmal korrekt layouten
-        window.addEventListener('load', resizeCanvas);
+	        // Event Listener für Fenstergrößenänderungen
+	        window.addEventListener('resize', resizeCanvas);
+	        // Nach vollständigem Laden der Seite noch einmal korrekt layouten
+	        window.addEventListener('load', resizeCanvas);
+	        if (typeof ResizeObserver === 'function' && canvasContainer) {
+	            const canvasResizeOracle = new ResizeObserver(() => {
+	                requestAnimationFrame(resizeCanvas);
+	            });
+	            canvasResizeOracle.observe(canvasContainer);
+	        }
 
 		    	function renderPoints() {
 		    	    const text = panel.get('text');
@@ -1547,14 +1674,7 @@
 		        }
 
 		        // Cache für Hintergrund-Sprite (separat vom Vordergrund)
-		        let bgSpriteCache = {
-		            canvas: null,
-		            key: null,
-		            width: 0,
-		            height: 0,
-		            offsetX: 0,
-		            offsetY: 0
-		        };
+		        let bgSpriteCache = createSpriteCacheObject();
 
 		        // Wrapper für BG-Sprites (nutzt die generische Funktion)
 		        function getOrCreateBgSprite(font, fontSize, color, symbolLines, lineHeight) {
@@ -1669,6 +1789,10 @@
 
 		        function renderWithZoom() {
 		            ctx.clearRect(0, 0, canvas.width, canvas.height);
+		            ctx.imageSmoothingEnabled = true;
+		            if ('imageSmoothingQuality' in ctx) {
+		                ctx.imageSmoothingQuality = 'high';
+		            }
 
 		            const { scale, offsetX, offsetY } = zoomState;
 		            const pointColor = getCSSVariable(CONFIG.css.pointColorVar) || CONFIG.css.fallbackPointColor;
@@ -1705,6 +1829,7 @@
 		                    const bgSpriteCanvas = bgSprite.canvas;
 		                    const bgSpriteOffsetX = bgSprite.offsetX;
 		                    const bgSpriteOffsetY = bgSprite.offsetY;
+		                    const snapBgToPixel = bgFontSizeScreen <= CONFIG.sprite.pixelSnapThreshold;
 
 		                    // Canvas-Mitte als Referenzpunkt (BG bleibt immer zentriert)
 		                    const centerScreenX = canvas.width / 2;
@@ -1713,8 +1838,12 @@
 		                    for (let i = 0; i < bgPoints.length; i++) {
 		                        const p = bgPoints[i];
 		                        // Nur Scale anwenden, KEIN Offset (Drag)
-		                        const sx = p.x * scale + centerScreenX - bgSpriteOffsetX;
-		                        const sy = p.y * scale + centerScreenY - bgSpriteOffsetY;
+		                        let sx = p.x * scale + centerScreenX - bgSpriteOffsetX;
+		                        let sy = p.y * scale + centerScreenY - bgSpriteOffsetY;
+		                        if (snapBgToPixel) {
+		                            sx = Math.round(sx);
+		                            sy = Math.round(sy);
+		                        }
 		                        ctx.drawImage(bgSpriteCanvas, sx, sy);
 		                    }
 		                }
@@ -1746,11 +1875,16 @@
 		            const spriteOffsetX = sprite.offsetX;
 		            const spriteOffsetY = sprite.offsetY;
 		            const pointCount = worldPoints.length;
+		            const snapToPixel = fontSizeScreen <= CONFIG.sprite.pixelSnapThreshold;
 
 		            for (let i = 0; i < pointCount; i++) {
 		                const p = worldPoints[i];
-		                const sx = p.x * scale + offsetX - spriteOffsetX;
-		                const sy = p.y * scale + offsetY - spriteOffsetY;
+		                let sx = p.x * scale + offsetX - spriteOffsetX;
+		                let sy = p.y * scale + offsetY - spriteOffsetY;
+		                if (snapToPixel) {
+		                    sx = Math.round(sx);
+		                    sy = Math.round(sy);
+		                }
 		                ctx.drawImage(spriteCanvas, sx, sy);
 		            }
 		        }

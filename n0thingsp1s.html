@@ -77,6 +77,25 @@
             }
         });
 
+	        let recenterQueued = false;
+	        function recenterWorld(animate = true) {
+	            const state = zoom.getState();
+	            zoom.setView({
+	                scale: state.scale,
+	                offsetX: app.screen.width / 2,
+	                offsetY: app.screen.height / 2
+	            }, animate);
+	        }
+
+	        function scheduleRecenter(animate = true) {
+	            if (recenterQueued) return;
+	            recenterQueued = true;
+	            requestAnimationFrame(() => {
+	                recenterQueued = false;
+	                recenterWorld(animate);
+	            });
+	        }
+
         // ═══════════════════════════════════════════════════════════════════
         // TEXT TEXTURE CACHE (High-Res für scharfes Zoomen)
         // ═══════════════════════════════════════════════════════════════════
@@ -402,7 +421,7 @@
         panel
             .addText('tokens', { label: 'Tokens', value: config.tokens, placeholder: '+0, *1', onChange: v => { config.tokens = v || '+0, *1'; parseTokens(); restart(); } })
             .addDivider()
-            .addToggle('rotateText', { label: 'Ausrichtung', value: config.rotateText, labelOn: '↻ Rotiert', labelOff: '— Horizontal', onChange: v => { config.rotateText = v; restart(); } })
+            .addToggle('rotateText', { label: 'Text rotieren', value: config.rotateText, onChange: v => { config.rotateText = v; restart(); } })
             .addDivider()
             .addSlider('spawnChance',      { label: 'Root Spawn', min: 0, max: 1000, step: 1,    value: config.spawnChance,      decimals: 0, onChange: v => config.spawnChance = v })
             .addSlider('deathChance',      { label: 'Tod',        min: 0, max: 1,    step: 0.01, value: config.deathChance,      decimals: 2, onChange: v => config.deathChance = v })
@@ -428,12 +447,11 @@
         }, 1000);
 
         // Resize
-        window.addEventListener('resize', () => {
-            zoom.setView({
-                offsetX: app.screen.width / 2,
-                offsetY: app.screen.height / 2
-            });
-        });
+	        window.addEventListener('resize', () => scheduleRecenter(true));
+	        if (typeof ResizeObserver === 'function' && container) {
+	            const canvasResizeOracle = new ResizeObserver(() => scheduleRecenter(false));
+	            canvasResizeOracle.observe(container);
+	        }
 
     })();
     </script>

@@ -4,8 +4,70 @@
 document.write('<script src="/tools/zoom.js"><\/script>');
 document.write('<script src="/tools/controls.js"><\/script>');
 
+(function (global) {
+    function getCanvasRealm(element, options = {}) {
+        const virtualSize = Math.max(1e-9, options.virtualSize || 1);
+        const rect = element && typeof element.getBoundingClientRect === 'function'
+            ? element.getBoundingClientRect()
+            : null;
+        const width = Math.max(1, (rect && rect.width) || (element && element.clientWidth) || global.innerWidth || 1);
+        const height = Math.max(1, (rect && rect.height) || (element && element.clientHeight) || global.innerHeight || 1);
+        const side = Math.max(1, Math.min(width, height));
+        const offsetX = (width - side) / 2;
+        const offsetY = (height - side) / 2;
+        const unit = side / virtualSize;
+
+        return {
+            width,
+            height,
+            side,
+            offsetX,
+            offsetY,
+            unit,
+            toSquareX: value => offsetX + value * side,
+            toSquareY: value => offsetY + value * side,
+            toSquarePoint: (x, y) => ({ x: offsetX + x * side, y: offsetY + y * side }),
+            toVirtualLength: value => value * unit,
+            toVirtualFontSize: value => value * unit,
+        };
+    }
+
+    global._018Space = Object.freeze({
+        getCanvasRealm,
+    });
+})(typeof window !== 'undefined' ? window : this);
+
 // DOM-Manipulation erst wenn Body existiert
 document.addEventListener('DOMContentLoaded', () => {
+
+function syncVisibleViewport() {
+    const root = document.documentElement;
+    const visualViewport = window.visualViewport;
+    const layoutWidth = Math.max(root.clientWidth || 0, window.innerWidth || 0, 1);
+    const layoutHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1);
+    const width = Math.max(1, visualViewport?.width || layoutWidth);
+    const height = Math.max(1, visualViewport?.height || window.innerHeight || layoutHeight);
+    const top = Math.max(0, visualViewport?.offsetTop || 0);
+    const left = Math.max(0, visualViewport?.offsetLeft || 0);
+    const bottom = Math.max(0, layoutHeight - (top + height));
+
+    root.style.setProperty('--visible-viewport-width', `${Math.round(width)}px`);
+    root.style.setProperty('--visible-viewport-height', `${Math.round(height)}px`);
+    root.style.setProperty('--visible-viewport-top', `${Math.round(top)}px`);
+    root.style.setProperty('--visible-viewport-left', `${Math.round(left)}px`);
+    root.style.setProperty('--visible-viewport-bottom', `${Math.round(bottom)}px`);
+}
+
+let visibleViewportFrame = 0;
+function scheduleVisibleViewportSync() {
+    if (visibleViewportFrame) return;
+    visibleViewportFrame = requestAnimationFrame(() => {
+        visibleViewportFrame = 0;
+        syncVisibleViewport();
+    });
+}
+
+scheduleVisibleViewportSync();
 
 const menu = document.createElement('div');
 menu.classList.add('menu');
@@ -544,6 +606,97 @@ clearButton.addEventListener('click', () => {
     searchInput.focus();
 });
 
+const dialogBackdrop = document.createElement('div');
+dialogBackdrop.className = 'meta-dialog-backdrop';
+dialogBackdrop.hidden = true;
+dialogBackdrop.innerHTML = `
+    <div class="meta-dialog" role="dialog" aria-modal="true" aria-labelledby="meta-dialog-title" aria-describedby="meta-dialog-message">
+        <div class="meta-dialog-title" id="meta-dialog-title"></div>
+        <div class="meta-dialog-message" id="meta-dialog-message"></div>
+        <div class="meta-dialog-actions">
+            <button type="button" class="meta-dialog-secondary" data-dialog-action="dismiss"></button>
+            <button type="button" class="meta-dialog-secondary" data-dialog-action="cancel"></button>
+            <button type="button" class="meta-dialog-confirm" data-dialog-action="confirm"></button>
+        </div>
+    </div>
+`;
+document.body.appendChild(dialogBackdrop);
+
+const dialogTitleEl = dialogBackdrop.querySelector('#meta-dialog-title');
+const dialogMessageEl = dialogBackdrop.querySelector('#meta-dialog-message');
+const dialogConfirmBtn = dialogBackdrop.querySelector('[data-dialog-action="confirm"]');
+const dialogCancelBtn = dialogBackdrop.querySelector('[data-dialog-action="cancel"]');
+const dialogDismissBtn = dialogBackdrop.querySelector('[data-dialog-action="dismiss"]');
+let dialogResolve = null;
+let dialogLastFocused = null;
+
+function closeMetaDialog(action = 'dismiss') {
+    if (!dialogResolve) return;
+    const resolve = dialogResolve;
+    dialogResolve = null;
+    dialogBackdrop.hidden = true;
+    document.body.classList.remove('meta-dialog-open');
+    document.removeEventListener('keydown', handleMetaDialogKeydown, true);
+    if (dialogLastFocused && typeof dialogLastFocused.focus === 'function') {
+        requestAnimationFrame(() => dialogLastFocused.focus());
+    }
+    dialogLastFocused = null;
+    resolve(action);
+}
+
+function handleMetaDialogKeydown(event) {
+    if (dialogBackdrop.hidden) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMetaDialog('dismiss');
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        closeMetaDialog('confirm');
+    }
+}
+
+window._018Dialog = window._018Dialog || {};
+window._018Dialog.confirm = function confirm(options = {}) {
+    const {
+        title = 'weiter?',
+        message = '',
+        confirmLabel = 'ok',
+        cancelLabel = 'abbrechen',
+        dismissLabel = 'zurück'
+    } = options;
+
+    if (dialogResolve) {
+        closeMetaDialog('dismiss');
+    }
+
+    dialogTitleEl.textContent = title;
+    dialogMessageEl.textContent = message;
+    dialogConfirmBtn.textContent = confirmLabel;
+    dialogCancelBtn.textContent = cancelLabel;
+    dialogDismissBtn.textContent = dismissLabel;
+    dialogDismissBtn.hidden = !dismissLabel;
+
+    dialogLastFocused = document.activeElement;
+    dialogBackdrop.hidden = false;
+    document.body.classList.add('meta-dialog-open');
+    document.addEventListener('keydown', handleMetaDialogKeydown, true);
+
+    return new Promise(resolve => {
+        dialogResolve = resolve;
+        requestAnimationFrame(() => dialogConfirmBtn.focus());
+    });
+};
+
+dialogBackdrop.addEventListener('click', (event) => {
+    if (event.target === dialogBackdrop) {
+        closeMetaDialog('dismiss');
+    }
+});
+
+dialogConfirmBtn.addEventListener('click', () => closeMetaDialog('confirm'));
+dialogCancelBtn.addEventListener('click', () => closeMetaDialog('cancel'));
+dialogDismissBtn.addEventListener('click', () => closeMetaDialog('dismiss'));
+
 // ESC: Suche leeren & Reset
 searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -590,6 +743,14 @@ window.addEventListener('wheel', (event) => {
 window.addEventListener('load', scheduleFitPreBlocks);
 window.addEventListener('resize', scheduleFitPreBlocks);
 window.addEventListener('orientationchange', scheduleFitPreBlocks);
+window.addEventListener('load', scheduleVisibleViewportSync);
+window.addEventListener('resize', scheduleVisibleViewportSync);
+window.addEventListener('orientationchange', scheduleVisibleViewportSync);
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleVisibleViewportSync);
+    window.visualViewport.addEventListener('scroll', scheduleVisibleViewportSync);
+}
 
 if (document.fonts && typeof document.fonts.ready?.then === 'function') {
     document.fonts.ready.then(scheduleFitPreBlocks);

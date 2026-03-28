@@ -22,10 +22,25 @@
       let lines = [];
       let canvasContainer;
 
+      function getCanvasBounds() {
+        const width = canvasContainer?.clientWidth || window.innerWidth;
+        const height = canvasContainer?.clientHeight || window.innerHeight;
+        return {
+          width: Math.max(1, Math.round(width)),
+          height: Math.max(1, Math.round(height))
+        };
+      }
+
+      function resizeToContainer() {
+        const { width, height } = getCanvasBounds();
+        resizeCanvas(width, height);
+      }
+
       function setup() {
         canvasContainer = document.getElementById('canvasContainer');
 
-        const canvas = createCanvas(windowWidth, windowHeight);
+        const { width, height } = getCanvasBounds();
+        const canvas = createCanvas(width, height);
         if (canvasContainer) canvas.parent(canvasContainer);
 
         background(0);
@@ -33,9 +48,7 @@
 
         if (window.Controls && Controls.createPanel) {
           const panel = Controls.createPanel({
-            position: 'left',
-            mobileContentElement: canvasContainer,
-            mobileContentMaxOffset: 12
+            position: 'left'
           });
 
           panel
@@ -68,6 +81,13 @@
               onChange: value => { config.strokeWeight = value; }
             });
         }
+
+        if (typeof ResizeObserver === 'function' && canvasContainer) {
+          const canvasResizeOracle = new ResizeObserver(() => {
+            requestAnimationFrame(resizeToContainer);
+          });
+          canvasResizeOracle.observe(canvasContainer);
+        }
       }
 
       function draw() {
@@ -92,7 +112,7 @@
       }
 
       function windowResized() {
-        resizeCanvas(windowWidth, windowHeight);
+        resizeToContainer();
       }
     </script>
   </body>

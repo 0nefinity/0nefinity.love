@@ -23,6 +23,12 @@ header.controls {
   max-height: none;
   overflow: visible;
   font-size: 11px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+header.controls input {
+  user-select: auto;
+  -webkit-user-select: auto;
 }
 
 /* Collapsed State */
@@ -43,70 +49,11 @@ header.controls.collapsed {
   }
 }
 
-/* Mobile: Sidebar von rechts */
+/* Mobile: Controls ausblenden */
 @media (max-width: 768px) {
   header.controls {
-    position: fixed !important;
-    right: 0 !important;
-    top: 0 !important;
-    left: auto !important;
-    width: 70vw !important;
-    max-width: 400px !important;
-    height: 100vh !important;
-    padding: 80px 15px 15px 15px;
-    gap: 12px;
-    overflow-y: auto;
-    background: var(--bg-color);
-    border-left: 2px solid var(--text-color);
-    z-index: 1000 !important;
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-    display: flex !important;
-    flex-direction: column;
+    display: none !important;
   }
-
-  /* Expanded State - Sidebar sichtbar */
-  header.controls.expanded {
-    transform: translateX(0) !important;
-  }
-
-  /* Collapsed State auf Mobile */
-  header.controls.collapsed {
-    transform: translateX(100%) !important;
-  }
-
-  header.controls label {
-    flex: 1 1 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 16px;
-    padding: 8px 0;
-  }
-
-  header.controls input[type="number"],
-  header.controls input[type="text"] {
-    flex: 0 0 120px;
-    font-size: 16px;
-    padding: 8px;
-    border: 2px solid var(--text-color);
-    background: var(--bg-color);
-    color: var(--text-color);
-    border-radius: 5px;
-  }
-
-  header.controls input[type="checkbox"] {
-    width: 24px;
-    height: 24px;
-  }
-
-  header.controls button {
-    width: 100%;
-    padding: 12px;
-    font-size: 16px;
-    margin-top: 8px;
-  }
-
 }
 
 header.controls label {
@@ -125,6 +72,29 @@ header.controls input[type="text"] {
   border: 1px solid var(--text-color);
   border-radius: 2px;
   width: 45px;
+  -moz-appearance: textfield;
+}
+header.controls input[type="number"]::-webkit-inner-spin-button,
+header.controls input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0;
+  width: 12px;
+  height: 14px;
+  transition: opacity 0.2s;
+}
+header.controls input[type="number"]:hover::-webkit-inner-spin-button,
+header.controls input[type="number"]:hover::-webkit-outer-spin-button {
+  opacity: 1;
+}
+header.controls input[type="number"]::-moz-inner-spin-button,
+header.controls input[type="number"]::-moz-outer-spin-button {
+  opacity: 0;
+  width: 12px;
+  height: 14px;
+  transition: opacity 0.2s;
+}
+header.controls input[type="number"]:hover::-moz-inner-spin-button,
+header.controls input[type="number"]:hover::-moz-outer-spin-button {
+  opacity: 1;
 }
 header.controls input#rotationSpeed {
   width: 50px;
@@ -221,12 +191,13 @@ canvas {
 /* Styles für die editierbaren Fotos */
 .editable-photo {
   position: absolute;
-  z-index: 50;
+  z-index: 100;
   transform-origin: center center;
+  touch-action: none;
 }
 .editable-photo.selected {
   outline: 2px dashed var(--text-color);
-  z-index: 51;
+  z-index: 101;
 }
 .editable-photo img, .editable-photo video {
   display: block;
@@ -292,6 +263,86 @@ canvas {
 .editable-photo.selected .rotation-line {
   visibility: visible;
 }
+.symbol-list-dropdown {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  padding: 0;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 5px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2000;
+}
+.symbol-list-dropdown.open {
+  max-height: 500px;
+  opacity: 1;
+  pointer-events: auto;
+  overflow-y: auto;
+}
+.symbol-list-table {
+  border-collapse: collapse;
+  width: auto;
+  position: relative;
+}
+.symbol-list-table thead {
+  display: table-header-group;
+}
+.symbol-list-table th,
+.symbol-list-table td {
+  padding: 2px 5px;
+  text-align: center;
+  border-right: 1px solid var(--text-color);
+}
+.symbol-list-table th:last-child,
+.symbol-list-table td:last-child {
+  border-right: none;
+}
+.symbol-list-table tbody.symbol-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--bg-color, #1a1a2e);
+  border: 1px solid var(--text-color);
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  width: max-content;
+}
+.symbol-list-table tbody.symbol-dropdown.open {
+  display: table-row-group;
+}
+.symbol-list-table input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(128,128,128,0.1);
+  border: none;
+  border-bottom: 1px solid rgba(128,128,128,0.5);
+  color: inherit;
+}
+.symbol-list-table input:focus {
+  outline: none;
+  border-bottom-color: var(--text-color);
+}
+.symbol-list-table tbody {
+  display: none;
+}
+.symbol-list-table tbody.open {
+  display: table-row-group;
+}
+
+/* Temporär: immer sichtbar zum Testen */
+/* 
+.symbol-list-table tbody.open {
+  display: table-row-group;
+}
+*/
     `;
     const styleEl = document.createElement('style');
     styleEl.textContent = css;
@@ -304,131 +355,199 @@ canvas {
     const controls = document.createElement('header');
     controls.className = 'controls';
     controls.id = 'controls';
+
+    // Wichtige Layout-Elemente vorab deklarieren
+    const symbolContainer = document.createElement('div');
+    symbolContainer.className = 'symbol-container';
+    symbolContainer.id = 'symbolContainer';
+
+    let logicalCanvasSize = 400;
+    const photoCanvas = document.createElement('canvas');
+    photoCanvas.style.display = 'none';
     controls.innerHTML = `
       <label>Auto: <input type="checkbox" id="autoSpeedCheckbox" checked></label>
-      <label>Ausrichtung: <input type="checkbox" id="rotateCheckbox"></label>
+      <label title="Ausrichtung der Zeichen am Radius">Rotation: <input type="checkbox" id="rotateCheckbox"></label>
       <label>Geschw: <input type="number" id="rotationSpeed" value="0" step="0.1" min="0"></label>
-      <label>Gr. Z(%): <input type="number" id="textSize" value="25" step="1" min="0"></label>
-      <label>Tr.(%): <input type="number" id="triangleSize" value="30" step="1" min="0"></label>
-      <label>≡G(%): <input type="number" id="equivSize" value="23" step="1" min="0"></label>
-      <label>≡L(%): <input type="number" id="equivLength" value="100" step="1" min="0"></label>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <label>Gr. Z(%): <input type="number" id="textSize" value="25" step="1" min="0"></label>
+        <label>Tr.(%): <input type="number" id="triangleSize" value="30" step="1" min="0"></label>
+      </div>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <label>≡G(%): <input type="number" id="equivSize" value="23" step="1" min="0"></label>
+        <label>≡L(%): <input type="number" id="equivLength" value="100" step="1" min="0"></label>
+      </div>
 
-      <label>Symbol 0: <input type="text" id="label0Input" value="0"></label>
-      <label>Symbol 1: <input type="text" id="label1Input" value="1"></label>
-      <label>Symbol ∞: <input type="text" id="labelInfInput" value="∞"></label>
-      <label>Identisch: <input type="text" id="equivSymbolInput" value="≡"></label>
-      <label>Dupl. Identisch: <input type="checkbox" id="duplicateIdentisch"></label>
+      <div id="symbolSettingsGroup" style="display:flex; flex-direction:column; align-items:stretch; position: relative; margin-left: 5px;">
+        <table class="symbol-list-table">
+          <thead>
+            <tr>
+              <th>Anz: <input type="number" id="symbolCountInput" value="3" min="0" step="1"></th>
+              <th>Sync: <input type="checkbox" id="syncEquivCheckbox" checked></th>
+            </tr>
+          </thead>
+          <tbody id="symbolInputsContainer" class="symbol-dropdown"></tbody>
+        </table>
+      </div>
+
+      <label>Dupl.: <input type="checkbox" id="duplicateIdentisch" title="Dupliziert das Trennzeichen"></label>
       <button id="takePhotoButton">Foto machen</button>
       <div class="info-popup">
         <div class="info-icon">i</div>
         <div class="info-text">Diese Muster, die das Teil augenscheinlich formt, resultieren nur aus der Bewegung. Zu jedem einzelnen Zeitpunkt ist das ursprüngliche Objekt nur genau einmal in seiner ursprünglichen Form (lediglich anders gedreht) sichtbar. Ein Foto vermag das Muster deshalb nicht einzufangen und wird immer nur das ursprüngliche Objekt in einer Ruheposition zeigen.</div>
       </div>
 	      <label>Frames: <input type="number" id="gifFrameCount" value="3" min="0" step="1"></label>
-
 	      <label>∞: <input type="checkbox" id="gifInfinite"></label>
-
       <button id="createGifButton">GIF erstellen</button>
+      <label>Debug: <input type="checkbox" id="debugHitbox"></label>
     `;
     document.body.insertBefore(controls, document.body.firstChild);
 
-    // Toggle-Funktionalität
-    let settingsVisible = false;
+    function updateSymbolInputs(autoOpen = false) {
+      const container = document.getElementById('symbolInputsContainer');
+      const dropdown = document.getElementById('symbolInputsContainer');
+      if (!container || !dropdown) return;
+      
+      const count = parseInt(document.getElementById('symbolCountInput').value) || 0;
+      const sync = document.getElementById('syncEquivCheckbox').checked;
 
-    // Prüfe, ob wir auf einem mobilen Gerät sind
-    function isMobile() {
-      return window.innerWidth <= 768;
-    }
-
-    // Initialisiere den Zustand basierend auf der Bildschirmgröße
-    async function initializeSettingsState() {
-      if (isMobile()) {
-        // Auf Mobile: Sidebar standardmäßig eingeklappt
-        controls.classList.add('collapsed');
-        controls.classList.remove('expanded');
-        settingsVisible = false;
-      } else {
-        // Auf Desktop: immer sichtbar
-        controls.classList.remove('collapsed');
-        controls.classList.remove('expanded');
-        settingsVisible = true;
+      if (autoOpen) {
+          dropdown.classList.add('open');
       }
-    }
 
-    // Toggle-Funktion für Sidebar
-    function toggleSettings() {
-      settingsVisible = !settingsVisible;
-      if (settingsVisible) {
-        controls.classList.remove('collapsed');
-        controls.classList.add('expanded');
-      } else {
-        controls.classList.add('collapsed');
-        controls.classList.remove('expanded');
-      }
-    }
+      // Aktuelle Werte sichern, um sie beim Neuerstellen wiederherzustellen
+      const prevLabels = Array.from(container.querySelectorAll('.symbol-label-input')).map(i => i.value);
+      const prevEquivs = Array.from(container.querySelectorAll('.equiv-symbol-input')).map(i => i.value);
 
-    // Klick/Touch außerhalb schließt die Sidebar auf Mobile
-    function closeSettingsIfOutside(e) {
-      if (isMobile() && settingsVisible) {
-        // Prüfe ob der Klick außerhalb der Controls und nicht auf dem Symbol war
-        const symbolContainerEl = document.getElementById('symbolContainer');
-        const canvasEl = document.getElementById('canvas');
-        const clickedInsideSymbol = (symbolContainerEl && symbolContainerEl.contains(e.target)) ||
-          (canvasEl && canvasEl.contains(e.target));
+      container.innerHTML = '';
 
-        if (!controls.contains(e.target) && !clickedInsideSymbol) {
-          controls.classList.add('collapsed');
-          controls.classList.remove('expanded');
-          settingsVisible = false;
+      for (let i = 0; i < count; i++) {
+        const row = document.createElement('tr');
+
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'symbol-label-input';
+        
+        // Initialwerte setzen
+        if (i < prevLabels.length) {
+          labelInput.value = prevLabels[i];
+        } else {
+          const defaults = ['0', '1', '∞'];
+          labelInput.value = defaults[i % 3];
         }
+
+        const labelCell = document.createElement('td');
+        labelCell.appendChild(labelInput);
+        row.appendChild(labelCell);
+
+        // Trennzeichen-Eingabe
+        if (!sync || i === 0) {
+           const equivInput = document.createElement('input');
+           equivInput.type = 'text';
+           equivInput.className = 'equiv-symbol-input';
+           if (i < prevEquivs.length && prevEquivs[i]) {
+             equivInput.value = prevEquivs[i];
+           } else {
+             equivInput.value = (prevEquivs[0] || '≡');
+           }
+           if (sync) {
+               equivInput.id = 'globalEquivInput';
+               equivInput.title = 'Globales Trennzeichen (Sync)';
+           } else {
+               equivInput.title = `Trennzeichen nach Symbol ${i + 1}`;
+           }
+           const equivCell = document.createElement('td');
+           equivCell.appendChild(equivInput);
+           row.appendChild(equivCell);
+        } else {
+           const emptyCell = document.createElement('td');
+           row.appendChild(emptyCell);
+        }
+
+        container.appendChild(row);
       }
     }
 
-    document.addEventListener('click', closeSettingsIfOutside);
-    document.addEventListener('touchend', closeSettingsIfOutside);
-
-    // Bei Resize prüfen
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        initializeSettingsState();
-      }, 100);
+    // Dropdown-Logik
+    const container = document.getElementById('symbolInputsContainer');
+    const table = document.querySelector('.symbol-list-table');
+    const thead = document.querySelector('.symbol-list-table thead');
+    
+    function openDropdown() {
+        container.classList.add('open');
+    }
+    
+    function closeDropdown() {
+        container.classList.remove('open');
+    }
+    
+    function toggleDropdown() {
+        container.classList.toggle('open');
+    }
+    
+    // Auto-Close bei Klick außerhalb
+    document.addEventListener('click', (e) => {
+        const symbolSettingsGroup = document.getElementById('symbolSettingsGroup');
+        if (symbolSettingsGroup && !symbolSettingsGroup.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+    
+    // Öffnen bei Klick auf den gesamten Header
+    if (thead) {
+        thead.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleDropdown();
+        });
+        thead.style.cursor = 'pointer';
+    }
+    
+    // Öffnen bei Anz-Änderung
+    document.getElementById('symbolCountInput').addEventListener('input', () => {
+        updateSymbolInputs(true);
+        openDropdown();
+    });
+    
+    // Öffnen bei Sync-Änderung
+    document.getElementById('syncEquivCheckbox').addEventListener('change', () => {
+        updateSymbolInputs(true);
+        openDropdown();
     });
 
-    // Initialisiere den Zustand
-    initializeSettingsState();
+    // Initialer Aufruf zur Generierung der Standardfelder
+    updateSymbolInputs();
+    
+    // Symbol-Container Konfiguration
 
-    // Nochmal nach vollständigem Laden prüfen
-    setTimeout(() => {
-      initializeSettingsState();
-    }, 500);
+    symbolContainer.style.position = 'relative';
+    symbolContainer.style.width = '100%';
+    symbolContainer.style.height = '70vh'; // Platzhalter für Content-Flow
+    symbolContainer.style.overflow = 'visible';
 
-    // Und nochmal nach 1 Sekunde (für langsame Geräte)
-    setTimeout(() => {
-      initializeSettingsState();
-    }, 1000);
-
-    // Erstelle den Container für das Symbol
-    // Symbol-Container
-    const symbolContainer = document.createElement('div');
-    symbolContainer.className = 'symbol-container';
-    symbolContainer.id = 'symbolContainer';
-
-    // Erstelle den Canvas für die Animation (wird für globalen z-index an den body gehängt)
+    // Erstelle den Canvas für die Animation (Globaler Fixed-Layer)
     const canvas = document.createElement('canvas');
     canvas.id = 'canvas';
-    canvas.width = 400;
-    canvas.height = 400;
-    document.body.appendChild(canvas); // An Body für sauberen globalen Stacking-Context
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '50';
+    document.body.appendChild(canvas);
 
-    // Physisches Hitbox-Layer exakt über dem Symbol, fängt alle Maus/Touch-Events für Zoom/Pan ab
+    // Physisches Hitbox-Layer (Global, fängt Zoom/Pan ab)
     const interactionLayer = document.createElement('div');
     interactionLayer.id = 'interactionLayer';
     interactionLayer.style.position = 'fixed';
+    interactionLayer.style.top = '0';
+    interactionLayer.style.left = '0';
+    interactionLayer.style.width = '100vw';
+    interactionLayer.style.height = '100vh';
     interactionLayer.style.zIndex = '51'; // Über dem Canvas
-    interactionLayer.style.borderRadius = '50%';
     interactionLayer.style.cursor = 'grab';
-    interactionLayer.style.touchAction = 'none';
+    interactionLayer.style.touchAction = 'pan-y pinch-zoom'; // Browser-Scrolling erlauben
+    interactionLayer.style.userSelect = 'none';
+    interactionLayer.style.webkitUserSelect = 'none';
     document.body.appendChild(interactionLayer);
 
     let interactionLayerVisible = false;
@@ -436,23 +555,34 @@ canvas {
     let interactionCenterY = 0;
     let interactionHitRadius = 0;
 
+    function getResponsiveInitialOffsetY() {
+      if (window.innerWidth <= 768) return 250;
+      return window.innerHeight * 0.45;
+    }
+
     function isTouchDevice() {
       return window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
     }
 
+    function getSymbolZoneHeight() {
+      // Mobil: 50% der Viewport-Höhe (für mehr Text-Sichtbarkeit), Desktop: 70%
+      const ratio = isTouchDevice() ? 0.50 : 0.7;
+      return window.innerHeight * ratio;
+    }
+
     function isPointInsideSymbolHitArea(clientX, clientY) {
       if (!interactionLayerVisible || interactionHitRadius <= 0) return false;
-      const dx = clientX - interactionCenterX;
-      const dy = clientY - interactionCenterY;
+      // interactionCenterX/Y sind Dokument-Koordinaten, clientX/Y sind Viewport-Koordinaten
+      const dx = clientX - (interactionCenterX - window.scrollX);
+      const dy = clientY - (interactionCenterY - window.scrollY);
       return (dx * dx + dy * dy) <= (interactionHitRadius * interactionHitRadius);
     }
 
     function getCurrentSymbolScreenPosition() {
-      const rect = symbolContainer.getBoundingClientRect();
       return {
-        rect,
-        x: rect.left + zoomState.offsetX,
-        y: rect.top + zoomState.offsetY
+        rect: symbolContainer.getBoundingClientRect(),
+        x: zoomState.offsetX,
+        y: zoomState.offsetY
       };
     }
 
@@ -462,124 +592,144 @@ canvas {
     interactionLayer.addEventListener('mouseup', () => { interactionLayer.style.cursor = 'grab'; });
     interactionLayer.addEventListener('mouseleave', () => { interactionLayer.style.cursor = 'grab'; });
 
-    // === ZOOM + PAN ===
-    // Logische Größe des Interaktionsbereichs
-    let logicalCanvasSize = 400;
-
-    // Zoom2D wird NUR für Pan genutzt (Scale locked bei 1).
-    // Zoom (Wheel + Pinch) wird separat gehandelt, damit das Symbol
-    // beim Zoomen seine Position nicht verändert.
-    let zoomState = { scale: 1, offsetX: logicalCanvasSize / 2, offsetY: logicalCanvasSize / 2 };
+    // Zoom2D für Zoom + Pan
+    // Initialisierung in der Mitte des Bildschirms
+    // Initialisierung in der oberen Hälfte (Header-Position)
+    const initialY = getResponsiveInitialOffsetY();
+    let zoomState = { scale: 1, offsetX: window.innerWidth / 2, offsetY: initialY };
     let zoomInstance = null;
 
     if (window.Zoom2D) {
       zoomInstance = Zoom2D.createZoom2D({
-        container: interactionLayer, // Event-Listener jetzt auf die echte Hitbox
+        container: interactionLayer,
         initialScale: 1,
-        initialOffsetX: logicalCanvasSize / 2,
-        initialOffsetY: logicalCanvasSize / 2,
-        minScale: 0.1,  // Scale locked – wir zoomen selbst
-        maxScale: 1,
+        initialOffsetX: window.innerWidth / 2,
+        initialOffsetY: initialY,
+        minScale: 0.0001,
+        maxScale: 1000,
         enableDamping: true,
         dampingFactor: 0.15,
-        shouldIgnoreDrag: (e) => !isPointInsideSymbolHitArea(e.clientX, e.clientY),
+        wheelSpeed: 0.15,
+        shouldIgnoreDrag: (e) => {
+          // Nur ziehen, wenn wir NICHT auf ein Foto oder die Controls klicken
+          if (e.target !== interactionLayer) return true;
+          return !isPointInsideSymbolHitArea(e.clientX, e.clientY);
+        },
         shouldIgnoreTouchDrag: (e) => {
+          if (e.target !== interactionLayer) return true;
           const touch = e.touches && e.touches[0];
-          return !touch || !isPointInsideSymbolHitArea(touch.clientX, touch.clientY);
+          if (!touch) return true;
+
+          const mouseOnSymbol = isPointInsideSymbolHitArea(touch.clientX, touch.clientY);
+          // WICHTIG: mouseYDoc ist clientY + scrollY für absolute Dokumenten-Vergleich
+          const mouseYDoc = touch.clientY + window.scrollY;
+          const symbolZoneBottom = getSymbolZoneHeight();
+          const inSymbolZone = mouseYDoc < symbolZoneBottom;
+
+          // Nur blockieren (return true = Browser scrollt), wenn wir NICHT auf dem Symbol/in Zone sind
+          return !mouseOnSymbol && !inSymbolZone;
         },
         onTransform: (state) => {
-          // Nur Pan-Offset übernehmen, Scale kommt von unseren eigenen Handlern
+          zoomState.scale = state.scale;
           zoomState.offsetX = state.offsetX;
           zoomState.offsetY = state.offsetY;
-        }
+        },
+        shouldIgnoreWheel: (e) => {
+          const mouseOnSymbol = isPointInsideSymbolHitArea(e.clientX, e.clientY);
+          const mouseYDoc = e.clientY + window.scrollY;
+          const symbolZoneBottom = getSymbolZoneHeight();
+          const inSymbolZone = mouseYDoc < symbolZoneBottom;
+          return !mouseOnSymbol && !inSymbolZone;
+        },
+        getScrollX: () => window.scrollX,
+        getScrollY: () => window.scrollY
       });
     }
 
-    // Zoom via Mausrad
-    interactionLayer.addEventListener('wheel', (e) => {
-      if (Math.abs(e.deltaY) < 5) return;
-      const zoomingIn = e.deltaY < 0; // Scroll up = reinzoomen
+    // === Kontextsensitiver Zoom ===
+    // Maus auf Symbol → Standard Zoom-to-Cursor
+    // Maus NICHT auf Symbol → Symbol bewegt sich zur Maus hin (Anziehungseffekt)
+    const WHEEL_SPEED = 0.15;
+    const WHEEL_THROTTLE_MS = 80;
+    const WHEEL_DELTA_THRESHOLD = 10;
+    const ATTRACTION_STRENGTH = 0.08; // Pro Scroll-Tick: Anteil des Abstands, den das Symbol zur Maus wandert
+    let lastCustomWheelTime = 0;
 
-      // Absoluter Screen-Zentrum des Symbols im Viewport (fixed)
-      const { rect, x: symbolScreenX, y: symbolScreenY } = getCurrentSymbolScreenPosition();
+    interactionLayer.addEventListener('wheel', function (e) {
+      if (!zoomInstance) return;
 
-      if (zoomingIn) {
-        // === REINZOOMEN: Zoom-toward-cursor ===
-        e.preventDefault();
+      const mouseOnSymbol = isPointInsideSymbolHitArea(e.clientX, e.clientY);
+      const mouseYDoc = e.clientY + window.scrollY;
+      const symbolZoneBottom = getSymbolZoneHeight();
+      const inSymbolZone = mouseYDoc < symbolZoneBottom;
 
-        // Da Event jetzt auf Vollbild-Canvas liegt, sind e.clientX/Y bereits relativ zum Top-Left
-        const mouseX = e.clientX;
-        const mouseY = e.clientY;
+      if (!mouseOnSymbol && !inSymbolZone) {
+        // Maus ist weder auf dem Symbol noch in der Symbol-Zone → normal scrollen
+        // Wir lassen das Event einfach durchgehen (NICHT preventDefault, NICHT stopPropagation)
+        return;
+      }
 
-        // Weltpunkt unter dem Cursor berechnen
-        // Hier: (mouseX - OffsetTotal) / scale
-        const worldX = (mouseX - symbolScreenX) / zoomState.scale;
-        const worldY = (mouseY - symbolScreenY) / zoomState.scale;
+      // AB HIER: Symbol-Zoom (Scrollen verhindern)
+      e.preventDefault();
+      e.stopImmediatePropagation(); // Blockiert Zoom2Ds EIGENEN Handler (damit wir die Kontrolle haben)
 
-        const newScale = Math.max(0.03, Math.min(100, zoomState.scale * 1.15));
+      if (Math.abs(e.deltaY) < WHEEL_DELTA_THRESHOLD) return;
 
-        // Offset anpassen:
-        zoomState.offsetX = (mouseX - worldX * newScale) - rect.left;
-        zoomState.offsetY = (mouseY - worldY * newScale) - rect.top;
-        zoomState.scale = newScale;
+      const now = performance.now();
+      if (now - lastCustomWheelTime < WHEEL_THROTTLE_MS) return;
+      lastCustomWheelTime = now;
 
-        // Zoom2D-Offset synchronisieren
-        if (zoomInstance) {
-          zoomInstance.setView({ offsetX: zoomState.offsetX, offsetY: zoomState.offsetY }, false);
-        }
+      const direction = e.deltaY > 0 ? -1 : 1;
+      const factor = 1 + direction * WHEEL_SPEED;
+      if (factor <= 0) return;
+
+      const zoomingIn = direction > 0;
+
+      const currentScale = zoomState.scale;
+      const currentOffsetX = zoomState.offsetX;
+      const currentOffsetY = zoomState.offsetY;
+
+      const newScale = Math.max(0.0001, Math.min(1000, currentScale * factor));
+      if (newScale === currentScale) return;
+
+      let newOffsetX, newOffsetY;
+
+      // Wir arbeiten konsequent in Dokument-Koordinaten
+      const mouseXDoc = e.clientX + window.scrollX;
+      // mouseYDoc ist bereits oben in diesem Scope deklariert
+
+      if (mouseOnSymbol) {
+        // Maus AUF dem Symbol: Zoom-to-Cursor (je näher dran, desto stärker)
+        const visualRadius = logicalCanvasSize * 0.3 * currentScale;
+        const viewportMin = Math.min(window.innerWidth, window.innerHeight);
+        const blend = Math.min(1, Math.max(0, (visualRadius * 2 / viewportMin - 0.5) * 2));
+
+        const worldX = (mouseXDoc - currentOffsetX) / currentScale;
+        const worldY = (mouseYDoc - currentOffsetY) / currentScale;
+        const cursorOffsetX = mouseXDoc - worldX * newScale;
+        const cursorOffsetY = mouseYDoc - worldY * newScale;
+
+        const attractOffsetX = currentOffsetX + (mouseXDoc - currentOffsetX) * ATTRACTION_STRENGTH;
+        const attractOffsetY = currentOffsetY + (mouseYDoc - currentOffsetY) * ATTRACTION_STRENGTH;
+
+        newOffsetX = attractOffsetX + (cursorOffsetX - attractOffsetX) * blend;
+        newOffsetY = attractOffsetY + (cursorOffsetY - attractOffsetY) * blend;
       } else {
-        // === RAUSZOOMEN: zentriert, Symbol bleibt an seiner Position ===
-        e.preventDefault();
-        zoomState.scale = Math.max(0.03, Math.min(100, zoomState.scale * 0.85));
+        // Maus AUSSERHALB des Symbols: Immer Anziehung (Symbol wandert zur Maus)
+        newOffsetX = currentOffsetX + (mouseXDoc - currentOffsetX) * ATTRACTION_STRENGTH;
+        newOffsetY = currentOffsetY + (mouseYDoc - currentOffsetY) * ATTRACTION_STRENGTH;
       }
-    }, { passive: false });
 
-    // Zoom via Pinch (Mobile) – Symbol bleibt an seiner Position
-    let pinchData = { active: false, startDist: 0, startScale: 1, worldX: 0, worldY: 0 };
-
-    interactionLayer.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
-        if (!interactionLayerVisible) return;
-        e.preventDefault();
-        const { rect, x: symbolScreenX, y: symbolScreenY } = getCurrentSymbolScreenPosition();
-        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchData.active = true;
-        pinchData.startDist = Math.sqrt(dx * dx + dy * dy);
-        pinchData.startScale = zoomState.scale;
-        pinchData.worldX = (centerX - symbolScreenX) / zoomState.scale;
-        pinchData.worldY = (centerY - symbolScreenY) / zoomState.scale;
-      }
-    }, { passive: false });
-
-    interactionLayer.addEventListener('touchmove', (e) => {
-      if (pinchData.active && e.touches.length === 2) {
-        e.preventDefault();
-        const { rect } = getCurrentSymbolScreenPosition();
-        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (pinchData.startDist > 0) {
-          const newScale = Math.max(0.03, Math.min(100, pinchData.startScale * (dist / pinchData.startDist)));
-          zoomState.offsetX = (centerX - pinchData.worldX * newScale) - rect.left;
-          zoomState.offsetY = (centerY - pinchData.worldY * newScale) - rect.top;
-          zoomState.scale = newScale;
-          if (zoomInstance) {
-            zoomInstance.setView({ offsetX: zoomState.offsetX, offsetY: zoomState.offsetY }, false);
-          }
-        }
-      }
-    }, { passive: false });
-
-    interactionLayer.addEventListener('touchend', (e) => {
-      if (e.touches.length < 2) pinchData.active = false;
-    });
+      zoomInstance.setView({
+        scale: newScale,
+        offsetX: newOffsetX,
+        offsetY: newOffsetY
+      });
+    }, { capture: true, passive: false });
 
 
+    if (!symbolContainer.contains(canvas)) symbolContainer.appendChild(canvas);
+    if (!symbolContainer.contains(interactionLayer)) symbolContainer.appendChild(interactionLayer);
 
     if (controls.nextSibling) {
       document.body.insertBefore(symbolContainer, controls.nextSibling);
@@ -587,11 +737,6 @@ canvas {
       document.body.appendChild(symbolContainer);
     }
 
-    // Verstecktes Canvas für die Fotogenerierung ohne Hintergrund
-    const photoCanvas = document.createElement('canvas');
-    photoCanvas.width = 400;
-    photoCanvas.height = 400;
-    photoCanvas.style.display = 'none';
     document.body.appendChild(photoCanvas);
 
     // Grafikeditor-Variablen und -Funktionen
@@ -685,8 +830,8 @@ canvas {
       photo.appendChild(rotationHandle);
       document.body.appendChild(photo);
 
-      // Klick-Handler für die Auswahl
-      photo.addEventListener('mousedown', function (e) {
+      // Pointer-Handler für die Auswahl
+      photo.addEventListener('pointerdown', function (e) {
         if (e.target === photo || e.target === mediaElement) {
           // Vorherige Auswahl entfernen
           if (selectedPhoto && selectedPhoto !== photo) {
@@ -695,13 +840,13 @@ canvas {
           photo.classList.add('selected');
           selectedPhoto = photo;
 
-          // Starte das Verschieben nur, wenn auf das Foto selbst geklickt wurde
+          // Starte das Verschieben
           startDragging(e, photo);
         }
       });
 
       // Rotations-Handler
-      rotationHandle.addEventListener('mousedown', function (e) {
+      rotationHandle.addEventListener('pointerdown', function (e) {
         e.stopPropagation();
         startRotation(e, photo);
       });
@@ -730,7 +875,7 @@ canvas {
         controlPoint.style.cursor = pos.cursor;
         controlPoint.dataset.position = pos.position;
 
-        controlPoint.addEventListener('mousedown', function (e) {
+        controlPoint.addEventListener('pointerdown', function (e) {
           e.stopPropagation();
           startResizing(e, photo, pos.position);
         });
@@ -741,10 +886,7 @@ canvas {
 
     // Verschieben eines Fotos starten
     function startDragging(e, element) {
-      e.preventDefault();
-
-      // Elemente im Vordergrund bleiben im Vordergrund, aber ausgewählte kommen nach vorne
-      element.classList.add('selected');
+      element.setPointerCapture(e.pointerId);
 
       let startX = e.clientX;
       let startY = e.clientY;
@@ -758,18 +900,21 @@ canvas {
         element.style.top = (startTop + dy) + 'px';
       }
 
-      function stopDragging() {
-        document.removeEventListener('mousemove', moveElement);
-        document.removeEventListener('mouseup', stopDragging);
+      function stopDragging(e) {
+        element.releasePointerCapture(e.pointerId);
+        element.removeEventListener('pointermove', moveElement);
+        element.removeEventListener('pointerup', stopDragging);
+        element.removeEventListener('pointercancel', stopDragging);
       }
 
-      document.addEventListener('mousemove', moveElement);
-      document.addEventListener('mouseup', stopDragging);
+      element.addEventListener('pointermove', moveElement);
+      element.addEventListener('pointerup', stopDragging);
+      element.addEventListener('pointercancel', stopDragging);
     }
 
     // Größenänderung eines Fotos starten
     function startResizing(e, element, position) {
-      e.preventDefault();
+      element.setPointerCapture(e.pointerId);
 
       const mediaElement = element.querySelector('img') || element.querySelector('video');
       const rect = element.getBoundingClientRect();
@@ -780,14 +925,12 @@ canvas {
       const startLeft = parseInt(element.style.left) || 0;
       const startTop = parseInt(element.style.top) || 0;
       const aspectRatio = startWidth / startHeight;
-      const rotation = parseInt(element.dataset.rotation) || 0;
 
       function resizeElement(e) {
         let newWidth, newHeight, newLeft, newTop;
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
 
-        // Je nach Position des Control Points verschiedene Größenänderungen
         switch (position) {
           case 'top-left':
             newWidth = startWidth - dx;
@@ -847,18 +990,21 @@ canvas {
         }
       }
 
-      function stopResizing() {
-        document.removeEventListener('mousemove', resizeElement);
-        document.removeEventListener('mouseup', stopResizing);
+      function stopResizing(e) {
+        element.releasePointerCapture(e.pointerId);
+        element.removeEventListener('pointermove', resizeElement);
+        element.removeEventListener('pointerup', stopResizing);
+        element.removeEventListener('pointercancel', stopResizing);
       }
 
-      document.addEventListener('mousemove', resizeElement);
-      document.addEventListener('mouseup', stopResizing);
+      element.addEventListener('pointermove', resizeElement);
+      element.addEventListener('pointerup', stopResizing);
+      element.addEventListener('pointercancel', stopResizing);
     }
 
     // Rotation eines Fotos starten
     function startRotation(e, element) {
-      e.preventDefault();
+      element.setPointerCapture(e.pointerId);
 
       const rect = element.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
@@ -873,13 +1019,16 @@ canvas {
         element.style.transform = `rotate(${newRotation}deg)`;
       }
 
-      function stopRotation() {
-        document.removeEventListener('mousemove', rotateElement);
-        document.removeEventListener('mouseup', stopRotation);
+      function stopRotation(e) {
+        element.releasePointerCapture(e.pointerId);
+        element.removeEventListener('pointermove', rotateElement);
+        element.removeEventListener('pointerup', stopRotation);
+        element.removeEventListener('pointercancel', stopRotation);
       }
 
-      document.addEventListener('mousemove', rotateElement);
-      document.addEventListener('mouseup', stopRotation);
+      element.addEventListener('pointermove', rotateElement);
+      element.addEventListener('pointerup', stopRotation);
+      element.addEventListener('pointercancel', stopRotation);
     }
 
     // Implementierung der Foto-Funktion
@@ -1015,9 +1164,8 @@ canvas {
 
       context.save();
       if (!forExport && zoomState && targetCanvas === canvas) {
-        // Zoom + Pan: Absoluter Screen-Koordinaten berechnen (Scroll-sicher + Pan!)
-        const rect = symbolContainer.getBoundingClientRect();
-        context.translate(rect.left + zoomState.offsetX, rect.top + zoomState.offsetY);
+        // Zoom + Pan: Nutze Dokument-Koordinaten minus Fenster-Scroll
+        context.translate(zoomState.offsetX - window.scrollX, zoomState.offsetY - window.scrollY);
         context.scale(zoomState.scale, zoomState.scale);
       } else {
         // Export (Foto/GIF): Immer zentriert, kein Zoom
@@ -1038,28 +1186,32 @@ canvas {
       const equivFontSize = minDim * (equivSize / 100);
       const radius = minDim * (triangleSize / 100);
 
-      // Wenn Dreieckgröße 0 ist, nichts zeichnen
-      if (triangleSize <= 0) {
+      const symbolCount = parseInt(document.getElementById('symbolCountInput').value) || 0;
+      if (symbolCount <= 0 || triangleSize <= 0) {
         context.restore();
         return;
       }
 
       const vertices = [];
-      for (let i = 0; i < 3; i++) {
-        const thetaDeg = frameAngle + i * 120;
+      const angleStep = 360 / symbolCount;
+      for (let i = 0; i < symbolCount; i++) {
+        const thetaDeg = frameAngle + i * angleStep;
         const thetaRad = (thetaDeg * Math.PI) / 180;
         const x = radius * Math.cos(thetaRad);
         const y = radius * Math.sin(thetaRad);
         vertices.push({ x, y, thetaRad });
       }
 
-      const labels = [
-        document.getElementById('label0Input').value || "0",
-        document.getElementById('label1Input').value || "1",
-        document.getElementById('labelInfInput').value || "∞"
-      ];
+      const labelInputs = document.querySelectorAll('.symbol-label-input');
+      const labels = Array.from(labelInputs).map(input => input.value || "");
 
-      const equivSymbol = document.getElementById('equivSymbolInput').value || "≡";
+      const syncEquiv = document.getElementById('syncEquivCheckbox').checked;
+      const equivInputs = document.querySelectorAll('.equiv-symbol-input');
+      const globalEquivInput = document.getElementById('globalEquivInput');
+      const equivSymbols = syncEquiv 
+        ? new Array(symbolCount).fill(globalEquivInput ? globalEquivInput.value : "≡")
+        : Array.from(equivInputs).map(input => input.value || "");
+
       const tangentialMode = document.getElementById('rotateCheckbox').checked;
 
       // Zeichne Symbole an den Ecken nur wenn textSize > 0
@@ -1069,23 +1221,23 @@ canvas {
         context.textAlign = "center";
         context.textBaseline = "middle";
 
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < symbolCount; i++) {
           const { x, y, thetaRad } = vertices[i];
           context.save();
           context.translate(x, y);
           if (tangentialMode) {
             context.rotate(thetaRad + Math.PI / 2);
           }
-          context.fillText(labels[i], 0, 0);
+          context.fillText(labels[i] || "", 0, 0);
           context.restore();
         }
       }
 
       // Zeichne Äquivalenzsymbole an den Kanten nur wenn equivSize > 0
-      if (equivSize > 0 && equivLength > 0) {
-        for (let i = 0; i < 3; i++) {
+      if (equivSize > 0 && equivLength > 0 && symbolCount > 1) {
+        for (let i = 0; i < symbolCount; i++) {
           const p1 = vertices[i];
-          const p2 = vertices[(i + 1) % 3];
+          const p2 = vertices[(i + 1) % symbolCount];
           const midX = (p1.x + p2.x) / 2;
           const midY = (p1.y + p2.y) / 2;
           const sideAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
@@ -1098,8 +1250,10 @@ canvas {
           context.textBaseline = "middle";
 
           const duplicateEnabled = document.getElementById('duplicateIdentisch').checked;
+          const currentEquiv = equivSymbols[i] || "";
+          
           if (duplicateEnabled) {
-            const originalText = equivSymbol;
+            const originalText = currentEquiv;
             const desiredSpacing = equivFontSize * 1.2;
             const offset = desiredSpacing / (equivLength / 100);
             context.scale(1, equivLength / 100);
@@ -1108,7 +1262,7 @@ canvas {
             context.fillText(originalText, 0, offset);
           } else {
             context.scale(1, equivLength / 100);
-            context.fillText(equivSymbol, 0, 0);
+            context.fillText(currentEquiv, 0, 0);
           }
           context.restore();
         }
@@ -1271,9 +1425,8 @@ canvas {
     let autoSpeedBase = manualSpeed;
     let autoSpeedTarget = autoSpeedBase + currentStep.increment;
     let autoSpeedTimer = 0;
-    let cycleDuration = isInStartPhase
-      ? (AUTO_SPEED_CONFIG.START_PHASE.rampDuration + AUTO_SPEED_CONFIG.START_PHASE.holdDuration)
-      : (currentStep.rampDuration + currentStep.holdDuration);
+    // Wir prüfen, ob wir uns in der ursprünglichen Startphase befinden (nur beim ersten Laden)
+    isInStartPhase = (zoomState.offsetX === window.innerWidth / 2 && zoomState.offsetY === getResponsiveInitialOffsetY() && zoomState.scale === 1);
 
 
 
@@ -1289,20 +1442,24 @@ canvas {
     let lastTimestamp = null;
     const ctx = canvas.getContext('2d');
 
+    let lastWindowWidth = window.innerWidth;
 
     // Funktion zum dynamischen Anpassen der Canvasgröße
     function resizeCanvasToFitContent() {
+      const currentWidth = window.innerWidth;
+      const widthChanged = Math.abs(currentWidth - lastWindowWidth) > 10;
+      lastWindowWidth = currentWidth;
+
       // Viewport-relative Größen verwenden
       const viewportSize = Math.min(window.innerWidth, window.innerHeight);
 
-      const oldLogicalSize = logicalCanvasSize;
       logicalCanvasSize = Math.floor(viewportSize * 0.75);
 
-      // symbolContainer als Layout-Platzhalter in fester Größe
-      symbolContainer.style.width = logicalCanvasSize + 'px';
-      symbolContainer.style.height = logicalCanvasSize + 'px';
+      // symbolContainer als Platzhalter (schiebt Rest-Content nach unten)
+      symbolContainer.style.width = '100%';
+      symbolContainer.style.height = getSymbolZoneHeight() + 'px';
 
-      // Canvas bleibt permanent unklickbar
+      // Canvas und InteractionLayer sind fixed und Vollbild
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       canvas.style.position = 'fixed';
@@ -1311,17 +1468,24 @@ canvas {
       canvas.style.zIndex = '50';
       canvas.style.pointerEvents = 'none';
 
+      interactionLayer.style.position = 'fixed';
+      interactionLayer.style.top = '0';
+      interactionLayer.style.left = '0';
+      interactionLayer.style.width = '100vw';
+      interactionLayer.style.height = '100vh';
+      interactionLayer.style.zIndex = '51';
+
       // Photo-Canvas bleibt exakt logische Größe für Export
       photoCanvas.width = logicalCanvasSize;
       photoCanvas.height = logicalCanvasSize;
 
-      // Zoom-Offset re-zentrieren basierend auf der Änderung der logischen Größe
-      if (zoomInstance && oldLogicalSize > 0) {
-        const dx = logicalCanvasSize / 2 - oldLogicalSize / 2;
-        const dy = logicalCanvasSize / 2 - oldLogicalSize / 2;
+      // Beim Resize: Nur re-zentrieren wenn die Breite sich wirklich geändert hat
+      // (Verhindert Jumps auf Mobil, wenn nur die Adressleiste erscheint/verschwindet)
+      if (zoomInstance && widthChanged) {
+        // Behalte die aktuelle Skalierung bei, re-zentriere nur die Position im oberen Bereich
         zoomInstance.setView({
-          offsetX: zoomState.offsetX + dx,
-          offsetY: zoomState.offsetY + dy
+          offsetX: window.innerWidth / 2,
+          offsetY: getResponsiveInitialOffsetY()
         }, false);
       }
     }
@@ -1338,8 +1502,8 @@ canvas {
       const dt = (timestamp - lastTimestamp) / 1000;
       lastTimestamp = timestamp;
 
-      // Echtzeit-Prüfung der Viewport-Größe (für mobile URL-Leisten-Verschiebungen)
-      if (canvas.width !== window.innerWidth || Math.abs(canvas.height - window.innerHeight) > 1) {
+      // Echtzeit-Prüfung der Viewport-Größe
+      if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
       }
@@ -1421,41 +1585,56 @@ canvas {
       }
 
 
-      // Hitbox / InteractionLayer dynamisch an Position und Skalierung anpassen
-      if (interactionLayer && zoomState) {
-        const rect = symbolContainer.getBoundingClientRect();
-        const symbolScreenX = rect.left + zoomState.offsetX;
-        const symbolScreenY = rect.top + zoomState.offsetY;
+      // Hitbox-Zentrum für mathematisches Hit-Testing aktualisieren
+      if (zoomState) {
+        // interactionCenterX/Y sind Dokument-relative Koordinaten
+        interactionCenterX = zoomState.offsetX;
+        interactionCenterY = zoomState.offsetY;
 
         const minDim = logicalCanvasSize;
-        const triSize = parseFloat(document.getElementById('triangleSize').value) || 30;
-        const textSize = parseFloat(document.getElementById('textSize').value) || 25;
-        // Puffer leicht erhöhen für angenehmeres Greifen
-        // Mindestradius für das Layer (z.B. 70px), damit es auf Mobile immer greifbar bleibt
-        const baseRadius = (minDim * (triSize / 100) + minDim * (textSize / 100) * 0.8) * zoomState.scale;
-        const symbolRadius = Math.max(isTouchDevice() ? 140 : 200, baseRadius);
-        const layerWidth = symbolRadius * 2;
-        const layerHeight = symbolRadius * 2;
-        const layerLeft = symbolScreenX - layerWidth / 2;
-        const layerTop = symbolScreenY - layerHeight / 2;
-        const hitRadius = Math.max(48, baseRadius * 0.85);
-        const isVisible = triSize > 0 &&
-          layerLeft < window.innerWidth &&
-          layerLeft + layerWidth > 0 &&
-          layerTop < window.innerHeight &&
-          layerTop + layerHeight > 0;
+        const triSize = parseFloat(document.getElementById('triangleSize').value) || 0;
+        const textSize = parseFloat(document.getElementById('textSize').value) || 0;
+        // Exakter visueller Radius: Dreieck-Radius + Label-Überhang (Labels sitzen zentriert auf den Vertices)
+        const triangleRadius = minDim * (triSize / 100);
+        const labelOverhang = minDim * (textSize / 100) * 0.6; // 0.6 ≈ halbe Texthöhe + Puffer für breite Zeichen
+        const baseRadius = (triangleRadius + labelOverhang) * zoomState.scale;
 
-        interactionLayerVisible = isVisible;
-        interactionCenterX = symbolScreenX;
-        interactionCenterY = symbolScreenY;
-        interactionHitRadius = hitRadius;
-        interactionLayer.style.width = layerWidth + 'px';
-        interactionLayer.style.height = layerHeight + 'px';
-        interactionLayer.style.left = layerLeft + 'px';
-        interactionLayer.style.top = layerTop + 'px';
-        interactionLayer.style.pointerEvents = isVisible ? 'auto' : 'none';
-        interactionLayer.style.opacity = isVisible ? '1' : '0';
-        interactionLayer.style.touchAction = 'none';
+        interactionHitRadius = Math.max(48, baseRadius); // 48px Minimum (Touch-Ziel)
+        interactionLayerVisible = triSize > 0;
+
+        // Debug: Hitbox-Kreis zeichnen
+        if (document.getElementById('debugHitbox').checked) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.beginPath();
+          ctx.arc(interactionCenterX, interactionCenterY, interactionHitRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Mittelpunkt
+          ctx.beginPath();
+          ctx.arc(interactionCenterX, interactionCenterY, 4, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+          ctx.fill();
+          // Symbol-Zone Grenze (responsive Dokumenten-Grenze)
+          const zoneBottom = getSymbolZoneHeight();
+          const visualZoneBottom = zoneBottom - window.scrollY;
+          ctx.beginPath();
+          ctx.moveTo(0, visualZoneBottom);
+          ctx.lineTo(window.innerWidth, visualZoneBottom);
+          ctx.strokeStyle = 'rgba(0, 120, 255, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([8, 6]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Label
+          ctx.font = '11px monospace';
+          ctx.fillStyle = 'rgba(0, 120, 255, 0.7)';
+          ctx.fillText('Symbol-Zone ▲ / Scroll-Zone ▼', 10, visualZoneBottom - 5);
+          ctx.restore();
+        }
       }
 
       requestAnimationFrame(animate);
@@ -1482,38 +1661,6 @@ canvas {
     }
   });
 
-  // Fenster-Größenänderung behandeln
-  window.addEventListener('resize', () => {
-    // Nach kurzer Verzögerung die Canvas-Größe neu berechnen (Debounce)
-    if (window.__resizeTimeoutId) {
-      clearTimeout(window.__resizeTimeoutId);
-    }
-    window.__resizeTimeoutId = setTimeout(() => {
-      if (document.getElementById('canvas')) {
-        const resizeCanvasToFitContent = function () {
-          const canvas = document.getElementById('canvas');
-          const photoCanvas = document.querySelector('canvas[style="display: none;"]');
-
-          // Viewport-relative Größen verwenden
-          const viewportSize = Math.min(window.innerWidth, window.innerHeight);
-
-          // Canvas-Größe relativ zum Viewport (75% der Fenstergröße)
-          const canvasSize = Math.floor(viewportSize * 0.75);
-
-          canvas.width = canvasSize;
-          canvas.height = canvasSize;
-
-          // Aktualisiere auch das Photo-Canvas
-          if (photoCanvas) {
-            photoCanvas.width = canvasSize;
-            photoCanvas.height = canvasSize;
-          }
-        };
-
-        resizeCanvasToFitContent();
-      }
-    }, 250);
-  });
 
   // Starte alles, wenn das Dokument geladen ist
   document.addEventListener('DOMContentLoaded', () => {

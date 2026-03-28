@@ -400,8 +400,32 @@
       glyphTextures = {};
     }
 
+    const UI_INTERACTIVE_SELECTORS = [
+      '.menu',
+      '.ctrl-panel-body',
+      '.ctrl-drag-handle',
+      '.ctrl-header-buttons',
+      '.ctrl-config-popup',
+      '.ctrl-select-popup',
+      '.ctrl-style-popup',
+      '.settings-panel',
+      '.settings-button',
+      '.back-button'
+    ];
+
+    const UI_OBSTACLE_SELECTORS = [
+      '.menu',
+      '.ctrl-panel-body',
+      '.ctrl-config-popup',
+      '.ctrl-select-popup',
+      '.ctrl-style-popup',
+      '.settings-panel',
+      '.settings-button',
+      '.back-button'
+    ];
+
     function isUiElement(el) {
-      return !!(el && (el.closest('.menu') || el.closest('.ctrl-panel') || el.closest('.settings-panel') || el.closest('.settings-button') || el.closest('.back-button')));
+      return !!(el && UI_INTERACTIVE_SELECTORS.some(selector => el.closest(selector)));
     }
 
 	    let uiObstacleSig = '';
@@ -423,7 +447,7 @@
 		let uiBodyObserver = null;
 		function installUiObstacleObservers() {
 		  if (uiMoveObserver) return;
-		  const selector = '.menu, .ctrl-panel, .settings-panel, .settings-button, .back-button';
+		  const selector = Array.from(new Set([...UI_INTERACTIVE_SELECTORS, ...UI_OBSTACLE_SELECTORS])).join(', ');
 		  uiMoveObserver = new MutationObserver(() => {
 		    // IMPORTANT: run as microtask (not rAF) so obstacles clear BEFORE the next draw()
 		    queueUiObstacleUpdate(false);
@@ -455,7 +479,7 @@
 
 	    // Berechnet UI-Rechtecke in Screen-Koordinaten
 	    function getUiScreenRects() {
-	      const selectors = ['.menu', '.ctrl-panel', '.settings-panel', '.settings-button', '.back-button'];
+		      const selectors = UI_OBSTACLE_SELECTORS;
 	      const els = selectors.flatMap(sel => Array.from(document.querySelectorAll(sel)));
 	      const rects = [];
 	      for (const el of els) {
@@ -1188,14 +1212,12 @@
 
     if (panel) {
       panel.addToggle('pause', {
-        label: 'Pause', value: paused,
-        labelOn: 'An', labelOff: 'Aus',
+	        label: 'Pausiert', value: paused,
         onChange: v => paused = v
       });
 
       panel.addToggle('gravity', {
-        label: 'Gravitation', value: useGravity,
-        labelOn: 'Echt', labelOff: 'Konstant',
+	        label: 'Echte Gravitation', value: useGravity,
         onChange: v => {
           useGravity = v;
           // Reset all velocities when switching modes
@@ -1277,10 +1299,10 @@
       });
       // Scale-Stepper entfernt - Zoom erfolgt jetzt via Mausrad/Pinch
 
-      // Clear button (custom row, styled like ctrl-toggle)
+      // Clear button (custom row, styled like ctrl-button)
       const row = document.createElement('div');
       row.className = 'ctrl-row';
-      row.innerHTML = '<label class="ctrl-label">Reset</label><button class="ctrl-toggle">Clear</button>';
+      row.innerHTML = '<label class="ctrl-label">Reset</label><button class="ctrl-button">Clear</button>';
       row.querySelector('button').addEventListener('click', () => {
         grid.fill(Material.EMPTY);
 	        glyph.fill(0);
@@ -1292,9 +1314,9 @@
 		      installUiObstacleObservers();
 
       // Listen for panel drag events to clear sand under the panel
-      panel.el.addEventListener('ctrl-panel-drag-move', (e) => {
-        const { rect, prevRect } = e.detail;
-        clearSandAlongRectPath(prevRect, rect);
+	      panel.el.addEventListener('ctrl-panel-drag-move', (e) => {
+	        const { bodyRect, prevBodyRect, rect, prevRect } = e.detail;
+	        clearSandAlongRectPath(prevBodyRect || prevRect, bodyRect || rect);
       });
     }
 

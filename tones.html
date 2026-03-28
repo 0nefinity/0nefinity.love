@@ -247,10 +247,8 @@
     const panel = Controls.createPanel({ position: 'left' });
 
     panel.addToggle('playing', {
-      label: 'Ton',
+	      label: 'Ton aktiv',
       value: false,
-      labelOn: 'An',
-      labelOff: 'Aus',
       onChange: (v) => {
         if (v) {
           generator.start();

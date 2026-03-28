@@ -1,6 +1,181 @@
-[
-  "Bibel.txt",
-  "Quran.txt",
-  "Thora.txt",
-  "Evolutionstheorie.txt"
-]
+{
+  "version": 1,
+  "generatedAt": "2026-03-27T13:49:47.774381Z",
+  "items": [
+    {
+      "file": "Bhagavad-Gita.txt",
+      "name": "Bhagavad-Gita",
+      "rawCharCount": 133876,
+      "charCount": 133874,
+      "uniqueCharCount": 97,
+      "uniqueChars": " !\"&(),-.0123456789:;?ABCDEFGHIJKLMNOPQRSTUVWYZabcdefghijklmnopqrstuvwxyzÂÄÖÜßâäéîöûüāŖŗŚśŞşū–“„…",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 2107,
+          "bounds": {
+            "minX": -2107,
+            "maxX": 2107,
+            "minY": -2107,
+            "maxY": 2107,
+            "width": 4214,
+            "height": 4214
+          },
+          "worldSpan": 4214
+        }
+      }
+    },
+    {
+      "file": "Bibel.txt",
+      "name": "Bibel",
+      "rawCharCount": 4343244,
+      "charCount": 4343240,
+      "uniqueCharCount": 79,
+      "uniqueChars": " !\"'(),-.0123456789:;?ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwxyzÄÖÜßäöü",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 11995,
+          "bounds": {
+            "minX": -11995,
+            "maxX": 11995,
+            "minY": -11995,
+            "maxY": 11995,
+            "width": 23990,
+            "height": 23990
+          },
+          "worldSpan": 23990
+        }
+      }
+    },
+    {
+      "file": "Evolutionstheorie.txt",
+      "name": "Evolutionstheorie",
+      "rawCharCount": 1381578,
+      "charCount": 1205348,
+      "uniqueCharCount": 108,
+      "uniqueChars": " !\"$%'()*,-./0123456789:;<=>?ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_abcdefghijklmnopqrstuvwxyz{|}~¥§«®°»ÄÖÜßäöü—„•■♦",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 6320,
+          "bounds": {
+            "minX": -6320,
+            "maxX": 6320,
+            "minY": -6320,
+            "maxY": 6320,
+            "width": 12640,
+            "height": 12640
+          },
+          "worldSpan": 12640
+        }
+      }
+    },
+    {
+      "file": "full-Mahabharata.txt",
+      "name": "full-Mahabharata",
+      "rawCharCount": 15830012,
+      "charCount": 15813803,
+      "uniqueCharCount": 88,
+      "uniqueChars": " !\"#&'(),-.0123456789:;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]_`abcdefghijklmnopqrstuvwxyzçāō–—’",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 22886,
+          "bounds": {
+            "minX": -22886,
+            "maxX": 22886,
+            "minY": -22886,
+            "maxY": 22886,
+            "width": 45772,
+            "height": 45772
+          },
+          "worldSpan": 45772
+        }
+      }
+    },
+    {
+      "file": "Quran.txt",
+      "name": "Quran",
+      "rawCharCount": 971516,
+      "charCount": 945226,
+      "uniqueCharCount": 82,
+      "uniqueChars": " !\"'(),-.0123456789:;?ABCDEFGHIJKLMNOPQRSTUVWYZ]`abcdefghijklmnopqrstuvwyzÄÖÜßäöü„",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 5596,
+          "bounds": {
+            "minX": -5596,
+            "maxX": 5596,
+            "minY": -5596,
+            "maxY": 5596,
+            "width": 11192,
+            "height": 11192
+          },
+          "worldSpan": 11192
+        }
+      }
+    },
+    {
+      "file": "Thora.txt",
+      "name": "Thora",
+      "rawCharCount": 220,
+      "charCount": 216,
+      "uniqueCharCount": 40,
+      "uniqueChars": " (),-.0:@EHIKSTVWabcdefghijklnorstuvwyöü",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 87,
+          "bounds": {
+            "minX": -87,
+            "maxX": 87,
+            "minY": -87,
+            "maxY": 87,
+            "width": 174,
+            "height": 174
+          },
+          "worldSpan": 174
+        }
+      }
+    },
+    {
+      "file": "triplebible.txt",
+      "name": "triplebible",
+      "rawCharCount": 13029724,
+      "charCount": 13029716,
+      "uniqueCharCount": 79,
+      "uniqueChars": " !\"'(),-.0123456789:;?ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwxyzÄÖÜßäöü",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 20774,
+          "bounds": {
+            "minX": -20774,
+            "maxX": 20774,
+            "minY": -20774,
+            "maxY": 20774,
+            "width": 41548,
+            "height": 41548
+          },
+          "worldSpan": 41548
+        }
+      }
+    }
+  ]
+}

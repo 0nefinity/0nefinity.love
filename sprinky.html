@@ -460,10 +460,8 @@ const panel = Controls.createPanel({ position: 'center' });
 
 panel
   .addToggle('gravity', {
-    label: 'Gravity',
+	    label: 'Gravitation',
     value: false,
-    labelOn: 'AN',
-    labelOff: 'AUS',
     onChange: v => GRAVITY = v ? 0.3 : 0
   })
   .addDivider()
