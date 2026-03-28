@@ -57,12 +57,20 @@
     <lastmod>2025-11-13</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/0nefinity-old.js</loc>
+    <lastmod>2026-03-18</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/0nefinity-test.js</loc>
+    <lastmod>2026-03-18</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/0nefinity.018</loc>
     <lastmod>2025-11-10</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/0nefinity.js</loc>
-    <lastmod>2026-03-12</lastmod>
+    <lastmod>2026-03-18</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/0nefinity/index.html</loc>
@@ -78,7 +86,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/0sp1wns.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-15</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/0und1</loc>
@@ -94,7 +102,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/10sand.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/1kaleidosk0p.html</loc>
@@ -113,12 +121,20 @@
     <lastmod>2026-02-18</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/AGENTS.md</loc>
+    <lastmod>2026-03-25</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/README.html</loc>
-    <lastmod>2026-03-12</lastmod>
+    <lastmod>2026-03-17</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/Was, wenn man im Dezimalsystem mit 0 als 1 startet</loc>
     <lastmod>2025-10-08</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/WasIstEine0</loc>
+    <lastmod>2026-03-26</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/achtung</loc>
@@ -161,24 +177,40 @@
     <lastmod>2025-04-11</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/assets/bibeln/Bhagavad-Gita.txt</loc>
+    <lastmod>2026-03-27</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/assets/bibeln/Bibel.txt</loc>
-    <lastmod>2025-12-01</lastmod>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/assets/bibeln/Evolutionstheorie.txt</loc>
-    <lastmod>2025-12-01</lastmod>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/assets/bibeln/Quran.txt</loc>
-    <lastmod>2025-12-01</lastmod>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/assets/bibeln/Thora.txt</loc>
-    <lastmod>2026-03-08</lastmod>
+    <lastmod>2026-03-25</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/assets/bibeln/bibles.json</loc>
-    <lastmod>2026-03-08</lastmod>
+    <lastmod>2026-03-27</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/assets/bibeln/full-Mahabharata.txt</loc>
+    <lastmod>2026-03-27</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/assets/bibeln/generate_bible_manifest.py</loc>
+    <lastmod>2026-03-26</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/assets/bibeln/triplebible.txt</loc>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/assets/bible-behind-a-point-Stillleben.png</loc>
@@ -238,23 +270,23 @@
   </url>
   <url>
     <loc>https://0nefinity.love/beautiful-numbers</loc>
-    <lastmod>2025-12-02</lastmod>
+    <lastmod>2026-03-26</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/bendTheSystem.html</loc>
     <lastmod>2026-02-11</lastmod>
   </url>
   <url>
-    <loc>https://0nefinity.love/bibelaufdenpunkt copy.html</loc>
-    <lastmod>2026-03-08</lastmod>
+    <loc>https://0nefinity.love/bibelaufdenpunkt copy 2.html</loc>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
-    <loc>https://0nefinity.love/bibelaufdenpunkt copy2.html</loc>
-    <lastmod>2026-03-09</lastmod>
+    <loc>https://0nefinity.love/bibelaufdenpunkt copy.html</loc>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/bibelaufdenpunkt.html</loc>
-    <lastmod>2026-03-09</lastmod>
+    <lastmod>2026-03-28</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/biggercontext/test.html</loc>
@@ -286,7 +318,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/circleheart.html</loc>
-    <lastmod>2026-02-25</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/circlesAndTriangles.html</loc>
@@ -294,7 +326,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/co0rdinates.html</loc>
-    <lastmod>2026-03-11</lastmod>
+    <lastmod>2026-03-26</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/condensed light can form shadows</loc>
@@ -398,7 +430,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/fourieous.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/fractalizer.idea</loc>
@@ -453,8 +485,16 @@
     <lastmod>2025-11-10</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/gott-würfelt-nicht.html</loc>
+    <lastmod>2026-03-15</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/gruselig, dass man sich gemoetrische Obkjekte beliebiger größe vorstellen kann</loc>
     <lastmod>2025-11-03</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/heart.html</loc>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/hidden-irrationality</loc>
@@ -505,8 +545,12 @@
     <lastmod>2026-02-23</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/index-old.html</loc>
+    <lastmod>2026-03-18</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/index.html</loc>
-    <lastmod>2026-03-12</lastmod>
+    <lastmod>2026-03-18</lastmod>
     <priority>1.0</priority>
   </url>
   <url>
@@ -576,6 +620,10 @@
   <url>
     <loc>https://0nefinity.love/kuriositäten/ai-slop/random-01-in-one-of-infinite-possible-meaningless-stage-scenes-with-light-and-incorrect-shadow.jpg</loc>
     <lastmod>2025-11-27</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/kuriositäten/ai-slop/unerquickliche Gurken.png</loc>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/kuriositäten/ausversehen_Hakenkreuz.html</loc>
@@ -715,11 +763,11 @@
   </url>
   <url>
     <loc>https://0nefinity.love/meta.css</loc>
-    <lastmod>2026-03-12</lastmod>
+    <lastmod>2026-03-28</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/meta.js</loc>
-    <lastmod>2026-03-11</lastmod>
+    <lastmod>2026-03-27</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/millionen_Kreise_aufnehmen.html</loc>
@@ -731,7 +779,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/n0thingsp1s.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/nichts hier hat exklusivitätsanspruch</loc>
@@ -763,7 +811,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/pointfont.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/point≡circle≡sphere.html</loc>
@@ -1003,7 +1051,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/sitemap.xml</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-28</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/slider.html</loc>
@@ -1023,11 +1071,11 @@
   </url>
   <url>
     <loc>https://0nefinity.love/sprinky copy.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-15</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/sprinky.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-15</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/structure-of-0nefinity.json</loc>
@@ -1067,11 +1115,15 @@
   </url>
   <url>
     <loc>https://0nefinity.love/tones.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-15</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/tools/Parsedown.php</loc>
     <lastmod>2026-01-11</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/bibelpunkt-gpu.js</loc>
+    <lastmod>2026-03-24</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/tools/clusterize/clusterize.css</loc>
@@ -1086,16 +1138,60 @@
     <lastmod>2026-01-15</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/tools/controls copy.js</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/tools/controls.js</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-28</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/tools/decimal.js</loc>
     <lastmod>2025-11-20</lastmod>
   </url>
   <url>
-    <loc>https://0nefinity.love/tools/fonts/Ysabeau/kmKiZqEiBAXLcnuMvjZNI_5FGeJet7OWCAY3KcA.woff2</loc>
-    <lastmod>2025-11-23</lastmod>
+    <loc>https://0nefinity.love/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Rubik/RubikBrokenFax.ttf</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Rubik/RubikDoodleTriangles.ttf</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Rubik/RubikLines.ttf</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Ysabeau/Ysabeau-Italic.ttf</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Ysabeau/Ysabeau.ttf</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/un0nefinity-fonts.css</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/fonts-@import</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/fonts-flutter</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/fonts-link</loc>
+    <lastmod>2026-03-19</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/fonts-of-0nefinity.html</loc>
+    <lastmod>2026-03-24</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/fonts/fonts.css</loc>
+    <lastmod>2026-03-24</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/tools/generate-structure.php</loc>
@@ -1122,8 +1218,12 @@
     <lastmod>2026-02-09</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/tools/zoom copy.js</loc>
+    <lastmod>2026-03-17</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/tools/zoom.js</loc>
-    <lastmod>2026-03-12</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/transcendence</loc>
@@ -1144,6 +1244,14 @@
   <url>
     <loc>https://0nefinity.love/usemathtorealizeabsolut0nefinity.html</loc>
     <lastmod>2026-02-11</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/user/0nefinity/privat/privates-projekt.html</loc>
+    <lastmod>2026-03-16</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/user/0nefinity/öffentliches-projekt.html</loc>
+    <lastmod>2026-03-16</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/validExpressions.md</loc>
@@ -1167,7 +1275,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/where-is-01.html</loc>
-    <lastmod>2026-02-11</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/while writing something dump to the blackboard</loc>
@@ -1175,7 +1283,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/whitelines.html</loc>
-    <lastmod>2026-03-13</lastmod>
+    <lastmod>2026-03-23</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/why the obsession with trees and chicken</loc>

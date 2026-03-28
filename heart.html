@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0nefinity - Vertikale Symbole</title>
+    <link rel="stylesheet" href="/meta.css">
+    <script src="/meta.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: var(--bg-color, #000);
+            color: var(--text-color, #fff);
+            font-family: 'Verdana', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="_018-canvas">
+        <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <!-- Versteckter DOM-Trigger: Erzwingt den Download aller unicode-range Font-Dateien.
+         Canvas-Rendering allein löst keinen Download aus, erst DOM-Nutzung triggert das. -->
+    <div id="fontTrigger" aria-hidden="true"
+        style="position:absolute;left:-9999px;top:-9999px;font-size:1px;visibility:hidden;">
+        <span style="font-family:'Inter'">∞ 0 1</span>
+        <span style="font-family:'Roboto'">∞ 0 1</span>
+        <span style="font-family:'Ysabeau'">∞ 0 1</span>
+    </div>
+
+    <script>
+        (function () {
+            const canvas = document.getElementById('mainCanvas');
+            const canvasContainer = canvas.parentElement;
+            const ctx = canvas.getContext('2d');
+            const getCanvasRealm = () => window._018Space
+                ? window._018Space.getCanvasRealm(canvasContainer, { virtualSize: 1000 })
+                : {
+                    width,
+                    height,
+                    side: Math.min(width, height),
+                    offsetX: (width - Math.min(width, height)) / 2,
+                    offsetY: (height - Math.min(width, height)) / 2,
+                    toSquarePoint: (x, y) => {
+                        const side = Math.min(width, height);
+                        return {
+                            x: (width - side) / 2 + x * side,
+                            y: (height - side) / 2 + y * side
+                        };
+                    },
+                    toVirtualLength: value => value * (Math.min(width, height) / 1000)
+                };
+
+	            let width, height, dpr;
+	            let canDraw = false;
+            function resize() {
+                const rect = canvasContainer.getBoundingClientRect();
+	                const nextDpr = window.devicePixelRatio || 1;
+	                const nextWidth = Math.max(1, Math.round(rect.width || canvasContainer.clientWidth || window.innerWidth));
+	                const nextHeight = Math.max(1, Math.round(rect.height || canvasContainer.clientHeight || window.innerHeight));
+	                const didChange = nextWidth !== width || nextHeight !== height || nextDpr !== dpr;
+
+	                dpr = nextDpr;
+	                width = nextWidth;
+	                height = nextHeight;
+
+	                if (!didChange) return false;
+
+	                canvas.width = width * dpr;
+	                canvas.height = height * dpr;
+	                canvas.style.width = width + 'px';
+	                canvas.style.height = height + 'px';
+	                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	                if (canDraw) drawFrame();
+	                return true;
+            }
+
+            let resizeQueued = false;
+            function scheduleResize() {
+                if (resizeQueued) return;
+                resizeQueued = true;
+                requestAnimationFrame(() => {
+                    resizeQueued = false;
+                    resize();
+                });
+            }
+
+            window.addEventListener('resize', scheduleResize);
+            if (typeof ResizeObserver === 'function' && canvasContainer) {
+                const canvasResizeOracle = new ResizeObserver(scheduleResize);
+                canvasResizeOracle.observe(canvasContainer);
+            }
+            resize();
+
+            // Warte bis Schriften geladen sind, bevor wir rendern (optional aber besser)
+            if (document.fonts) {
+                document.fonts.ready.then(() => {
+                    console.log("Fonts loaded");
+                });
+            }
+
+            const state = {
+                fontFamily: 'Inter',
+                fontWeight: 400,
+                isItalic: false,
+                isDebug: false,
+                symbols: [
+                    { text: '∞', x: 0.5, y: 0.3, rot: 0, size: 400 },
+                    { text: '1', x: 0.51, y: 0.46, rot: 270, size: 250 },
+                    { text: '0', x: 0.51, y: 0.56, rot: 270, size: 100 }
+                ]
+            };
+	            canDraw = true;
+
+            // Font-Triggerelemente im DOM (um Browser zum Laden der Chunks zu zwingen)
+            const fontTrigger = document.createElement('div');
+            fontTrigger.style.position = 'absolute';
+            fontTrigger.style.opacity = '0';
+            fontTrigger.style.pointerEvents = 'none';
+            fontTrigger.style.zIndex = '-1';
+            fontTrigger.innerHTML = `
+                ${(Controls.DEFAULT_FONTS || []).map(f => `<span style="font-family:'${f}'">∞</span>`).join('')}
+            `;
+            document.body.appendChild(fontTrigger);
+
+            const panel = Controls.createPanel({ position: 'left', title: '018 - Symbole' });
+            let symbolSectionIds = [];
+
+            function createDefaultSymbol(index = state.symbols.length) {
+                return {
+                    text: '?',
+                    x: 0.5,
+                    y: 0.1 + (index * 0.1) % 0.8,
+                    rot: 0,
+                    size: 100
+                };
+            }
+
+            function addSymbol() {
+                state.symbols.push(createDefaultSymbol());
+                updateSymbolControls();
+            }
+
+            function removeSymbol(index) {
+                state.symbols.splice(index, 1);
+                updateSymbolControls();
+            }
+
+            function buildGlobalUI() {
+                panel.addSelect('fontFamily', {
+                    label: 'Schriftart',
+                    value: state.fontFamily,
+                    options: Controls.DEFAULT_FONTS || ['Verdana', 'Arial', 'sans-serif'],
+                    onChange: (val) => {
+                        state.fontFamily = val;
+                        updateFontUI();
+                    }
+                });
+
+                panel.addSlider('fontWeight', {
+                    label: 'Weight',
+                    min: 100,
+                    max: 900,
+                    step: 100,
+                    value: state.fontWeight,
+                    onChange: (val) => state.fontWeight = val
+                });
+
+                panel.addToggle('isItalic', {
+                    label: 'Kursiv (Italic)',
+                    value: state.isItalic,
+                    onChange: (val) => state.isItalic = val
+                });
+
+                function updateFontUI() {
+                    if (!Controls.FONT_CONFIG) return;
+                    const config = Controls.FONT_CONFIG[state.fontFamily];
+                    const isVar = config !== null && config !== undefined;
+
+                    panel.setRowDisabled('fontWeight', !isVar);
+
+                    if (isVar) {
+                        if (state.fontWeight < config.min) state.fontWeight = config.min;
+                        if (state.fontWeight > config.max) state.fontWeight = config.max;
+                        panel.setSliderConfig('fontWeight', {
+                            min: config.min,
+                            max: config.max
+                        });
+                        panel.set('fontWeight', state.fontWeight);
+                    }
+                }
+                setTimeout(updateFontUI, 50); // Initial call nach UI-Aufbau
+
+                panel.addToggle('isDebug', {
+                    label: 'Debug (Font Status)',
+                    value: state.isDebug,
+                    onChange: (val) => state.isDebug = val
+                });
+
+                panel.addDivider();
+                updateSymbolControls();
+            }
+
+            function updateSymbolControls() {
+                const activeRow = document.activeElement?.closest?.('[data-key]');
+                const activeKey = activeRow?.dataset?.key || null;
+                const activeSelector = document.activeElement?.classList?.contains('ctrl-range')
+                    ? '.ctrl-range'
+                    : document.activeElement?.classList?.contains('ctrl-textarea')
+                        ? '.ctrl-textarea'
+                    : document.activeElement?.classList?.contains('ctrl-value-input')
+                        ? '.ctrl-value-input'
+                        : document.activeElement?.classList?.contains('ctrl-button')
+                            ? '.ctrl-button'
+                        : '.ctrl-input';
+                const scrollPos = panel.bodyEl?.scrollTop || 0;
+
+                symbolSectionIds.forEach((sectionId) => panel.removeSection(sectionId));
+                symbolSectionIds = [];
+
+                state.symbols.forEach((sym, index) => {
+                    const sectionId = `symbol-${index}`;
+                    symbolSectionIds.push(sectionId);
+
+                    panel.beginSection(sectionId, {
+                        title: `Symbol ${index + 1}`,
+                        actions: [{
+                            label: '✕',
+                            title: 'Symbol löschen',
+                            ariaLabel: `Symbol ${index + 1} löschen`,
+                            onClick: () => removeSymbol(index)
+                        }]
+                    });
+                    panel.addText(`sym-${index}-text`, {
+                        label: 'Symbol',
+                        value: sym.text,
+                        placeholder: '∞\n1\n0',
+                        onChange: (v) => {
+                            sym.text = v;
+                        }
+                    });
+                    panel.addSlider(`sym-${index}-x`, {
+                        label: 'X Pos%',
+                        min: 0,
+                        max: 100,
+                        step: 1,
+                        value: sym.x * 100,
+                        decimals: 0,
+                        onChange: (v) => {
+                            sym.x = Number(v) / 100;
+                        }
+                    });
+                    panel.addSlider(`sym-${index}-y`, {
+                        label: 'Y Pos%',
+                        min: 0,
+                        max: 100,
+                        step: 1,
+                        value: sym.y * 100,
+                        decimals: 0,
+                        onChange: (v) => {
+                            sym.y = Number(v) / 100;
+                        }
+                    });
+                    panel.addSlider(`sym-${index}-size`, {
+                        label: 'Größe',
+                        min: 0,
+                        max: 500,
+                        step: 1,
+                        value: sym.size,
+                        decimals: 0,
+                        onChange: (v) => {
+                            sym.size = Number(v);
+                        }
+                    });
+                    panel.addSlider(`sym-${index}-rot`, {
+                        label: 'Rotation',
+                        min: 0,
+                        max: 360,
+                        step: 1,
+                        value: sym.rot,
+                        decimals: 0,
+                        onChange: (v) => {
+                            sym.rot = Number(v);
+                        }
+                    });
+                    panel.endSection();
+                });
+
+                const actionsSectionId = 'symbol-actions';
+                symbolSectionIds.push(actionsSectionId);
+                panel.beginSection(actionsSectionId);
+                panel.addButton('addSymbol', {
+                    label: '+ Symbol hinzufügen',
+                    title: 'Weiteres Symbol hinzufügen',
+                    onClick: addSymbol
+                });
+                panel.endSection();
+
+                if (activeKey) {
+                    const row = panel.bodyEl?.querySelector(`[data-key="${activeKey}"]`);
+                    const el = row?.querySelector(activeSelector) || row?.querySelector('.ctrl-input, .ctrl-textarea, .ctrl-value-input, .ctrl-range, .ctrl-button');
+                    if (el) {
+                        el.focus();
+                        if (el.setSelectionRange && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                            const len = el.value.length;
+                            el.setSelectionRange(len, len);
+                        }
+                    }
+                }
+                if (panel.bodyEl) panel.bodyEl.scrollTop = scrollPos;
+            }
+
+            // Glyph-Erkennung (FontFaceObserver-Technik):
+            // Vergleicht "Font, serif" vs. "serif" UND "Font, monospace" vs. "monospace".
+            // Wenn BEIDE Paare identisch sind → Font hat das Zeichen nicht (weil es zum Fallback durchfällt).
+            // Wenn mindestens ein Paar unterschiedlich ist → Font hat ein eigenes Glyph.
+            function fontHasGlyph(fontFamily, fontWeight, char) {
+                const s = 100;
+                ctx.save();
+                const style = state.isItalic ? 'italic' : 'normal';
+
+                // Paar 1: Font+serif vs. nur serif
+                ctx.font = `${style} ${fontWeight} ${s}px "${fontFamily}", serif`;
+                const withSerif = ctx.measureText(char).width;
+                ctx.font = `${style} ${fontWeight} ${s}px serif`;
+                const pureSerif = ctx.measureText(char).width;
+
+                // Paar 2: Font+monospace vs. nur monospace
+                ctx.font = `${style} ${fontWeight} ${s}px "${fontFamily}", monospace`;
+                const withMono = ctx.measureText(char).width;
+                ctx.font = `${style} ${fontWeight} ${s}px monospace`;
+                const pureMono = ctx.measureText(char).width;
+
+                ctx.restore();
+
+                const matchesSerif = Math.abs(withSerif - pureSerif) < 0.5;
+                const matchesMono = Math.abs(withMono - pureMono) < 0.5;
+
+                // Wenn beide Fallback-Paare identisch sind → kein eigenes Glyph
+                if (matchesSerif && matchesMono) return false;
+
+                return true;
+            }
+
+            function getSymbolLines(text) {
+                return String(text ?? '')
+                    .replace(/\r\n?/g, '\n')
+                    .split('\n');
+            }
+
+	            function drawFrame() {
+                ctx.clearRect(0, 0, width, height);
+                const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#fff';
+                ctx.fillStyle = textColor;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const realm = getCanvasRealm();
+
+                state.symbols.forEach(sym => {
+                    ctx.save();
+                    const style = state.isItalic ? 'italic' : 'normal';
+                    const symbolSize = realm.toVirtualLength(sym.size);
+                    const font = `${style} ${state.fontWeight} ${symbolSize}px "${state.fontFamily}"`;
+                    const lines = getSymbolLines(sym.text);
+                    const lineHeight = symbolSize * 1.05;
+                    const yOffsetStart = -((lines.length - 1) * lineHeight) / 2;
+                    ctx.font = font;
+                    const { x, y } = realm.toSquarePoint(sym.x, sym.y);
+                    ctx.translate(x, y);
+                    ctx.rotate(sym.rot * Math.PI / 180);
+                    lines.forEach((line, index) => {
+                        ctx.fillText(line, 0, yOffsetStart + index * lineHeight);
+                    });
+
+                    if (state.isDebug) {
+                        const glyphProbe = lines.find(line => line.trim().length > 0) || '';
+                        const hasGlyph = glyphProbe
+                            ? fontHasGlyph(state.fontFamily, state.fontWeight, glyphProbe)
+                            : true;
+                        ctx.save();
+                        ctx.rotate(-sym.rot * Math.PI / 180);
+                        ctx.font = '14px sans-serif';
+                        ctx.fillStyle = hasGlyph ? '#0f0' : '#f00';
+                        const status = hasGlyph
+                            ? `✓ ${state.fontFamily}`
+                            : `✗ Fallback! (${state.fontFamily} hat kein "${glyphProbe}")`;
+                            ctx.fillText(status, 0, symbolSize / 2 + 20 + ((lines.length - 1) * lineHeight) / 2);
+                        ctx.restore();
+                    }
+                    ctx.restore();
+                });
+	            }
+
+	            function render() {
+	                drawFrame();
+                requestAnimationFrame(render);
+            }
+
+            buildGlobalUI();
+            render();
+
+        })();
+    </script>
+</body>
+
+</html>

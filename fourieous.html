@@ -98,6 +98,7 @@
 
 const app = {
     canvas: null,
+    canvasContainer: null,
     ctx: null,
     // Trace-Punkte pro Zeichen (Array von Arrays mit {x, y, jump})
     tracePointsPerChar: [],
@@ -980,6 +981,59 @@ function render() {
 
 // ============ TEXT VERARBEITEN ============
 
+function computeCharOffsets() {
+    const text = (app.text ?? '').toString();
+    const fontFamily = app.fontFamily;
+    const fontSize = app.fontSize;
+    const tracking = 10;
+    const spaceAdvance = fontSize * 0.3;
+    const tabAdvance = spaceAdvance * 4;
+    const lines = text.split(/\r?\n/);
+    const lineHeight = fontSize * 1.25;
+    const totalHeight = Math.max(1, lines.length) * lineHeight;
+    let currentY = (app.canvas.height - totalHeight) / 2 + (lineHeight / 2);
+    const offsets = [];
+
+    for (const line of lines) {
+        let totalWidth = 0;
+        const advances = [];
+        for (const ch of line) {
+            if (ch === ' ') {
+                advances.push(spaceAdvance);
+                totalWidth += spaceAdvance;
+            } else if (ch === '\t') {
+                advances.push(tabAdvance);
+                totalWidth += tabAdvance;
+            } else {
+                const width = measureCharWidth(ch, fontFamily, fontSize);
+                const adv = width + tracking;
+                advances.push(adv);
+                totalWidth += adv;
+            }
+        }
+
+        let currentX = (app.canvas.width - totalWidth) / 2;
+        let charIndex = 0;
+        for (const ch of line) {
+            if (ch !== ' ' && ch !== '\t') {
+                offsets.push({ x: currentX, y: currentY });
+            }
+            currentX += advances[charIndex] || 0;
+            charIndex++;
+        }
+        currentY += lineHeight;
+    }
+
+    return offsets;
+}
+
+function updateCharOffsets() {
+    const offsets = computeCharOffsets();
+    if (offsets.length !== app.coefficientsPerChar.length) return false;
+    app.charOffsets = offsets;
+    return true;
+}
+
 function processText() {
     app.coefficientsPerChar = [];
     app.rawCoefficientsPerChar = [];
@@ -1192,22 +1246,42 @@ function recomputeUnifiedCycle(currentIdx) {
 // ============ INITIALISIERUNG ============
 
 function resizeCanvas() {
-    app.canvas.width = window.innerWidth;
-    app.canvas.height = window.innerHeight;
+    const width = Math.max(1, Math.round(app.canvasContainer?.clientWidth || window.innerWidth));
+    const height = Math.max(1, Math.round(app.canvasContainer?.clientHeight || window.innerHeight));
+    app.canvas.width = width;
+    app.canvas.height = height;
 }
 
 function init() {
     app.canvas = document.getElementById('canvas');
     app.ctx = app.canvas.getContext('2d');
     const container = document.querySelector('._018-canvas');
+    app.canvasContainer = container;
 
-    resizeCanvas();
-    window.addEventListener('resize', () => {
+    let resizeQueued = false;
+    const syncCanvasLayout = () => {
         resizeCanvas();
-        if (app.isRunning) {
-            processText(); // Neu zentrieren bei Resize
+        if (app.coefficientsPerChar.length > 0) {
+            if (!updateCharOffsets()) {
+                processText();
+            }
         }
-    });
+    };
+    const scheduleCanvasLayoutSync = () => {
+        if (resizeQueued) return;
+        resizeQueued = true;
+        requestAnimationFrame(() => {
+            resizeQueued = false;
+            syncCanvasLayout();
+        });
+    };
+
+    syncCanvasLayout();
+    window.addEventListener('resize', scheduleCanvasLayoutSync);
+    if (typeof ResizeObserver === 'function' && container) {
+        const canvasResizeOracle = new ResizeObserver(scheduleCanvasLayoutSync);
+        canvasResizeOracle.observe(container);
+    }
 
     // ============ ZOOM UND PAN (via tools/zoom.js) ============
 
@@ -1298,10 +1372,8 @@ function init() {
         .addDivider()
         // === UNIFIED MODE ===
         .addToggle('unifiedMode', {
-            label: 'Modus',
+	            label: 'Unified-Modus',
             value: app.unifiedMode,
-            labelOn: 'Unified',
-            labelOff: 'Einzeln',
             onChange: (val) => {
                 app.unifiedMode = val;
                 // Reihenfolge-Select ein-/ausblenden
@@ -1353,15 +1425,11 @@ function init() {
         .addToggle('skipGaps', {
             label: 'Lücken auslassen',
             value: app.skipGaps,
-            labelOn: 'An',
-            labelOff: 'Aus',
             onChange: (val) => { app.skipGaps = val; }
         })
         .addToggle('persistTrace', {
             label: 'Spur behalten',
             value: app.persistTrace,
-            labelOn: 'An',
-            labelOff: 'Aus',
             onChange: (val) => {
                 app.persistTrace = val;
                 if (val) {
@@ -1410,8 +1478,6 @@ function init() {
         .addToggle('freqInvert', {
             label: 'Freq invertieren',
             value: app.freqInvert,
-            labelOn: 'An',
-            labelOff: 'Aus',
             onChange: (val) => {
                 app.freqInvert = val;
                 if (app.isRunning) recomputeCycles();
@@ -1420,8 +1486,6 @@ function init() {
         .addToggle('freqAbsolute', {
             label: 'Nur positiv',
             value: app.freqAbsolute,
-            labelOn: 'An',
-            labelOff: 'Aus',
             onChange: (val) => {
                 app.freqAbsolute = val;
                 if (app.isRunning) recomputeCycles();
@@ -1460,10 +1524,8 @@ function init() {
         })
         .addDivider()
         .addToggle('running', {
-            label: 'Animation',
+	            label: 'Animation aktiv',
             value: true,
-            labelOn: 'Stop',
-            labelOff: 'Start',
             onChange: (val) => {
                 if (val) {
                     processText();

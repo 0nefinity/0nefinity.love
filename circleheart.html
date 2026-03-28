@@ -198,8 +198,22 @@
       draw();
     }
 
+	    let resizeQueued = false;
+	    function scheduleResize() {
+	      if (resizeQueued) return;
+	      resizeQueued = true;
+	      requestAnimationFrame(() => {
+	        resizeQueued = false;
+	        resize();
+	      });
+	    }
+
     resize();
-    window.addEventListener('resize', resize);
+	    window.addEventListener('resize', scheduleResize);
+	    if (typeof ResizeObserver === 'function' && container) {
+	      const canvasResizeOracle = new ResizeObserver(scheduleResize);
+	      canvasResizeOracle.observe(container);
+	    }
 
     // Zoom via zoom.js (nur Scroll/Pinch, kein Pan, zentriert)
     let zoomInstance = null;
@@ -599,18 +613,14 @@
     });
 
     panel.addToggle('showCenter', {
-      label: 'Mittelpunkt',
+	      label: 'Mittelpunkt anzeigen',
       value: showCenter,
-      labelOn: 'An',
-      labelOff: 'Aus',
       onChange: v => { showCenter = v; draw(); }
     });
 
     panel.addToggle('snapEnabled', {
-      label: 'Magnet',
+	      label: 'Magnet aktiv',
       value: snapEnabled,
-      labelOn: 'An',
-      labelOff: 'Aus',
       onChange: v => {
         snapEnabled = v;
         if (v) {
@@ -629,8 +639,6 @@
     panel.addToggle('isFractal', {
       label: 'Fraktal-Modus',
       value: isFractal,
-      labelOn: 'An',
-      labelOff: 'Aus',
       onChange: v => {
         isFractal = v;
         updateUI();
@@ -641,16 +649,12 @@
     panel.addToggle('showInnerFractals', {
       label: 'Innere Fraktale',
       value: showInnerFractals,
-      labelOn: 'An',
-      labelOff: 'Aus',
       onChange: v => { showInnerFractals = v; draw(); }
     });
 
     panel.addToggle('showOuterFractals', {
       label: 'Äußere Fraktale',
       value: showOuterFractals,
-      labelOn: 'An',
-      labelOff: 'Aus',
       onChange: v => { showOuterFractals = v; draw(); }
     });
 

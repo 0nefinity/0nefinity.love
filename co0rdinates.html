@@ -19,7 +19,9 @@
     <div class="page-header">
         Ein Kreis bleibt ein Kreis, auch wenn der umliegende Raum sich verzerrt.
     </div>
-    <canvas id="canvas" class="_018-canvas"></canvas>
+        <div class="_018-canvas">
+            <canvas id="canvas"></canvas>
+        </div>
 
     <script>
         // ============================================
@@ -27,17 +29,27 @@
         // ============================================
         
         const canvas = document.getElementById('canvas');
+        const canvasContainer = canvas.parentElement;
         const ctx = canvas.getContext('2d');
         
         let width, height, centerX, centerY, scale;
+
+	        function getCanvasBounds() {
+	            const rect = canvasContainer.getBoundingClientRect();
+	            return {
+	                width: Math.max(1, Math.round(rect.width || canvasContainer.clientWidth || window.innerWidth)),
+	                height: Math.max(1, Math.round(rect.height || canvasContainer.clientHeight || window.innerHeight))
+	            };
+	        }
         
         // Berechne den sichtbaren Bereich basierend auf dem Seitenverhältnis
         // Radius 1 = 50% der kleineren Dimension
         let xRange, yRange;
         
         function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
+	            const bounds = getCanvasBounds();
+	            width = bounds.width;
+	            height = bounds.height;
             canvas.width = width;
             canvas.height = height;
             centerX = width / 2;
@@ -58,8 +70,22 @@
             
             draw();
         }
+
+	        let resizeQueued = false;
+	        function scheduleResize() {
+	            if (resizeQueued) return;
+	            resizeQueued = true;
+	            requestAnimationFrame(() => {
+	                resizeQueued = false;
+	                resize();
+	            });
+	        }
         
-        window.addEventListener('resize', resize);
+	        window.addEventListener('resize', scheduleResize);
+	        if (typeof ResizeObserver === 'function') {
+	            const canvasResizeOracle = new ResizeObserver(scheduleResize);
+	            canvasResizeOracle.observe(canvasContainer);
+	        }
         
         // ============================================
         // DATENSTRUKTUREN
@@ -207,43 +233,20 @@
 
         function syncSliderControl(key, value, decimals = 1) {
             const panel = window.undoRedoPanel;
-            if (!panel?.bodyEl) return;
-
-            panel.params[key] = value;
-
-            const row = panel.bodyEl.querySelector(`[data-key="${key}"]`);
-            if (!row) return;
-
-            const range = row.querySelector('.ctrl-range');
-            const input = row.querySelector('.ctrl-value-input');
-            const display = row.querySelector('.ctrl-value-display');
-            const rounded = Number(value);
-
-            if (range) range.value = String(rounded);
-            if (input) input.value = rounded.toFixed(decimals);
-            if (display) display.textContent = rounded.toFixed(decimals);
+            if (!panel) return;
+            panel.set(key, value);
         }
 
-        function syncToggleControl(key, value, labelOn, labelOff) {
+        function syncToggleControl(key, value) {
             const panel = window.undoRedoPanel;
-            if (!panel?.bodyEl) return;
-
-            panel.params[key] = value;
-
-            const row = panel.bodyEl.querySelector(`[data-key="${key}"]`);
-            if (!row) return;
-
-            const btn = row.querySelector('.ctrl-toggle');
-            if (!btn) return;
-
-            btn.classList.toggle('active', value);
-            btn.textContent = value ? labelOn : labelOff;
+            if (!panel) return;
+            panel.set(key, value);
         }
 
         function syncEditorControls() {
             syncSliderControl('influenceRadius', config.influenceRadius, 1);
-            syncToggleControl('applyToAll', config.applyToAll, 'Ja', 'Nein');
-            syncToggleControl('showControlPoints', config.showControlPoints, 'Ja', 'Nein');
+            syncToggleControl('applyToAll', config.applyToAll);
+            syncToggleControl('showControlPoints', config.showControlPoints);
             syncSliderControl('gridDensity', config.gridDensity, 1);
         }
 
@@ -1116,8 +1119,6 @@
                 .addToggle('applyToAll', {
                     label: 'Auf alle anwenden',
                     value: config.applyToAll,
-                    labelOn: 'Ja',
-                    labelOff: 'Nein',
                     onChange: v => {
                         finishStateTransition();
                         config.applyToAll = v;
@@ -1130,8 +1131,6 @@
                 .addToggle('showControlPoints', {
                     label: 'Punkte anzeigen',
                     value: config.showControlPoints,
-                    labelOn: 'Ja',
-                    labelOff: 'Nein',
                     onChange: v => {
                         finishStateTransition();
                         config.showControlPoints = v;
