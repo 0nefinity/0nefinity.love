@@ -33,7 +33,7 @@
     let panY = 0;
     let scale = 1;
   
-    fetch('bibel.txt')
+    fetch('/assets/bibeln/Bibel.txt')
       .then(response => response.text())
       .then(data => {
         textData = data.replace(/\s+/g, ' ').trim();

@@ -6,4 +6,4 @@ js ist glaube ich schon vielfältig
 könnte viel verschiedenes Zeug machen
 
 
-hey Punkt, render alles von .punkt auf kreativ vielfältig sich stetig wandelnde Weise
+hey Punkt, render alles von .punkt auf kreativ vielfältig sich stetig wandelnde Weise, oder was dir beliebt

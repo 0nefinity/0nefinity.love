@@ -32,13 +32,14 @@
 
     // Shared styles live in meta.css
     function injectCSS() {
-        if (!document.getElementById('ctrl-panel-fonts')) {
-            const link = document.createElement('link');
-            link.id = 'ctrl-panel-fonts';
-            link.rel = 'stylesheet';
-            link.href = '/tools/fonts/fonts.css';
-            document.head.appendChild(link);
-        }
+        if (document.getElementById('ctrl-panel-fonts')) return;
+        if (document.querySelector('link[data-meta-fonts-auswahl], link[href="/fonts-auswahl.css"]')) return;
+
+        const link = document.createElement('link');
+        link.id = 'ctrl-panel-fonts';
+        link.rel = 'stylesheet';
+        link.href = '/fonts-auswahl.css';
+        document.head.appendChild(link);
     }
 
     // === UTILITY FUNCTIONS ===
@@ -193,6 +194,50 @@
 
     function getProjectedSliderStep(step) {
         return Number.isFinite(step) && step > 0 ? String(step) : 'any';
+    }
+
+    function getSliderTransform(config) {
+        return config?.transform && typeof config.transform === 'object'
+            ? config.transform
+            : null;
+    }
+
+    function toSliderRangeValue(value, config) {
+        const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0;
+        const transform = getSliderTransform(config);
+        if (typeof transform?.toSliderValue === 'function') {
+            const transformedValue = Number(transform.toSliderValue(numericValue, config));
+            if (Number.isFinite(transformedValue)) return transformedValue;
+        }
+        return numericValue;
+    }
+
+    function fromSliderRangeValue(value, config) {
+        const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0;
+        const transform = getSliderTransform(config);
+        if (typeof transform?.fromSliderValue === 'function') {
+            const transformedValue = Number(transform.fromSliderValue(numericValue, config));
+            if (Number.isFinite(transformedValue)) return transformedValue;
+        }
+        return numericValue;
+    }
+
+    function formatSliderControlValue(value, decimals, config) {
+        const transform = getSliderTransform(config);
+        if (typeof transform?.formatDisplayValue === 'function') {
+            const formattedValue = transform.formatDisplayValue(value, decimals, config);
+            if (formattedValue != null) return String(formattedValue);
+        }
+        return formatValue(value, decimals);
+    }
+
+    function parseSliderControlValue(value, config) {
+        const transform = getSliderTransform(config);
+        if (typeof transform?.parseDisplayValue === 'function') {
+            const parsedValue = Number(transform.parseDisplayValue(value, config));
+            if (!Number.isNaN(parsedValue)) return parsedValue;
+        }
+        return parseNumericValue(value);
     }
 
     function scaleStepLogarithmically(step, direction) {
@@ -1124,11 +1169,11 @@
                 range.min = min;
                 range.max = max;
                 range.step = getProjectedSliderStep(cfg.step);
-                range.value = clamp(currentValue, min, max);
+                range.value = clamp(toSliderRangeValue(currentValue, cfg), min, max);
             }
 
-            if (input) input.value = formatValue(currentValue, decs);
-            if (display) display.textContent = formatValue(currentValue, decs);
+            if (input) input.value = formatSliderControlValue(currentValue, decs, cfg);
+            if (display) display.textContent = formatSliderControlValue(currentValue, decs, cfg);
         }
 
         _create() {
@@ -2188,7 +2233,7 @@
          * Add a unified Slider + Stepper row (Slider + [-] [input] [+])
          */
         addSlider(key, config) {
-            const { label, min, max, step, value, decimals = 0, onChange } = config;
+            const { label, min, max, step, value, decimals = 0, onChange, transform = null } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
 
@@ -2197,6 +2242,7 @@
                 min,
                 max,
                 step,
+                transform,
                 baseDecimals: decimals,
                 decimals: getSliderDecimals({ step, baseDecimals: decimals }, decimals),
                 defaultMin: min,
@@ -2208,7 +2254,7 @@
             const sliderCfg = this._sliderConfigs[key];
             const initialValue = Number.isFinite(value) ? value : 0;
             const initialBounds = getProjectedSliderBounds(sliderCfg, initialValue);
-            const initialRangeValue = clamp(initialValue, initialBounds.min, initialBounds.max);
+            const initialRangeValue = clamp(toSliderRangeValue(initialValue, sliderCfg), initialBounds.min, initialBounds.max);
 
             const row = document.createElement('div');
             row.className = 'ctrl-row';
@@ -2219,7 +2265,7 @@
                     <button class="ctrl-stepper-btn" data-action="dec">&#8722;</button>
                     <input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
-                    <input type="text" class="ctrl-value-input" value="${formatValue(initialValue, sliderCfg.decimals)}">
+                    <input type="text" class="ctrl-value-input" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
                     <button class="ctrl-config-trigger" title="Einstellungen">&#8942;</button>
                 </div>
             `;
@@ -2240,10 +2286,10 @@
                 range.min = bounds.min;
                 range.max = bounds.max;
                 range.step = getProjectedSliderStep(cfg ? cfg.step : step);
-                range.value = clamp(currentValue, bounds.min, bounds.max);
+                range.value = clamp(toSliderRangeValue(currentValue, cfg), bounds.min, bounds.max);
 
                 if (updateInput) {
-                    input.value = formatValue(currentValue, decs);
+                    input.value = formatSliderControlValue(currentValue, decs, cfg);
                 }
             };
 
@@ -2261,21 +2307,22 @@
 
             // Slider Events
             range.addEventListener('input', () => {
-                const val = parseFloat(range.value);
+                const cfg = this._sliderConfigs[key];
+                const val = fromSliderRangeValue(parseFloat(range.value), cfg);
                 updateValue(val);
             });
 
             // Input Events
             input.addEventListener('input', () => {
-                const parsed = parseNumericValue(input.value);
+                const parsed = parseSliderControlValue(input.value, this._sliderConfigs[key]);
                 if (!Number.isNaN(parsed)) updateValue(parsed, false);
             });
             input.addEventListener('blur', () => {
-                const parsed = parseNumericValue(input.value);
                 const cfg = this._sliderConfigs[key];
+                const parsed = parseSliderControlValue(input.value, cfg);
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                 if (Number.isNaN(parsed)) {
-                    input.value = formatValue(this.params[key], decs);
+                    input.value = formatSliderControlValue(this.params[key], decs, cfg);
                 } else {
                     updateValue(parsed, true);
                 }
@@ -3410,9 +3457,9 @@
                     range.min = bounds.min;
                     range.max = bounds.max;
                     range.step = getProjectedSliderStep(cfg ? cfg.step : undefined);
-                    range.value = clamp(numericValue, bounds.min, bounds.max);
+                    range.value = clamp(toSliderRangeValue(numericValue, cfg), bounds.min, bounds.max);
                 }
-                if (valueInput) valueInput.value = formatValue(numericValue, decs);
+                if (valueInput) valueInput.value = formatSliderControlValue(numericValue, decs, cfg);
             }
 
             const textarea = row.querySelector('.ctrl-textarea');
@@ -3458,6 +3505,7 @@
             if (Object.prototype.hasOwnProperty.call(updates, 'max')) cfg.max = updates.max;
             if (Object.prototype.hasOwnProperty.call(updates, 'step')) cfg.step = updates.step;
             if (Object.prototype.hasOwnProperty.call(updates, 'baseDecimals')) cfg.baseDecimals = updates.baseDecimals;
+            if (Object.prototype.hasOwnProperty.call(updates, 'transform')) cfg.transform = updates.transform;
 
             syncSliderDecimals(cfg, cfg.defaultDecimals ?? cfg.baseDecimals ?? 0);
             this._updateSliderFromConfig(key);
@@ -3599,22 +3647,26 @@
          * List of standard fonts for pickers
          */
         DEFAULT_FONTS: [
-            'Dosis', 'Inter', 'LINE Seed JP', 'Lora', 'Montserrat', 'Roboto', 'Roboto Serif',
-            'Rubik Doodle Triangles', 'Rubik Lines', 'Vollkorn'
+            'Iosevka Charon Mono', 'Libertinus Math', 'Noto Sans Math', 'IBM Plex Sans JP',
+            'LINE Seed JP', 'M PLUS 1p', 'Zen Kaku Gothic New', 'Noto Serif JP', 'Noto Sans JP'
+        ],
+        UN0NEFINITY_FONTS: [
+            'Rubik Broken Fax', 'Rubik Doodle Triangles', 'Rubik Lines', 'Ysabeau'
         ],
         FONT_CONFIG: {
-            'Dosis': { min: 200, max: 800 },
-            'Inter': { min: 100, max: 900 },
-            'LINE Seed JP': null,
-            'Lora': { min: 400, max: 700 },
-            'Montserrat': { min: 100, max: 900 },
-            'Roboto': { min: 100, max: 900 },
-            'Roboto Serif': { min: 100, max: 900 },
+            'Iosevka Charon Mono': { min: 300, max: 700 },
+            'Libertinus Math': null,
+            'Noto Sans Math': null,
+            'IBM Plex Sans JP': { min: 100, max: 700 },
+            'LINE Seed JP': { min: 100, max: 800 },
+            'M PLUS 1p': { min: 100, max: 900 },
+            'Zen Kaku Gothic New': { min: 300, max: 900 },
+            'Noto Serif JP': { min: 200, max: 900 },
+            'Noto Sans JP': { min: 100, max: 900 },
             'Rubik Broken Fax': null,
             'Rubik Doodle Triangles': null,
             'Rubik Lines': null,
-            'Rubik Maze': null,
-            'Vollkorn': { min: 400, max: 900 }
+            'Ysabeau': { min: 1, max: 1000 }
         }
     };
 

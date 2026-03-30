@@ -42,7 +42,7 @@ $title = $fileName;
 // Verarbeite Content je nach Dateityp
 if ($isMarkdown) {
     // Parsedown für Markdown-Rendering einbinden
-    require_once __DIR__ . '/Parsedown.php';
+    require_once __DIR__ . '/tools/Parsedown.php';
     $Parsedown = new Parsedown();
     $renderedContent = $Parsedown->text($content);
 } else {

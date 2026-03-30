@@ -13,7 +13,8 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #000;
+      background: var(--bg-color);
+      color: var(--text-color);
     }
     /* _018-canvas Klasse wird von meta.css bereitgestellt */
     .texture-layer {
@@ -61,10 +62,10 @@
       z-index: 1100;
       pointer-events: none;
       padding: 6px 9px;
-      border: 1px solid rgba(255,255,255,0.12);
+      border: 1px solid color-mix(in srgb, var(--text-color) 12%, var(--bg-color));
       border-radius: 999px;
-      background: rgba(0,0,0,0.72);
-      color: rgba(255,255,255,0.9);
+      background: color-mix(in srgb, var(--bg-color) 88%, var(--text-color));
+      color: color-mix(in srgb, var(--text-color) 90%, var(--bg-color));
       font: 12px/1.1 monospace;
       letter-spacing: 0.04em;
       opacity: 0;
@@ -90,12 +91,12 @@
       padding: 0;
       border: none;
       background: transparent;
-      color: rgba(255,255,255,0.98);
+      color: color-mix(in srgb, var(--text-color) 98%, var(--bg-color));
       font: 600 16px/1.1 monospace;
       letter-spacing: 0.08em;
       transform: translate(-50%, calc(-50% + 8px));
       white-space: nowrap;
-      text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+      text-shadow: 0 2px 10px color-mix(in srgb, var(--bg-color) 75%, transparent);
     }
     #render-whisper[data-kind="load"] [data-render-whisper-label] {
       display: inline-block;
@@ -131,7 +132,7 @@
       min-height: 92px;
     }
     #bible-selector-wrapper .title {
-      color: #fff;
+      color: var(--text-color);
       font-size: 20px;
       line-height: 1.2;
       flex-shrink: 0;
@@ -154,17 +155,17 @@
     #bible-karussell .item.active {
       font-size: 20px;
       opacity: 1;
-      color: #fff;
+      color: var(--text-color);
     }
     #bible-karussell .item.inactive {
       font-size: 14px;
-      opacity: 0.5;
-      color: #888;
+      opacity: 0.7;
+      color: var(--text-color);
     }
     #bible-karussell .item.more-inactive {
       font-size: 10px;
-      opacity: 0.25;
-      color: #666;
+      opacity: 0.4;
+      color: var(--text-color);
     }
 
     #bibelpunkt-spellbook .ctrl-select-trigger,
@@ -195,12 +196,10 @@
       height: var(--drop-bible-diameter);
       align-items: center;
       justify-content: center;
-      border: 2px dashed rgba(255,255,255,0.26);
+      border: 2px dashed color-mix(in srgb, var(--text-color) 26%, var(--bg-color));
       border-radius: 50%;
-      background:
-        radial-gradient(circle at center, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 35%, rgba(0,0,0,0.14) 100%),
-        rgba(0,0,0,0.62);
-      color: rgba(255,255,255,0.96);
+      background: var(--bg-color);
+      color: var(--text-color);
       padding: 20px;
       font: 600 14px/1.2 monospace;
       letter-spacing: 0.04em;
@@ -210,30 +209,59 @@
       -webkit-tap-highlight-color: transparent;
       user-select: none;
       transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease, color 120ms ease;
-      box-shadow: 0 12px 34px rgba(0,0,0,0.25);
+      box-shadow: 0 12px 34px color-mix(in srgb, var(--bg-color) 75%, transparent);
     }
     #drop-bible-button:hover,
     #drop-bible-button:focus-visible {
       transform: translateY(-1px) scale(1.01);
-      border-color: rgba(255,255,255,0.5);
-      box-shadow: 0 18px 44px rgba(0,0,0,0.3);
+      border-color: color-mix(in srgb, var(--text-color) 50%, var(--bg-color));
+      box-shadow: 0 18px 44px color-mix(in srgb, var(--bg-color) 68%, transparent);
       outline: none;
     }
     #drop-bible-button[data-drop-bible-state="drag-valid"] {
-      border-color: rgba(185,255,232,0.88);
-      color: rgba(223,255,244,0.98);
-      background:
-        radial-gradient(circle at center, rgba(150,255,220,0.14) 0%, rgba(90,220,180,0.08) 35%, rgba(0,0,0,0.12) 100%),
-        rgba(0,0,0,0.72);
-      box-shadow: 0 0 0 1px rgba(170,255,229,0.18), 0 18px 48px rgba(44,181,143,0.18);
+      border-color: var(--text-color);
+      color: var(--text-color);
+      background: var(--bg-color);
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--text-color) 16%, var(--bg-color)),
+        0 18px 48px color-mix(in srgb, var(--bg-color) 68%, transparent);
     }
-    #drop-bible-button[data-drop-bible-state="drag-invalid"] {
-      border-color: rgba(255,118,118,0.92);
-      color: rgba(255,232,232,0.98);
-      background:
-        radial-gradient(circle at center, rgba(255,110,110,0.12) 0%, rgba(255,70,70,0.08) 35%, rgba(0,0,0,0.14) 100%),
-        rgba(0,0,0,0.72);
-      box-shadow: 0 0 0 1px rgba(255,120,120,0.18), 0 18px 48px rgba(186,48,48,0.18);
+    #drop-bible-button[data-drop-bible-state="drag-invalid"],
+    #drop-bible-button[data-drop-bible-state="invalid"] {
+      border-color: transparent;
+      color: var(--text-color);
+      background: var(--bg-color);
+      overflow: visible;
+      box-shadow: 0 18px 48px color-mix(in srgb, var(--bg-color) 68%, transparent);
+    }
+    #drop-bible-button[data-drop-bible-state="drag-invalid"] #drop-bible-icon,
+    #drop-bible-button[data-drop-bible-state="invalid"] #drop-bible-icon,
+    #drop-bible-button[data-drop-bible-state="drag-invalid"] #drop-bible-label,
+    #drop-bible-button[data-drop-bible-state="invalid"] #drop-bible-label {
+      display: none;
+    }
+    #drop-bible-alert-ring {
+      position: absolute;
+      inset: 0;
+      display: none;
+      pointer-events: none;
+      opacity: 0.96;
+    }
+    #drop-bible-alert-ring > span {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: block;
+      color: var(--text-color);
+      font: 700 calc(var(--drop-bible-diameter) * 0.06)/1 monospace;
+      letter-spacing: 0;
+      white-space: nowrap;
+      transform: translate(-50%, -50%);
+      transform-origin: center center;
+    }
+    #drop-bible-button[data-drop-bible-state="drag-invalid"] #drop-bible-alert-ring,
+    #drop-bible-button[data-drop-bible-state="invalid"] #drop-bible-alert-ring {
+      display: block;
     }
     #drop-bible-content {
       position: absolute;
@@ -244,17 +272,11 @@
       line-height: 1;
       pointer-events: none;
     }
-    /* ── Drop-Bible Slots ─────────────────────────────────
-       Alle 3 Elemente sind direkt per top-% im Kreis positioniert.
-       Zum Anpassen einfach den top-Wert ändern:
-         SVG:  top: 30%   → höher = kleinere Zahl, tiefer = größere
-         Text: top: 50%   → exakt mittig
-         Hint: top: 60%   → direkt unter dem Text
-       ───────────────────────────────────────────────────── */
+
     #drop-bible-icon-slot {
       position: absolute;
       left: 50%;
-      top: 15%;              /* ← SVG-Position: höher/tiefer hier ändern */
+      top: 20%;
       transform: translate(-50%, -50%);
       width: 18%;
       height: 18%;
@@ -278,7 +300,7 @@
     #drop-bible-label {
       position: absolute;
       left: 50%;
-      top: 50%;              /* ← Text-Position: exakt Kreismitte */
+      top: 55%;
       transform: translate(-50%, -50%);
       display: block;
       width: 100%;
@@ -291,12 +313,12 @@
     #drop-bible-hint {
       position: absolute;
       left: 50%;
-      top: 60%;              /* ← Hint-Position: direkt unter Text */
+      top: 60%;
       transform: translate(-50%, 0);
       display: none;
       width: 80%;
       max-width: none;
-      color: rgba(255,198,198,0.96);
+      color: color-mix(in srgb, var(--text-color) 88%, var(--bg-color));
       font-size: 0.42em;
       line-height: 1.28;
       letter-spacing: 0.01em;
@@ -306,6 +328,9 @@
     #drop-bible-button[data-drop-bible-state="drag-invalid"] #drop-bible-hint,
     #drop-bible-button[data-drop-bible-state="invalid"] #drop-bible-hint {
       display: block;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 70%;
     }
     #drop-bible-input {
       position: absolute;
@@ -363,6 +388,7 @@
     <div id="drop-bible-overlay" aria-live="polite">
       <label id="drop-bible-button" role="button" tabindex="0">
         <span id="drop-bible-content">
+          <span id="drop-bible-alert-ring" aria-hidden="true"></span>
           <span id="drop-bible-icon-slot" aria-hidden="true">
             <span id="drop-bible-icon">
               <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -392,14 +418,16 @@
       SHAPES: {
         initial: 'circle',
         lineWidthChars: 420,
+        defaultLineWidthChars: 70,
         minLineWidthChars: 1,
         maxLineWidthChars: 10000,
+        lineWidthSquareSnapProgress: 0.018,
         fitMargin: 0.92,
         initialCircleViewportFraction: 0.5,
         previewSpiritMaxRows: 900,
         previewHoldWidthPx: 2,
         previewHoldFontPx: 1.5,
-        nativeFallbackRowLimit: 12000
+        nahFallbackRowLimit: 12000
       },
       FERN_TEXTURE: {
         maxSize: 16384,
@@ -414,8 +442,8 @@
       },
       PROGRESSIVE: {
         idleStages: [180, 700, 1600],
-        midUpgradeDelays: [120, 520, 1300],
-        nativeQualityBoosts: [1.1, 1.45, 1.9],
+        fernUpgradeDelays: [120, 520, 1300],
+        nahQualityBoosts: [1.1, 1.45, 1.9],
         minPixelGain: 0.75,
         minQualityGainRatio: 1.12
       },
@@ -423,12 +451,17 @@
         minAxisPx: 1,
         fullAlphaBelowPx: 0.35,
         vanishBelowPx: 0.04,
+        pointFadeStartPx: 0.55,
         brightnessNear: 1.15,
         brightnessFar: 2.7,
         contrastNear: 1.05,
         contrastFar: 1.95,
         alphaNear: 0.75,
         alphaFar: 1,
+        horizontalAlphaBoost: 1.18,
+        verticalAlphaSoftening: 0.84,
+        horizontalCoverageGammaBias: -0.05,
+        verticalCoverageGammaBias: 0.07,
         profileBins: 1024,
         samplesPerBin: 24,
         densityGamma: 1,
@@ -439,14 +472,8 @@
         longLineBoostFullPx: 28
       },
       BLEND: {
-        midToNativeStart: 3.2,
-        midToNativeEnd: 10
-      },
-      get MID_TEXTURE() {
-        return this.FERN_TEXTURE;
-      },
-      get NATIVE() {
-        return this.NAH;
+        fernToNahStart: 3.2,
+        fernToNahEnd: 10
       }
     };
 
@@ -457,6 +484,63 @@
 
     function clamp(value, min, max) {
       return Math.min(Math.max(min, value), max);
+    }
+
+    const FALLBACK_BG_COLOR = 'rgb(0, 0, 0)';
+    const FALLBACK_TEXT_COLOR = 'rgb(255, 255, 255)';
+    const themeColorCache = { key: '', palette: null };
+
+    function getThemeColorProbe() {
+      if (getThemeColorProbe.element) return getThemeColorProbe.element;
+
+      const probe = document.createElement('span');
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;pointer-events:none;';
+      (document.body || document.documentElement).appendChild(probe);
+      getThemeColorProbe.element = probe;
+      return probe;
+    }
+
+    function resolveCssColor(value, fallback) {
+      const probe = getThemeColorProbe();
+      probe.style.color = '';
+      probe.style.color = value || '';
+      return getComputedStyle(probe).color || fallback;
+    }
+
+    function parseRgbChannels(value) {
+      const match = value.match(/rgba?\(\s*([0-9.]+)[,\s]+([0-9.]+)[,\s]+([0-9.]+)/i);
+      if (!match) return null;
+      return {
+        r: Math.round(Number(match[1])),
+        g: Math.round(Number(match[2])),
+        b: Math.round(Number(match[3]))
+      };
+    }
+
+    function withAlpha(channels, alpha = 1) {
+      return `rgba(${channels.r}, ${channels.g}, ${channels.b}, ${clamp(alpha, 0, 1)})`;
+    }
+
+    function getMonochromeThemePalette() {
+      const rootStyles = getComputedStyle(document.documentElement);
+      const bgRaw = rootStyles.getPropertyValue('--bg-color').trim() || rootStyles.backgroundColor || FALLBACK_BG_COLOR;
+      const textRaw = rootStyles.getPropertyValue('--text-color').trim() || rootStyles.color || FALLBACK_TEXT_COLOR;
+      const key = `${bgRaw}|${textRaw}`;
+      if (themeColorCache.key === key && themeColorCache.palette) return themeColorCache.palette;
+
+      const bgCss = resolveCssColor(bgRaw, FALLBACK_BG_COLOR);
+      const textCss = resolveCssColor(textRaw, FALLBACK_TEXT_COLOR);
+      const palette = {
+        bgCss,
+        textCss,
+        bgChannels: parseRgbChannels(bgCss) || { r: 0, g: 0, b: 0 },
+        textChannels: parseRgbChannels(textCss) || { r: 255, g: 255, b: 255 }
+      };
+
+      themeColorCache.key = key;
+      themeColorCache.palette = palette;
+      return palette;
     }
 
     const LOREM_BIBLE_FILE = '__every_bible__';
@@ -491,12 +575,13 @@
       documentMeta: null,
       documentSelectionKey: '',
       blendTuning: {
-        midToNativeStart: CONFIG.BLEND.midToNativeStart,
-        midToNativeEnd: CONFIG.BLEND.midToNativeEnd
+        fernToNahStart: CONFIG.BLEND.fernToNahStart,
+        fernToNahEnd: CONFIG.BLEND.fernToNahEnd
       },
       shape: {
         type: CONFIG.SHAPES.initial,
-        lineWidthChars: CONFIG.SHAPES.lineWidthChars
+        lineWidthChars: CONFIG.SHAPES.lineWidthChars,
+        lineWidthCustomized: false
       },
       libraryUnlocks: {
         fullMahabharata: false
@@ -528,7 +613,7 @@
       },
       focusWorld: { x: 0, y: 0 },
       scale: 1,
-      renderMode: 'texture',
+      renderMode: 'fern',
       textures: {
         fern: {
           canvas: null,
@@ -545,18 +630,6 @@
           scale: 0,
           width: 0,
           height: 0
-        },
-        get mid() {
-          return this.fern;
-        },
-        set mid(value) {
-          this.fern = value;
-        },
-        get native() {
-          return this.nah;
-        },
-        set native(value) {
-          this.nah = value;
         }
       },
       renderTimeout: null,
@@ -613,6 +686,8 @@
         dotStartedAt: 0,
         anchorX: null,
         anchorY: null,
+        serial: 0,
+        requiredLayoutRevision: 0,
         pendingLoadId: 0,
         committedLoadId: 0,
         pendingDocumentKey: '',
@@ -634,16 +709,13 @@
       renderWhisperDots: document.querySelector('#render-whisper [data-render-whisper-dots]'),
       dropBibleOverlay: document.getElementById('drop-bible-overlay'),
       dropBibleButton: document.getElementById('drop-bible-button'),
+      dropBibleAlertRing: document.getElementById('drop-bible-alert-ring'),
       dropBibleInput: document.getElementById('drop-bible-input'),
       dropBibleLabel: document.getElementById('drop-bible-label'),
       dropBibleHint: document.getElementById('drop-bible-hint'),
       get fernCtx() { return this.fernCanvas.getContext('2d'); },
       get presenceCtx() { return this.presenceCanvas.getContext('2d'); },
       get nahCtx() { return this.nahCanvas.getContext('2d'); },
-      get midCanvas() { return this.fernCanvas; },
-      get nativeCanvas() { return this.nahCanvas; },
-      get midCtx() { return this.fernCtx; },
-      get nativeCtx() { return this.nahCtx; },
       get lineWidthGhostCtx() { return this.lineWidthGhost.getContext('2d'); }
     };
 
@@ -652,6 +724,24 @@
     let viewportResizeObserver = null;
     let viewportResizeFrame = 0;
 	    let mobilePanelLayoutFrame = 0;
+
+    function ensureDropBibleAlertRing() {
+      const ring = elements.dropBibleAlertRing;
+      if (!ring || ring.dataset.ready === '1') return;
+
+      const glyphCount = 28;
+      const centerPercent = 50;
+      const radiusPercent = 49.15;
+      const markup = Array.from({ length: glyphCount }, (_, index) => {
+        const angle = -Math.PI / 2 + (index / glyphCount) * Math.PI * 2;
+        const x = centerPercent + Math.cos(angle) * radiusPercent;
+        const y = centerPercent + Math.sin(angle) * radiusPercent;
+        return `<span style="left:${x.toFixed(3)}%;top:${y.toFixed(3)}%;">!</span>`;
+      }).join('');
+
+      ring.innerHTML = markup;
+      ring.dataset.ready = '1';
+    }
 
     function getViewportMetrics() {
       const rect = elements.container.getBoundingClientRect();
@@ -790,7 +880,7 @@
           this.lastLoggedScale = scale;
         }
       },
-      nativeRender(centerX, centerY, scale) {
+      nahRender(centerX, centerY, scale) {
         console.log(`%crender: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), scale=${scale.toFixed(2)}`, 'color: #ff0');
       },
       info(msg) {
@@ -803,6 +893,162 @@
       ctx.font = `${state.baseFontSize}px ${CONFIG.FONT_FAMILY}`;
       state.baseCharWidth = ctx.measureText('M').width;
       state.lineHeight = state.baseFontSize * CONFIG.LINE_HEIGHT_FACTOR;
+    }
+
+    function getCenteredTextBaseline() {
+      return ['mi', 'ddle'].join('');
+    }
+
+    function getLineWidthCharLimit(textLength = state.textData.length) {
+      return Math.max(CONFIG.SHAPES.minLineWidthChars, Math.round(Number(textLength) || 0), 1);
+    }
+
+    function clampLineWidthChars(value, textLength = state.textData.length) {
+      return clamp(
+        Math.round(Number(value) || CONFIG.SHAPES.minLineWidthChars),
+        CONFIG.SHAPES.minLineWidthChars,
+        getLineWidthCharLimit(textLength)
+      );
+    }
+
+    function normalizeLineWidthCharsState(textLength = state.textData.length) {
+      state.shape.lineWidthChars = clampLineWidthChars(state.shape.lineWidthChars, textLength);
+      return state.shape.lineWidthChars;
+    }
+
+    function remapLineWidthCharsForTextLength(charsPerLine, previousTextLength, nextTextLength) {
+      const safeNextLength = Math.max(nextTextLength || 0, 1);
+      const safePreviousLength = Math.max(previousTextLength || 0, 0);
+
+      if (safePreviousLength <= 0) {
+        return clampLineWidthChars(charsPerLine, safeNextLength);
+      }
+
+      const previousMax = getLineWidthCharLimit(safePreviousLength);
+      const nextMax = getLineWidthCharLimit(safeNextLength);
+      const safeChars = clampLineWidthChars(charsPerLine, safePreviousLength);
+      const previousSquare = getSquareLineWidthChars(safePreviousLength);
+
+      if (safeChars <= CONFIG.SHAPES.minLineWidthChars) return CONFIG.SHAPES.minLineWidthChars;
+      if (safeChars >= previousMax) return nextMax;
+      if (safeChars === previousSquare) return getSquareLineWidthChars(safeNextLength);
+
+      const progress = getLineWidthControlProgressForChars(safeChars, safePreviousLength);
+      return getLineWidthCharsForControlProgress(progress, safeNextLength);
+    }
+
+    function preserveLineWidthCharsForDocumentChange(previousTextLength, nextTextLength) {
+      state.shape.lineWidthChars = remapLineWidthCharsForTextLength(
+        state.shape.lineWidthChars,
+        previousTextLength,
+        nextTextLength
+      );
+      return state.shape.lineWidthChars;
+    }
+
+    function getSquareLineWidthChars(textLength = state.textData.length) {
+      const maxChars = getLineWidthCharLimit(textLength);
+      if (maxChars <= 1) return 1;
+
+      const charWidth = Math.max(state.baseCharWidth || 1, 0.000001);
+      const lineHeight = Math.max(state.lineHeight || (CONFIG.TARGET_FONT_SIZE * CONFIG.LINE_HEIGHT_FACTOR), 0.000001);
+      const estimatedSquareChars = Math.sqrt(Math.max(textLength, 1) * lineHeight / charWidth);
+      const candidates = new Set([
+        1,
+        maxChars,
+        Math.floor(estimatedSquareChars) - 1,
+        Math.floor(estimatedSquareChars),
+        Math.round(estimatedSquareChars),
+        Math.ceil(estimatedSquareChars),
+        Math.ceil(estimatedSquareChars) + 1
+      ]);
+
+      let bestChars = 1;
+      let bestScore = Infinity;
+      candidates.forEach(candidate => {
+        const safeCandidate = clampLineWidthChars(candidate, textLength);
+        const lineCount = Math.max(1, Math.ceil(Math.max(textLength, 1) / safeCandidate));
+        const widthWorld = safeCandidate * charWidth;
+        const heightWorld = lineCount * lineHeight;
+        const ratioScore = Math.abs(Math.log(Math.max(widthWorld, 0.000001) / Math.max(heightWorld, 0.000001)));
+        if (ratioScore < bestScore - 0.000001 || (Math.abs(ratioScore - bestScore) <= 0.000001 && Math.abs(safeCandidate - estimatedSquareChars) < Math.abs(bestChars - estimatedSquareChars))) {
+          bestChars = safeCandidate;
+          bestScore = ratioScore;
+        }
+      });
+
+      return bestChars;
+    }
+
+    function getDefaultLineWidthChars(textLength = state.textData.length) {
+      return clampLineWidthChars(CONFIG.SHAPES.defaultLineWidthChars, textLength);
+    }
+
+    function getVirtualLineRowLimit(charsPerLine) {
+      const safeCharsPerLine = Math.max(charsPerLine || 1, 1);
+      if (safeCharsPerLine <= 1) return 2400;
+      if (safeCharsPerLine <= 2) return 3600;
+      if (safeCharsPerLine <= 4) return 5400;
+      if (safeCharsPerLine <= 8) return 7800;
+      return CONFIG.SHAPES.nahFallbackRowLimit;
+    }
+
+    function getLineWidthControlProgressForChars(charsPerLine, textLength = state.textData.length) {
+      const maxChars = getLineWidthCharLimit(textLength);
+      if (maxChars <= 1) return 0.5;
+
+      const squareChars = getSquareLineWidthChars(textLength);
+      const safeChars = clampLineWidthChars(charsPerLine, textLength);
+      if (safeChars === squareChars) return 0.5;
+
+      if (safeChars < squareChars) {
+        if (squareChars <= 1) return 0;
+        return 0.5 * clamp(Math.log(safeChars) / Math.log(squareChars), 0, 1);
+      }
+
+      if (squareChars >= maxChars) return 1;
+      return 0.5 + 0.5 * clamp(
+        Math.log(safeChars / squareChars) / Math.log(maxChars / squareChars),
+        0,
+        1
+      );
+    }
+
+    function getLineWidthCharsForControlProgress(progress, textLength = state.textData.length) {
+      const maxChars = getLineWidthCharLimit(textLength);
+      if (maxChars <= 1) return 1;
+
+      const safeProgress = clamp(Number(progress) || 0, 0, 1);
+      const squareChars = getSquareLineWidthChars(textLength);
+      if (Math.abs(safeProgress - 0.5) <= CONFIG.SHAPES.lineWidthSquareSnapProgress) return squareChars;
+
+      let mappedChars = 1;
+      if (safeProgress < 0.5) {
+        const t = safeProgress / 0.5;
+        mappedChars = squareChars <= 1 ? 1 : Math.exp(Math.log(squareChars) * t);
+      } else {
+        const t = (safeProgress - 0.5) / 0.5;
+        mappedChars = squareChars >= maxChars
+          ? maxChars
+          : squareChars * Math.exp(Math.log(maxChars / squareChars) * t);
+      }
+
+      const safeChars = clampLineWidthChars(mappedChars, textLength);
+      return Math.abs(safeChars - squareChars) <= 1 ? squareChars : safeChars;
+    }
+
+    function lineWidthCharsToSliderValue(charsPerLine) {
+      const maxChars = getLineWidthCharLimit();
+      if (maxChars <= 1) return 1;
+      const progress = getLineWidthControlProgressForChars(charsPerLine);
+      return 1 + progress * (maxChars - 1);
+    }
+
+    function sliderValueToLineWidthChars(sliderValue) {
+      const maxChars = getLineWidthCharLimit();
+      if (maxChars <= 1) return 1;
+      const progress = clamp((Number(sliderValue) - 1) / Math.max(maxChars - 1, 1), 0, 1);
+      return getLineWidthCharsForControlProgress(progress);
     }
 
     function solveCircleRadius(textLength, charWidth, lineHeight) {
@@ -828,11 +1074,11 @@
       }
 
       for (let i = 0; i < 40; i++) {
-        const mid = (low + high) / 2;
-        const capacity = getCapacityForRadius(mid);
+        const pivot = (low + high) / 2;
+        const capacity = getCapacityForRadius(pivot);
 
-        if (capacity >= textLength) high = mid;
-        else low = mid;
+        if (capacity >= textLength) high = pivot;
+        else low = pivot;
       }
 
       return Math.ceil(high);
@@ -976,7 +1222,7 @@
       ctx.fillRect(0, 0, glyphPresenceCanvas.width, glyphPresenceCanvas.height);
       ctx.fillStyle = '#fff';
       ctx.font = `56px ${CONFIG.FONT_FAMILY}`;
-      ctx.textBaseline = 'middle';
+      ctx.textBaseline = getCenteredTextBaseline();
       ctx.textAlign = 'center';
       ctx.fillText(char, glyphPresenceCanvas.width / 2, glyphPresenceCanvas.height / 2 + 2);
 
@@ -1034,13 +1280,10 @@
     }
 
     async function buildLineLayout({ includePresenceProfile = true, guard = null } = {}) {
-      const widthChars = clamp(
-        Math.round(state.shape.lineWidthChars),
-        CONFIG.SHAPES.minLineWidthChars,
-        CONFIG.SHAPES.maxLineWidthChars
-      );
-      const charsPerLine = Math.max(1, Math.min(widthChars, state.textData.length));
+      const charsPerLine = clampLineWidthChars(state.shape.lineWidthChars);
       const lineCount = Math.max(1, Math.ceil(state.textData.length / charsPerLine));
+      const virtualRowLimit = getVirtualLineRowLimit(charsPerLine);
+      const shouldUseVirtualRows = lineCount > virtualRowLimit;
       const height = Math.max(lineCount * state.lineHeight, state.lineHeight);
       const width = charsPerLine * state.baseCharWidth;
       const rows = [];
@@ -1048,7 +1291,7 @@
       let maxLineWidth = 0;
       const topY = -height / 2 + state.lineHeight / 2;
 
-      if (lineCount > CONFIG.SHAPES.nativeFallbackRowLimit) {
+      if (shouldUseVirtualRows) {
         return {
           rows: [],
           bounds: {
@@ -1113,6 +1356,7 @@
         meta: {
           charsPerLine,
           lineCount,
+          topY,
           presenceProfile
         }
       };
@@ -1192,8 +1436,8 @@
       state.normalizeScale = getNormalizeScaleForLayout(state.layout);
     }
 
-    function resetNativeTexture() {
-      state.textures.native = { canvas: null, centerX: 0, centerY: 0, scale: 0, width: 0, height: 0 };
+    function resetNahTexture() {
+      state.textures.nah = { canvas: null, centerX: 0, centerY: 0, scale: 0, width: 0, height: 0 };
     }
 
     function cloneTextureState(texture) {
@@ -1216,20 +1460,32 @@
       return CONFIG.TARGET_WORLD_SPAN / span;
     }
 
-    function getMidScaleStages() {
-      return CONFIG.MID_TEXTURE.progressiveScales;
+    function hasLayoutGeometry(layout = state.layout) {
+      if (!layout) return false;
+      if ((layout?.rows?.length || 0) > 0) return true;
+      return !!(
+        layout?.meta?.virtualRows
+        && Number.isFinite(layout?.meta?.lineCount)
+        && layout.meta.lineCount > 0
+        && Number.isFinite(layout?.bounds?.width)
+        && Number.isFinite(layout?.bounds?.height)
+      );
     }
 
-    function getMidScaleForStageIndex(stageIndex) {
-      const stages = getMidScaleStages();
+    function getFernScaleStages() {
+      return CONFIG.FERN_TEXTURE.progressiveScales;
+    }
+
+    function getFernScaleForStageIndex(stageIndex) {
+      const stages = getFernScaleStages();
       const safeIndex = clamp(stageIndex, 0, stages.length - 1);
-      return stages[safeIndex] || CONFIG.MID_TEXTURE.scale;
+      return stages[safeIndex] || CONFIG.FERN_TEXTURE.scale;
     }
 
     function getGlTextureMaxSizeHint() {
       if (state.runtimeLimits.glTextureMaxSize != null) return state.runtimeLimits.glTextureMaxSize;
 
-      let detected = CONFIG.MID_TEXTURE.maxSize;
+      let detected = CONFIG.FERN_TEXTURE.maxSize;
       try {
         const probeCanvas = document.createElement('canvas');
         const gl = probeCanvas.getContext('webgl') || probeCanvas.getContext('experimental-webgl');
@@ -1238,21 +1494,21 @@
           detected = Math.min(detected, maxTextureSize);
         }
       } catch (error) {
-        detected = CONFIG.MID_TEXTURE.maxSize;
+        detected = CONFIG.FERN_TEXTURE.maxSize;
       }
 
-      state.runtimeLimits.glTextureMaxSize = clamp(Math.floor(detected), 2048, CONFIG.MID_TEXTURE.maxSize);
+      state.runtimeLimits.glTextureMaxSize = clamp(Math.floor(detected), 2048, CONFIG.FERN_TEXTURE.maxSize);
       return state.runtimeLimits.glTextureMaxSize;
     }
 
-    function getEffectiveMidTextureMaxSize() {
+    function getEffectiveFernTextureMaxSize() {
       const viewport = getViewportMetrics();
       const dpr = window.devicePixelRatio || 1;
       const deviceMemory = navigator.deviceMemory || 0;
       const glLimit = getGlTextureMaxSizeHint();
       const isMobileLike = viewport.width <= 820;
 
-      let safeLimit = CONFIG.MID_TEXTURE.maxSize;
+      let safeLimit = CONFIG.FERN_TEXTURE.maxSize;
       if (isMobileLike) {
         if (deviceMemory >= 8 && dpr < 3) safeLimit = 8192;
         else if (deviceMemory >= 4 || dpr < 2.5) safeLimit = 6144;
@@ -1261,23 +1517,23 @@
         safeLimit = 8192;
       }
 
-      return clamp(Math.min(CONFIG.MID_TEXTURE.maxSize, glLimit, safeLimit), 2048, CONFIG.MID_TEXTURE.maxSize);
+      return clamp(Math.min(CONFIG.FERN_TEXTURE.maxSize, glLimit, safeLimit), 2048, CONFIG.FERN_TEXTURE.maxSize);
     }
 
-    function getSafeMidTextureMaxSize() {
-      const safeMaxSize = getEffectiveMidTextureMaxSize();
+    function getSafeFernTextureMaxSize() {
+      const safeMaxSize = getEffectiveFernTextureMaxSize();
       return clamp(
-        Math.floor(safeMaxSize * CONFIG.MID_TEXTURE.safetyHeadroom),
+        Math.floor(safeMaxSize * CONFIG.FERN_TEXTURE.safetyHeadroom),
         2048,
         safeMaxSize
       );
     }
 
-    function getHardMidTextureMaxSize() {
+    function getHardFernTextureMaxSize() {
       return clamp(
-        Math.min(CONFIG.MID_TEXTURE.maxSize, getGlTextureMaxSizeHint()),
+        Math.min(CONFIG.FERN_TEXTURE.maxSize, getGlTextureMaxSizeHint()),
         2048,
-        CONFIG.MID_TEXTURE.maxSize
+        CONFIG.FERN_TEXTURE.maxSize
       );
     }
 
@@ -1293,8 +1549,8 @@
       ), 0.000001);
     }
 
-    function getActualMidStageIndexFromScale(scale) {
-      const stages = getMidScaleStages();
+    function getActualFernStageIndexFromScale(scale) {
+      const stages = getFernScaleStages();
       let bestIndex = 0;
       for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
         if (stages[stageIndex] <= scale + 0.000001) bestIndex = stageIndex;
@@ -1302,29 +1558,29 @@
       return bestIndex;
     }
 
-    function getBestMidStageIndex(layout) {
+    function getBestFernStageIndex(layout) {
       const maxRenderableScale = getRenderableTextureScaleLimit(
-        CONFIG.MID_TEXTURE,
+        CONFIG.FERN_TEXTURE,
         layout,
-        getSafeMidTextureMaxSize()
+        getSafeFernTextureMaxSize()
       );
-      return getActualMidStageIndexFromScale(maxRenderableScale);
+      return getActualFernStageIndexFromScale(maxRenderableScale);
     }
 
-    function getSafeMidTargetScale(layout) {
+    function getSafeFernTargetScale(layout) {
       const maxRenderableScale = getRenderableTextureScaleLimit(
-        CONFIG.MID_TEXTURE,
+        CONFIG.FERN_TEXTURE,
         layout,
-        getSafeMidTextureMaxSize()
+        getSafeFernTextureMaxSize()
       );
       return Math.max(maxRenderableScale, 0.000001);
     }
 
-    function getBestMidTargetScale(layout) {
+    function getBestFernTargetScale(layout) {
       const maxRenderableScale = getRenderableTextureScaleLimit(
-        CONFIG.MID_TEXTURE,
+        CONFIG.FERN_TEXTURE,
         layout,
-        getHardMidTextureMaxSize()
+        getHardFernTextureMaxSize()
       );
       return Math.max(maxRenderableScale, 0.000001);
     }
@@ -1346,7 +1602,7 @@
 
     function getEstimatedScreenFontSizeForLayout(layout, { fitView = false, initialCircleViewportFraction = null } = {}) {
       const normalizeScale = getNormalizeScaleForLayout(layout);
-      const effectiveScale = fitView || !state.layout?.rows?.length
+      const effectiveScale = fitView || !hasLayoutGeometry(state.layout)
         ? getEstimatedFitScaleForLayout(layout, normalizeScale, { initialCircleViewportFraction }) * normalizeScale
         : getEffectiveScale();
       return state.baseFontSize * effectiveScale;
@@ -1361,7 +1617,7 @@
 	    }
 
 	    function getViewportResponsiveBaseFitScale() {
-	      if (!state.layout?.rows?.length) return null;
+	      if (!hasLayoutGeometry(state.layout)) return null;
 	      return getEstimatedFitScaleForLayout(
 	        state.layout,
 	        state.normalizeScale,
@@ -1391,7 +1647,7 @@
 	    }
 
 	    function applyViewportResponsiveScaleOnResize() {
-	      if (!state.textData || !state.layout?.rows?.length) return false;
+	      if (!state.textData || !hasLayoutGeometry(state.layout)) return false;
 	      const baseFitScale = getViewportResponsiveBaseFitScale();
 	      if (!Number.isFinite(baseFitScale) || baseFitScale <= 0) return false;
 	      const zoomMultiplier = Math.max(state.viewportResponsiveScale.zoomMultiplier || 1, 0.000001);
@@ -1399,19 +1655,19 @@
 	      return true;
 	    }
 
-    function getInitialMidStageIndex(layout, { fitView = false, initialCircleViewportFraction = null } = {}) {
+    function getInitialFernStageIndex(layout, { fitView = false, initialCircleViewportFraction = null } = {}) {
       const screenFontSize = getEstimatedScreenFontSizeForLayout(layout, { fitView, initialCircleViewportFraction });
-      const thresholds = CONFIG.MID_TEXTURE.initialScreenFontThresholds;
+      const thresholds = CONFIG.FERN_TEXTURE.initialScreenFontThresholds;
       let stageIndex = thresholds.findIndex(threshold => screenFontSize <= threshold);
-      if (stageIndex === -1) stageIndex = getMidScaleStages().length - 1;
+      if (stageIndex === -1) stageIndex = getFernScaleStages().length - 1;
 
       const viewport = getViewportMetrics();
       const dpr = window.devicePixelRatio || 1;
       if (viewport.width <= 768 || dpr >= 2.5) {
-        stageIndex = Math.min(stageIndex, getMidScaleStages().length - 2);
+        stageIndex = Math.min(stageIndex, getFernScaleStages().length - 2);
       }
 
-      return clamp(stageIndex, 0, getMidScaleStages().length - 1);
+      return clamp(stageIndex, 0, getFernScaleStages().length - 1);
     }
 
     function isPreparedRenderActive(prepared) {
@@ -1427,15 +1683,15 @@
         state.documentCacheKey,
         state.shape.type,
         lineWidthPart,
-        `midSafe:${Math.round(getSafeMidTextureMaxSize())}`,
-        `midHard:${Math.round(getHardMidTextureMaxSize())}`,
+        `fernSafe:${Math.round(getSafeFernTextureMaxSize())}`,
+        `fernHard:${Math.round(getHardFernTextureMaxSize())}`,
         state.baseFontSize,
         state.baseCharWidth.toFixed(4),
         state.lineHeight.toFixed(4)
       ].join('|');
     }
 
-    function createEmptyTextureState(textureConfig = CONFIG.MID_TEXTURE) {
+    function createEmptyTextureState(textureConfig = CONFIG.FERN_TEXTURE) {
       return {
         canvas: null,
         width: 0,
@@ -1460,27 +1716,43 @@
     function createPreparedShapeRender(layout) {
       return {
         layout,
-        midTexture: createEmptyTextureState(CONFIG.MID_TEXTURE),
-        midPromise: null,
-        initialMidStageIndex: 0,
-        bestMidStageIndex: 0,
-        safeMidTargetScale: CONFIG.MID_TEXTURE.scale,
-        bestMidTargetScale: CONFIG.MID_TEXTURE.scale,
-        midStageIndex: -1,
-        midPendingStageIndex: -1
+        fernTexture: createEmptyTextureState(CONFIG.FERN_TEXTURE),
+        fernPromise: null,
+        initialFernStageIndex: 0,
+        bestFernStageIndex: 0,
+        safeFernTargetScale: CONFIG.FERN_TEXTURE.scale,
+        bestFernTargetScale: CONFIG.FERN_TEXTURE.scale,
+        fernStageIndex: -1,
+        fernPendingStageIndex: -1
       };
     }
 
-    function shouldForceNativeForLayout(layout) {
-      return state.shape.type === 'line'
-        && ((layout?.meta?.virtualRows) || (layout?.meta?.lineCount || layout?.rows?.length || 0) > CONFIG.SHAPES.nativeFallbackRowLimit);
+    function shouldForceNahForLayout() {
+      return false;
     }
 
-    function getFullTextNativeReferenceScale(qualityBoost = 1) {
+    function getFullTextNahReferenceScale(qualityBoost = 1) {
       const dpr = window.devicePixelRatio || 1;
-      const targetScreenFont = Math.max(state.blendTuning.midToNativeEnd || CONFIG.BLEND.midToNativeEnd, 0.1);
+      const targetScreenFont = Math.max(state.blendTuning.fernToNahEnd || CONFIG.BLEND.fernToNahEnd, 0.1);
       const baseFontSize = Math.max(state.baseFontSize || CONFIG.TARGET_FONT_SIZE, 0.000001);
       return Math.max((targetScreenFont / baseFontSize) * dpr * Math.max(qualityBoost, 1), 0.000001);
+    }
+
+    function getVirtualLineRowAt(layout, rowIndex) {
+      const charsPerLine = Math.max(layout?.meta?.charsPerLine || 1, 1);
+      const lineCount = Math.max(layout?.meta?.lineCount || 0, 0);
+      if (rowIndex < 0 || rowIndex >= lineCount) return null;
+
+      const startIndex = rowIndex * charsPerLine;
+      const charCount = Math.min(charsPerLine, Math.max(state.textData.length - startIndex, 0));
+      if (charCount <= 0) return null;
+
+      return {
+        x: 0,
+        y: (layout?.meta?.topY || 0) + rowIndex * state.lineHeight,
+        startIndex,
+        charCount
+      };
     }
 
     function resizeLineWidthGhostCanvas() {
@@ -1516,38 +1788,43 @@
       } else {
         preserveScreenTypography(prepared.layout);
       }
-      resetNativeTexture();
-      state.textures.mid = cloneTextureState(prepared.midTexture);
+      resetNahTexture();
+      state.textures.fern = cloneTextureState(prepared.fernTexture);
 
-      initMidLayer();
-      hideNativeOverlay();
+      initFernLayer();
+      hideNahOverlay();
       clearPresenceLayer();
-      if (!state.textures.mid.canvas) hideMidOverlay();
-      state.renderMode = 'texture';
+      if (!state.textures.fern.canvas) hideFernOverlay();
+      state.renderMode = 'fern';
 
-      if (prepared.layout.meta?.forceNative) {
+      if (prepared.layout.meta?.forceNah) {
         state.lineWidthPreview.active = false;
-        state.lineWidthPreview.bridging = true;
-        updateLineWidthPreviewGhost({ bridge: true });
-      } else {
-        if (state.renderWhisper.kind === 'load' && hasTextureCanvas(state.textures.mid)) {
-          state.renderWhisper.committedLoadId = currentLoadId;
+        state.lineWidthPreview.bridging = !(state.renderWhisper.kind === 'load' && state.renderWhisper.pendingLoadId);
+        if (state.lineWidthPreview.bridging) {
+          updateLineWidthPreviewGhost({ bridge: true });
+        } else {
+          clearLineWidthGhostCanvas();
+          elements.lineWidthGhost.style.display = 'none';
+          elements.lineWidthGhost.style.opacity = '0';
         }
+      } else {
         clearLineWidthPreview({ keepOverlay: true });
       }
 
       if (fitView) fitShapeInView({ initialCircleViewportFraction });
-      updateMidScaleReadout();
+      updateDocumentStatsReadout();
       applyTransform();
+      updateLoadWhisperCommitState();
       maybeFinishLoadWhisper();
     }
 
-    function applyPreparedMidTexture(prepared) {
-      state.textures.mid = cloneTextureState(prepared.midTexture);
-      initMidLayer();
-      if (!state.textures.mid.canvas) hideMidOverlay();
-      updateMidScaleReadout();
+    function applyPreparedFernTexture(prepared) {
+      state.textures.fern = cloneTextureState(prepared.fernTexture);
+      initFernLayer();
+      if (!state.textures.fern.canvas) hideFernOverlay();
+      updateDocumentStatsReadout();
       applyTransform();
+      updateLoadWhisperCommitState();
     }
 
     async function prepareShapeRender({ guard = null, fitView = false, initialCircleViewportFraction = null } = {}) {
@@ -1555,75 +1832,75 @@
       if (!layout) return null;
       layout.meta = {
         ...(layout.meta || {}),
-        forceNative: shouldForceNativeForLayout(layout)
+        forceNah: shouldForceNahForLayout(layout)
       };
       const prepared = createPreparedShapeRender(layout);
-      prepared.safeMidTargetScale = getSafeMidTargetScale(layout);
-      prepared.bestMidTargetScale = getBestMidTargetScale(layout);
-      prepared.bestMidStageIndex = getActualMidStageIndexFromScale(prepared.safeMidTargetScale);
-      prepared.initialMidStageIndex = getInitialMidStageIndex(layout, { fitView, initialCircleViewportFraction });
-      prepared.layout.meta.fullTextNative = !prepared.layout.meta.forceNative
-        && prepared.safeMidTargetScale >= getFullTextNativeReferenceScale() - 0.000001;
-      if (layout.meta.forceNative) {
+      prepared.safeFernTargetScale = getSafeFernTargetScale(layout);
+      prepared.bestFernTargetScale = getBestFernTargetScale(layout);
+      prepared.bestFernStageIndex = getActualFernStageIndexFromScale(prepared.safeFernTargetScale);
+      prepared.initialFernStageIndex = getInitialFernStageIndex(layout, { fitView, initialCircleViewportFraction });
+      prepared.layout.meta.fullTextFern = !prepared.layout.meta.forceNah
+        && prepared.safeFernTargetScale >= getFullTextNahReferenceScale() - 0.000001;
+      if (layout.meta.forceNah) {
         return prepared;
       }
 
-      if (!prepared.layout.meta.forceNative) {
-        const midTexture = await renderMidTexture({
+      if (!prepared.layout.meta.forceNah) {
+        const fernTexture = await renderFernTexture({
           layout,
           guard,
-          targetScale: prepared.safeMidTargetScale
+          targetScale: prepared.safeFernTargetScale
         });
-        if (!midTexture) return null;
-        prepared.midTexture = midTexture;
-        prepared.midStageIndex = midTexture.stageIndex ?? prepared.bestMidStageIndex;
+        if (!fernTexture) return null;
+        prepared.fernTexture = fernTexture;
+        prepared.fernStageIndex = fernTexture.stageIndex ?? prepared.bestFernStageIndex;
       }
 
       return prepared;
     }
 
-    async function ensurePreparedMidTexture(prepared, { guard = null, targetStageIndex = null, targetScale = null } = {}) {
-      if (prepared.layout.meta?.forceNative) {
-        return prepared.midTexture;
+    async function ensurePreparedFernTexture(prepared, { guard = null, targetStageIndex = null, targetScale = null } = {}) {
+      if (prepared.layout.meta?.forceNah) {
+        return prepared.fernTexture;
       }
       const desiredTargetScale = clamp(
         Math.min(
           targetScale ?? (targetStageIndex == null
-            ? prepared.safeMidTargetScale
-            : getMidScaleForStageIndex(targetStageIndex)),
-          prepared.safeMidTargetScale
+            ? prepared.safeFernTargetScale
+            : getFernScaleForStageIndex(targetStageIndex)),
+          prepared.safeFernTargetScale
         ),
         0.000001,
-        prepared.safeMidTargetScale
+        prepared.safeFernTargetScale
       );
 
-      if (hasTextureCanvas(prepared.midTexture) && Math.min(prepared.midTexture.scaleX, prepared.midTexture.scaleY) >= desiredTargetScale - 0.000001) {
-        return prepared.midTexture;
+      if (hasTextureCanvas(prepared.fernTexture) && Math.min(prepared.fernTexture.scaleX, prepared.fernTexture.scaleY) >= desiredTargetScale - 0.000001) {
+        return prepared.fernTexture;
       }
 
-      if (!prepared.midPromise) {
-        prepared.midPendingStageIndex = getActualMidStageIndexFromScale(desiredTargetScale);
-        prepared.midPromise = renderMidTexture({
+      if (!prepared.fernPromise) {
+        prepared.fernPendingStageIndex = getActualFernStageIndexFromScale(desiredTargetScale);
+        prepared.fernPromise = renderFernTexture({
           layout: prepared.layout,
           guard,
           targetScale: desiredTargetScale
         })
           .then(texture => {
             if (texture && (!guard || guard())) {
-              prepared.midTexture = texture;
-              prepared.midStageIndex = texture.stageIndex ?? getActualMidStageIndexFromScale(desiredTargetScale);
+              prepared.fernTexture = texture;
+              prepared.fernStageIndex = texture.stageIndex ?? getActualFernStageIndexFromScale(desiredTargetScale);
             }
             return texture;
           })
           .finally(() => {
-            prepared.midPromise = null;
-            prepared.midPendingStageIndex = -1;
+            prepared.fernPromise = null;
+            prepared.fernPendingStageIndex = -1;
           });
-      } else if (prepared.midPendingStageIndex < getActualMidStageIndexFromScale(desiredTargetScale)) {
-        return prepared.midPromise.then(() => ensurePreparedMidTexture(prepared, { guard, targetScale: desiredTargetScale }));
+      } else if (prepared.fernPendingStageIndex < getActualFernStageIndexFromScale(desiredTargetScale)) {
+        return prepared.fernPromise.then(() => ensurePreparedFernTexture(prepared, { guard, targetScale: desiredTargetScale }));
       }
 
-      return prepared.midPromise;
+      return prepared.fernPromise;
     }
 
     function clearLineWidthPreview({ keepOverlay = false } = {}) {
@@ -1640,7 +1917,7 @@
       clearLineWidthGhostCanvas();
       elements.lineWidthGhost.style.display = 'none';
       elements.lineWidthGhost.style.opacity = '0';
-      if (!keepOverlay) hideNativeOverlay();
+      if (!keepOverlay) hideNahOverlay();
     }
 
     function cancelLineWidthCommit() {
@@ -1650,24 +1927,34 @@
     }
 
     function updateLineWidthReadout() {
+      normalizeLineWidthCharsState();
+      shapePanel?.setSliderConfig('lineWidthChars', {
+        min: CONFIG.SHAPES.minLineWidthChars,
+        max: getLineWidthCharLimit()
+      });
       shapePanel?.set('lineWidthChars', state.shape.lineWidthChars);
     }
 
-    function getNativeCoveragePercent(scale) {
-      const referenceScale = getFullTextNativeReferenceScale();
+    function applyLineShapeDefaultWidth() {
+      state.shape.lineWidthChars = getDefaultLineWidthChars();
+      updateLineWidthReadout();
+    }
+
+    function getFernCoveragePercent(scale) {
+      const referenceScale = getFullTextNahReferenceScale();
       const percent = (Math.max(scale || 0, 0) / referenceScale) * 100;
       return clamp(percent, 0, 100);
     }
 
     function formatCoveragePercent(scale) {
-      const percent = getNativeCoveragePercent(scale);
+      const percent = getFernCoveragePercent(scale);
       if (percent >= 99.5) return '100%';
       if (percent >= 10) return `${Math.round(percent)}%`;
       return `${percent.toFixed(1)}%`;
     }
 
-    function getActiveMidScale() {
-      return Math.min(state.textures.mid?.scaleX || 0, state.textures.mid?.scaleY || 0);
+    function getActiveFernScale() {
+      return Math.min(state.textures.fern?.scaleX || 0, state.textures.fern?.scaleY || 0);
     }
 
     function getCurrentDocumentCharCount() {
@@ -1700,6 +1987,8 @@
     function getDirectDocumentEntryForCurrentUi(recipe = getRemixRecipe()) {
       const activeEntry = getActiveKarussellDocumentEntry();
       if (!activeEntry) return null;
+      if (isDropBibleTriggerEntry(activeEntry)) return activeEntry;
+      if (!isRemixModeEnabled() && !isLiveRemixPreviewEntry(activeEntry)) return activeEntry;
       return doesBibleEntryRepresentRecipe(activeEntry, recipe) ? activeEntry : null;
     }
 
@@ -1726,7 +2015,7 @@
 
       if (!expectedSelectionKey || !loadedSelectionKey) return false;
       if (expectedSelectionKey !== loadedSelectionKey) return false;
-      if (!state.layout?.rows?.length) return false;
+      if (!hasLayoutGeometry(state.layout)) return false;
 
       const { pendingLoadId, committedLoadId } = state.renderWhisper;
       if (pendingLoadId && committedLoadId !== pendingLoadId) return false;
@@ -1734,34 +2023,36 @@
       return true;
     }
 
-    function isNativeTextDisplayed() {
-      const nativeOpacity = parseFloat(elements.nativeCanvas?.style.opacity || '0');
-      return isNativeOverlayReady()
-        && nativeOpacity > 0.001;
+    function hasNahTextDisplayed() {
+      const nahOpacity = parseFloat(elements.nahCanvas?.style.opacity || '0');
+      return isNahOverlayReady()
+        && nahOpacity > 0.001;
     }
 
-    function updateMidScaleReadout() {
-      if (!shapePanelEls?.midScaleStatus) return;
+    function shouldPreferNahView(screenFontSize = state.baseFontSize * getEffectiveScale()) {
+      const blendProfile = getActiveBlendProfile(screenFontSize);
+      return !state.layout?.meta?.fullTextFern
+        && (blendProfile.shouldForceNah || screenFontSize >= blendProfile.thresholds.fernToNahStart);
+    }
 
-      const statsReady = isCurrentBibleStatsReady();
-      const nativeTextDisplayed = statsReady && isNativeTextDisplayed();
+    function isCurrentViewTextReady() {
+      if (!state.textData || !hasLayoutGeometry(state.layout)) return false;
+      if (shouldPreferNahView()) return hasNahTextDisplayed();
+      return hasTextureCanvas(state.textures.fern);
+    }
 
-      const safeMax = state.activePreparedRender?.safeMidTargetScale
-        || (state.layout?.rows?.length ? getSafeMidTargetScale(state.layout) : 0);
-      const coveragePercent = state.layout?.rows?.length
-        ? getNativeCoveragePercent(safeMax)
-        : 0;
-      const isFullTextNative = nativeTextDisplayed || coveragePercent >= 99.5;
-
-      shapePanelEls.midScaleStatus.textContent = statsReady
-        ? (nativeTextDisplayed ? '100%' : formatCoveragePercent(safeMax))
-        : '–';
-
-      if (shapePanelEls.midScaleHint) {
-        shapePanelEls.midScaleHint.textContent = isFullTextNative ? '' : 'use better hardware for higher resolution';
-        shapePanelEls.midScaleHint.style.display = (!statsReady || isFullTextNative) ? 'none' : 'inline';
+    function updateLoadWhisperCommitState(loadId = state.renderWhisper.pendingLoadId || currentLoadId) {
+      if (state.renderWhisper.pendingLoadId !== loadId || state.renderWhisper.kind !== 'load') return false;
+      if (state.layoutBuildRevision < (state.renderWhisper.requiredLayoutRevision || 0)) {
+        state.renderWhisper.committedLoadId = 0;
+        return false;
       }
+      state.renderWhisper.committedLoadId = isCurrentViewTextReady() ? loadId : 0;
+      return state.renderWhisper.committedLoadId === loadId;
+    }
 
+    function updateDocumentStatsReadout() {
+      const statsReady = isCurrentBibleStatsReady();
       if (shapePanelEls.charCountStatus) {
         shapePanelEls.charCountStatus.textContent = statsReady
           ? formatDocumentCharCount(getCurrentDocumentCharCount())
@@ -1769,7 +2060,7 @@
       }
     }
 
-    function maybeFinishLoadWhisper(loadId = currentLoadId) {
+    function maybeFinishLoadWhisper(loadId = state.renderWhisper.pendingLoadId || currentLoadId) {
       if (state.renderWhisper.pendingLoadId !== loadId || state.renderWhisper.kind !== 'load') return;
       if (state.renderWhisper.committedLoadId !== loadId) return;
       if (state.renderWhisper.revealFrame) return;
@@ -1932,9 +2223,9 @@
 
     function isLoadPlaceholderActive() {
       return !!state.renderWhisper.pendingLoadId
-        && !!state.layout?.rows?.length
-        && !hasTextureCanvas(state.textures.mid)
-        && !hasNativeTextureReady();
+        && hasLayoutGeometry(state.layout)
+        && !hasTextureCanvas(state.textures.fern)
+        && !hasNahTextureReady();
     }
 
     function preserveCircleFootprint(layout, reference) {
@@ -1956,10 +2247,7 @@
     function getLineWidthPreviewShape() {
       const viewport = getViewportMetrics();
       const textLength = Math.max(state.textData.length || 1, 1);
-      const charsPerLine = Math.max(1, Math.min(
-        clamp(Math.round(state.shape.lineWidthChars), CONFIG.SHAPES.minLineWidthChars, CONFIG.SHAPES.maxLineWidthChars),
-        textLength
-      ));
+      const charsPerLine = clampLineWidthChars(state.shape.lineWidthChars, textLength);
       const lineCount = Math.max(1, Math.ceil(textLength / charsPerLine));
       const effectiveScale = getEffectiveScale();
       const absoluteFocus = getAbsoluteFocusWorld();
@@ -1983,16 +2271,16 @@
     }
 
     function shouldHoldBridgedLinePreview(screenFontSize = state.baseFontSize * getEffectiveScale()) {
-      if (!state.lineWidthPreview.bridging || state.shape.type !== 'line' || !state.layout?.meta?.forceNative) return false;
+      if (!state.lineWidthPreview.bridging || state.shape.type !== 'line' || !state.layout?.meta?.forceNah) return false;
       const { widthPx } = getShapeScreenMetrics();
       return widthPx < CONFIG.SHAPES.previewHoldWidthPx || screenFontSize < CONFIG.SHAPES.previewHoldFontPx;
     }
 
     function showLineWidthPreview({ bridge = false } = {}) {
       if (!bridge) {
-        elements.midCanvas.style.opacity = '0';
-        elements.midCanvas.style.filter = 'none';
-        elements.nativeCanvas.style.opacity = '0';
+        elements.fernCanvas.style.opacity = '0';
+        elements.fernCanvas.style.filter = 'none';
+        elements.nahCanvas.style.opacity = '0';
         elements.presenceCanvas.style.opacity = '0';
       }
       elements.lineWidthGhost.style.display = 'block';
@@ -2023,6 +2311,7 @@
       const rowStep = Math.max(1, Math.ceil(visibleRowCount / CONFIG.SHAPES.previewSpiritMaxRows));
       const baseStrokeWidth = clamp(preview.rowHeightPx * 0.14, 0.5, 2.1);
       const baseAlpha = 0.32;
+      const theme = getMonochromeThemePalette();
 
       ctx.lineCap = 'round';
 
@@ -2034,28 +2323,22 @@
         const screenY = preview.centerScreenY + (preview.topY + rowIndex * state.lineHeight) * preview.effectiveScale;
         if (screenY < -8 || screenY > height + 8) continue;
 
-        const rowWidthPx = Math.max(charCount * state.baseCharWidth * preview.effectiveScale, 1);
+        const rowWidthPx = Math.max(preview.charsPerLine * state.baseCharWidth * preview.effectiveScale, 1);
         const density = sampleSpiritDensity(charStart, charCount, rowIndex, 0);
         const alpha = clamp(baseAlpha + density * 0.24, 0.05, 0.78);
-        const inkFactor = charCount <= 1
-          ? 0.34
-          : charCount === 2
-            ? 0.56
-            : clamp(0.78 + density * 0.12, 0.68, 0.9);
-        const inkWidthPx = Math.max(Math.min(rowWidthPx * inkFactor, rowWidthPx), 0.8);
-        const x0 = preview.centerScreenX - inkWidthPx / 2;
-        const x1 = preview.centerScreenX + inkWidthPx / 2;
+        const x0 = preview.centerScreenX - rowWidthPx / 2;
+        const x1 = preview.centerScreenX + rowWidthPx / 2;
 
-        if (inkWidthPx <= baseStrokeWidth * 1.1 || x1 <= x0) {
-          ctx.fillStyle = `rgba(255,255,255,${clamp(baseAlpha + density * 0.36, 0.08, 0.92)})`;
-          const pointSize = clamp(Math.min(inkWidthPx, 1.4) + density * 0.8, 0.8, 1.9);
+        if (rowWidthPx <= baseStrokeWidth * 1.1 || x1 <= x0) {
+          ctx.fillStyle = withAlpha(theme.textChannels, clamp(baseAlpha + density * 0.36, 0.08, 0.92));
+          const pointSize = clamp(Math.min(rowWidthPx, 1.4) + density * 0.8, 0.8, 1.9);
           ctx.beginPath();
           ctx.arc(preview.centerScreenX, screenY, pointSize / 2, 0, Math.PI * 2);
           ctx.fill();
           continue;
         }
 
-        ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+        ctx.strokeStyle = withAlpha(theme.textChannels, alpha);
         ctx.lineWidth = clamp(baseStrokeWidth * (0.92 + density * 0.14), 0.45, 2.2);
         ctx.beginPath();
         ctx.moveTo(x0, screenY);
@@ -2068,6 +2351,7 @@
     }
 
     function previewLineWidthChange() {
+      clearLocalRenderLoadWhisper();
       state.lineWidthPreview.active = true;
       state.lineWidthPreview.bridging = false;
       state.renderMode = 'preview';
@@ -2107,7 +2391,7 @@
 	    }
 
 	    function shiftShapeWithPanelSafeAreaDelta() {
-	      if (!shouldUseShapePanelSafeArea() || !state.textData || !state.layout?.rows?.length || !state.scale) return false;
+	      if (!shouldUseShapePanelSafeArea() || !state.textData || !hasLayoutGeometry(state.layout) || !state.scale) return false;
 	      const nextCenterY = getPreferredPlacementViewportMetrics().localCenterY;
 	      const prevCenterY = state.panelPlacement.lastCenterY;
 	      state.panelPlacement.lastCenterY = nextCenterY;
@@ -2124,7 +2408,7 @@
     }
 
     function maybeRefreshAutoFitViewportPlacement() {
-      if (!state.viewAutoFit.enabled || !state.textData || !state.layout?.rows?.length) return false;
+      if (!state.viewAutoFit.enabled || !state.textData || !hasLayoutGeometry(state.layout)) return false;
       fitShapeInView({ initialCircleViewportFraction: state.viewAutoFit.initialCircleViewportFraction });
       applyTransform();
       return true;
@@ -2152,28 +2436,37 @@
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d', { alpha: false });
+      const theme = getMonochromeThemePalette();
 
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = theme.bgCss;
       ctx.fillRect(0, 0, width, height);
 
       ctx.save();
       try {
         ctx.translate(width / 2, height / 2);
         ctx.scale(textureScaleX, textureScaleY);
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = theme.textCss;
         ctx.font = `${state.baseFontSize}px ${CONFIG.FONT_FAMILY}`;
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = getCenteredTextBaseline();
         ctx.textAlign = 'center';
 
-        for (let i = 0; i < layout.rows.length; i++) {
-          const line = layout.rows[i];
+        const rowCount = layout.meta?.virtualRows
+          ? Math.max(layout.meta?.lineCount || 0, 0)
+          : layout.rows.length;
+
+        for (let i = 0; i < rowCount; i++) {
+          const line = layout.meta?.virtualRows
+            ? getVirtualLineRowAt(layout, i)
+            : layout.rows[i];
+          if (!line) continue;
+
           ctx.fillText(
             state.textData.substr(line.startIndex, line.charCount),
             line.x,
             line.y
           );
 
-          if ((i + 1) % 64 === 0 && i + 1 < layout.rows.length) {
+          if ((i + 1) % 64 === 0 && i + 1 < rowCount) {
             const canContinue = await yieldToUrgentUi(guard);
             if (!canContinue) return null;
           }
@@ -2194,18 +2487,18 @@
       };
     }
 
-    async function renderMidTexture({ targetStageIndex = null, targetScale = null, ...options } = {}) {
+    async function renderFernTexture({ targetStageIndex = null, targetScale = null, ...options } = {}) {
       const resolvedScale = targetScale ?? (targetStageIndex == null
-        ? CONFIG.MID_TEXTURE.scale
-        : getMidScaleForStageIndex(targetStageIndex));
-      const texture = await renderTexture(CONFIG.MID_TEXTURE, {
+        ? CONFIG.FERN_TEXTURE.scale
+        : getFernScaleForStageIndex(targetStageIndex));
+      const texture = await renderTexture(CONFIG.FERN_TEXTURE, {
         ...options,
         targetScale: resolvedScale,
-        maxSizeOverride: getHardMidTextureMaxSize()
+        maxSizeOverride: getHardFernTextureMaxSize()
       });
       if (!texture) return null;
       texture.targetScale = resolvedScale;
-      texture.stageIndex = getActualMidStageIndexFromScale(Math.min(texture.scaleX, texture.scaleY));
+      texture.stageIndex = getActualFernStageIndexFromScale(Math.min(texture.scaleX, texture.scaleY));
       return texture;
     }
 
@@ -2220,13 +2513,13 @@
       canvas.style.filter = 'none';
     }
 
-    function initMidLayer() {
-      initTextureLayer(elements.midCanvas, elements.midCtx, state.textures.mid);
-      if (!state.textures.mid.canvas) {
-        hideMidOverlay();
+    function initFernLayer() {
+      initTextureLayer(elements.fernCanvas, elements.fernCtx, state.textures.fern);
+      if (!state.textures.fern.canvas) {
+        hideFernOverlay();
         return;
       }
-      elements.midCanvas.style.opacity = '0';
+      elements.fernCanvas.style.opacity = '0';
     }
 
     function findFirstVisibleLine(topWorldY, padding) {
@@ -2236,9 +2529,9 @@
       let lo = 0;
       let hi = state.layout.rows.length - 1;
       while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (state.layout.rows[mid].y < adjustedTop) lo = mid + 1;
-        else hi = mid;
+        const pivotIndex = (lo + hi) >> 1;
+        if (state.layout.rows[pivotIndex].y < adjustedTop) lo = pivotIndex + 1;
+        else hi = pivotIndex;
       }
       return Math.max(0, lo - 1);
     }
@@ -2357,6 +2650,22 @@
       }
     }
 
+    function beginRenderLoadWhisper(text = getShapeLoadWhisperText(), { requiredLayoutRevision = 0 } = {}) {
+      const loadId = ++state.renderWhisper.serial;
+      state.renderWhisper.pendingLoadId = loadId;
+      state.renderWhisper.committedLoadId = 0;
+      state.renderWhisper.requiredLayoutRevision = Math.max(0, requiredLayoutRevision || 0);
+      state.renderWhisper.pendingDocumentKey = state.documentCacheKey || '';
+      setRenderWhisper(text, 'load', { animateDots: true });
+      return loadId;
+    }
+
+    function clearLocalRenderLoadWhisper() {
+      if (state.renderWhisper.kind !== 'load') return;
+      if (state.renderWhisper.pendingDocumentKey && state.renderWhisper.pendingDocumentKey !== state.documentCacheKey) return;
+      clearRenderWhisper({ kind: 'load' });
+    }
+
     function clearRenderWhisper({ delay = 0, kind = '' } = {}) {
       if (!elements.renderWhisper) return;
       if (kind && state.renderWhisper.kind !== kind) return;
@@ -2375,6 +2684,7 @@
         if (!kind || kind === 'load') {
           state.renderWhisper.pendingLoadId = 0;
           state.renderWhisper.committedLoadId = 0;
+          state.renderWhisper.requiredLayoutRevision = 0;
           state.renderWhisper.pendingDocumentKey = '';
           state.renderWhisper.anchorX = null;
           state.renderWhisper.anchorY = null;
@@ -2512,7 +2822,7 @@
     }
 
     function getPresenceSourceTexture() {
-      const preferred = state.textures.mid;
+      const preferred = state.textures.fern;
       if (!preferred?.canvas) {
         return null;
       }
@@ -2549,17 +2859,37 @@
       const paintedWidth = Math.max(drawWidth, pixelSize);
       if (coverageX <= 0.0001) return false;
 
+      const longAxisPx = Math.max(drawWidth, drawHeight) * dpr;
+      const lineCount = Math.max(state.layout?.meta?.lineCount || state.layout?.rows?.length || 1, 1);
+      const charsPerLine = Math.max(state.layout?.meta?.charsPerLine || state.shape.lineWidthChars || 1, 1);
+      const orientationBalance = clamp(
+        Math.log(charsPerLine / lineCount) / Math.log(64),
+        -1,
+        1
+      );
+
       const longLineT = smoothstep(
         CONFIG.PRESENCE.longLineBoostStartPx,
         CONFIG.PRESENCE.longLineBoostFullPx,
-        drawHeight * dpr
+        longAxisPx
       );
-      const coverageGamma = CONFIG.PRESENCE.coverageGamma
+      const coverageGammaBase = CONFIG.PRESENCE.coverageGamma
         + (CONFIG.PRESENCE.longLineCoverageGamma - CONFIG.PRESENCE.coverageGamma) * longLineT;
+      const coverageGamma = clamp(
+        coverageGammaBase
+          + (orientationBalance > 0
+            ? CONFIG.PRESENCE.horizontalCoverageGammaBias * orientationBalance
+            : CONFIG.PRESENCE.verticalCoverageGammaBias * -orientationBalance),
+        0.14,
+        1.2
+      );
+      const orientationAlpha = orientationBalance > 0
+        ? 1 + (CONFIG.PRESENCE.horizontalAlphaBoost - 1) * orientationBalance
+        : 1 - (1 - CONFIG.PRESENCE.verticalAlphaSoftening) * -orientationBalance;
       const deviceRowCount = Math.max(1, Math.min(elements.presenceCanvas.height, Math.ceil(drawHeight * dpr)));
       const rowPaintHeight = Math.max(drawHeight / deviceRowCount, pixelSize);
       const rowCoverageY = drawHeight < pixelSize ? clamp(drawHeight * dpr, 0, 1) : 1;
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = getMonochromeThemePalette().textCss;
 
       for (let rowIndex = 0; rowIndex < deviceRowCount; rowIndex++) {
         const profileStart = Math.floor(rowIndex * profile.length / deviceRowCount);
@@ -2577,7 +2907,7 @@
         if (coverage <= 0.001) continue;
 
         const centerY = -drawHeight / 2 + (rowIndex + 0.5) * (drawHeight / deviceRowCount);
-        ctx.globalAlpha = baseAlpha * density * CONFIG.PRESENCE.maxPixelAlpha * coverage;
+        ctx.globalAlpha = baseAlpha * density * CONFIG.PRESENCE.maxPixelAlpha * coverage * orientationAlpha;
         ctx.fillRect(-paintedWidth / 2, centerY - rowPaintHeight / 2, paintedWidth, rowPaintHeight);
       }
 
@@ -2620,7 +2950,7 @@
         : 1 - smoothstep(CONFIG.PRESENCE.fullAlphaBelowPx, CONFIG.PRESENCE.minAxisPx, thinAxis);
       const pointFade = forceVisible
         ? 1
-        : (longAxis < CONFIG.PRESENCE.minAxisPx ? clamp(longAxis / CONFIG.PRESENCE.minAxisPx, 0, 1) : 1);
+        : (longAxis < CONFIG.PRESENCE.pointFadeStartPx ? clamp(longAxis / CONFIG.PRESENCE.pointFadeStartPx, 0, 1) : 1);
       const enhancement = getPresenceEnhancement(thinAxis);
       const alpha = fadeIn * pointFade * enhancement.alphaBoost;
 
@@ -2643,6 +2973,7 @@
       }
 
       ctx.globalAlpha = alpha;
+      const theme = getMonochromeThemePalette();
 
       if (source) {
         ctx.imageSmoothingEnabled = true;
@@ -2659,7 +2990,7 @@
           drawHeight
         );
       } else {
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = theme.textCss;
         if (state.shape.type === 'circle') {
           ctx.beginPath();
           ctx.ellipse(0, 0, drawWidth / 2, drawHeight / 2, 0, 0, Math.PI * 2);
@@ -2673,7 +3004,7 @@
       elements.presenceCanvas.style.opacity = '1';
     }
 
-    function renderNativeTexture(options = {}) {
+    function renderNahTexture(options = {}) {
       const viewport = getViewportMetrics();
       const w = viewport.width;
       const h = viewport.height;
@@ -2688,16 +3019,17 @@
       const cacheW = Math.round(w * margin * renderDpr);
       const cacheH = Math.round(h * margin * renderDpr);
 
-      if (!state.textures.native.canvas) {
-        state.textures.native.canvas = document.createElement('canvas');
+      if (!state.textures.nah.canvas) {
+        state.textures.nah.canvas = document.createElement('canvas');
       }
 
-      const cacheCanvas = state.textures.native.canvas;
+      const cacheCanvas = state.textures.nah.canvas;
       cacheCanvas.width = cacheW;
       cacheCanvas.height = cacheH;
       const ctx = cacheCanvas.getContext('2d', { alpha: false });
+      const theme = getMonochromeThemePalette();
 
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = theme.bgCss;
       ctx.fillRect(0, 0, cacheW, cacheH);
 
       const halfW = (w * margin / 2) / effScale;
@@ -2710,13 +3042,13 @@
       const actualFontSize = Math.min(rawFontSize, 500);
       const fontScaleFactor = actualFontSize / rawFontSize;
 
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = theme.textCss;
       ctx.font = `${actualFontSize}px ${CONFIG.FONT_FAMILY}`;
-      ctx.textBaseline = 'middle';
+      ctx.textBaseline = getCenteredTextBaseline();
       ctx.textAlign = 'center';
 
       const yPadding = Math.max(state.lineHeight, h / effScale);
-      LOG.nativeRender(centerWorldX, centerWorldY, effScale);
+      LOG.nahRender(centerWorldX, centerWorldY, effScale);
 
       if (state.shape.type === 'line' && state.layout.meta?.virtualRows) {
         const charsPerLine = state.layout.meta.charsPerLine;
@@ -2785,12 +3117,12 @@
           }
         }
 
-        state.textures.native.centerX = state.focusWorld.x;
-        state.textures.native.centerY = state.focusWorld.y;
-        state.textures.native.scale = state.scale;
-        state.textures.native.width = w * margin;
-        state.textures.native.height = h * margin;
-        state.textures.native.qualityBoost = qualityBoost;
+        state.textures.nah.centerX = state.focusWorld.x;
+        state.textures.nah.centerY = state.focusWorld.y;
+        state.textures.nah.scale = state.scale;
+        state.textures.nah.width = w * margin;
+        state.textures.nah.height = h * margin;
+        state.textures.nah.qualityBoost = qualityBoost;
         return;
       }
 
@@ -2861,44 +3193,40 @@
         }
       }
 
-      state.textures.native.centerX = state.focusWorld.x;
-      state.textures.native.centerY = state.focusWorld.y;
-      state.textures.native.scale = state.scale;
-      state.textures.native.width = w * margin;
-      state.textures.native.height = h * margin;
-      state.textures.native.qualityBoost = qualityBoost;
+      state.textures.nah.centerX = state.focusWorld.x;
+      state.textures.nah.centerY = state.focusWorld.y;
+      state.textures.nah.scale = state.scale;
+      state.textures.nah.width = w * margin;
+      state.textures.nah.height = h * margin;
+      state.textures.nah.qualityBoost = qualityBoost;
     }
 
-    function showNativeOverlay() {
-      const { nativeCanvas } = elements;
-      const native = state.textures.native;
-      if (!native.canvas) return;
+    function showNahOverlay() {
+      const { nahCanvas } = elements;
+      const nahTexture = state.textures.nah;
+      if (!nahTexture.canvas) return;
 
-      nativeCanvas.width = native.canvas.width;
-      nativeCanvas.height = native.canvas.height;
-      elements.nativeCtx.drawImage(native.canvas, 0, 0);
-      nativeCanvas.style.width = native.width + 'px';
-      nativeCanvas.style.height = native.height + 'px';
-      if (state.renderWhisper.kind === 'load') {
-        state.renderWhisper.committedLoadId = currentLoadId;
-        maybeFinishLoadWhisper(currentLoadId);
-      }
+      nahCanvas.width = nahTexture.canvas.width;
+      nahCanvas.height = nahTexture.canvas.height;
+      elements.nahCtx.drawImage(nahTexture.canvas, 0, 0);
+      nahCanvas.style.width = nahTexture.width + 'px';
+      nahCanvas.style.height = nahTexture.height + 'px';
     }
 
-    function hideNativeOverlay() {
-      elements.nativeCanvas.style.opacity = '0';
-      elements.nativeCanvas.width = 1;
-      elements.nativeCanvas.height = 1;
-      elements.nativeCanvas.style.width = '1px';
-      elements.nativeCanvas.style.height = '1px';
+    function hideNahOverlay() {
+      elements.nahCanvas.style.opacity = '0';
+      elements.nahCanvas.width = 1;
+      elements.nahCanvas.height = 1;
+      elements.nahCanvas.style.width = '1px';
+      elements.nahCanvas.style.height = '1px';
     }
 
-    function hideMidOverlay() {
-      elements.midCanvas.style.opacity = '0';
-      elements.midCanvas.width = 1;
-      elements.midCanvas.height = 1;
-      elements.midCanvas.style.width = '1px';
-      elements.midCanvas.style.height = '1px';
+    function hideFernOverlay() {
+      elements.fernCanvas.style.opacity = '0';
+      elements.fernCanvas.width = 1;
+      elements.fernCanvas.height = 1;
+      elements.fernCanvas.style.width = '1px';
+      elements.fernCanvas.style.height = '1px';
     }
 
     function releaseCanvasResource(canvas) {
@@ -2932,7 +3260,7 @@
 
     function releasePreparedRenderResources(prepared, releasedCanvases) {
       if (!prepared) return;
-      releaseTextureResource(prepared.midTexture, releasedCanvases);
+      releaseTextureResource(prepared.fernTexture, releasedCanvases);
     }
 
     function clearShapeRenderCacheResources(releasedCanvases = new Set()) {
@@ -2953,11 +3281,11 @@
 
     async function releaseCurrentBibleResources({ nextFilename = '', loadId = currentLoadId } = {}) {
       const releasedCanvases = new Set();
-      const preserveGeometry = !!state.layout?.rows?.length && !!state.textData;
+      const preserveGeometry = hasLayoutGeometry(state.layout) && !!state.textData;
 
       state.layoutBuildRevision += 1;
       resetProgressiveRefinement();
-      cancelNativeRender();
+      cancelNahRender();
       cancelLineWidthCommit();
 
       if (state.shapeRefreshTimeout) {
@@ -2965,23 +3293,23 @@
         state.shapeRefreshTimeout = null;
       }
 
-      releaseTextureResource(state.textures.mid, releasedCanvases);
-      releaseTextureResource(state.textures.native, releasedCanvases);
+      releaseTextureResource(state.textures.fern, releasedCanvases);
+      releaseTextureResource(state.textures.nah, releasedCanvases);
       clearShapeRenderCacheResources(releasedCanvases);
 
       state.activePreparedRender = null;
-      state.textures.mid = createEmptyTextureState(CONFIG.MID_TEXTURE);
-      resetNativeTexture();
-      state.renderMode = 'texture';
+      state.textures.fern = createEmptyTextureState(CONFIG.FERN_TEXTURE);
+      resetNahTexture();
+      state.renderMode = 'fern';
       state.lineWidthPreview.active = false;
       state.lineWidthPreview.bridging = false;
 
-      hideMidOverlay();
-      hideNativeOverlay();
+      hideFernOverlay();
+      hideNahOverlay();
       clearLineWidthGhostCanvas();
       elements.lineWidthGhost.style.display = 'none';
       elements.lineWidthGhost.style.opacity = '0';
-      updateMidScaleReadout();
+      updateDocumentStatsReadout();
 
       if (preserveGeometry) applyTransform();
       else clearPresenceLayer();
@@ -3001,15 +3329,28 @@
 
     function normalizeBlendTuning() {
       const maxThreshold = 40;
-      state.blendTuning.midToNativeStart = clamp(state.blendTuning.midToNativeStart, 0.1, maxThreshold - 0.3);
-      state.blendTuning.midToNativeEnd = clamp(state.blendTuning.midToNativeEnd, state.blendTuning.midToNativeStart + 0.1, maxThreshold);
+      state.blendTuning.fernToNahStart = clamp(state.blendTuning.fernToNahStart, 0.1, maxThreshold - 0.3);
+      state.blendTuning.fernToNahEnd = clamp(state.blendTuning.fernToNahEnd, state.blendTuning.fernToNahStart + 0.1, maxThreshold);
     }
 
     function getBlendThresholds() {
-      const midFidelity = getTextureFidelity(state.textures.mid, CONFIG.MID_TEXTURE.scale);
+      const fernFidelity = getTextureFidelity(state.textures.fern, CONFIG.FERN_TEXTURE.scale);
+      let fernToNahStart = state.blendTuning.fernToNahStart * fernFidelity;
+      let fernToNahEnd = state.blendTuning.fernToNahEnd * fernFidelity;
+
+      if (state.shape.type === 'line') {
+        const charsPerLine = Math.max(state.layout?.meta?.charsPerLine || state.shape.lineWidthChars || 1, 1);
+        const lineCount = Math.max(state.layout?.meta?.lineCount || Math.ceil(Math.max(state.textData.length, 1) / charsPerLine), 1);
+        const verticality = clamp(Math.log(lineCount / charsPerLine) / Math.log(64), 0, 1);
+        const narrowBoost = charsPerLine <= 2 ? 1.55 : (charsPerLine <= 4 ? 1.28 : 1);
+        const lineMultiplier = 1 + verticality * (narrowBoost - 1);
+        fernToNahStart *= lineMultiplier;
+        fernToNahEnd *= lineMultiplier;
+      }
+
       return {
-        midToNativeStart: state.blendTuning.midToNativeStart * midFidelity,
-        midToNativeEnd: state.blendTuning.midToNativeEnd * midFidelity
+        fernToNahStart,
+        fernToNahEnd
       };
     }
 
@@ -3019,18 +3360,18 @@
     }
 
     function canUseProgressiveRefinement(screenFontSize, thresholds = getBlendThresholds()) {
-      return screenFontSize >= thresholds.midToNativeStart
-        && screenFontSize <= thresholds.midToNativeEnd;
+      return screenFontSize >= thresholds.fernToNahStart
+        && screenFontSize <= thresholds.fernToNahEnd;
     }
 
-    function getNativeRenderPixelSize(qualityBoost = 1) {
+    function getNahRenderPixelSize(qualityBoost = 1) {
       const dpr = window.devicePixelRatio || 1;
       return Math.min(state.baseFontSize * getEffectiveScale() * dpr * qualityBoost, 500);
     }
 
     function hasMeaningfulQualityGain(fromBoost, toBoost) {
-      const fromSize = getNativeRenderPixelSize(fromBoost);
-      const toSize = getNativeRenderPixelSize(toBoost);
+      const fromSize = getNahRenderPixelSize(fromBoost);
+      const toSize = getNahRenderPixelSize(toBoost);
       if (toSize <= fromSize) {
         return false;
       }
@@ -3046,7 +3387,7 @@
       }
 
       const stageIndex = state.progressive.stage - 1;
-      const qualityBoost = CONFIG.PROGRESSIVE.nativeQualityBoosts[stageIndex] || 1;
+      const qualityBoost = CONFIG.PROGRESSIVE.nahQualityBoosts[stageIndex] || 1;
       if (!hasMeaningfulQualityGain(1, qualityBoost)) {
         return null;
       }
@@ -3059,20 +3400,20 @@
     function getActiveBlendProfile(screenFontSize) {
       const thresholds = getBlendThresholds();
       const progressive = getProgressiveProfile(screenFontSize, thresholds);
-      const shouldForceNative = !!state.layout?.meta?.forceNative;
+      const shouldForceNah = !!state.layout?.meta?.forceNah;
 
       if (!progressive) {
         return {
           thresholds,
           qualityBoost: 1,
-          shouldForceNative
+          shouldForceNah
         };
       }
 
       return {
         thresholds,
         qualityBoost: progressive.qualityBoost,
-        shouldForceNative
+        shouldForceNah
       };
     }
 
@@ -3091,31 +3432,31 @@
       clearProgressiveTimers();
     }
 
-    function scheduleMidProgressiveRefinement(revision, elapsed) {
+    function scheduleFernProgressiveRefinement(revision, elapsed) {
       const prepared = state.activePreparedRender;
-      if (!prepared || prepared.layout.meta?.forceNative || !state.textData) return [];
+      if (!prepared || prepared.layout.meta?.forceNah || !state.textData) return [];
 
-      if (Math.min(prepared.midTexture.scaleX, prepared.midTexture.scaleY) >= prepared.safeMidTargetScale - 0.000001) {
+      if (Math.min(prepared.fernTexture.scaleX, prepared.fernTexture.scaleY) >= prepared.safeFernTargetScale - 0.000001) {
         return [];
       }
 
       const guard = () => revision === state.progressive.revision && !state.drag.active && isPreparedRenderActive(prepared);
-      const upgradeDelay = CONFIG.PROGRESSIVE.midUpgradeDelays[0] || 120;
+      const upgradeDelay = CONFIG.PROGRESSIVE.fernUpgradeDelays[0] || 120;
 
       return [setTimeout(() => {
         if (!guard()) return;
-        void ensurePreparedMidTexture(prepared, { guard, targetScale: prepared.safeMidTargetScale })
+        void ensurePreparedFernTexture(prepared, { guard, targetScale: prepared.safeFernTargetScale })
           .then(texture => {
             if (!texture || !guard() || !isPreparedRenderActive(prepared)) return;
-            applyPreparedMidTexture(prepared);
+            applyPreparedFernTexture(prepared);
           })
           .catch(error => {
-            if (guard()) console.error('Mid-Upgrade fehlgeschlagen:', error);
+            if (guard()) console.error('Fern-Upgrade fehlgeschlagen:', error);
           });
       }, Math.max(0, upgradeDelay - elapsed))];
     }
 
-    function scheduleNativeProgressiveRefinement(screenFontSize, thresholds, revision, elapsed) {
+    function scheduleNahProgressiveRefinement(screenFontSize, thresholds, revision, elapsed) {
       if (!canUseProgressiveRefinement(screenFontSize, thresholds) || !state.textData) {
         return [];
       }
@@ -3129,7 +3470,7 @@
             return;
           }
 
-          const nextBoost = CONFIG.PROGRESSIVE.nativeQualityBoosts[stageIndex] || 1;
+          const nextBoost = CONFIG.PROGRESSIVE.nahQualityBoosts[stageIndex] || 1;
           if (!hasMeaningfulQualityGain(state.progressive.activeQualityBoost, nextBoost)) {
             return;
           }
@@ -3143,7 +3484,7 @@
     function scheduleProgressiveRefinement() {
       clearProgressiveTimers();
 
-      if (state.drag.active || !state.textData || state.layout?.meta?.fullTextNative) {
+      if (state.drag.active || !state.textData || state.layout?.meta?.fullTextFern) {
         return;
       }
 
@@ -3154,15 +3495,16 @@
       const elapsed = Math.max(0, now - state.progressive.lastInteractionAt);
 
       state.progressive.timers = [
-        ...scheduleMidProgressiveRefinement(revision, elapsed),
-        ...scheduleNativeProgressiveRefinement(screenFontSize, thresholds, revision, elapsed)
+        ...scheduleFernProgressiveRefinement(revision, elapsed),
+        ...scheduleNahProgressiveRefinement(screenFontSize, thresholds, revision, elapsed)
       ];
     }
 
-    function noteViewInteraction({ cancelNativeRender: shouldCancelNativeRender = true, isUserGesture = false } = {}) {
+    function noteViewInteraction({ cancelNahRender: shouldCancelNahRender = true, isUserGesture = false } = {}) {
+      const shouldCancelRender = shouldCancelNahRender;
       if (isUserGesture) disableViewAutoFit();
       resetProgressiveRefinement();
-      if (shouldCancelNativeRender) cancelNativeRender();
+      if (shouldCancelRender) cancelNahRender();
     }
 
     function beginScenePan(clientX, clientY) {
@@ -3170,12 +3512,12 @@
       state.drag.lastX = clientX;
       state.drag.lastY = clientY;
       elements.container.classList.add('dragging');
-      noteViewInteraction({ cancelNativeRender: false, isUserGesture: true });
+      noteViewInteraction({ cancelNahRender: false, isUserGesture: true });
     }
 
     function updateScenePan(clientX, clientY) {
       if (!state.drag.active) return;
-      noteViewInteraction({ cancelNativeRender: false, isUserGesture: true });
+      noteViewInteraction({ cancelNahRender: false, isUserGesture: true });
       const dx = clientX - state.drag.lastX;
       const dy = clientY - state.drag.lastY;
       state.focusWorld.x -= dx / state.scale;
@@ -3197,13 +3539,13 @@
     function beginScenePinch(touches) {
       state.drag.active = true;
       elements.container.classList.add('dragging');
-      noteViewInteraction({ cancelNativeRender: false, isUserGesture: true });
+      noteViewInteraction({ cancelNahRender: false, isUserGesture: true });
       syncScenePinchState(touches);
     }
 
     function updateScenePinch(touches) {
       if (touches.length < 2 || !state.drag.lastPinchDist) return;
-      noteViewInteraction({ cancelNativeRender: false, isUserGesture: true });
+      noteViewInteraction({ cancelNahRender: false, isUserGesture: true });
 
       const currentCenterX = (touches[0].clientX + touches[1].clientX) / 2;
       const currentCenterY = (touches[0].clientY + touches[1].clientY) / 2;
@@ -3245,92 +3587,92 @@
       canvas.style.transform = `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${scaleX}, ${scaleY})`;
     }
 
-    function updateMidTransform() {
-      updateTextureTransform(elements.midCanvas, state.textures.mid);
+    function updateFernTransform() {
+      updateTextureTransform(elements.fernCanvas, state.textures.fern);
     }
 
-    function hasNativeTextureReady() {
-      return !!state.textures.native.canvas && !!state.textures.native.scale;
+    function hasNahTextureReady() {
+      return !!state.textures.nah.canvas && !!state.textures.nah.scale;
     }
 
-    function isNativeOverlayReady() {
-      return hasNativeTextureReady()
-        && elements.nativeCanvas.width > 1
-        && elements.nativeCanvas.height > 1;
+    function isNahOverlayReady() {
+      return hasNahTextureReady()
+        && elements.nahCanvas.width > 1
+        && elements.nahCanvas.height > 1;
     }
 
     function updateBlend(screenFontSize) {
       const blendProfile = getActiveBlendProfile(screenFontSize);
-      const forceNative = blendProfile.shouldForceNative;
-      const fullTextNative = !!state.layout?.meta?.fullTextNative;
+      const forceNah = blendProfile.shouldForceNah;
+      const fullTextFern = !!state.layout?.meta?.fullTextFern;
       const holdGhost = shouldHoldBridgedLinePreview(screenFontSize);
-      const hasMid = !!state.textures.mid.canvas;
-      const hasFreshNative = isNativeOverlayReady();
+      const hasFern = !!state.textures.fern.canvas;
+      const hasFreshNah = isNahOverlayReady();
 
-      if (forceNative) {
-        elements.midCanvas.style.opacity = '0';
-        elements.midCanvas.style.filter = 'none';
-        elements.nativeCanvas.style.opacity = (!holdGhost && hasFreshNative) ? '1' : '0';
-        updateMidScaleReadout();
+      if (forceNah) {
+        elements.fernCanvas.style.opacity = '0';
+        elements.fernCanvas.style.filter = 'none';
+        elements.nahCanvas.style.opacity = (!holdGhost && hasFreshNah) ? '1' : '0';
+        updateDocumentStatsReadout();
         return;
       }
 
-      if (!hasMid && !hasFreshNative) {
-        elements.midCanvas.style.opacity = '0';
-        elements.midCanvas.style.filter = 'none';
-        elements.nativeCanvas.style.opacity = '0';
-        updateMidScaleReadout();
+      if (!hasFern && !hasFreshNah) {
+        elements.fernCanvas.style.opacity = '0';
+        elements.fernCanvas.style.filter = 'none';
+        elements.nahCanvas.style.opacity = '0';
+        updateDocumentStatsReadout();
         return;
       }
 
-      if (fullTextNative) {
-        elements.midCanvas.style.opacity = hasMid ? '1' : '0';
-        elements.midCanvas.style.filter = 'none';
-        elements.nativeCanvas.style.opacity = '0';
-        updateMidScaleReadout();
+      if (fullTextFern) {
+        elements.fernCanvas.style.opacity = hasFern ? '1' : '0';
+        elements.fernCanvas.style.filter = 'none';
+        elements.nahCanvas.style.opacity = '0';
+        updateDocumentStatsReadout();
         return;
       }
 
       const thresholds = blendProfile.thresholds;
-      const midToNative = hasFreshNative
-        ? smoothstep(thresholds.midToNativeStart, thresholds.midToNativeEnd, screenFontSize)
+      const fernToNah = hasFreshNah
+        ? smoothstep(thresholds.fernToNahStart, thresholds.fernToNahEnd, screenFontSize)
         : 0;
 
-      elements.midCanvas.style.opacity = hasMid ? 1 - midToNative : '0';
-      elements.midCanvas.style.filter = 'none';
-      elements.nativeCanvas.style.opacity = midToNative;
-      updateMidScaleReadout();
+      elements.fernCanvas.style.opacity = hasFern ? 1 - fernToNah : '0';
+      elements.fernCanvas.style.filter = 'none';
+      elements.nahCanvas.style.opacity = fernToNah;
+      updateDocumentStatsReadout();
     }
 
-    function updateNativeTransform() {
-      const native = state.textures.native;
-      if (!native.scale) return null;
+    function updateNahTransform() {
+      const nahTexture = state.textures.nah;
+      if (!nahTexture.scale) return null;
 
-      const worldOffsetX = native.centerX - state.focusWorld.x;
-      const worldOffsetY = native.centerY - state.focusWorld.y;
+      const worldOffsetX = nahTexture.centerX - state.focusWorld.x;
+      const worldOffsetY = nahTexture.centerY - state.focusWorld.y;
       const offsetX = worldOffsetX * state.scale;
       const offsetY = worldOffsetY * state.scale;
-      const zoomRatio = state.scale / native.scale;
+      const zoomRatio = state.scale / nahTexture.scale;
 
-      elements.nativeCanvas.style.transform = `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${zoomRatio})`;
+      elements.nahCanvas.style.transform = `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${zoomRatio})`;
       return { offsetX, offsetY, zoomRatio };
     }
 
-    function cancelNativeRender() {
+    function cancelNahRender() {
       if (state.renderTimeout) {
         clearTimeout(state.renderTimeout);
         state.renderTimeout = null;
       }
       renderScheduled = false;
-      clearRenderWhisper({ kind: 'native' });
+      clearRenderWhisper({ kind: 'nah' });
     }
 
     function applyTransform() {
       const screenFontSize = state.baseFontSize * getEffectiveScale();
       const blendProfile = getActiveBlendProfile(screenFontSize);
       const thresholds = blendProfile.thresholds;
-      const fullTextNative = !!state.layout?.meta?.fullTextNative;
-      const shouldBeNative = !fullTextNative && (blendProfile.shouldForceNative || screenFontSize >= thresholds.midToNativeStart);
+      const fullTextFern = !!state.layout?.meta?.fullTextFern;
+      const shouldBeNah = !fullTextFern && (blendProfile.shouldForceNah || screenFontSize >= thresholds.fernToNahStart);
       const loadPlaceholderActive = isLoadPlaceholderActive();
 
       LOG.scaleCheck(state.scale);
@@ -3342,48 +3684,58 @@
         return;
       }
 
-      updateMidTransform();
+      updateFernTransform();
       updateDropBibleOverlayTransform();
 
       if (loadPlaceholderActive) {
-        elements.midCanvas.style.opacity = '0';
-        elements.midCanvas.style.filter = 'none';
-        hideNativeOverlay();
-        state.renderMode = 'texture';
+        elements.fernCanvas.style.opacity = '0';
+        elements.fernCanvas.style.filter = 'none';
+        hideNahOverlay();
+        if (state.layout?.meta?.forceNah) {
+          if (state.renderMode !== 'nah') {
+            state.renderMode = 'nah';
+            scheduleNahRender(24, { qualityBoost: blendProfile.qualityBoost });
+          } else if (!hasNahTextureReady()) {
+            scheduleNahRender(24, { qualityBoost: blendProfile.qualityBoost });
+          }
+        } else {
+          state.renderMode = 'fern';
+        }
         clearPresenceLayer();
         if (state.renderWhisper.kind === 'load') applyRenderWhisperPlacement('load');
+        updateLoadWhisperCommitState();
         maybeFinishLoadWhisper();
         return;
       }
 
-      if (shouldBeNative && hasNativeTextureReady() && !isNativeOverlayReady()) {
-        showNativeOverlay();
+      if (shouldBeNah && hasNahTextureReady() && !isNahOverlayReady()) {
+        showNahOverlay();
       }
 
       updateBlend(screenFontSize);
-      if (state.layout?.meta?.forceNative) {
+      if (state.layout?.meta?.forceNah) {
         const holdGhost = shouldHoldBridgedLinePreview(screenFontSize);
-        const hasFreshNative = isNativeOverlayReady();
-        const nativeVisible = !holdGhost && hasFreshNative;
-        const ghostVisible = state.lineWidthPreview.bridging && (holdGhost || !hasFreshNative);
+        const hasFreshNah = isNahOverlayReady();
+        const nahVisible = !holdGhost && hasFreshNah;
+        const ghostVisible = state.lineWidthPreview.bridging && (holdGhost || !hasFreshNah);
 
-        if (nativeVisible || ghostVisible) clearPresenceLayer();
+        if (nahVisible || ghostVisible) clearPresenceLayer();
         else updatePresenceLayer({ forceVisible: true });
       } else {
         updatePresenceLayer();
       }
 
-      if (shouldBeNative) {
-        if (hasNativeTextureReady()) updateNativeTransform();
+      if (shouldBeNah) {
+        if (hasNahTextureReady()) updateNahTransform();
 
-        if (state.renderMode !== 'native') {
-          LOG.modeChange('native');
-          state.renderMode = 'native';
-          scheduleNativeRender(24, { qualityBoost: blendProfile.qualityBoost });
-        } else if (!hasNativeTextureReady()) {
-          scheduleNativeRender(24, { qualityBoost: blendProfile.qualityBoost });
-        } else if (hasNativeTextureReady()) {
-          const result = updateNativeTransform();
+        if (state.renderMode !== 'nah') {
+          LOG.modeChange('nah');
+          state.renderMode = 'nah';
+          scheduleNahRender(24, { qualityBoost: blendProfile.qualityBoost });
+        } else if (!hasNahTextureReady()) {
+          scheduleNahRender(24, { qualityBoost: blendProfile.qualityBoost });
+        } else if (hasNahTextureReady()) {
+          const result = updateNahTransform();
           if (!result) return;
 
           const viewport = getViewportMetrics();
@@ -3391,20 +3743,20 @@
           const needsRerender =
             Math.abs(result.offsetX) > viewport.width * 0.7 ||
             Math.abs(result.offsetY) > viewport.height * 0.7 ||
-            result.zoomRatio < CONFIG.NATIVE.rerenderZoomRatioMin || result.zoomRatio > CONFIG.NATIVE.rerenderZoomRatioMax ||
-            hasMeaningfulQualityGain(state.textures.native.qualityBoost || 1, blendProfile.qualityBoost);
+            result.zoomRatio < CONFIG.NAH.rerenderZoomRatioMin || result.zoomRatio > CONFIG.NAH.rerenderZoomRatioMax ||
+            hasMeaningfulQualityGain(state.textures.nah.qualityBoost || 1, blendProfile.qualityBoost);
 
-          if (needsRerender) scheduleNativeRender(60, { qualityBoost: blendProfile.qualityBoost });
+          if (needsRerender) scheduleNahRender(60, { qualityBoost: blendProfile.qualityBoost });
         }
-      } else if (state.renderMode !== 'texture') {
-        LOG.modeChange('texture');
-        cancelNativeRender();
-        state.renderMode = 'texture';
-        hideNativeOverlay();
+      } else if (state.renderMode !== 'fern') {
+        LOG.modeChange('fern');
+        cancelNahRender();
+        state.renderMode = 'fern';
+        hideNahOverlay();
       }
 
       if (state.lineWidthPreview.bridging) {
-        if (shouldHoldBridgedLinePreview(screenFontSize) || !state.textures.native.scale) {
+        if (shouldHoldBridgedLinePreview(screenFontSize) || !state.textures.nah.scale) {
           updateLineWidthPreviewGhost({ bridge: true });
         } else {
           clearLineWidthPreview({ keepOverlay: true });
@@ -3412,6 +3764,7 @@
       }
 
       if (state.renderWhisper.kind === 'load') applyRenderWhisperPlacement('load');
+      updateLoadWhisperCommitState();
       maybeFinishLoadWhisper();
       rememberStableCircleFootprint();
 
@@ -3420,22 +3773,24 @@
 
     let renderScheduled = false;
 
-    function scheduleNativeRender(delay = 100, options = {}) {
+    function scheduleNahRender(delay = 100, options = {}) {
       if (renderScheduled) return;
 
-      cancelNativeRender();
+      cancelNahRender();
       renderScheduled = true;
-      if (!state.textures.native.scale || (options.qualityBoost || 1) > (state.textures.native.qualityBoost || 1)) {
-        setRenderWhisper('schärft sicht', 'native');
+      if (!state.textures.nah.scale || (options.qualityBoost || 1) > (state.textures.nah.qualityBoost || 1)) {
+        setRenderWhisper('schärft sicht', 'nah');
       }
       state.renderTimeout = setTimeout(() => {
         renderScheduled = false;
-        if (state.renderMode !== 'native') return;
-        renderNativeTexture(options);
-        showNativeOverlay();
-        updateNativeTransform();
+        if (state.renderMode !== 'nah') return;
+        renderNahTexture(options);
+        showNahOverlay();
+        updateNahTransform();
         const screenFontSize = state.baseFontSize * getEffectiveScale();
         updateBlend(screenFontSize);
+        updateLoadWhisperCommitState();
+        maybeFinishLoadWhisper();
         if (state.lineWidthPreview.bridging && !state.lineWidthPreview.active) {
           if (shouldHoldBridgedLinePreview(screenFontSize)) {
             updateLineWidthPreviewGhost({ bridge: true });
@@ -3443,7 +3798,7 @@
             clearLineWidthPreview({ keepOverlay: true });
           }
         }
-        clearRenderWhisper({ delay: 160, kind: 'native' });
+        clearRenderWhisper({ delay: 160, kind: 'nah' });
       }, delay);
     }
 
@@ -3454,7 +3809,7 @@
       const activeGuard = () => layoutRevision === state.layoutBuildRevision && (!guard || guard());
 
       resetProgressiveRefinement();
-      cancelNativeRender();
+      cancelNahRender();
 
       const cacheKey = getShapeRenderCacheKey();
       const cachedRender = shapeRenderCache.get(cacheKey);
@@ -3462,10 +3817,10 @@
         if (!activeGuard()) return;
         setRenderWhisper('holt cache', 'layout');
 
-        const forceNative = !!cachedRender.layout.meta?.forceNative;
-        if (!forceNative && !hasTextureCanvas(cachedRender.midTexture)) {
-          const midTexture = await ensurePreparedMidTexture(cachedRender, { guard: activeGuard });
-          if (!midTexture || !activeGuard()) {
+        const forceNah = !!cachedRender.layout.meta?.forceNah;
+        if (!forceNah && !hasTextureCanvas(cachedRender.fernTexture)) {
+          const fernTexture = await ensurePreparedFernTexture(cachedRender, { guard: activeGuard });
+          if (!fernTexture || !activeGuard()) {
             clearRenderWhisper({ kind: 'layout' });
             return;
           }
@@ -3532,7 +3887,7 @@
         const newScale = clamp(state.scale * factor, CONFIG.ZOOM.min, CONFIG.ZOOM.max);
 
         if (newScale === state.scale) return;
-        noteViewInteraction({ cancelNativeRender: false, isUserGesture: true });
+        noteViewInteraction({ cancelNahRender: false, isUserGesture: true });
         state.scale = newScale;
         state.focusWorld.x = worldUnderMouse.x - screenX / state.scale;
         state.focusWorld.y = worldUnderMouse.y - screenY / state.scale;
@@ -3576,7 +3931,7 @@
       });
 
       window.addEventListener('resize', () => {
-        noteViewInteraction({ cancelNativeRender: false });
+        noteViewInteraction({ cancelNahRender: false });
         if (maybeRefreshAutoFitViewportPlacement()) {
 	          syncViewportResponsiveScaleState({ initialCircleViewportFraction: state.viewAutoFit.initialCircleViewportFraction });
           syncPanelPlacementAnchor();
@@ -3964,6 +4319,7 @@
 
     function ensureBibelpunktUi() {
       if (eventsInitialized) return;
+      ensureDropBibleAlertRing();
       setupEvents();
       setupShapeControls();
       setupViewportObserver();
@@ -4100,9 +4456,8 @@
       return bibleMetaCache.get(file) || null;
     }
 
-    function getBibleLoadText(file) {
-      const name = getBibleMeta(file)?.name || cleanDisplayName(file || 'bibel');
-      return `${name} lädt`;
+    function getShapeLoadWhisperText(shapeType = state.shape.type) {
+      return shapeType === 'line' ? 'bibleline lädt' : 'circle bible lädt';
     }
 
     function greatestCommonDivisor(a, b) {
@@ -4927,11 +5282,13 @@
     }
 
     function applyRemixDocumentState(document) {
+      const previousTextLength = getCurrentDocumentCharCount();
       state.textData = document.text;
       state.documentMeta = document.meta;
       state.documentSelectionKey = document.meta.selectionKey;
       state.documentCacheKey = document.meta.cacheKey;
       state.renderWhisper.pendingDocumentKey = document.meta.cacheKey;
+      preserveLineWidthCharsForDocumentChange(previousTextLength, document.meta?.charCount || document.text?.length || 0);
     }
 
     function applyCurrentSingleTextAsDefaultRemix(recipe = getRemixRecipe()) {
@@ -5053,7 +5410,7 @@
     }
 
     function isKarussellEntryRenamable(entry = getCurrentKarussellBibleEntry()) {
-      return !!entry && !isDropBibleTriggerEntry(entry) && !isLiveRemixPreviewEntry(entry);
+      return !!entry && !isLiveRemixPreviewEntry(entry);
     }
 
     function hasUnsavedCurrentRemixChanges() {
@@ -5115,7 +5472,7 @@
 
 	      const downloadCurrentTextButton = ensureButton({
 	        key: 'downloadCurrentText',
-	        label: '↓',
+	        label: '⭳',
 	        title: 'aktuellen text als txt herunterladen',
 	        onClick: () => downloadCurrentDocumentAsTxt()
 	      });
@@ -5187,6 +5544,7 @@
           : isMahabharataSwapEntry(currentEntry)
       );
       normalizeBlendTuning();
+      normalizeLineWidthCharsState();
       shapePanel.set('remixEnabled', remixActive);
       shapePanel.set('documentName', getCurrentEditableDocumentName());
       shapePanel.set('remixUnit', state.remix.unitMode);
@@ -5199,6 +5557,10 @@
       shapePanel.set('remixSources', remixCounts);
       shapePanel.set('shapeType', state.shape.type);
       shapePanel.set('unlockFullMahabharata', state.libraryUnlocks.fullMahabharata);
+      shapePanel.setSliderConfig('lineWidthChars', {
+        min: CONFIG.SHAPES.minLineWidthChars,
+        max: getLineWidthCharLimit()
+      });
       shapePanel.set('lineWidthChars', state.shape.lineWidthChars);
       shapePanel.set('loremWordCount', state.lorem.wordCount);
       shapePanel.setRowVisibility('remixUnit', remixActive);
@@ -5230,7 +5592,7 @@
 
       syncRemixBibleSelectionUi();
       updateLineWidthReadout();
-      updateMidScaleReadout();
+      updateDocumentStatsReadout();
 	      refreshMobileShapePanelOpenState();
 	      schedulePanelSafeAreaRealign();
     }
@@ -5267,7 +5629,7 @@
         cancelAnimationFrame(viewportResizeFrame);
         viewportResizeFrame = requestAnimationFrame(() => {
           if (!state.textData) return;
-          noteViewInteraction({ cancelNativeRender: false });
+          noteViewInteraction({ cancelNahRender: false });
 	          if (maybeRefreshAutoFitViewportPlacement()) {
 	            syncViewportResponsiveScaleState({ initialCircleViewportFraction: state.viewAutoFit.initialCircleViewportFraction });
 	            syncPanelPlacementAnchor();
@@ -5286,7 +5648,7 @@
 	      mobilePanelLayoutFrame = requestAnimationFrame(() => {
 	        mobilePanelLayoutFrame = 0;
 	        if (!shiftShapeWithPanelSafeAreaDelta()) return;
-	        noteViewInteraction({ cancelNativeRender: false });
+        noteViewInteraction({ cancelNahRender: false });
 	        applyTransform();
 	      });
 	    }
@@ -5298,9 +5660,36 @@
 	      });
 	    }
 
+	    function reorderShapePanelRows() {
+	      if (!shapePanel?.bodyEl) return;
+
+      const desiredOrder = [
+	        'documentName',
+	        'shapeType',
+	        'lineWidthChars',
+	        'remixEnabled',
+	        'remixSources',
+	        'remixSort',
+	        'remixUnit',
+	        'remixIncludeSpaces',
+	        'unlockFullMahabharata',
+	        'loremWordCount',
+        'charCountStatus'
+	      ];
+
+	      const orderedRows = desiredOrder
+	        .map(key => shapePanel.bodyEl.querySelector(`[data-key="${key}"]`))
+	        .filter(Boolean);
+	      const remainingRows = Array.from(shapePanel.bodyEl.children)
+	        .filter(row => !orderedRows.includes(row));
+
+	      [...orderedRows, ...remainingRows].forEach(row => shapePanel.bodyEl.appendChild(row));
+	    }
+
     function setupShapeControls() {
       if (shapePanel) {
 	      ensureShapePanelHeaderActionButtons();
+	      reorderShapePanelRows();
 	      syncShapeControls();
 	      refreshMobileShapePanelOpenState();
         return;
@@ -5502,8 +5891,13 @@
           ],
           onChange: value => {
             noteViewInteraction();
+            clearLocalRenderLoadWhisper();
+            const previousShapeType = state.shape.type;
             state.shape.type = value;
-            setRenderWhisper('ordnet neu', 'layout');
+            if (value === 'line' && previousShapeType !== 'line' && (!state.shape.lineWidthCustomized || state.shape.lineWidthChars <= CONFIG.SHAPES.minLineWidthChars)) {
+              applyLineShapeDefaultWidth();
+            }
+            beginRenderLoadWhisper(getShapeLoadWhisperText(value), { requiredLayoutRevision: state.layoutBuildRevision + 1 });
             syncShapeControls();
             void (async () => {
               await nextPaint();
@@ -5514,18 +5908,19 @@
         .addSlider('lineWidthChars', {
           label: 'linienbreite',
           min: CONFIG.SHAPES.minLineWidthChars,
-          max: CONFIG.SHAPES.maxLineWidthChars,
+          max: getLineWidthCharLimit(),
           step: 1,
           value: state.shape.lineWidthChars,
           decimals: 0,
+          transform: {
+            toSliderValue: value => lineWidthCharsToSliderValue(value),
+            fromSliderValue: value => sliderValueToLineWidthChars(value)
+          },
           onChange: value => {
             noteViewInteraction();
             state.lineWidthPreview.revision += 1;
-            state.shape.lineWidthChars = clamp(
-              Number(value),
-              CONFIG.SHAPES.minLineWidthChars,
-              CONFIG.SHAPES.maxLineWidthChars
-            );
+            state.shape.lineWidthCustomized = true;
+            state.shape.lineWidthChars = clampLineWidthChars(value);
             updateLineWidthReadout();
             if (state.shape.type === 'line') {
               previewLineWidthChange();
@@ -5617,29 +6012,17 @@
       `;
       shapePanel.bodyEl.appendChild(charCountRow);
 
-      const midScaleStatusRow = document.createElement('div');
-      midScaleStatusRow.className = 'ctrl-row';
-      midScaleStatusRow.dataset.key = 'midScaleStatus';
-      midScaleStatusRow.innerHTML = `
-        <label class="ctrl-label">auflösung</label>
-        <div class="ctrl-inline-status">
-          <span class="ctrl-inline-status-value" data-mid-scale-status>–</span>
-          <span class="ctrl-inline-status-hint" data-mid-scale-hint>use better hardware for higher resolution</span>
-        </div>
-      `;
-      shapePanel.bodyEl.appendChild(midScaleStatusRow);
-
       shapePanelEls = {
         ...(shapePanelEls || {}),
         lineWidth: shapePanel.bodyEl.querySelector('[data-key="lineWidthChars"] .ctrl-range'),
-        midScaleStatus: midScaleStatusRow.querySelector('[data-mid-scale-status]'),
-        midScaleHint: midScaleStatusRow.querySelector('[data-mid-scale-hint]'),
         charCountStatus: charCountRow.querySelector('[data-char-count-status]')
       };
 
+	      reorderShapePanelRows();
       syncShapeControls();
 
       const beginLineWidthInteraction = () => {
+        clearLocalRenderLoadWhisper();
         state.lineWidthPreview.interacting = true;
         cancelLineWidthCommit();
       };
@@ -5647,6 +6030,7 @@
       const endLineWidthInteraction = () => {
         state.lineWidthPreview.interacting = false;
         if (!state.lineWidthPreview.active || state.shape.type !== 'line') return;
+        beginRenderLoadWhisper(getShapeLoadWhisperText('line'), { requiredLayoutRevision: state.layoutBuildRevision + 1 });
         scheduleLineWidthCommit(180);
       };
 
@@ -5658,12 +6042,12 @@
     }
 
     function clearActiveBibleScene({ preserveView = false } = {}) {
-      cancelNativeRender();
+      cancelNahRender();
       resetProgressiveRefinement();
       state.activePreparedRender = null;
-      state.textures.mid = createEmptyTextureState(CONFIG.MID_TEXTURE);
-      resetNativeTexture();
-      state.renderMode = 'texture';
+      state.textures.fern = createEmptyTextureState(CONFIG.FERN_TEXTURE);
+      resetNahTexture();
+      state.renderMode = 'fern';
       state.textData = '';
       state.documentCacheKey = '';
       state.documentMeta = null;
@@ -5678,12 +6062,12 @@
       state.lineWidthPreview.active = false;
       state.lineWidthPreview.bridging = false;
       clearPresenceLayer();
-      hideMidOverlay();
-      hideNativeOverlay();
+      hideFernOverlay();
+      hideNahOverlay();
       clearLineWidthGhostCanvas();
       elements.lineWidthGhost.style.display = 'none';
       elements.lineWidthGhost.style.opacity = '0';
-      updateMidScaleReadout();
+      updateDocumentStatsReadout();
     }
 
     async function loadUploadTrigger({ loadId, viewTransition = null }) {
@@ -5761,9 +6145,10 @@
           state.renderWhisper.anchorY = initialViewTransition.anchorY;
         }
         state.renderWhisper.pendingLoadId = loadId;
+        state.renderWhisper.requiredLayoutRevision = 0;
         state.renderWhisper.committedLoadId = 0;
         state.renderWhisper.pendingDocumentKey = '';
-        setRenderWhisper('bible remix lädt', 'load', { animateDots: true });
+        setRenderWhisper(getShapeLoadWhisperText(), 'load', { animateDots: true });
         await nextPaint();
         if (!guard()) return;
 
@@ -5778,7 +6163,7 @@
           state.layout = createEmptyLayoutState();
           clearPresenceLayer();
           applyTransform();
-          setRenderWhisper('bible remix lädt', 'load', { animateDots: true });
+          setRenderWhisper(getShapeLoadWhisperText(), 'load', { animateDots: true });
           await nextPaint();
           if (!guard()) return;
         }
@@ -5797,7 +6182,7 @@
         if (!guard()) return;
         if (!remixDocument?.text) throw new Error('Remix-Text ist leer');
 
-        setRenderWhisper('bible remix lädt', 'load', { animateDots: true });
+        setRenderWhisper(getShapeLoadWhisperText(), 'load', { animateDots: true });
         await nextPaint();
         if (!guard()) return;
         applyRemixDocumentState(remixDocument);
@@ -5850,7 +6235,7 @@
         return;
       }
 
-      const loadText = getBibleLoadText(filename);
+      const loadText = getShapeLoadWhisperText();
       const initialViewTransition = shouldUseInitialCircleFit
         ? null
         : (frozenCircleTransition ? cloneCircleFootprint(frozenCircleTransition) : null);
@@ -5872,6 +6257,7 @@
           state.renderWhisper.anchorY = initialViewTransition.anchorY;
         }
         state.renderWhisper.pendingLoadId = loadId;
+        state.renderWhisper.requiredLayoutRevision = 0;
         state.renderWhisper.committedLoadId = 0;
         state.renderWhisper.pendingDocumentKey = '';
         setRenderWhisper(loadText, 'load', { animateDots: true });
@@ -5896,11 +6282,13 @@
         setRenderWhisper(loadText, 'load', { animateDots: true });
         await nextPaint();
         if (!guard()) return;
+        const previousTextLength = getCurrentDocumentCharCount();
         state.textData = text;
         state.documentMeta = getBibleMeta(filename) || analyzeBibleText(text);
         state.documentSelectionKey = `single:${filename}`;
         state.documentCacheKey = getDocumentCacheKey(state.documentMeta, text);
         state.renderWhisper.pendingDocumentKey = state.documentCacheKey;
+        preserveLineWidthCharsForDocumentChange(previousTextLength, text.length);
         if (!isRemixModeEnabled()) {
           state.remix = createRemixStateFromRecipe(getRecipeFromBibleEntry(bibleEntry), {
             baseFile: bibleEntry.file,
@@ -6249,6 +6637,7 @@
       }
 
       bibles = getVisibleBibleEntries();
+	      setKarussellWidth();
       updateKarussell();
       return entry;
     }

@@ -29,20 +29,15 @@
         <canvas id="mainCanvas"></canvas>
     </div>
 
-    <!-- Versteckter DOM-Trigger: Erzwingt den Download aller unicode-range Font-Dateien.
-         Canvas-Rendering allein löst keinen Download aus, erst DOM-Nutzung triggert das. -->
-    <div id="fontTrigger" aria-hidden="true"
-        style="position:absolute;left:-9999px;top:-9999px;font-size:1px;visibility:hidden;">
-        <span style="font-family:'Inter'">∞ 0 1</span>
-        <span style="font-family:'Roboto'">∞ 0 1</span>
-        <span style="font-family:'Ysabeau'">∞ 0 1</span>
-    </div>
-
     <script>
         (function () {
             const canvas = document.getElementById('mainCanvas');
             const canvasContainer = canvas.parentElement;
             const ctx = canvas.getContext('2d');
+            const heartFonts = [...new Set([
+                ...(Controls.DEFAULT_FONTS || []),
+                ...(Controls.UN0NEFINITY_FONTS || [])
+            ])];
             const getCanvasRealm = () => window._018Space
                 ? window._018Space.getCanvasRealm(canvasContainer, { virtualSize: 1000 })
                 : {
@@ -110,7 +105,7 @@
             }
 
             const state = {
-                fontFamily: 'Inter',
+                fontFamily: heartFonts[0] || 'sans-serif',
                 fontWeight: 400,
                 isItalic: false,
                 isDebug: false,
@@ -129,7 +124,7 @@
             fontTrigger.style.pointerEvents = 'none';
             fontTrigger.style.zIndex = '-1';
             fontTrigger.innerHTML = `
-                ${(Controls.DEFAULT_FONTS || []).map(f => `<span style="font-family:'${f}'">∞</span>`).join('')}
+                ${heartFonts.map(f => `<span style="font-family:'${f}'">0 ≡ 1 ≡ ∞</span>`).join('')}
             `;
             document.body.appendChild(fontTrigger);
 
@@ -160,7 +155,7 @@
                 panel.addSelect('fontFamily', {
                     label: 'Schriftart',
                     value: state.fontFamily,
-                    options: Controls.DEFAULT_FONTS || ['Verdana', 'Arial', 'sans-serif'],
+                    options: heartFonts.length ? heartFonts : ['Verdana', 'Arial', 'sans-serif'],
                     onChange: (val) => {
                         state.fontFamily = val;
                         updateFontUI();

@@ -61,7 +61,7 @@
         let text = '';
 
         // Load Bible text from a file in the same directory
-        fetch('bibel.txt')
+        fetch('/assets/bibeln/Bibel.txt')
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok. Status: ' + response.status);
