@@ -8,10 +8,40 @@ from pathlib import Path
 
 
 BIBLES_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BIBLES_DIR.parent.parent
 MANIFEST_PATH = BIBLES_DIR / "bibles.json"
+PROJECT_BIBLE_PATH = BIBLES_DIR / "0nefinity.txt"
 TARGET_FONT_SIZE = 12
 LINE_HEIGHT_FACTOR = 1.2
 MONOSPACE_CHAR_WIDTH = 7.224609375
+DOCUMENT_SEPARATOR = "--------------------"
+EXCLUDED_DIRECTORY_PATHS = {
+    Path(".git"),
+    Path(".ssh"),
+    Path(".vscode"),
+    Path("assets/bibeln"),
+    Path("tools/tools"),
+}
+EXCLUDED_FILE_PATHS = {
+    Path(".gitattributes"),
+    Path(".gitignore"),
+    Path(".gitmodules"),
+    Path(".htaccess"),
+    Path(".htpasswd"),
+    Path(".sitemap-cache"),
+}
+EXCLUDED_FILE_SUFFIXES = {
+    ".avif",
+    ".bmp",
+    ".gif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".pdn",
+    ".png",
+    ".svg",
+    ".webp",
+}
 
 
 def round_float(value: float, digits: int = 4) -> float:
@@ -24,6 +54,67 @@ def clean_display_name(file_name: str) -> str:
 
 def normalize_text(raw_text: str) -> str:
     return re.sub(r"\s+", " ", raw_text.replace("\ufeff", "")).strip()
+
+
+def is_excluded_project_path(path: Path) -> bool:
+    relative_path = path.relative_to(PROJECT_ROOT)
+    if any(relative_path == excluded or excluded in relative_path.parents for excluded in EXCLUDED_DIRECTORY_PATHS):
+        return True
+
+    if relative_path in EXCLUDED_FILE_PATHS:
+        return True
+
+    if relative_path.name == ".env" or relative_path.name.startswith(".env."):
+        return True
+
+    return any(part.startswith(".") for part in relative_path.parts[:-1])
+
+
+def read_project_text(path: Path) -> str | None:
+    if path.suffix.lower() in EXCLUDED_FILE_SUFFIXES:
+        return None
+
+    try:
+        raw_bytes = path.read_bytes()
+    except OSError:
+        return None
+
+    if b"\x00" in raw_bytes:
+        return None
+
+    try:
+        return raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def build_project_bible_text() -> tuple[str, int]:
+    documents: list[str] = []
+    included_count = 0
+
+    for path in sorted(PROJECT_ROOT.rglob("*"), key=lambda item: item.relative_to(PROJECT_ROOT).as_posix().lower()):
+        if not path.is_file() or is_excluded_project_path(path):
+            continue
+
+        raw_text = read_project_text(path)
+        if raw_text is None:
+            continue
+
+        relative_path = path.relative_to(PROJECT_ROOT).as_posix()
+        document = f"{relative_path}\n{raw_text}"
+        if not raw_text.endswith("\n"):
+            document += "\n"
+        document += f"{DOCUMENT_SEPARATOR}\n"
+        documents.append(document)
+        included_count += 1
+
+    return "\n".join(documents), included_count
+
+
+def write_project_bible() -> int:
+    project_bible_text, included_count = build_project_bible_text()
+    PROJECT_BIBLE_PATH.write_text(project_bible_text, encoding="utf-8")
+    return included_count
 
 
 def solve_circle_radius(text_length: int, char_width: float, line_height: float) -> int:
@@ -109,11 +200,14 @@ def build_manifest() -> dict:
 
 
 def main() -> None:
+    project_file_count = write_project_bible()
     manifest = build_manifest()
     MANIFEST_PATH.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    print(f"0nefinity geschrieben: {PROJECT_BIBLE_PATH}")
+    print(f"projektdateien in 0nefinity: {project_file_count}")
     print(f"manifest geschrieben: {MANIFEST_PATH}")
     print(f"texte: {len(manifest['items'])}")
 

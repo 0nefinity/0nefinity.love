@@ -1,0 +1,123 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bibel Tür</title>
+    <!-- zoom out of bible to enter door to heaven-->
+
+    <link href="/meta.css" rel="stylesheet" /> 
+    <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
+    <script src="/meta.js"></script>
+    <!-- meta.js regelt das Menü und den Zurückbutton und evt. sonstige zukünftige Metafunktionen -->
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 80px;
+            z-index: 100;
+        }
+        button {
+            font-size: 16px;
+            margin: 5px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="bibleCanvas"></canvas>
+        <div id="controls">
+            <button id="zoomIn">Zoom In</button>
+            <button id="zoomOut">Zoom Out</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('bibleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let zoomLevel = 1;
+        let text = '';
+
+        // Load Bible text from a file in the same directory
+        fetch('/assets/bibeln/Bibel.txt')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok. Status: ' + response.status);
+                }
+                return response.text();
+            })
+            .then(loadedText => {
+                text = loadedText;
+                renderBibleText();
+            })
+            .catch(error => {
+                console.error('Error loading the Bible text:', error);
+                ctx.fillStyle = 'white';
+                ctx.font = '20px Arial';
+                ctx.fillText('Error loading Bible text. Please check the file or the console for more information.', 10, 50);
+            });
+
+        function renderBibleText() {
+            ctx.save();
+            ctx.setTransform(zoomLevel, 0, 0, zoomLevel, canvas.width / 2, canvas.height / 2);
+            ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+
+            // Remove newlines for a compact representation
+            const processedText = text.replace(/\r?\n/g, ' ');
+
+            // Draw the text on the canvas
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            let x = -canvas.width / 2 + 10;
+            let y = -canvas.height / 2 + 20;
+            const lineHeight = 15;
+            const words = processedText.split(' ');
+
+            words.forEach(word => {
+                const wordWidth = ctx.measureText(word + ' ').width;
+                if (x + wordWidth > canvas.width / 2) {
+                    x = -canvas.width / 2 + 10;
+                    y += lineHeight;
+                }
+                ctx.fillText(word, x, y);
+                x += wordWidth;
+            });
+
+            ctx.restore();
+        }
+
+        // Zoom controls
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            zoomLevel = Math.min(zoomLevel * 1.2, 1000);
+            renderBibleText();
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            zoomLevel = Math.max(zoomLevel / 1.2, 0.001);
+            renderBibleText();
+        });
+    </script>
+</body>
+</html>

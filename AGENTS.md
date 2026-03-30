@@ -6,7 +6,7 @@ This repository is a creative and philosophical project centered on "0nefinity" 
 - **Entry Points**: [./index.html](./index.html) and [./README.html](./README.html) contain the primary explanations and navigation.
 - **Global Assets**: [./meta.js](./meta.js) and [./meta.css](./meta.css) govern the global UI, including the menu system and color schemes.
 - **Core Logic**: [./0nefinity.js](./0nefinity.js) is the central script for the 0nefinity theory's manifestations.
-- **Tools & Libraries**: Shared utilities and libraries (e.g., [./tools/pixi.js](./tools/pixi.js), [./tools/decimal.js](./tools/decimal.js), [./tools/controls.js](./tools/controls.js)) are located in the [./tools/](./tools/) directory.
+- **Tools & Libraries**: Shared utilities and libraries (e.g., [./tools/tools/pixi.js](./tools/tools/pixi.js), [./tools/tools/decimal.js](./tools/tools/decimal.js), [./tools/controls.js](./tools/controls.js)) are located in the [./tools/](./tools/) directory.
 - **Archive**: Older versions and raw ideas are kept in [./00_Archiv/](./00_Archiv/).
 
 ## Build, Test, and Development Commands

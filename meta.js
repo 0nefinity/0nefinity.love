@@ -1,7 +1,35 @@
 // meta.js
 
+// Projektweit nur die kuratierte 0nefinity-Auswahl laden.
+(function ensureProjectFontsStylesheet() {
+    const href = '/fonts-auswahl.css';
+    const existing = document.querySelector(`link[data-meta-fonts-auswahl="${href}"], link[href="${href}"]`);
+    if (existing) return;
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.setAttribute('data-meta-fonts-auswahl', href);
+    (document.head || document.documentElement).appendChild(link);
+})();
+
+// un0nefinity-Fonts separat zusätzlich laden (z.B. Ysabeau für Menü/Lupe),
+// ohne sie in die kuratierte 0nefinity-Auswahl zu mischen.
+(function ensureMetaFontsStylesheet() {
+    const href = '/tools/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/un0nefinity-fonts.css';
+    const existing = document.querySelector(`link[data-meta-un0nefinity-fonts="${href}"], link[href="${href}"]`);
+    if (existing) return;
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.setAttribute('data-meta-un0nefinity-fonts', href);
+    (document.head || document.documentElement).appendChild(link);
+})();
+
 // Tools synchron laden (sofort verfügbar für alle Seiten)
 document.write('<script src="/tools/zoom.js"><\/script>');
+document.write('<script src="/tools/tools/decimal.js"><\/script>');
 document.write('<script src="/tools/controls.js"><\/script>');
 
 (function (global) {

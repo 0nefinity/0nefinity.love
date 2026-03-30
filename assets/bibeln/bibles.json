@@ -1,7 +1,32 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-27T13:49:47.774381Z",
+  "generatedAt": "2026-03-30T13:22:17.146265Z",
   "items": [
+    {
+      "file": "0nefinity.txt",
+      "name": "0nefinity",
+      "rawCharCount": 3151643,
+      "charCount": 2546032,
+      "uniqueCharCount": 232,
+      "uniqueChars": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~£¤©°±²³´¶·¹º¼¿ÃÄÎÖ×Üßâäðö÷üŠŸʸːˣ˸͚Σαθπᮊᮑᮔ᮲᮳᮴᮵᮷‒–—‖’“”„†•…‧⁻ⁿ₀₁ₐ€⅞←↑→↓↔↕↩↪↺↻∈−∓∙√∛∞∫≈≠≡≤≥⊓⋅⋮⋯⋰⋱⌂⏸─═▲▶▼○♫⚠✌✓✕✗✨❌➕⬡⭳⸱・꞉️𝄆𝄇𝄈🌀🌈🌙🎲🎵🎶🎺💡💾📊📡🔄🔗🚀🤣🥁🧪",
+      "layoutPresets": {
+        "circle": {
+          "fontSize": 12,
+          "charWidth": 7.2246,
+          "lineHeight": 14.4,
+          "radius": 9184,
+          "bounds": {
+            "minX": -9184,
+            "maxX": 9184,
+            "minY": -9184,
+            "maxY": 9184,
+            "width": 18368,
+            "height": 18368
+          },
+          "worldSpan": 18368
+        }
+      }
+    },
     {
       "file": "Bhagavad-Gita.txt",
       "name": "Bhagavad-Gita",

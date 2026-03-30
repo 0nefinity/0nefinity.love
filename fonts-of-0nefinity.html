@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fonts of 0nefinity</title>
+    <link rel="stylesheet" href="/meta.css">
+    <link rel="stylesheet" href="/fonts.css">
+    <script src="/meta.js"></script>
+    <style>
+        html, body {
+            min-height: 100%;
+            margin: 0;
+            background: var(--bg-color, #000);
+            color: var(--text-color, #fff);
+        }
+
+        body {
+            overflow-y: auto;
+        }
+
+        body.zoom-unlocked {
+            overflow: hidden;
+        }
+
+        #canvasRoot {
+            position: relative;
+            width: 100%;
+        }
+
+        body.zoom-unlocked #canvasRoot {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: 1;
+            background: var(--bg-color, #000);
+        }
+
+        #fontCanvas {
+            display: none;
+        }
+
+        .font-page {
+            position: relative;
+            z-index: 0;
+            --name-gap: 350px;
+            --name-area-width: 228px;
+            --selection-check-gap: 18px;
+            width: min(120rem, calc(100vw - 2rem));
+            margin: 0 auto;
+            padding: 1rem 1rem 4rem;
+            box-sizing: border-box;
+            transform-origin: top left;
+            will-change: transform;
+        }
+
+        .font-page.is-initializing {
+            min-height: 24rem;
+        }
+
+        .font-page.is-initializing .font-intro,
+        .font-page.is-initializing .font-selection-header,
+        .font-page.is-initializing .font-dom-list {
+            visibility: hidden;
+        }
+
+        .font-page.is-initializing::before {
+            content: 'Schriften laden …';
+            position: absolute;
+            inset: 0 auto auto 50%;
+            transform: translateX(-50%);
+            margin-top: 6rem;
+            color: var(--text-color, #fff);
+            opacity: 0.82;
+            letter-spacing: 0.04em;
+            pointer-events: none;
+        }
+
+        body.zoom-unlocked #fontPage {
+            position: absolute;
+            margin: 0;
+            max-width: none;
+            cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body.zoom-unlocked #canvasRoot.dragging #fontPage {
+            cursor: grabbing;
+        }
+
+        .font-intro {
+            max-width: 74rem;
+            margin: 0 auto 1.2rem;
+            padding: 0.85rem 1.1rem;
+            box-sizing: border-box;
+            border-radius: 1rem;
+            background: rgba(0, 0, 0, 0.58);
+            backdrop-filter: blur(8px);
+            text-align: center;
+            font-size: 1.16rem;
+            line-height: 1.45;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .font-page.hide-intro .font-intro {
+            display: none;
+        }
+
+        .font-dom-list {
+            position: relative;
+            min-height: 0;
+        }
+
+        .font-dom-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .font-dom-names-layer {
+            z-index: 1;
+        }
+
+        .font-dom-samples-layer {
+            z-index: 2;
+        }
+
+        .font-dom-checks-layer {
+            z-index: 3;
+        }
+
+        .font-dom-checks-layer .font-dom-checkwrap {
+            pointer-events: auto;
+        }
+
+        .font-selection-header {
+            position: absolute;
+            inset-inline: 0;
+            height: 0;
+            transform: translateY(-50%);
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        .font-page:not(.selection-mode) .font-selection-header {
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .font-dom-row {
+            position: absolute;
+            inset-inline: 0;
+            display: block;
+            min-height: 8rem;
+            padding: 0.15rem 0;
+            box-sizing: border-box;
+            transform: translateY(-50%);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .font-dom-checkwrap,
+        .font-selection-checkwrap {
+            position: absolute;
+            top: 50%;
+            left: calc(50% + var(--name-gap) + var(--name-area-width) + var(--selection-check-gap));
+            right: auto;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .font-page.hide-names .font-dom-checkwrap,
+        .font-page.hide-names .font-selection-checkwrap {
+            left: calc(50% + var(--name-gap) + var(--selection-check-gap));
+            right: auto;
+        }
+
+        .font-dom-check,
+        .font-selection-master-check {
+            width: 2rem;
+            height: 2rem;
+            cursor: pointer;
+        }
+
+        .font-selection-checkwrap {
+            gap: 0;
+            pointer-events: auto;
+        }
+
+        .font-page:not(.selection-mode) .font-dom-checkwrap {
+            display: none;
+        }
+
+        .font-dom-namewrap {
+            position: absolute;
+            top: 50%;
+            right: calc(50% + var(--name-gap));
+            transform: translateY(-50%);
+            width: var(--name-area-width);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-end;
+            text-align: right;
+            pointer-events: auto;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .font-page.hide-names .font-dom-namewrap {
+            display: none;
+        }
+
+        .font-dom-name {
+            font-size: 0.98rem;
+            font-weight: 400;
+            letter-spacing: 0.03em;
+        }
+
+        .font-dom-status,
+        .font-dom-inline-status {
+            margin-top: 0.2rem;
+            font-size: 0.88rem;
+            color: #ff8f8f;
+            display: none;
+        }
+
+        .font-dom-namewrap.is-missing .font-dom-status {
+            display: block;
+        }
+
+        .font-page.hide-names .font-dom-samplewrap.is-missing .font-dom-inline-status {
+            display: block;
+            margin-top: 0;
+            margin-bottom: 0.35rem;
+            text-align: center;
+        }
+
+        .font-dom-samplewrap {
+            position: absolute;
+            top: 50%;
+            left: 50% !important;
+            transform: translate(-50%, -50%);
+            min-width: 0;
+            width: max-content;
+            max-width: calc(100% - 2rem);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .font-dom-namewrap.is-disabled,
+        .font-dom-samplewrap.is-disabled,
+        .font-dom-checkwrap.is-disabled {
+            opacity: 0.26;
+        }
+
+        .font-dom-sample {
+            position: relative;
+            display: block;
+            margin-inline: auto;
+            white-space: nowrap;
+            line-height: 1;
+            text-align: center;
+            user-select: text;
+            -webkit-user-select: text;
+            cursor: text;
+            transform: translateY(0px);
+        }
+
+        .font-dom-standard-text {
+            display: block;
+            white-space: pre;
+            transform: translateY(var(--sample-shift-y, 0px));
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .font-dom-sample[data-mode="normalized"] .font-dom-standard-text {
+            display: none;
+        }
+
+        .font-dom-sample[data-mode="standard"] .font-dom-glyph {
+            display: none;
+        }
+
+        .font-dom-glyph {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            display: block;
+            white-space: pre;
+            transform: translate(-50%, -50%) translate(var(--glyph-x, 0px), var(--glyph-y, 0px));
+            transform-origin: center center;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        @media (max-width: 900px) {
+            .font-page {
+                width: min(120rem, calc(100vw - 1rem));
+                padding: 0.75rem 0.5rem 3rem;
+            }
+
+            .font-intro {
+                padding: 0.7rem 0.8rem;
+                font-size: 1.02rem;
+            }
+
+            .font-dom-namewrap {
+                text-align: right;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvasRoot" aria-hidden="false">
+        <main id="fontPage" class="font-page">
+            <div id="fontIntro" class="font-intro">
+Bei Google fonts ließen sich lediglich 76 fonts finden, die die (einzig wirklich relevanten) Zeichen 0 ≡ 1 ≡ ∞ tatsächlich enthalten.
+Um dies gebührend anzuerkennen, erfahren diese hier gesonderte Ehrung.
+            </div>
+            <div id="fontSelectionHeader" class="font-selection-header">
+                <label class="font-selection-checkwrap" for="fontSelectionMasterCheck" aria-label="Alle Schriftarten an- oder ausschalten" title="Alle Schriftarten an- oder ausschalten">
+                    <input id="fontSelectionMasterCheck" class="font-selection-master-check" type="checkbox">
+                </label>
+            </div>
+            <div id="fontDomList" class="font-dom-list"></div>
+        </main>
+        <canvas id="fontCanvas"></canvas>
+    </div>
+
+    <script>
+        (function () {
+            const DEFAULT_SAMPLE_TEXT = '0 ≡ 1 ≡ ∞';
+            const ALL_FONTS = [
+                'Asta Sans', 'BIZ UDGothic', 'BIZ UDMincho', 'BIZ UDPGothic', 'BIZ UDPMincho', 'Bpmf Huninn', 'Bpmf Iansui', 'Bpmf Zihi Kai Std', 'Cactus Classical Serif', 'Chiron GoRound TC', 'Chiron Hei HK', 'Chiron Sung HK', 'Chocolate Classical Sans', 'Dela Gothic One', 'Do Hyeon', 'Dongle', 'DotGothic16', 'East Sea Dokdo', 'Gamja Flower', 'Gothic A1', 'Gowun Batang', 'Gowun Dodum', 'Hi Melody', 'Hina Mincho', 'Huninn', 'IBM Plex Sans JP', 'IBM Plex Sans KR', 'Iansui', 'Iosevka Charon Mono', 'Iosevka Charon', 'Kirang Haerang', 'Kiwi Maru', 'Klee One', 'Kosugi', 'Kosugi Maru', 'LINE Seed JP', 'LXGW Marker Gothic', 'LXGW WenKai Mono TC', 'LXGW WenKai TC', 'Libertinus Math', 'M PLUS 1p', 'M PLUS Rounded 1c', 'Murecho', 'Nanum Gothic Coding', 'Nanum Gothic', 'Nanum Myeongjo', 'New Tegomin', 'Noto Sans HK', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Math', 'Noto Sans SC', 'Noto Sans TC', 'Noto Serif HK', 'Noto Serif JP', 'Noto Serif KR', 'Noto Serif SC', 'Noto Serif TC', 'Rampart One', 'Reggae One', 'RocknRoll One', 'Stick', 'Train One', 'WDXL Lubrifont JP N', 'WDXL Lubrifont SC', 'WDXL Lubrifont TC', 'Yeon Sung', 'Yomogi', 'Yusei Magic', 'Zen Antique', 'Zen Antique Soft', 'Zen Kaku Gothic Antique', 'Zen Kaku Gothic New', 'Zen Kurenaido', 'Zen Maru Gothic', 'Zen Old Mincho'
+            ];
+
+            const CONFIG = {
+                MEASURE_SIZE: 200,
+                FIT_MARGIN: 0.92,
+                SAMPLE_FALLBACK_WIDTH_FACTOR: 4.9,
+                ROW_MIN_HEIGHT: 96,
+                NAME_AREA_WIDTH: 228,
+                LEFT_PADDING: 72,
+                RIGHT_PADDING: 90,
+                TOP_PADDING: 170,
+                BOTTOM_PADDING: 130,
+                ZOOM: {
+                    min: 0.00001,
+                    max: 10000,
+                    speed: 0.035
+                },
+                DEFAULTS: {
+                    fontSize: 72,
+                    entrySpacing: 120,
+                    charSpacing: 52,
+                    unlockZoom: false,
+                    showIntro: true,
+                    hideNames: false,
+                    normalize: false,
+                    selectionMode: false
+                }
+            };
+
+            const canvas = document.getElementById('fontCanvas');
+            const canvasRoot = document.getElementById('canvasRoot');
+            const fontPage = document.getElementById('fontPage');
+            const fontIntro = document.getElementById('fontIntro');
+            const fontSelectionHeader = document.getElementById('fontSelectionHeader');
+            const fontSelectionMasterCheck = document.getElementById('fontSelectionMasterCheck');
+            const fontDomList = document.getElementById('fontDomList');
+            const fontNamesLayer = document.createElement('div');
+            fontNamesLayer.className = 'font-dom-layer font-dom-names-layer';
+            const fontSamplesLayer = document.createElement('div');
+            fontSamplesLayer.className = 'font-dom-layer font-dom-samples-layer';
+            const fontChecksLayer = document.createElement('div');
+            fontChecksLayer.className = 'font-dom-layer font-dom-checks-layer';
+            const ctx = canvas.getContext('2d');
+            const measureCanvas = document.createElement('canvas');
+            const measureCtx = measureCanvas.getContext('2d');
+            const pixelCanvas = document.createElement('canvas');
+            pixelCanvas.width = 2200;
+            pixelCanvas.height = 520;
+            const pixelCtx = pixelCanvas.getContext('2d', { willReadFrequently: true });
+
+            const state = {
+                fontSize: CONFIG.DEFAULTS.fontSize,
+                entrySpacing: CONFIG.DEFAULTS.entrySpacing,
+                charSpacing: CONFIG.DEFAULTS.charSpacing,
+                sampleText: DEFAULT_SAMPLE_TEXT,
+                unlockZoom: CONFIG.DEFAULTS.unlockZoom,
+                showIntro: CONFIG.DEFAULTS.showIntro,
+                hideNames: CONFIG.DEFAULTS.hideNames,
+                normalize: CONFIG.DEFAULTS.normalize,
+                selectionMode: CONFIG.DEFAULTS.selectionMode,
+                sampleTextVersion: 0,
+                sampleMetricsRefreshTimer: 0,
+                initialHydrationDone: false,
+                width: 1,
+                height: 1,
+                dpr: 1,
+                drawQueued: false,
+                hasFitViewOnce: false,
+                view: {
+                    scale: 1,
+                    offsetX: 0,
+                    offsetY: 0,
+                    baseLeft: 0,
+                    baseWidth: 0,
+                    savedScrollY: 0,
+                    touched: false
+                },
+                drag: {
+                    active: false,
+                    lastX: 0,
+                    lastY: 0,
+                    lastPinchDist: 0,
+                    lastPinchCenterX: 0,
+                    lastPinchCenterY: 0
+                },
+                rows: ALL_FONTS.map(name => ({
+                    name,
+                    enabled: true,
+                    verified: null,
+                    metrics: null,
+                    sampleModelCacheKey: '',
+                    sampleModelCache: null,
+                    dom: null
+                }))
+            };
+
+            fontDomList.prepend(fontSelectionHeader);
+            fontDomList.append(fontNamesLayer, fontSamplesLayer, fontChecksLayer);
+
+            function getSampleText() {
+                return typeof state.sampleText === 'string' ? state.sampleText : DEFAULT_SAMPLE_TEXT;
+            }
+
+            function getMeasurementText(sourceText = getSampleText()) {
+                return String(sourceText ?? '').replace(/\r/g, '').replace(/\n/g, ' ');
+            }
+
+            function getProbeGlyphs(sourceText = getMeasurementText()) {
+                return Array.from(sourceText);
+            }
+
+            function getMetricsKey(sourceText = getMeasurementText()) {
+                return String(sourceText ?? '');
+            }
+
+            function hasCurrentMetrics(row, metricsKey = getMetricsKey()) {
+                return !!row.metrics && row.metrics.sampleKey === metricsKey;
+            }
+
+            function clamp(value, min, max) {
+                return value < min ? min : (value > max ? max : value);
+            }
+
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            function nextPaint() {
+                return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            }
+
+            function queueDraw() {
+                if (state.drawQueued) return;
+                state.drawQueued = true;
+                requestAnimationFrame(() => {
+                    state.drawQueued = false;
+                    applyZoomTransform();
+                });
+            }
+
+            function createRowDom(row) {
+                const checkWrap = document.createElement('div');
+                checkWrap.className = 'font-dom-checkwrap';
+
+                const checkEl = document.createElement('input');
+                checkEl.className = 'font-dom-check';
+                checkEl.type = 'checkbox';
+                checkEl.checked = row.enabled;
+                checkEl.addEventListener('change', () => {
+                    row.enabled = !!checkEl.checked;
+                    handleEnabledStateChange();
+                });
+
+                checkWrap.appendChild(checkEl);
+
+                const nameWrap = document.createElement('div');
+                nameWrap.className = 'font-dom-namewrap';
+
+                const nameEl = document.createElement('div');
+                nameEl.className = 'font-dom-name';
+                nameEl.textContent = row.name;
+
+                const statusEl = document.createElement('div');
+                statusEl.className = 'font-dom-status';
+
+                nameWrap.appendChild(nameEl);
+                nameWrap.appendChild(statusEl);
+
+                const sampleWrap = document.createElement('div');
+                sampleWrap.className = 'font-dom-samplewrap';
+
+                const inlineStatusEl = document.createElement('div');
+                inlineStatusEl.className = 'font-dom-inline-status';
+
+                const sampleEl = document.createElement('div');
+                sampleEl.className = 'font-dom-sample';
+                sampleEl.setAttribute('data-mode', 'standard');
+                sampleEl.setAttribute('aria-label', `${row.name}: ${getSampleText()}`);
+
+                const textEl = document.createElement('span');
+                textEl.className = 'font-dom-standard-text';
+                textEl.textContent = getSampleText();
+                sampleEl.appendChild(textEl);
+
+                const glyphEls = [];
+
+                sampleWrap.appendChild(inlineStatusEl);
+                sampleWrap.appendChild(sampleEl);
+
+                fontChecksLayer.appendChild(checkWrap);
+                fontNamesLayer.appendChild(nameWrap);
+                fontSamplesLayer.appendChild(sampleWrap);
+
+                row.dom = {
+                    checkEl,
+                    checkWrap,
+                    nameWrap,
+                    nameEl,
+                    statusEl,
+                    sampleWrap,
+                    inlineStatusEl,
+                    sampleEl,
+                    textEl,
+                    glyphEls
+                };
+            }
+
+            state.rows.forEach(createRowDom);
+
+            fontSelectionMasterCheck?.addEventListener('change', () => {
+                const nextValue = !!fontSelectionMasterCheck.checked;
+                state.rows.forEach(row => {
+                    row.enabled = nextValue;
+                });
+                handleEnabledStateChange();
+            });
+
+            function getVisibleRows() {
+                return state.selectionMode
+                    ? state.rows
+                    : state.rows.filter(row => row.enabled !== false);
+            }
+
+            function syncGlyphElements(dom, glyphs) {
+                while (dom.glyphEls.length < glyphs.length) {
+                    const glyphEl = document.createElement('span');
+                    glyphEl.className = 'font-dom-glyph';
+                    dom.sampleEl.appendChild(glyphEl);
+                    dom.glyphEls.push(glyphEl);
+                }
+
+                while (dom.glyphEls.length > glyphs.length) {
+                    const glyphEl = dom.glyphEls.pop();
+                    glyphEl.remove();
+                }
+
+                dom.glyphEls.forEach((glyphEl, index) => {
+                    glyphEl.textContent = glyphs[index] ?? '';
+                });
+            }
+
+            function invalidateSampleModelCache(row = null) {
+                if (row) {
+                    row.sampleModelCacheKey = '';
+                    row.sampleModelCache = null;
+                    return;
+                }
+
+                state.rows.forEach(entry => {
+                    entry.sampleModelCacheKey = '';
+                    entry.sampleModelCache = null;
+                });
+            }
+
+            function getViewportMetrics() {
+                return {
+                    width: state.width,
+                    height: state.height,
+                    clientCenterX: state.width / 2,
+                    clientCenterY: state.height / 2
+                };
+            }
+
+            function getCssVar(name, fallback) {
+                const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+                return value || fallback;
+            }
+
+            function resizeCanvas() {
+                const rect = canvasRoot.getBoundingClientRect();
+                const nextDpr = window.devicePixelRatio || 1;
+                const nextWidth = Math.max(1, Math.round(rect.width || canvasRoot.clientWidth || window.innerWidth));
+                const nextHeight = Math.max(1, Math.round(rect.height || canvasRoot.clientHeight || window.innerHeight));
+                const changed = nextWidth !== state.width || nextHeight !== state.height || nextDpr !== state.dpr;
+
+                state.width = nextWidth;
+                state.height = nextHeight;
+                state.dpr = nextDpr;
+
+                canvas.width = Math.max(1, Math.round(nextWidth * nextDpr));
+                canvas.height = Math.max(1, Math.round(nextHeight * nextDpr));
+                canvas.style.width = `${nextWidth}px`;
+                canvas.style.height = `${nextHeight}px`;
+
+                if (state.unlockZoom) {
+                    const liveRect = fontPage.getBoundingClientRect();
+                    if (!state.view.touched) {
+                        fitView({ preserveTouched: false });
+                    } else {
+                        state.view.baseWidth = liveRect.width / Math.max(state.view.scale, 0.000001) || state.view.baseWidth;
+                        queueDraw();
+                    }
+                    return;
+                }
+
+                if (!changed) {
+                    return;
+                }
+
+                if (!state.hasFitViewOnce || !state.view.touched) {
+                    fitView({ preserveTouched: false });
+                    state.hasFitViewOnce = true;
+                    return;
+                }
+
+                queueDraw();
+            }
+
+            function getTextMetrics(fontFamily, text, fontSize = CONFIG.MEASURE_SIZE) {
+                if (!measureCtx) {
+                    return {
+                        width: fontSize * CONFIG.SAMPLE_FALLBACK_WIDTH_FACTOR,
+                        left: 0,
+                        right: fontSize * CONFIG.SAMPLE_FALLBACK_WIDTH_FACTOR,
+                        ascent: fontSize * 0.8,
+                        descent: fontSize * 0.2,
+                        height: fontSize
+                    };
+                }
+
+                measureCtx.font = `normal 400 ${fontSize}px "${fontFamily}"`;
+                const metrics = measureCtx.measureText(text);
+                const left = Number.isFinite(metrics.actualBoundingBoxLeft) ? metrics.actualBoundingBoxLeft : 0;
+                const right = Number.isFinite(metrics.actualBoundingBoxRight) ? metrics.actualBoundingBoxRight : metrics.width;
+                const ascent = Number.isFinite(metrics.actualBoundingBoxAscent) ? metrics.actualBoundingBoxAscent : fontSize * 0.8;
+                const descent = Number.isFinite(metrics.actualBoundingBoxDescent) ? metrics.actualBoundingBoxDescent : fontSize * 0.2;
+
+                return {
+                    width: metrics.width,
+                    left,
+                    right,
+                    ascent,
+                    descent,
+                    height: ascent + descent
+                };
+            }
+
+            function getDominantStemCenterX(columnInkCounts, minX, maxX) {
+                let maxInk = 0;
+                for (let x = minX; x <= maxX; x++) {
+                    maxInk = Math.max(maxInk, columnInkCounts[x] || 0);
+                }
+                if (maxInk <= 0) return null;
+
+                const threshold = maxInk * 0.9;
+                let bestRun = null;
+                let runStart = -1;
+                let runInk = 0;
+
+                const closeRun = runEnd => {
+                    if (runStart < 0) return;
+                    const candidate = {
+                        start: runStart,
+                        end: runEnd,
+                        ink: runInk,
+                        width: runEnd - runStart + 1
+                    };
+                    if (!bestRun || candidate.ink > bestRun.ink || (candidate.ink === bestRun.ink && candidate.width > bestRun.width)) {
+                        bestRun = candidate;
+                    }
+                    runStart = -1;
+                    runInk = 0;
+                };
+
+                for (let x = minX; x <= maxX; x++) {
+                    const ink = columnInkCounts[x] || 0;
+                    if (ink >= threshold) {
+                        if (runStart < 0) runStart = x;
+                        runInk += ink;
+                        continue;
+                    }
+                    closeRun(x - 1);
+                }
+                closeRun(maxX);
+
+                return bestRun ? (bestRun.start + bestRun.end) / 2 : null;
+            }
+
+            function getPixelBounds(fontFamily, text, fontSize = CONFIG.MEASURE_SIZE) {
+                if (!pixelCtx) {
+                    return {
+                        width: fontSize * CONFIG.SAMPLE_FALLBACK_WIDTH_FACTOR,
+                        height: fontSize,
+                        ascent: fontSize * 0.8,
+                        descent: fontSize * 0.2,
+                        centerOffset: 0
+                    };
+                }
+
+                const originX = 120;
+                const baselineY = Math.round(pixelCanvas.height * 0.67);
+                pixelCtx.clearRect(0, 0, pixelCanvas.width, pixelCanvas.height);
+                pixelCtx.fillStyle = '#000';
+                pixelCtx.fillRect(0, 0, pixelCanvas.width, pixelCanvas.height);
+                pixelCtx.fillStyle = '#fff';
+                pixelCtx.textAlign = 'left';
+                pixelCtx.textBaseline = 'alphabetic';
+                pixelCtx.font = `normal 400 ${fontSize}px "${fontFamily}"`;
+                pixelCtx.fillText(text, originX, baselineY);
+
+                const { data, width, height } = pixelCtx.getImageData(0, 0, pixelCanvas.width, pixelCanvas.height);
+                const columnInkCounts = new Float64Array(width);
+                let minX = width;
+                let minY = height;
+                let maxX = -1;
+                let maxY = -1;
+                let totalInk = 0;
+                let weightedInkX = 0;
+
+                for (let y = 0; y < height; y++) {
+                    const rowOffset = y * width * 4;
+                    for (let x = 0; x < width; x++) {
+                        const idx = rowOffset + x * 4;
+                        if (data[idx + 3] === 0) continue;
+                        if (data[idx] === 0 && data[idx + 1] === 0 && data[idx + 2] === 0) continue;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        columnInkCounts[x] += 1;
+                        totalInk += 1;
+                        weightedInkX += x;
+                    }
+                }
+
+                if (maxX < minX || maxY < minY) {
+                    return {
+                        width: 0,
+                        height: 0,
+                        ascent: fontSize * 0.8,
+                        descent: fontSize * 0.2,
+                        centerOffset: 0,
+                        left: 0,
+                        right: 0,
+                        centerOffsetX: 0
+                    };
+                }
+
+                const ascent = baselineY - minY;
+                const descent = maxY - baselineY;
+                const visibleCenterX = ((minX + maxX) / 2) - originX;
+                const inkCenterX = totalInk > 0 ? (weightedInkX / totalInk) - originX : visibleCenterX;
+                const dominantStemCenterX = text === '1'
+                    ? getDominantStemCenterX(columnInkCounts, minX, maxX)
+                    : null;
+                const anchorCenterX = Number.isFinite(dominantStemCenterX)
+                    ? (dominantStemCenterX - originX)
+                    : inkCenterX;
+                measureCtx.font = `normal 400 ${fontSize}px "${fontFamily}"`;
+                const advanceWidth = measureCtx.measureText(text).width;
+                const advanceCenterX = advanceWidth / 2;
+
+                return {
+                    width: maxX - minX + 1,
+                    height: maxY - minY + 1,
+                    ascent,
+                    descent,
+                    centerOffset: ((minY + maxY) / 2) - baselineY,
+                    left: minX - originX,
+                    right: maxX - originX,
+                    centerOffsetX: anchorCenterX - advanceCenterX,
+                    visibleCenterOffsetX: visibleCenterX - advanceCenterX,
+                    inkCenterOffsetX: inkCenterX - advanceCenterX
+                };
+            }
+
+            function capturePixels(fontDef, text = getMeasurementText()) {
+                if (!pixelCtx) return null;
+
+                pixelCtx.clearRect(0, 0, pixelCanvas.width, pixelCanvas.height);
+                pixelCtx.fillStyle = '#000';
+                pixelCtx.fillRect(0, 0, pixelCanvas.width, pixelCanvas.height);
+                pixelCtx.fillStyle = '#fff';
+                pixelCtx.textAlign = 'left';
+                pixelCtx.textBaseline = 'middle';
+                pixelCtx.font = fontDef;
+                pixelCtx.fillText(text, 28, pixelCanvas.height / 2);
+
+                return new Uint32Array(pixelCtx.getImageData(0, 0, pixelCanvas.width, pixelCanvas.height).data.buffer.slice(0));
+            }
+
+            function pixelBuffersDiffer(left, right) {
+                if (!left || !right || left.length !== right.length) return false;
+                for (let i = 0; i < left.length; i++) {
+                    if (left[i] !== right[i]) return true;
+                }
+                return false;
+            }
+
+            function widthDiffers(fontDef, fallbackDef, text) {
+                if (!measureCtx) return false;
+                measureCtx.font = fontDef;
+                const withFont = measureCtx.measureText(text).width;
+                measureCtx.font = fallbackDef;
+                const pureFallback = measureCtx.measureText(text).width;
+                return Math.abs(withFont - pureFallback) > 0.5;
+            }
+
+            function glyphLooksApplied(fontFamily, char) {
+                return ['serif', 'monospace'].some(fallback => {
+                    const withFontDef = `normal 400 140px "${fontFamily}", ${fallback}`;
+                    const fallbackDef = `normal 400 140px ${fallback}`;
+
+                    if (widthDiffers(withFontDef, fallbackDef, char)) {
+                        return true;
+                    }
+
+                    const withPixels = capturePixels(withFontDef, char);
+                    const fallbackPixels = capturePixels(fallbackDef, char);
+                    return pixelBuffersDiffer(withPixels, fallbackPixels);
+                });
+            }
+
+            function fontLooksApplied(fontFamily) {
+                const measurementText = getMeasurementText() || DEFAULT_SAMPLE_TEXT;
+                const glyphs = getProbeGlyphs(measurementText).filter(char => char.trim().length > 0);
+
+                if (glyphs.some(char => glyphLooksApplied(fontFamily, char))) {
+                    return true;
+                }
+
+                return ['serif', 'sans-serif', 'monospace'].some(fallback => {
+                    const withFontDef = `normal 400 140px "${fontFamily}", ${fallback}`;
+                    const fallbackDef = `normal 400 140px ${fallback}`;
+
+                    if (widthDiffers(withFontDef, fallbackDef, measurementText)) {
+                        return true;
+                    }
+
+                    const withPixels = capturePixels(withFontDef, measurementText);
+                    const fallbackPixels = capturePixels(fallbackDef, measurementText);
+                    return pixelBuffersDiffer(withPixels, fallbackPixels);
+                });
+            }
+
+            async function loadAndVerifyFont(fontFamily) {
+                if (!document.fonts || !measureCtx) return true;
+
+                const verificationText = getMeasurementText() || DEFAULT_SAMPLE_TEXT;
+
+                try {
+                    await Promise.all([
+                        document.fonts.load(`400 140px "${fontFamily}"`, verificationText),
+                        document.fonts.load(`700 80px "${fontFamily}"`, verificationText)
+                    ]);
+                } catch {
+                    // weiter mit heuristischer Prüfung
+                }
+
+                for (let attempt = 0; attempt < 5; attempt++) {
+                    await document.fonts.ready;
+                    await nextPaint();
+                    if (fontLooksApplied(fontFamily)) {
+                        return true;
+                    }
+                    await sleep(90 * (attempt + 1));
+                }
+
+                return false;
+            }
+
+            function buildFontModel(fontFamily, measurementText = getMeasurementText()) {
+                const sampleKey = getMetricsKey(measurementText);
+                const glyphChars = getProbeGlyphs(measurementText);
+                const text = getTextMetrics(fontFamily, measurementText, CONFIG.MEASURE_SIZE);
+                const textPixel = getPixelBounds(fontFamily, measurementText, CONFIG.MEASURE_SIZE);
+                const glyphCache = new Map();
+                const glyphs = glyphChars.map(char => {
+                    if (!glyphCache.has(char)) {
+                        const metrics = getTextMetrics(fontFamily, char, CONFIG.MEASURE_SIZE);
+                        const pixel = getPixelBounds(fontFamily, char, CONFIG.MEASURE_SIZE);
+                        glyphCache.set(char, {
+                            char,
+                            ...metrics,
+                            pixel
+                        });
+                    }
+                    return glyphCache.get(char);
+                });
+                const maxGlyphHeight = Math.max(1, ...glyphs.map(glyph => glyph.height || 0));
+                const maxGlyphPixelHeight = Math.max(1, ...glyphs.map(glyph => glyph.pixel?.height || glyph.height || 0));
+
+                return {
+                    sampleKey,
+                    text,
+                    textPixel,
+                    glyphs,
+                    maxGlyphHeight,
+                    maxGlyphPixelHeight
+                };
+            }
+
+            function getNameFontSize() {
+                return state.hideNames ? 0 : clamp(state.fontSize * 0.18, 16, 44);
+            }
+
+            function getStatusFontSize(nameFontSize = getNameFontSize()) {
+                return state.hideNames ? 0 : clamp(nameFontSize * 0.86, 13, 30);
+            }
+
+            function getRowNormalizeScale(row) {
+                if (!hasCurrentMetrics(row)) return state.fontSize / CONFIG.MEASURE_SIZE;
+                return Math.max(0.0001, state.fontSize / Math.max(row.metrics.maxGlyphPixelHeight || row.metrics.maxGlyphHeight || 1, 1));
+            }
+
+            function getFallbackRowSampleModel() {
+                const glyphs = getProbeGlyphs();
+                const centers = glyphs.map((_, index) => (index - (glyphs.length - 1) / 2) * state.charSpacing);
+                const approxWidth = Math.max(state.fontSize * 0.72, 1);
+                const approxHeight = Math.max(state.fontSize * 1.02, 1);
+                const items = centers.map(center => ({
+                    width: approxWidth,
+                    height: approxHeight,
+                    x: center,
+                    y: 0
+                }));
+                const spread = centers.length ? (Math.max(...centers) - Math.min(...centers)) : 0;
+
+                return {
+                    items,
+                    width: Math.max(spread + approxWidth, approxWidth),
+                    height: approxHeight,
+                    shiftX: 0,
+                    shiftY: 0
+                };
+            }
+
+            function getNormalizedModel() {
+                const rows = getVisibleRows();
+                const glyphs = getProbeGlyphs();
+                let maxGlyphWidth = Math.max(1, state.fontSize * 0.85);
+
+                rows.forEach(row => {
+                    if (!hasCurrentMetrics(row)) return;
+                    const scale = getRowNormalizeScale(row);
+                    row.metrics.glyphs.forEach(glyph => {
+                        const pixelWidth = glyph.pixel?.width || glyph.width || 0;
+                        maxGlyphWidth = Math.max(maxGlyphWidth, pixelWidth * scale);
+                    });
+                });
+
+                const centers = glyphs.map((_, index) => (index - (glyphs.length - 1) / 2) * state.charSpacing);
+                const spread = centers.length ? (Math.max(...centers) - Math.min(...centers)) : 0;
+
+                return {
+                    slotWidth: maxGlyphWidth,
+                    centers,
+                    totalWidth: spread + maxGlyphWidth
+                };
+            }
+
+            function applyUiMode() {
+                document.body.classList.toggle('zoom-unlocked', state.unlockZoom);
+                fontPage.classList.toggle('hide-names', state.hideNames);
+                fontPage.classList.toggle('hide-intro', !state.showIntro);
+                fontPage.classList.toggle('selection-mode', state.selectionMode);
+                fontPage.classList.toggle('is-initializing', !state.initialHydrationDone);
+                fontPage.style.setProperty('--name-area-width', `${CONFIG.NAME_AREA_WIDTH}px`);
+                fontIntro.hidden = !state.showIntro;
+                canvasRoot.setAttribute('aria-hidden', 'false');
+            }
+
+            function updateSelectionMasterControl() {
+                if (!fontSelectionMasterCheck) return;
+
+                const total = state.rows.length;
+                const enabledCount = state.rows.filter(row => row.enabled !== false).length;
+                const allEnabled = total > 0 && enabledCount === total;
+                const noneEnabled = enabledCount === 0;
+
+                fontSelectionMasterCheck.checked = allEnabled;
+                fontSelectionMasterCheck.indeterminate = !allEnabled && !noneEnabled;
+            }
+
+            function getRowSampleModel(row, normalizedModel = null) {
+                const metricsKey = getMetricsKey();
+                if (!hasCurrentMetrics(row, metricsKey)) {
+                    return getFallbackRowSampleModel();
+                }
+
+                const cacheKey = [
+                    metricsKey,
+                    state.normalize ? 1 : 0,
+                    state.fontSize,
+                    state.charSpacing,
+                    normalizedModel ? normalizedModel.totalWidth : 0,
+                    row.metrics.maxGlyphPixelHeight,
+                    row.metrics.textPixel?.width || 0
+                ].join('|');
+
+                if (row.sampleModelCacheKey === cacheKey && row.sampleModelCache) {
+                    return row.sampleModelCache;
+                }
+
+                const glyphs = row.metrics.glyphs;
+                const scale = state.normalize ? getRowNormalizeScale(row) : (state.fontSize / CONFIG.MEASURE_SIZE);
+                const baseCenters = state.normalize && normalizedModel
+                    ? normalizedModel.centers
+                    : getProbeGlyphs().map((_, index) => (index - (getProbeGlyphs().length - 1) / 2) * state.charSpacing);
+
+                const items = glyphs.map((glyph, index) => {
+                    const pixel = glyph.pixel || {};
+                    const width = Math.max((pixel.width || glyph.width || state.fontSize * 0.5) * scale, 1);
+                    const height = Math.max((pixel.height || glyph.height || state.fontSize) * scale, 1);
+                    const x = baseCenters[index] - ((pixel.centerOffsetX || 0) * scale);
+                    const y = -((pixel.centerOffset || 0) * scale);
+                    return { width, height, x, y };
+                });
+
+                let minX = Infinity;
+                let maxX = -Infinity;
+                let minY = Infinity;
+                let maxY = -Infinity;
+                items.forEach(item => {
+                    minX = Math.min(minX, item.x - item.width / 2);
+                    maxX = Math.max(maxX, item.x + item.width / 2);
+                    minY = Math.min(minY, item.y - item.height / 2);
+                    maxY = Math.max(maxY, item.y + item.height / 2);
+                });
+
+                if (!Number.isFinite(minX)) {
+                    minX = -state.fontSize;
+                    maxX = state.fontSize;
+                    minY = -state.fontSize;
+                    maxY = state.fontSize;
+                }
+
+                const model = {
+                    items,
+                    width: Math.max(maxX - minX, 1),
+                    height: Math.max(maxY - minY, 1),
+                    shiftX: -(minX + maxX) / 2,
+                    shiftY: -(minY + maxY) / 2
+                };
+
+                row.sampleModelCacheKey = cacheKey;
+                row.sampleModelCache = model;
+                return model;
+            }
+
+            function applyRowContent(row, layout, normalizedModel) {
+                const dom = row.dom;
+                if (!dom) return;
+
+                const isMissing = row.verified === false;
+                const glyphs = getProbeGlyphs();
+                syncGlyphElements(dom, glyphs);
+
+                dom.nameWrap.classList.toggle('is-missing', isMissing);
+                dom.sampleWrap.classList.toggle('is-missing', isMissing);
+                dom.nameWrap.classList.toggle('is-disabled', row.enabled === false);
+                dom.sampleWrap.classList.toggle('is-disabled', row.enabled === false);
+                dom.checkWrap.classList.toggle('is-disabled', row.enabled === false);
+                dom.nameEl.textContent = row.name;
+                dom.statusEl.textContent = isMissing ? 'Fallback erkannt' : '';
+                dom.inlineStatusEl.textContent = isMissing ? 'Fallback erkannt' : '';
+                dom.sampleEl.style.fontFamily = `"${row.name}"`;
+                dom.sampleEl.setAttribute('aria-label', `${row.name}: ${getSampleText()}`);
+                dom.textEl.textContent = getSampleText();
+
+                if (state.normalize) {
+                    const rowModel = getRowSampleModel(row, normalizedModel);
+                    const fontSize = CONFIG.MEASURE_SIZE * getRowNormalizeScale(row);
+
+                    dom.sampleWrap.style.alignItems = 'center';
+                    dom.sampleEl.dataset.mode = 'normalized';
+                    dom.sampleEl.style.width = `${Math.ceil(rowModel.width)}px`;
+                    dom.sampleEl.style.height = `${Math.ceil(rowModel.height)}px`;
+                    dom.sampleEl.style.fontSize = `${fontSize}px`;
+                    dom.sampleEl.style.setProperty('--sample-shift-y', '0px');
+
+                    dom.glyphEls.forEach((glyphEl, index) => {
+                        const item = rowModel.items[index];
+                        glyphEl.style.setProperty('--glyph-x', `${(item.x + rowModel.shiftX).toFixed(3)}px`);
+                        glyphEl.style.setProperty('--glyph-y', `${(item.y + rowModel.shiftY).toFixed(3)}px`);
+                    });
+                    return;
+                }
+
+                dom.sampleWrap.style.alignItems = 'center';
+                dom.sampleEl.dataset.mode = 'standard';
+                dom.sampleEl.style.width = 'auto';
+                dom.sampleEl.style.height = 'auto';
+                dom.sampleEl.style.fontSize = `${state.fontSize}px`;
+                dom.sampleEl.style.setProperty('--sample-shift-y', '0px');
+
+                dom.glyphEls.forEach(glyphEl => {
+                    glyphEl.style.setProperty('--glyph-x', '0px');
+                    glyphEl.style.setProperty('--glyph-y', '0px');
+                });
+            }
+
+            function updateHydratedRow(row) {
+                const dom = row.dom;
+                if (!dom || dom.sampleWrap.hidden) return;
+
+                if (!state.normalize) {
+                    const isMissing = row.verified === false;
+                    dom.nameWrap.classList.toggle('is-missing', isMissing);
+                    dom.sampleWrap.classList.toggle('is-missing', isMissing);
+                    dom.statusEl.textContent = isMissing ? 'Fallback erkannt' : '';
+                    dom.inlineStatusEl.textContent = isMissing ? 'Fallback erkannt' : '';
+                    return;
+                }
+
+                const layout = getLayout();
+                applyRowContent(row, layout, layout.normalizedModel);
+            }
+
+            function renderDomList() {
+                applyUiMode();
+
+                const layout = getLayout();
+                const normalizedModel = layout.normalizedModel;
+                const visibleRows = layout.visibleRows;
+                fontDomList.style.height = `${Math.ceil(layout.contentHeight)}px`;
+                fontSelectionHeader.style.top = `${layout.getSelectionHeaderCenterY().toFixed(3)}px`;
+                fontSelectionHeader.style.height = `${layout.rowHeight}px`;
+
+                state.rows.forEach(row => {
+                    const dom = row.dom;
+                    if (!dom) return;
+
+                    const visibleIndex = visibleRows.indexOf(row);
+                    const isVisible = visibleIndex !== -1;
+                    dom.nameWrap.hidden = !isVisible || state.hideNames;
+                    dom.nameWrap.style.display = (!isVisible || state.hideNames) ? 'none' : 'flex';
+                    dom.sampleWrap.hidden = !isVisible;
+                    dom.sampleWrap.style.display = isVisible ? 'flex' : 'none';
+                    dom.checkWrap.hidden = !isVisible || !state.selectionMode;
+                    dom.checkWrap.style.display = (!isVisible || !state.selectionMode) ? 'none' : 'flex';
+                    dom.checkEl.checked = row.enabled !== false;
+                    if (!isVisible) {
+                        dom.nameWrap.classList.remove('is-disabled', 'is-missing');
+                        dom.sampleWrap.classList.remove('is-disabled', 'is-missing');
+                        dom.checkWrap.classList.remove('is-disabled');
+                        return;
+                    }
+
+                    const rowTop = `${layout.getRowCenterY(visibleIndex).toFixed(3)}px`;
+                    dom.nameWrap.style.top = rowTop;
+                    dom.sampleWrap.style.top = rowTop;
+                    dom.checkWrap.style.top = rowTop;
+                    applyRowContent(row, layout, normalizedModel);
+                });
+
+                updateSelectionMasterControl();
+            }
+
+            function getLayout() {
+                const visibleRows = getVisibleRows();
+                const measurementText = getMeasurementText();
+                const nameFontSize = getNameFontSize();
+                const statusFontSize = getStatusFontSize(nameFontSize);
+                const nameBlockHeight = state.hideNames ? 0 : (nameFontSize + statusFontSize + 18);
+                const normalizedModel = state.normalize ? getNormalizedModel() : null;
+                const fallbackWidthFactor = Math.max(CONFIG.SAMPLE_FALLBACK_WIDTH_FACTOR, Math.max(getProbeGlyphs(measurementText).length, 1) * 0.72);
+                let maxSampleWidth = Math.max(state.fontSize * fallbackWidthFactor, 1);
+                let maxSampleHeight = Math.max(state.fontSize * 1.2, 1);
+
+                if (state.normalize) {
+                    visibleRows.forEach(row => {
+                        if (!hasCurrentMetrics(row)) return;
+                        const rowModel = getRowSampleModel(row, normalizedModel);
+                        maxSampleWidth = Math.max(maxSampleWidth, rowModel.width);
+                        maxSampleHeight = Math.max(maxSampleHeight, rowModel.height);
+                    });
+                }
+
+                const sampleHeight = maxSampleHeight;
+                const inlineMissingHeight = state.hideNames ? 26 : 0;
+                const rowHeight = Math.max(CONFIG.ROW_MIN_HEIGHT, Math.max(nameBlockHeight, sampleHeight + inlineMissingHeight) + 28);
+
+                const nameAreaWidth = state.hideNames ? 0 : CONFIG.NAME_AREA_WIDTH;
+                const sampleAreaWidth = maxSampleWidth + 60;
+                const contentWidth = CONFIG.LEFT_PADDING + nameAreaWidth + sampleAreaWidth + CONFIG.RIGHT_PADDING;
+                const listHeight = visibleRows.length > 0
+                    ? rowHeight + Math.max(1, visibleRows.length) * state.entrySpacing
+                    : rowHeight + state.entrySpacing;
+
+                return {
+                    nameFontSize,
+                    statusFontSize,
+                    nameBlockHeight,
+                    sampleHeight,
+                    rowHeight,
+                    contentWidth,
+                    contentHeight: listHeight,
+                    sampleCenterX: CONFIG.LEFT_PADDING + nameAreaWidth + sampleAreaWidth / 2,
+                    nameX: CONFIG.LEFT_PADDING,
+                    visibleRows,
+                    normalizedModel,
+                    getSelectionHeaderCenterY() {
+                        return rowHeight / 2;
+                    },
+                    getRowCenterY(index) {
+                        return rowHeight / 2 + state.entrySpacing + index * state.entrySpacing;
+                    }
+                };
+            }
+
+            function fitView({ preserveTouched = false } = {}) {
+                if (state.unlockZoom) {
+                    state.view.scale = 1;
+                    state.view.offsetX = 0;
+                    state.view.offsetY = -(state.view.savedScrollY || 0);
+                    if (!preserveTouched) state.view.touched = false;
+                    queueDraw();
+                    return;
+                }
+
+                const rect = fontPage.getBoundingClientRect();
+                state.view.baseLeft = rect.left;
+                state.view.baseWidth = rect.width;
+                state.view.scale = 1;
+                state.view.offsetX = 0;
+                state.view.offsetY = -window.scrollY;
+                state.view.savedScrollY = window.scrollY;
+                if (!preserveTouched) state.view.touched = false;
+                queueDraw();
+            }
+
+            function zoomAtClient(clientX, clientY, factor) {
+                const baseLeft = state.view.baseLeft || 0;
+                const worldX = (clientX - baseLeft - state.view.offsetX) / Math.max(state.view.scale, 0.000001);
+                const worldY = (clientY - state.view.offsetY) / Math.max(state.view.scale, 0.000001);
+                const nextScale = clamp(state.view.scale * factor, CONFIG.ZOOM.min, CONFIG.ZOOM.max);
+                if (nextScale === state.view.scale) return;
+
+                state.view.touched = true;
+                state.view.scale = nextScale;
+                state.view.offsetX = clientX - baseLeft - worldX * nextScale;
+                state.view.offsetY = clientY - worldY * nextScale;
+                queueDraw();
+            }
+
+            function zoomBy(factor) {
+                const rect = canvasRoot.getBoundingClientRect();
+                zoomAtClient(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+            }
+
+            function beginPan(clientX, clientY) {
+                state.drag.active = true;
+                state.drag.lastX = clientX;
+                state.drag.lastY = clientY;
+                canvasRoot.classList.add('dragging');
+            }
+
+            function updatePan(clientX, clientY) {
+                if (!state.drag.active) return;
+                const dx = clientX - state.drag.lastX;
+                const dy = clientY - state.drag.lastY;
+                state.drag.lastX = clientX;
+                state.drag.lastY = clientY;
+
+                state.view.touched = true;
+                state.view.offsetX += dx;
+                state.view.offsetY += dy;
+                queueDraw();
+            }
+
+            function syncPinchState(touches) {
+                state.drag.lastPinchDist = Math.hypot(
+                    touches[0].clientX - touches[1].clientX,
+                    touches[0].clientY - touches[1].clientY
+                );
+                state.drag.lastPinchCenterX = (touches[0].clientX + touches[1].clientX) / 2;
+                state.drag.lastPinchCenterY = (touches[0].clientY + touches[1].clientY) / 2;
+            }
+
+            function beginPinch(touches) {
+                state.drag.active = true;
+                canvasRoot.classList.add('dragging');
+                syncPinchState(touches);
+            }
+
+            function updatePinch(touches) {
+                if (touches.length < 2 || !state.drag.lastPinchDist) return;
+
+                const currentCenterX = (touches[0].clientX + touches[1].clientX) / 2;
+                const currentCenterY = (touches[0].clientY + touches[1].clientY) / 2;
+                const currentDist = Math.hypot(
+                    touches[0].clientX - touches[1].clientX,
+                    touches[0].clientY - touches[1].clientY
+                );
+
+                if (currentDist <= 0) return;
+
+                const baseLeft = state.view.baseLeft || 0;
+                const worldX = (state.drag.lastPinchCenterX - baseLeft - state.view.offsetX) / Math.max(state.view.scale, 0.000001);
+                const worldY = (state.drag.lastPinchCenterY - state.view.offsetY) / Math.max(state.view.scale, 0.000001);
+
+                const nextScale = clamp(
+                    state.view.scale * (currentDist / state.drag.lastPinchDist),
+                    CONFIG.ZOOM.min,
+                    CONFIG.ZOOM.max
+                );
+
+                state.view.touched = true;
+                state.view.scale = nextScale;
+                state.view.offsetX = currentCenterX - baseLeft - worldX * nextScale;
+                state.view.offsetY = currentCenterY - worldY * nextScale;
+                syncPinchState(touches);
+                queueDraw();
+            }
+
+            function endInteraction() {
+                state.drag.active = false;
+                state.drag.lastPinchDist = 0;
+                canvasRoot.classList.remove('dragging');
+            }
+
+            function applyZoomTransform() {
+                if (!state.unlockZoom) {
+                    fontPage.style.transform = '';
+                    fontPage.style.left = '';
+                    fontPage.style.top = '';
+                    fontPage.style.width = '';
+                    return;
+                }
+
+                fontPage.style.left = `${state.view.baseLeft}px`;
+                fontPage.style.top = '0px';
+                fontPage.style.width = `${state.view.baseWidth}px`;
+                fontPage.style.transform = `translate(${state.view.offsetX}px, ${state.view.offsetY}px) scale(${state.view.scale})`;
+            }
+
+            function handleLayoutChange() {
+                invalidateSampleModelCache();
+                renderDomList();
+                if (state.unlockZoom) {
+                    const rect = fontPage.getBoundingClientRect();
+                    state.view.baseWidth = state.view.scale ? rect.width / state.view.scale : rect.width;
+                }
+                if (!state.view.touched) {
+                    fitView({ preserveTouched: false });
+                    return;
+                }
+                queueDraw();
+            }
+
+            function handleEnabledStateChange() {
+                invalidateSampleModelCache();
+                renderDomList();
+                if (state.unlockZoom) {
+                    queueDraw();
+                }
+            }
+
+            function resetAll() {
+                cancelScheduledSampleMetricsRefresh();
+                state.fontSize = CONFIG.DEFAULTS.fontSize;
+                state.entrySpacing = CONFIG.DEFAULTS.entrySpacing;
+                state.charSpacing = CONFIG.DEFAULTS.charSpacing;
+                state.sampleText = DEFAULT_SAMPLE_TEXT;
+                state.unlockZoom = CONFIG.DEFAULTS.unlockZoom;
+                state.showIntro = CONFIG.DEFAULTS.showIntro;
+                state.hideNames = CONFIG.DEFAULTS.hideNames;
+                state.normalize = CONFIG.DEFAULTS.normalize;
+                state.selectionMode = CONFIG.DEFAULTS.selectionMode;
+                state.rows.forEach(row => { row.enabled = true; });
+                panel.set('sampleText', state.sampleText);
+                panel.set('fontSize', state.fontSize);
+                panel.set('entrySpacing', state.entrySpacing);
+                panel.set('charSpacing', state.charSpacing);
+                panel.set('unlockZoom', state.unlockZoom);
+                panel.set('showIntro', state.showIntro);
+                panel.set('hideNames', state.hideNames);
+                panel.set('normalize', state.normalize);
+                panel.set('selectionMode', state.selectionMode);
+                applyUiMode();
+                syncControlVisibility();
+                invalidateSampleModelCache();
+                renderDomList();
+                scheduleSampleMetricsRefresh({ delay: 0, force: state.normalize });
+                window.scrollTo({ top: 0, behavior: 'auto' });
+                fitView({ preserveTouched: false });
+            }
+
+            function drawNameBlock(row, rowCenterY, layout, textColor) {
+                if (state.hideNames) return;
+
+                const nameColor = row.verified === false ? '#ff8f8f' : textColor;
+                const infoColor = row.verified === false ? '#ff8f8f' : 'rgba(255,255,255,0.72)';
+                const statusHeight = row.verified === false ? layout.statusFontSize + 8 : 0;
+                const totalHeight = layout.nameFontSize + statusHeight;
+                const blockTop = rowCenterY - totalHeight / 2;
+
+                ctx.save();
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = nameColor;
+                ctx.font = `600 ${layout.nameFontSize}px sans-serif`;
+                ctx.fillText(row.name, layout.nameX, blockTop);
+
+                if (row.verified === false) {
+                    ctx.fillStyle = infoColor;
+                    ctx.font = `500 ${layout.statusFontSize}px sans-serif`;
+                    ctx.fillText('Fallback erkannt', layout.nameX, blockTop + layout.nameFontSize + 8);
+                }
+                ctx.restore();
+            }
+
+            function drawHiddenMissingStatus(row, rowCenterY, layout) {
+                if (!state.hideNames || row.verified !== false) return;
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ff8f8f';
+                ctx.font = `600 ${clamp(state.fontSize * 0.12, 14, 28)}px sans-serif`;
+                ctx.fillText('Fallback erkannt', layout.sampleCenterX, rowCenterY - Math.max(state.fontSize * 0.8, 26));
+                ctx.restore();
+            }
+
+            function drawStandardSample(row, centerX, centerY) {
+                const scale = state.fontSize / CONFIG.MEASURE_SIZE;
+                const centerOffset = row.metrics?.textPixel?.centerOffset || 0;
+                const baselineY = centerY - centerOffset * scale;
+
+                ctx.save();
+                ctx.font = `normal 400 ${state.fontSize}px "${row.name}"`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText(getMeasurementText(), centerX, baselineY);
+                ctx.restore();
+            }
+
+            function drawNormalizedSample(row, centerX, centerY, normalizedModel) {
+                const glyphs = getProbeGlyphs();
+                const glyphMetrics = hasCurrentMetrics(row)
+                    ? row.metrics.glyphs
+                    : glyphs.map(char => ({ pixel: getPixelBounds(row.name, char, CONFIG.MEASURE_SIZE) }));
+                const normalizeScale = row.metrics ? getRowNormalizeScale(row) : (state.fontSize / CONFIG.MEASURE_SIZE);
+                const normalizedFontSize = CONFIG.MEASURE_SIZE * normalizeScale;
+
+                ctx.save();
+                ctx.font = `normal 400 ${normalizedFontSize}px "${row.name}"`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+
+                glyphs.forEach((glyph, index) => {
+                    const metrics = glyphMetrics[index]?.pixel || { centerOffset: 0 };
+                    const baselineY = centerY - (metrics.centerOffset || 0) * normalizeScale;
+                    ctx.fillText(glyph, centerX + normalizedModel.centers[index], baselineY);
+                });
+
+                ctx.restore();
+            }
+
+            function draw() {
+                applyZoomTransform();
+            }
+
+            async function hydrateRow(row) {
+                row.verified = await loadAndVerifyFont(row.name);
+                row.metrics = buildFontModel(row.name, getMeasurementText());
+                invalidateSampleModelCache(row);
+
+                if (state.normalize) {
+                    renderDomList();
+                    if (!state.view.touched) {
+                        fitView({ preserveTouched: false });
+                    } else {
+                        queueDraw();
+                    }
+                    return;
+                }
+
+                updateHydratedRow(row);
+            }
+
+            async function hydrateFonts() {
+                let nextIndex = 0;
+
+                async function worker() {
+                    while (nextIndex < state.rows.length) {
+                        const row = state.rows[nextIndex++];
+                        await hydrateRow(row);
+                    }
+                }
+
+                await Promise.all(Array.from({ length: 3 }, worker));
+                state.initialHydrationDone = true;
+                renderDomList();
+                if (!state.view.touched) {
+                    fitView({ preserveTouched: false });
+                } else if (state.unlockZoom) {
+                    queueDraw();
+                }
+            }
+
+            function cancelScheduledSampleMetricsRefresh() {
+                if (state.sampleMetricsRefreshTimer) {
+                    clearTimeout(state.sampleMetricsRefreshTimer);
+                    state.sampleMetricsRefreshTimer = 0;
+                }
+            }
+
+            async function refreshMetricsForCurrentSample(version = state.sampleTextVersion) {
+                const measurementText = getMeasurementText();
+
+                for (let index = 0; index < state.rows.length; index++) {
+                    if (version !== state.sampleTextVersion) return;
+
+                    const row = state.rows[index];
+                    row.metrics = buildFontModel(row.name, measurementText);
+
+                    if ((index + 1) % 2 === 0) {
+                        await nextPaint();
+                    }
+                }
+
+                if (version !== state.sampleTextVersion) return;
+
+                invalidateSampleModelCache();
+                renderDomList();
+                if (state.unlockZoom) {
+                    queueDraw();
+                }
+            }
+
+            function scheduleSampleMetricsRefresh({ delay = 240, force = false } = {}) {
+                cancelScheduledSampleMetricsRefresh();
+                const version = ++state.sampleTextVersion;
+                if (!force && !state.normalize) return;
+
+                state.sampleMetricsRefreshTimer = window.setTimeout(() => {
+                    state.sampleMetricsRefreshTimer = 0;
+                    void refreshMetricsForCurrentSample(version);
+                }, Math.max(0, delay));
+            }
+
+            function applySampleTextChange(value) {
+                state.sampleText = String(value ?? '');
+                invalidateSampleModelCache();
+                renderDomList();
+
+                if (state.unlockZoom) {
+                    queueDraw();
+                }
+
+                scheduleSampleMetricsRefresh({ delay: 260 });
+            }
+
+            canvasRoot.addEventListener('wheel', event => {
+                if (!state.unlockZoom || event.target.closest('.ctrl-panel')) return;
+                event.preventDefault();
+                const factor = 1 + (event.deltaY > 0 ? -CONFIG.ZOOM.speed : CONFIG.ZOOM.speed);
+                if (factor <= 0) return;
+                zoomAtClient(event.clientX, event.clientY, factor);
+            }, { passive: false });
+
+            canvasRoot.addEventListener('mousedown', event => {
+                if (!state.unlockZoom || event.button !== 0 || event.target.closest('.ctrl-panel')) return;
+                beginPan(event.clientX, event.clientY);
+            });
+
+            window.addEventListener('mousemove', event => {
+                if (!state.unlockZoom) return;
+                updatePan(event.clientX, event.clientY);
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (!state.unlockZoom) return;
+                endInteraction();
+            });
+
+            canvasRoot.addEventListener('touchstart', event => {
+                if (!state.unlockZoom || event.target.closest('.ctrl-panel')) return;
+                event.preventDefault();
+                if (event.touches.length === 1) {
+                    beginPan(event.touches[0].clientX, event.touches[0].clientY);
+                } else if (event.touches.length === 2) {
+                    beginPinch(event.touches);
+                }
+            }, { passive: false });
+
+            canvasRoot.addEventListener('touchmove', event => {
+                if (!state.unlockZoom || event.target.closest('.ctrl-panel')) return;
+                event.preventDefault();
+                if (event.touches.length === 1 && state.drag.active && !state.drag.lastPinchDist) {
+                    updatePan(event.touches[0].clientX, event.touches[0].clientY);
+                } else if (event.touches.length === 2) {
+                    updatePinch(event.touches);
+                }
+            }, { passive: false });
+
+            canvasRoot.addEventListener('touchend', event => {
+                if (!state.unlockZoom) return;
+                if (event.touches.length === 0) {
+                    endInteraction();
+                } else if (event.touches.length === 1) {
+                    state.drag.lastPinchDist = 0;
+                    beginPan(event.touches[0].clientX, event.touches[0].clientY);
+                } else if (event.touches.length === 2) {
+                    syncPinchState(event.touches);
+                }
+            });
+
+            canvasRoot.addEventListener('touchcancel', () => {
+                if (!state.unlockZoom) return;
+                endInteraction();
+            });
+
+            const panel = Controls.createPanel({ position: 'left', title: 'Fonts of 0nefinity' });
+            panel.addText('sampleText', {
+                label: 'Sample-Text',
+                value: state.sampleText,
+                placeholder: DEFAULT_SAMPLE_TEXT,
+                onChange: value => {
+                    applySampleTextChange(value);
+                }
+            });
+            panel.addSlider('fontSize', {
+                label: 'Schriftgröße',
+                min: 8,
+                max: 1200,
+                step: 1,
+                value: state.fontSize,
+                onChange: value => {
+                    state.fontSize = value;
+                    handleLayoutChange();
+                }
+            });
+            panel.addSlider('entrySpacing', {
+                label: 'Eintragsabstand',
+                min: 0,
+                max: 1000,
+                step: 1,
+                value: state.entrySpacing,
+                onChange: value => {
+                    state.entrySpacing = value;
+                    handleLayoutChange();
+                }
+            });
+            panel.addSlider('charSpacing', {
+                label: 'Zeichenabstand',
+                min: 0,
+                max: 1000,
+                step: 1,
+                value: state.charSpacing,
+                onChange: value => {
+                    state.charSpacing = value;
+                    handleLayoutChange();
+                }
+            });
+
+            function syncControlVisibility() {
+                const charSpacingRow = panel.bodyEl?.querySelector?.('[data-key="charSpacing"]');
+                if (charSpacingRow) {
+                    charSpacingRow.style.display = state.normalize ? '' : 'none';
+                }
+            }
+
+            panel.addToggle('unlockZoom', {
+                label: 'unlock zoom',
+                value: state.unlockZoom,
+                onChange: value => {
+                    const wasUnlocked = state.unlockZoom;
+                    state.unlockZoom = !!value;
+                    if (!wasUnlocked && state.unlockZoom) {
+                        state.view.savedScrollY = window.scrollY;
+                        fitView({ preserveTouched: false });
+                    }
+                    applyUiMode();
+                    if (state.unlockZoom) {
+                        queueDraw();
+                    } else {
+                        endInteraction();
+                        fontPage.style.transform = '';
+                        fontPage.style.left = '';
+                        fontPage.style.top = '';
+                        fontPage.style.width = '';
+                        window.scrollTo({ top: state.view.savedScrollY || 0, behavior: 'auto' });
+                    }
+                }
+            });
+            panel.addToggle('showIntro', {
+                label: 'Infotext anzeigen',
+                value: state.showIntro,
+                onChange: value => {
+                    state.showIntro = !!value;
+                    handleLayoutChange();
+                }
+            });
+            panel.addToggle('hideNames', {
+                label: 'Schriftnamen ausblenden',
+                value: state.hideNames,
+                onChange: value => {
+                    state.hideNames = !!value;
+                    handleLayoutChange();
+                }
+            });
+            panel.addToggle('normalize', {
+                label: 'Normalisieren',
+                value: state.normalize,
+                onChange: value => {
+                    state.normalize = !!value;
+                    syncControlVisibility();
+                    handleLayoutChange();
+                    if (state.normalize) {
+                        scheduleSampleMetricsRefresh({ delay: 0, force: true });
+                    } else {
+                        cancelScheduledSampleMetricsRefresh();
+                        state.sampleTextVersion += 1;
+                    }
+                }
+            });
+            panel.addToggle('selectionMode', {
+                label: 'Auswahlmodus',
+                value: state.selectionMode,
+                onChange: value => {
+                    state.selectionMode = !!value;
+                    syncControlVisibility();
+                    handleLayoutChange();
+                }
+            });
+            panel.addButton('fitView', {
+                label: 'Ansicht reset',
+                onClick: () => fitView({ preserveTouched: false })
+            });
+            panel.addButton('zoomIn', {
+                label: 'Zoom +',
+                onClick: () => {
+                    if (!state.unlockZoom) return;
+                    zoomBy(1 + CONFIG.ZOOM.speed * 3);
+                }
+            });
+            panel.addButton('zoomOut', {
+                label: 'Zoom −',
+                onClick: () => {
+                    if (!state.unlockZoom) return;
+                    zoomBy(Math.max(0.0001, 1 - CONFIG.ZOOM.speed * 3));
+                }
+            });
+            panel.addResetButton({
+                title: 'Werte und Ansicht zurücksetzen',
+                onClick: resetAll
+            });
+
+            if (typeof ResizeObserver === 'function') {
+                const resizeObserver = new ResizeObserver(() => resizeCanvas());
+                resizeObserver.observe(canvasRoot);
+            }
+
+            window.addEventListener('resize', resizeCanvas);
+
+            applyUiMode();
+            syncControlVisibility();
+            renderDomList();
+            resizeCanvas();
+            if (state.unlockZoom) queueDraw();
+            void hydrateFonts();
+        })();
+    </script>
+</body>
+</html>

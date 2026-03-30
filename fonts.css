@@ -1,0 +1,26 @@
+@charset "UTF-8";
+
+/* Vollständige Liste aller 0nefinity-fähigen Fonts (enthalten 0 ≡ 1 ≡ ∞) */
+@import url('https://fonts.googleapis.com/css2?family=Asta+Sans:wght@300..800&family=BIZ+UDGothic:wght@400;700&family=BIZ+UDMincho:wght@400;700&family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDPMincho:wght@400;700&family=Bpmf+Huninn&family=Bpmf+Iansui&family=Bpmf+Zihi+Kai+Std&family=Cactus+Classical+Serif&family=Chiron+GoRound+TC:wght@200..900&family=Chiron+Hei+HK:ital,wght@0,200..900;1,200..900&family=Chiron+Sung+HK:ital,wght@0,200..900;1,200..900&family=Chocolate+Classical+Sans&family=Dela+Gothic+One&family=Do+Hyeon&family=Dongle:wght@300;400;700&family=DotGothic16&family=East+Sea+Dokdo&family=Gamja+Flower&family=Gothic+A1:wght@100;200;300;400;500;600;700;800;900&family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&family=Hi+Melody&family=Hina+Mincho&family=Huninn&family=IBM+Plex+Sans+JP:wght@100;200;300;400;500;600;700&family=IBM+Plex+Sans+KR:wght@100;200;300;400;500;600;700&family=Iansui&family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&family=Iosevka+Charon:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&family=Kirang+Haerang&family=Kiwi+Maru:wght@300;400;500&family=Klee+One:wght@400;600&family=Kosugi&family=Kosugi+Maru&family=LINE+Seed+JP:wght@100;400;700;800&family=LXGW+Marker+Gothic&family=LXGW+WenKai+Mono+TC:wght@300;400;700&family=LXGW+WenKai+TC:wght@300;400;700&family=Libertinus+Math&family=M+PLUS+1p:wght@100;300;400;500;700;800;900&family=M+PLUS+Rounded+1c:wght@100;300;400;500;700;800;900&family=Murecho:wght@100..900&family=Nanum+Gothic+Coding:wght@400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Myeongjo:wght@400;700;800&family=New+Tegomin&family=Noto+Sans+HK:wght@100..900&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+Math&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans+TC:wght@100..900&family=Noto+Serif+HK:wght@200..900&family=Noto+Serif+JP:wght@200..900&family=Noto+Serif+KR:wght@200..900&family=Noto+Serif+SC:wght@200..900&family=Noto+Serif+TC:wght@200..900&family=Rampart+One&family=Reggae+One&family=RocknRoll+One&family=Stick&family=Train+One&family=WDXL+Lubrifont+JP+N&family=WDXL+Lubrifont+SC&family=WDXL+Lubrifont+TC&family=Yeon+Sung&family=Yomogi&family=Yusei+Magic&family=Zen+Antique&family=Zen+Antique+Soft&family=Zen+Kaku+Gothic+Antique:wght@300;400;500;700;900&family=Zen+Kaku+Gothic+New:wght@300;400;500;700;900&family=Zen+Kurenaido&family=Zen+Maru+Gothic:wght@300;400;500;700;900&family=Zen+Old+Mincho:wght@400;500;600;700;900&display=swap');
+
+:root {
+  --font-iosevka-charon-mono: "Iosevka Charon Mono", monospace;
+  --font-libertinus-math: "Libertinus Math", serif;
+  --font-noto-sans-math: "Noto Sans Math", sans-serif;
+  --font-ibm-plex-sans-jp: "IBM Plex Sans JP", sans-serif;
+  --font-line-seed-jp: "LINE Seed JP", sans-serif;
+  --font-m-plus-1p: "M PLUS 1p", sans-serif;
+  --font-zen-kaku-gothic-new: "Zen Kaku Gothic New", sans-serif;
+  --font-noto-serif-jp: "Noto Serif JP", serif;
+  --font-noto-sans-jp: "Noto Sans JP", sans-serif;
+}
+
+.font-iosevka-charon-mono { font-family: var(--font-iosevka-charon-mono); }
+.font-libertinus-math { font-family: var(--font-libertinus-math); }
+.font-noto-sans-math { font-family: var(--font-noto-sans-math); }
+.font-ibm-plex-sans-jp { font-family: var(--font-ibm-plex-sans-jp); }
+.font-line-seed-jp { font-family: var(--font-line-seed-jp); }
+.font-m-plus-1p { font-family: var(--font-m-plus-1p); }
+.font-zen-kaku-gothic-new { font-family: var(--font-zen-kaku-gothic-new); }
+.font-noto-serif-jp { font-family: var(--font-noto-serif-jp); }
+.font-noto-sans-jp { font-family: var(--font-noto-sans-jp); }
