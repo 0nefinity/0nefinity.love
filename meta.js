@@ -400,20 +400,7 @@ async function loadFileList() {
             fileList.appendChild(listItem);
         });
 
-        // Sitemap anstoßen (non-blocking)
-        fetch('/tools/generate-structure.php').catch(e => console.warn('Sitemap update check failed:', e));
-
         let response = await fetch('/sitemap.xml');
-
-        if (!response.ok && response.status === 404) {
-            console.warn('sitemap.xml not found, attempting to generate...');
-            try {
-                await fetch('/tools/generate-structure.php?force=1');
-                response = await fetch('/sitemap.xml');
-            } catch (e) {
-                console.warn('Failed to generate sitemap:', e);
-            }
-        }
 
         if (!response.ok) {
             throw new Error(`HTTP-Fehler beim Laden von sitemap.xml! Status: ${response.status}`);

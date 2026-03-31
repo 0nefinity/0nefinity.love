@@ -3,8 +3,9 @@ RewriteEngine On
 # Heikle Dot-Ordner direkt blocken, bevor andere Rewrite-Regeln greifen
 RewriteRule "(^|/)\.(git|ssh|vscode)(/|$)" - [F,L,NC]
 
-# HTTPS erzwingen
+# HTTPS erzwingen (funktioniert sowohl nativ als auch hinter nginx-Proxy)
 RewriteCond %{HTTPS} off
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
 # non-www -> www
