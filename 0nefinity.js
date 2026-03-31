@@ -496,6 +496,7 @@ canvas {
     if (thead) {
         thead.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (e.target.closest('input, select, label')) return;
             toggleDropdown();
         });
         thead.style.cursor = 'pointer';
