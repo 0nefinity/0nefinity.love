@@ -1,53 +1,71 @@
 <?php
+
 // weird-text-viewer.php - Zeigt Textdateien schön formatiert an
 
-// Hole den angeforderten Dateipfad
-$requestUri = $_SERVER['REQUEST_URI'];
-$documentRoot = $_SERVER['DOCUMENT_ROOT'];
-
-// Entferne Query-String falls vorhanden
-$filePath = parse_url($requestUri, PHP_URL_PATH);
-
-// Dekodiere URL-Encoding (z.B. %20 -> Leerzeichen)
-$filePath = urldecode($filePath);
-
-// Konvertiere zu absolutem Pfad
-$absolutePath = $documentRoot . $filePath;
-
-// Sicherheitscheck: Stelle sicher, dass die Datei existiert und innerhalb des Document Root liegt
-$realPath = realpath($absolutePath);
-if (!$realPath || strpos($realPath, realpath($documentRoot)) !== 0) {
-    header("HTTP/1.0 404 Not Found");
-    echo "File not found";
+function failNotFound() {
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'File not found';
     exit;
 }
 
-// Prüfe ob Datei existiert
-if (!file_exists($realPath) || !is_file($realPath)) {
-    header("HTTP/1.0 404 Not Found");
-    echo "File not found";
-    exit;
+function startsWithPath($path, $prefix) {
+    return $path === $prefix || strncmp($path, $prefix . '/', strlen($prefix) + 1) === 0;
 }
 
-// Lese Dateiinhalt
+function resolveRequestedFile($documentRoot) {
+    $requestedPath = (string)($_GET['path'] ?? '');
+    if ($requestedPath === '' || strpos($requestedPath, "\0") !== false) {
+        failNotFound();
+    }
+
+    $documentRootReal = realpath($documentRoot);
+    if ($documentRootReal === false) {
+        failNotFound();
+    }
+
+    $relativePath = ltrim(str_replace('\\', '/', $requestedPath), '/');
+    if ($relativePath === '') {
+        failNotFound();
+    }
+
+    $realPath = realpath($documentRootReal . DIRECTORY_SEPARATOR . $relativePath);
+    if ($realPath === false || !is_file($realPath) || !is_readable($realPath)) {
+        failNotFound();
+    }
+
+    $normalizedRoot = rtrim(str_replace('\\', '/', $documentRootReal), '/');
+    $normalizedRealPath = str_replace('\\', '/', $realPath);
+    $normalizedRelativePath = str_replace('\\', '/', $relativePath);
+
+    if (!startsWithPath($normalizedRealPath, $normalizedRoot)) {
+        failNotFound();
+    }
+
+    if (preg_match('/\.(php[0-9]?|phtml|phar)$/i', $normalizedRelativePath) === 1) {
+        failNotFound();
+    }
+
+    return [$realPath, $normalizedRelativePath];
+}
+
+list($realPath, $relativePath) = resolveRequestedFile((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
+
 $content = file_get_contents($realPath);
+if ($content === false) {
+    failNotFound();
+}
+
 $fileName = basename($realPath);
-
-// Prüfe ob es eine Markdown-Datei ist
-$isMarkdown = preg_match('/\.md$/i', $realPath);
-
-// Generiere Titel aus Dateinamen
 $title = $fileName;
+$isMarkdown = preg_match('/\.md$/i', $realPath) === 1;
 
-// Verarbeite Content je nach Dateityp
 if ($isMarkdown) {
-    // Parsedown für Markdown-Rendering einbinden
     require_once __DIR__ . '/tools/Parsedown.php';
     $Parsedown = new Parsedown();
     $renderedContent = $Parsedown->text($content);
 } else {
-    // Für Nicht-Markdown: HTML-Escape für sichere Anzeige
-    $renderedContent = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
+    $renderedContent = htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
 ?><!DOCTYPE html>
@@ -67,6 +85,7 @@ if ($isMarkdown) {
 <div class="O18">
   <div class="text-viewer-header">
     <h1><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></h1>
+    <div><?php echo htmlspecialchars($relativePath, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
   </div>
 
   <div class="text-viewer-content"><?php echo $renderedContent; ?></div>

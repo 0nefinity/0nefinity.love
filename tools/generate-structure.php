@@ -17,21 +17,78 @@ define('SITEMAP_FILE', ROOT_DIR . '/sitemap.xml');
 define('CACHE_FILE', ROOT_DIR . '/.sitemap-cache');
 define('CACHE_TTL', 3600); // 1 hour - recheck after this time
 define('DOMAIN', 'https://0nefinity.love');
+define('EXCLUDED_DIRECTORY_NAMES', ['__pycache__']);
+define('EXCLUDED_DIRECTORY_PATH_PREFIXES', ['tools/tools']);
+define('EXCLUDED_FILE_SUFFIXES', ['.php', '.py', '.pyc', '.pyo']);
 
 /**
  * Check if file should be included
  *
- * Für das Sitemap-„All in“-Konzept nehmen wir alle Dateien außer versteckten
- * und reinen Meta-Dateien auf.
+ * Für die Sitemap nur kanonische, öffentlich sinnvolle URLs aufnehmen.
  */
-function shouldIncludeFile($filename) {
-    // Versteckte Dateien und reine Meta-Dateien auslassen
-    if ($filename[0] === '.' || $filename === 'meta.json') {
+function startsWithPathPrefix($path, $prefix) {
+    return $path === $prefix || strpos($path, $prefix . '/') === 0;
+}
+
+function endsWithString($value, $suffix) {
+    if ($suffix === '') {
+        return true;
+    }
+
+    return substr($value, -strlen($suffix)) === $suffix;
+}
+
+function normalizeRelativePath($fullPath, $baseDir) {
+    $relativePath = str_replace($baseDir . DIRECTORY_SEPARATOR, '', $fullPath);
+    return str_replace('\\', '/', $relativePath);
+}
+
+function isExcludedDirectory($relativePath, $directoryName) {
+    if ($directoryName === '' || $directoryName[0] === '.') {
+        return true;
+    }
+
+    if (in_array($directoryName, EXCLUDED_DIRECTORY_NAMES, true)) {
+        return true;
+    }
+
+    foreach (EXCLUDED_DIRECTORY_PATH_PREFIXES as $excludedPrefix) {
+        if (startsWithPathPrefix($relativePath, $excludedPrefix)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function shouldIncludeFile($relativePath) {
+    $filename = basename($relativePath);
+    if ($filename === '' || $filename[0] === '.' || $filename === 'meta.json') {
         return false;
     }
 
-    // Alle anderen Dateien aufnehmen
+    foreach (EXCLUDED_FILE_SUFFIXES as $suffix) {
+        if (endsWithString(strtolower($filename), $suffix)) {
+            return false;
+        }
+    }
+
+    foreach (EXCLUDED_DIRECTORY_PATH_PREFIXES as $excludedPrefix) {
+        if (startsWithPathPrefix($relativePath, $excludedPrefix)) {
+            return false;
+        }
+    }
+
     return true;
+}
+
+function canonicalizeRelativePath($relativePath) {
+    if (preg_match('/\.html$/i', $relativePath) === 1) {
+        $withoutExtension = substr($relativePath, 0, -5);
+        return $withoutExtension === 'index' ? '' : $withoutExtension;
+    }
+
+    return $relativePath;
 }
 
 /**
@@ -59,13 +116,16 @@ function collectAllUrls($dir, $baseDir = null, &$urls = []) {
         if ($item[0] === '.' || $item === '..') continue;
 
         $fullPath = $dir . DIRECTORY_SEPARATOR . $item;
-        $relativePath = str_replace($baseDir . DIRECTORY_SEPARATOR, '', $fullPath);
-        $relativePath = str_replace('\\', '/', $relativePath);
+        $relativePath = normalizeRelativePath($fullPath, $baseDir);
 
         if (is_dir($fullPath)) {
+            if (isExcludedDirectory($relativePath, $item)) {
+                continue;
+            }
             collectAllUrls($fullPath, $baseDir, $urls);
-        } elseif (is_file($fullPath) && shouldIncludeFile($item)) {
-            $url = DOMAIN . '/' . $relativePath;
+        } elseif (is_file($fullPath) && shouldIncludeFile($relativePath)) {
+            $canonicalRelativePath = canonicalizeRelativePath($relativePath);
+            $url = $canonicalRelativePath === '' ? DOMAIN . '/' : DOMAIN . '/' . $canonicalRelativePath;
             $lastmod = getFileModDate($fullPath);
 
             // Priority only for index.html

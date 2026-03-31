@@ -147,13 +147,13 @@ document.body.appendChild(menu);
 // Priority items (fixed header)
 const priorityItems = [
     { type: 'heading', text: 'legal stuff first:' },
-    { type: 'file', path: 'impressum-und-datenschutz.html', name: 'impressum-und-datenschutz' },
+    { type: 'file', path: 'impressum-und-datenschutz', name: 'impressum-und-datenschutz' },
     { type: 'heading', text: 'now the party:' },
-    { type: 'file', path: 'README.html', name: 'README' }
+    { type: 'file', path: 'README', name: 'README' }
 ];
 
 // Files to exclude from dynamic content (already in priority items)
-const excludeFiles = ['impressum-und-datenschutz.html', 'README.html'];
+const excludePaths = ['impressum-und-datenschutz', 'README'];
 
 /**
  * Render a single file link
@@ -228,7 +228,10 @@ function parseXmlStructure(xmlDoc) {
 
         let path = loc.replace(/^https?:\/\/[^/]+\//, '');
         path = path.replace(/^\/+/, '');
-        if (!path) continue;
+        if (!path) {
+            result.files.push({ name: 'index', path: '', displayName: 'index' });
+            continue;
+        }
 
         const parts = path.split('/').filter(part => part.length > 0);
         if (parts.length === 0) continue;
@@ -438,7 +441,7 @@ async function loadFileList() {
 
         if (data.files) {
             data.files
-                .filter(file => !excludeFiles.includes(file.name))
+                .filter(file => !excludePaths.includes(file.path))
                 .forEach(file => {
                     const fileItem = renderFile(file);
                     fileList.appendChild(fileItem);
