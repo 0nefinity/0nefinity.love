@@ -633,8 +633,8 @@ button:focus {
 
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
 .menu-search:has(input:disabled:active)::after {
-    left: 1.7rem;
-    top: 30%;
+    left: 2.06rem;
+    top: 28%;
     transform: translate(0, 0.1rem) rotate(-45deg) scaleX(1.1);
     transition: transform 0.15s ease, left 0.15s ease, top 0.15s ease;
 }

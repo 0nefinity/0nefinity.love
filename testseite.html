@@ -9,23 +9,5 @@
   <h1>Testseite</h1>
   <p>SSI-Menü mit statischem HTML + JS-Suche.</p>
 
-  <script>
-    // Mööp-Tuning: Number-Inputs im Menü steuern die 1-Position live
-    const moepStyle = document.createElement('style');
-    document.head.appendChild(moepStyle);
-    const mtLeft = document.getElementById('mt-left');
-    const mtTop = document.getElementById('mt-top');
-    const moepTune = document.getElementById('moep-tune');
-
-    function updateMoep() {
-      moepStyle.textContent = `.menu-search::after { left: ${mtLeft.value}rem !important; top: ${mtTop.value}% !important; }`;
-    }
-    mtLeft.addEventListener('input', updateMoep);
-    mtTop.addEventListener('input', updateMoep);
-
-    // Inputs nicht das Menü schließen lassen
-    moepTune.addEventListener('click', e => e.stopPropagation());
-    moepTune.addEventListener('touchend', e => e.stopPropagation());
-  </script>
 </body>
 </html>
