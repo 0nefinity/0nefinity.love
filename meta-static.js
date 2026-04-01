@@ -110,23 +110,17 @@ if (menu && menuButton && menuToggle) {
     const isDesktopDevice = window.matchMedia &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-    // Suchfeld injizieren
+    // Statisches Suchfeld aktivieren (SSI liefert das HTML, JS schaltet es frei)
     const menuSearch = menu.querySelector('.menu-search');
     let searchInput = null;
     let clearButton = null;
 
     if (menuSearch) {
-        // Statisches Fallback-Input durch funktionales ersetzen
-        const fallbackInput = menuSearch.querySelector('input');
-        searchInput = document.createElement('input');
-        searchInput.type = 'search';
-        searchInput.placeholder = 'type what you want…';
-        searchInput.setAttribute('aria-label', 'Menü durchsuchen');
-
-        if (fallbackInput) {
-            fallbackInput.replaceWith(searchInput);
-        } else {
-            menuSearch.appendChild(searchInput);
+        searchInput = menuSearch.querySelector('input');
+        if (searchInput) {
+            searchInput.disabled = false;
+            searchInput.placeholder = 'type what you want…';
+            searchInput.setAttribute('aria-label', 'Menü durchsuchen');
         }
 
         clearButton = document.createElement('button');

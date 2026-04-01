@@ -576,7 +576,14 @@ button:focus {
     appearance: none;
 }
 
-/* Ysabeau kommt zentral aus un0nefinity-fonts.css via meta.js */
+/* Ysabeau für die Lupe — Fallback @font-face falls un0nefinity-fonts.css noch nicht geladen */
+@font-face {
+  font-family: 'Ysabeau';
+  font-style: normal;
+  font-weight: 1 1000;
+  font-display: swap;
+  src: url('/tools/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Ysabeau/Ysabeau.ttf') format('truetype');
+}
 
 /* Native WebKit-X ausblenden, wir benutzen einen eigenen Clear-Button */
 .menu-search input[type="search"]::-webkit-search-cancel-button {
@@ -628,11 +635,9 @@ button:focus {
     transition: transform 0.15s ease, left 0.15s ease, top 0.15s ease;
 }
 
-/* Disabled-Suchfeld: kleinerer Placeholder-Text */
+/* Disabled-Suchfeld: gleiche Optik, nur anderer Cursor */
 .menu-search input[type="search"]:disabled {
     cursor: not-allowed;
-    opacity: 0.9;
-    font-size: 0.8rem;
 }
 
 /* eigener Clear-Button rechts */
