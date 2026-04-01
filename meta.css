@@ -618,6 +618,8 @@ button:focus {
     line-height: 1;
     pointer-events: none;
     top: 50%;
+    z-index: 1;
+    color: var(--text-color);
 }
 
 .menu-loupe {
