@@ -77,25 +77,22 @@ def collect_structure():
     return structure
 
 
-def render_file(f, indent=0):
-    pad = '  ' * indent
+def render_file(f):
     href = '/' + f['path']
-    return f'{pad}<li><a href="{escape(href)}">{escape(f["name"])}</a></li>'
+    return f'<li><a href="{escape(href)}">{escape(f["name"])}</a></li>'
 
 
-def render_folder(name, data, indent=0):
-    pad = '  ' * indent
-    inner = indent + 1
-    parts = [f'{pad}<li><details><summary>{escape(name)}</summary><ul class="folder-contents">']
+def render_folder(name, data):
+    parts = [f'<li><details><summary>{escape(name)}</summary><ul class="folder-contents">']
 
     for subfolder_name in sorted(data['folders'].keys(), key=lambda x: x.lower()):
-        parts.append(render_folder(subfolder_name, data['folders'][subfolder_name], inner))
+        parts.append(render_folder(subfolder_name, data['folders'][subfolder_name]))
 
     for f in sorted(data['files'], key=lambda x: x['name'].lower()):
-        parts.append(render_file(f, inner))
+        parts.append(render_file(f))
 
-    parts.append(f'{pad}</ul></details></li>')
-    return '\n'.join(parts)
+    parts.append('</ul></details></li>')
+    return ''.join(parts)
 
 
 def generate():
@@ -135,7 +132,7 @@ def generate():
 
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as out:
-        out.write('\n'.join(lines) + '\n')
+        out.write(''.join(lines) + '\n')
 
     total = sum(1 for line in lines if '<li><a ' in line)
     print(f'menu.html generiert — {total} Einträge')
