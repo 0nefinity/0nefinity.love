@@ -106,10 +106,6 @@ if (backButton) {
 
 // ─── Menü-Toggle: JS übernimmt vom Checkbox-Hack ───
 if (menu && menuButton && menuToggle) {
-    function setMenuButtonText(expanded) {
-        menuButton.textContent = expanded ? '0 ≡ 1 ≡ ∞' : '≡';
-    }
-
     let touchHandled = false;
     const isDesktopDevice = window.matchMedia &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -139,14 +135,12 @@ if (menu && menuButton && menuToggle) {
         menuToggle.checked = true;
         menu.classList.add('open');
         document.body.classList.add('menu-open');
-        setMenuButtonText(true);
     }
 
     function closeMenu() {
         menuToggle.checked = false;
         menu.classList.remove('open');
         document.body.classList.remove('menu-open');
-        setMenuButtonText(false);
         if (searchInput) {
             searchInput.value = '';
             filterMenu('');
