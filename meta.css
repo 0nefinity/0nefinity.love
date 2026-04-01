@@ -57,6 +57,10 @@ body {
     margin: 0;
 }
 
+main {
+    display: flow-root;
+}
+
 body.menu-open {
     /* Seite darf weiter scrollen, wenn der Mauszeiger NICHT über dem Menü ist */
     overflow: auto;
