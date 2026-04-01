@@ -639,9 +639,10 @@ button:focus {
     transition: transform 0.15s ease, left 0.15s ease, top 0.15s ease;
 }
 
-/* Disabled-Suchfeld: gleiche Optik, nur anderer Cursor */
+/* Disabled-Suchfeld: gleiche Optik, kleinere Schrift für längeren Placeholder */
 .menu-search input[type="search"]:disabled {
     cursor: not-allowed;
+    font-size: 13px;
 }
 
 /* eigener Clear-Button rechts */
