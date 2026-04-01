@@ -9,35 +9,23 @@
   <h1>Testseite</h1>
   <p>SSI-Menü mit statischem HTML + JS-Suche.</p>
 
-  <div id="moep-tuning" style="margin: 2rem; padding: 1rem; border: 1px solid var(--text-color);">
-    <h3>Mööp-Tuning (1-Position)</h3>
-    <p>Slider bewegen = 1 bewegt sich live in der Lupe. Menü muss offen sein.</p>
-    <label>left: <input type="range" id="moep-left" min="0" max="4" step="0.05" value="1.7"> <span id="moep-left-val">1.7rem</span></label><br>
-    <label>top: <input type="range" id="moep-top" min="0" max="60" step="1" value="30"> <span id="moep-top-val">30%</span></label>
-  </div>
   <script>
+    // Mööp-Tuning: Number-Inputs im Menü steuern die 1-Position live
     const moepStyle = document.createElement('style');
     document.head.appendChild(moepStyle);
-    const leftSlider = document.getElementById('moep-left');
-    const topSlider = document.getElementById('moep-top');
-    const leftVal = document.getElementById('moep-left-val');
-    const topVal = document.getElementById('moep-top-val');
+    const mtLeft = document.getElementById('mt-left');
+    const mtTop = document.getElementById('mt-top');
+    const moepTune = document.getElementById('moep-tune');
 
     function updateMoep() {
-      const l = leftSlider.value;
-      const t = topSlider.value;
-      leftVal.textContent = l + 'rem';
-      topVal.textContent = t + '%';
-      // Position dauerhaft setzen (nicht nur bei :active), damit man es live sieht
-      moepStyle.textContent = `.menu-search::after { left: ${l}rem !important; top: ${t}% !important; }`;
+      moepStyle.textContent = `.menu-search::after { left: ${mtLeft.value}rem !important; top: ${mtTop.value}% !important; }`;
     }
-    leftSlider.addEventListener('input', updateMoep);
-    topSlider.addEventListener('input', updateMoep);
+    mtLeft.addEventListener('input', updateMoep);
+    mtTop.addEventListener('input', updateMoep);
 
-    // Slider-Interaktion darf Menü nicht schließen
-    const tuningBox = document.getElementById('moep-tuning');
-    tuningBox.addEventListener('click', e => e.stopPropagation());
-    tuningBox.addEventListener('touchend', e => e.stopPropagation());
+    // Inputs nicht das Menü schließen lassen
+    moepTune.addEventListener('click', e => e.stopPropagation());
+    moepTune.addEventListener('touchend', e => e.stopPropagation());
   </script>
 </body>
 </html>
