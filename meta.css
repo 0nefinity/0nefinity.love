@@ -443,13 +443,20 @@ button:focus {
     overflow: hidden;
 }
 
-.menu.open {
+/* Menü offen — via JS (.open) oder CSS-only (Checkbox-Hack) */
+.menu.open,
+.menu:has(.menu-toggle-input:checked) {
     right: 0;
     width: var(--menu-open-width); /* feste Breite im geöffneten Zustand */
     max-width: 90vw; /* Maximal 90% der Viewport-Breite */
     height: var(--visible-viewport-height);
     max-height: var(--visible-viewport-height);
     background: var(--bg-color);
+}
+
+/* Checkbox verstecken */
+.menu-toggle-input {
+    display: none;
 }
 
 /* Wrapper für den Button - erlaubt Text-Selektion */
@@ -469,7 +476,8 @@ button:focus {
     max-height: 100%;
 }
 
-.menu.open .menu-content-wrapper {
+.menu.open .menu-content-wrapper,
+.menu-toggle-input:checked ~ .menu-content-wrapper {
     display: flex;
 }
 
@@ -494,7 +502,8 @@ button:focus {
     white-space: pre;
 }
 
-.menu.open .menu-button {
+.menu.open .menu-button,
+.menu:has(.menu-toggle-input:checked) .menu-button {
     justify-content: flex-start;
     padding-left: 1.25rem;
     padding-right: 1.25rem;
@@ -529,7 +538,8 @@ button:focus {
     position: relative;
 }
 
-.menu.open .menu-search {
+.menu.open .menu-search,
+.menu-toggle-input:checked ~ .menu-content-wrapper .menu-search {
     display: block; /* nur sichtbar, wenn Menü offen */
 }
 
@@ -654,7 +664,8 @@ button:focus {
     overscroll-behavior: contain; /* Scroll-Ereignisse bleiben im Menü, kein Chain zum Body */
 }
 
-.menu.open > .menu-content-wrapper > ul {
+.menu.open > .menu-content-wrapper > ul,
+.menu-toggle-input:checked ~ .menu-content-wrapper > ul {
     display: block;
 }
 
