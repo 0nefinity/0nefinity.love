@@ -737,6 +737,7 @@ button:focus {
 /* Collapsible folders */
 .menu ul li details {
     margin: 0;
+    white-space: normal;
 }
 
 .menu ul li details summary {

@@ -116,10 +116,18 @@ if (menu && menuButton && menuToggle) {
     let clearButton = null;
 
     if (menuSearch) {
+        // Statisches Fallback-Input durch funktionales ersetzen
+        const fallbackInput = menuSearch.querySelector('input');
         searchInput = document.createElement('input');
         searchInput.type = 'search';
         searchInput.placeholder = 'type what you want…';
         searchInput.setAttribute('aria-label', 'Menü durchsuchen');
+
+        if (fallbackInput) {
+            fallbackInput.replaceWith(searchInput);
+        } else {
+            menuSearch.appendChild(searchInput);
+        }
 
         clearButton = document.createElement('button');
         clearButton.type = 'button';
@@ -127,7 +135,6 @@ if (menu && menuButton && menuToggle) {
         clearButton.setAttribute('aria-label', 'Suche zurücksetzen');
         clearButton.textContent = '×';
 
-        menuSearch.appendChild(searchInput);
         menuSearch.appendChild(clearButton);
     }
 
