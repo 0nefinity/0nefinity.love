@@ -411,6 +411,7 @@ button:focus {
     z-index: 1000;
     transform-origin: center;
     white-space: nowrap;
+    text-decoration: none;
 }
 
 .back-button:hover {
