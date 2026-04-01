@@ -623,23 +623,23 @@ button:focus {
 }
 
 .menu-loupe {
-    left: 1.8rem;
+    left: 2rem;
     font-size: 1.5rem;
-    transform: translateY(-50%);
+    transform: translateY(-65%);
 }
 
 .menu-loupe-handle {
     left: 2.5rem;
     font-size: 1.4rem;
     transform-origin: center left;
-    transform: translateY(-50%) rotate(-45deg);
+    transform: translateY(-15%) rotate(-45deg);
     transition: transform 0.35s ease, left 0.35s ease;
 }
 
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
 .menu-search:has(input:disabled:active) .menu-loupe-handle {
     left: 2.00rem;
-    transform: translateY(-60%) rotate(-45deg) scaleX(1.1);
+    transform: translateY(-40%) rotate(-45deg) scaleX(1.1);
     transition: transform 0.15s ease, left 0.15s ease;
 }
 
