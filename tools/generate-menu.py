@@ -113,7 +113,7 @@ def generate():
     lines.append('    <label for="menu-toggle" class="menu-backdrop" aria-hidden="true"></label>')
     lines.append('    <label for="menu-toggle" class="menu-button" aria-label="Men\u00fc"><span class="menu-closed-text">\u2261</span><span class="menu-open-text">0 \u2261 1 \u2261 \u221E</span></label>')
     lines.append('    <div class="menu-content-wrapper">')
-    lines.append('      <div class="menu-search"><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
+    lines.append('      <div class="menu-search"><span class="menu-loupe" aria-hidden="true">0</span><span class="menu-loupe-handle" aria-hidden="true">1</span><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
     lines.append('      <ul id="file-list">')
 
     # Priority items
