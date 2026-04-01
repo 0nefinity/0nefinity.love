@@ -177,6 +177,19 @@ if (menu && menuButton && menuToggle) {
         touchHandled = false;
     });
 
+    // Backdrop-Klick → Menü schließen (Label-Default verhindern, JS übernimmt)
+    const backdrop = menu.querySelector('.menu-backdrop');
+    if (backdrop) {
+        backdrop.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeMenu();
+        });
+        backdrop.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            closeMenu();
+        });
+    }
+
     // Klick außerhalb → Menü schließen
     function closeMenuIfOutside(e) {
         if (!menu.classList.contains('open')) return;
