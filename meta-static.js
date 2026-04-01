@@ -104,6 +104,16 @@ if (backButton) {
     });
 }
 
+// ─── Sticky-Hover-Fix für Touch/Stylus ───
+function fixStickyHover(el) {
+    el.addEventListener('pointerleave', () => {
+        el.style.pointerEvents = 'none';
+        requestAnimationFrame(() => { el.style.pointerEvents = ''; });
+    });
+}
+fixStickyHover(menuButton);
+if (backButton) fixStickyHover(backButton);
+
 // ─── Menü-Toggle: JS übernimmt vom Checkbox-Hack ───
 if (menu && menuButton && menuToggle) {
     let touchHandled = false;

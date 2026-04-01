@@ -408,14 +408,10 @@ button:focus {
     color: var(--text-color);
     font-size: 3.5625rem; /* ca. 57px */
     cursor: pointer;
-    z-index: 1000;
+    z-index: 1001; /* über Menü-Backdrop */
     transform-origin: center;
     white-space: nowrap;
     text-decoration: none;
-}
-
-.back-button:hover {
-    scale: 1.3;
 }
 
 /* Größere Touch-Targets auf hochauflösenden Displays */
@@ -531,13 +527,17 @@ button:focus {
     padding-right: 1.25rem;
 }
 
-@media (hover: hover) and (pointer: fine) {
+@media (hover: hover) {
     .menu-button:hover {
         scale: 1.05;
     }
 
     .menu.open .menu-button:hover {
         scale: 1.01;
+    }
+
+    .back-button:hover {
+        scale: 1.3;
     }
 }
 
