@@ -42,6 +42,11 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+html {
+    margin: 0;
+    padding: 0;
+}
+
 body {
     min-height: var(--visible-viewport-height);
     overflow: auto;
@@ -55,7 +60,6 @@ body {
     text-align: center;
     touch-action: manipulation;
     margin: 0;
-    white-space: normal;
 }
 
 body.menu-open {
