@@ -65,12 +65,12 @@
       flex-direction: column;
       gap: 0.6rem;
       overflow: hidden !important;
-      background: #000;
+      background: var(--bg-color);
     }
 
     /* Display Bereich - komplett schwarz, keine Umrandung */
     .calc-display {
-      background: #000;
+      background: var(--bg-color);
       border: none;
       border-radius: 0;
       padding: 0.5rem;
@@ -94,7 +94,7 @@
       padding-right: 0.3rem;
       font-family: 'Courier New', monospace;
       scrollbar-width: thin;
-      scrollbar-color: #555 #000;
+      scrollbar-color: #555 var(--bg-color);
     }
 
     .calc-lines::-webkit-scrollbar {
@@ -102,7 +102,7 @@
     }
 
     .calc-lines::-webkit-scrollbar-track {
-      background: #000;
+      background: var(--bg-color);
       border-radius: 2px;
     }
 
@@ -144,7 +144,7 @@
     }
 
     .calc-line .line-result {
-      color: #fff;
+      color: var(--text-color);
       font-size: clamp(1rem, 4vw, 1.4rem);
       font-weight: bold;
       text-align: right;
@@ -159,12 +159,12 @@
     }
 
     .calc-line.current .line-expression {
-      color: #fff;
+      color: var(--text-color);
       font-size: clamp(1.2rem, 5vw, 1.8rem);
     }
 
     .calc-line.current .line-expression sup {
-      color: #fff;
+      color: var(--text-color);
       font-size: 0.7em;
       vertical-align: baseline;
       line-height: 1;
@@ -189,8 +189,8 @@
 
     /* Button Styling */
     .calc-btn {
-      background: #000;
-      color: #fff;
+      background: var(--bg-color);
+      color: var(--text-color);
       border: 1px solid #444;
       border-radius: 6px;
       padding: 0.3rem 0.15rem;
@@ -219,7 +219,7 @@
     }
 
     .calc-btn.operator {
-      color: #fff;
+      color: var(--text-color);
       border-color: #666;
     }
 
