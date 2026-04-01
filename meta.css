@@ -55,10 +55,7 @@ body {
     text-align: center;
     touch-action: manipulation;
     margin: 0;
-}
-
-main {
-    display: flow-root;
+    white-space: normal;
 }
 
 body.menu-open {
