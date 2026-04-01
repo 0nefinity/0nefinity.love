@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://0nefinity.love/</loc>
-    <lastmod>2026-03-18</lastmod>
+    <lastmod>2026-03-31</lastmod>
     <priority>1.0</priority>
   </url>
   <url>
@@ -107,7 +107,7 @@
   </url>
   <url>
     <loc>https://0nefinity.love/10sand</loc>
-    <lastmod>2026-03-23</lastmod>
+    <lastmod>2026-03-31</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/1kaleidosk0p</loc>
@@ -1052,6 +1052,10 @@
   <url>
     <loc>https://0nefinity.love/sprinky copy</loc>
     <lastmod>2026-03-15</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/ssi-test-html</loc>
+    <lastmod>2026-03-31</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/ssi-test-include</loc>
