@@ -77,29 +77,22 @@ def collect_structure():
     return structure
 
 
-def render_file(f, indent=8):
-    pad = ' ' * indent
+def render_file(f):
     href = '/' + f['path']
-    text = escape(f['name'])
-    return f'{pad}<li><a href="{escape(href)}">{text}</a></li>'
+    return f'<li><a href="{escape(href)}">{escape(f["name"])}</a></li>'
 
 
-def render_folder(name, data, indent=8):
-    pad = ' ' * indent
-    lines = []
-    lines.append(f'{pad}<li><details>')
-    lines.append(f'{pad}  <summary>{escape(name)}</summary>')
-    lines.append(f'{pad}  <ul class="folder-contents">')
+def render_folder(name, data):
+    parts = [f'<li><details><summary>{escape(name)}</summary><ul class="folder-contents">']
 
     for subfolder_name in sorted(data['folders'].keys(), key=lambda x: x.lower()):
-        lines.append(render_folder(subfolder_name, data['folders'][subfolder_name], indent + 4))
+        parts.append(render_folder(subfolder_name, data['folders'][subfolder_name]))
 
     for f in sorted(data['files'], key=lambda x: x['name'].lower()):
-        lines.append(render_file(f, indent + 4))
+        parts.append(render_file(f))
 
-    lines.append(f'{pad}  </ul>')
-    lines.append(f'{pad}</details></li>')
-    return '\n'.join(lines)
+    parts.append('</ul></details></li>')
+    return '\n'.join(parts)
 
 
 def generate():
@@ -107,22 +100,22 @@ def generate():
 
     lines = []
     lines.append('<nav id="meta-nav" aria-label="Hauptnavigation">')
-    lines.append('  <a href="/index.html" class="back-button" aria-label="Startseite">\u22C5</a>')
-    lines.append('  <div class="menu">')
-    lines.append('    <input type="checkbox" id="menu-toggle" class="menu-toggle-input">')
-    lines.append('    <label for="menu-toggle" class="menu-backdrop" aria-hidden="true"></label>')
-    lines.append('    <label for="menu-toggle" class="menu-button" aria-label="Men\u00fc"><span class="menu-closed-text">\u2261</span><span class="menu-open-text">0 \u2261 1 \u2261 \u221E</span></label>')
-    lines.append('    <div class="menu-content-wrapper">')
-    lines.append('      <div class="menu-search"><span class="menu-loupe" aria-hidden="true">0</span><span class="menu-loupe-handle" aria-hidden="true">1</span><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
-    lines.append('      <ul id="file-list">')
+    lines.append('<a href="/index.html" class="back-button" aria-label="Startseite">\u22C5</a>')
+    lines.append('<div class="menu">')
+    lines.append('<input type="checkbox" id="menu-toggle" class="menu-toggle-input">')
+    lines.append('<label for="menu-toggle" class="menu-backdrop" aria-hidden="true"></label>')
+    lines.append('<label for="menu-toggle" class="menu-button" aria-label="Men\u00fc"><span class="menu-closed-text">\u2261</span><span class="menu-open-text">0 \u2261 1 \u2261 \u221E</span></label>')
+    lines.append('<div class="menu-content-wrapper">')
+    lines.append('<div class="menu-search"><span class="menu-loupe" aria-hidden="true">0</span><span class="menu-loupe-handle" aria-hidden="true">1</span><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
+    lines.append('<ul id="file-list">')
 
     # Priority items
     for item in PRIORITY_ITEMS:
         if item['type'] == 'heading':
-            lines.append(f'        <li><span class="menu-heading">{escape(item["text"])}</span></li>')
+            lines.append(f'<li><span class="menu-heading">{escape(item["text"])}</span></li>')
         elif item['type'] == 'file':
             href = '/' + item['path']
-            lines.append(f'        <li><a href="{escape(href)}">{escape(item["name"])}</a></li>')
+            lines.append(f'<li><a href="{escape(href)}">{escape(item["name"])}</a></li>')
 
     # Ordner
     for folder_name in sorted(structure['folders'].keys(), key=lambda x: x.lower()):
@@ -132,9 +125,9 @@ def generate():
     for f in sorted(structure['files'], key=lambda x: x['name'].lower()):
         lines.append(render_file(f))
 
-    lines.append('      </ul>')
-    lines.append('    </div>')
-    lines.append('  </div>')
+    lines.append('</ul>')
+    lines.append('</div>')
+    lines.append('</div>')
     lines.append('</nav>')
 
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)

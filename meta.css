@@ -633,14 +633,14 @@ button:focus {
     font-size: 1.4rem;
     transform-origin: center left;
     transform: translateY(-15%) rotate(-45deg);
-    transition: transform 0.35s ease, left 0.35s ease;
+    transition: transform 0.35s ease 0.3s, left 0.35s ease 0.3s; /* Rückweg: 0.3s Delay */
 }
 
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
 .menu-search:has(input:disabled:active) .menu-loupe-handle {
     left: 2.00rem;
     transform: translateY(-42%) rotate(-45deg) scaleX(1.1);
-    transition: transform 0.15s ease, left 0.15s ease;
+    transition: transform 0.15s ease 0s, left 0.15s ease 0s; /* Hinweg: sofort */
 }
 
 /* Disabled-Suchfeld: gleiche Optik, kleinere Schrift für längeren Placeholder */
