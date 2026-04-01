@@ -77,21 +77,24 @@ def collect_structure():
     return structure
 
 
-def render_file(f):
+def render_file(f, indent=0):
+    pad = '  ' * indent
     href = '/' + f['path']
-    return f'<li><a href="{escape(href)}">{escape(f["name"])}</a></li>'
+    return f'{pad}<li><a href="{escape(href)}">{escape(f["name"])}</a></li>'
 
 
-def render_folder(name, data):
-    parts = [f'<li><details><summary>{escape(name)}</summary><ul class="folder-contents">']
+def render_folder(name, data, indent=0):
+    pad = '  ' * indent
+    inner = indent + 1
+    parts = [f'{pad}<li><details><summary>{escape(name)}</summary><ul class="folder-contents">']
 
     for subfolder_name in sorted(data['folders'].keys(), key=lambda x: x.lower()):
-        parts.append(render_folder(subfolder_name, data['folders'][subfolder_name]))
+        parts.append(render_folder(subfolder_name, data['folders'][subfolder_name], inner))
 
     for f in sorted(data['files'], key=lambda x: x['name'].lower()):
-        parts.append(render_file(f))
+        parts.append(render_file(f, inner))
 
-    parts.append('</ul></details></li>')
+    parts.append(f'{pad}</ul></details></li>')
     return '\n'.join(parts)
 
 
