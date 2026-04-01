@@ -177,20 +177,13 @@ if (menu && menuButton && menuToggle) {
         touchHandled = false;
     });
 
-    // Backdrop-Klick → Menü schließen (Label-Default verhindern, JS übernimmt)
+    // Backdrop verstecken — JS übernimmt close-on-outside, Seite bleibt bedienbar
     const backdrop = menu.querySelector('.menu-backdrop');
     if (backdrop) {
-        backdrop.addEventListener('click', (e) => {
-            e.preventDefault();
-            closeMenu();
-        });
-        backdrop.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            closeMenu();
-        });
+        backdrop.style.display = 'none';
     }
 
-    // Klick außerhalb → Menü schließen
+    // Klick außerhalb → Menü schließen (Klick geht trotzdem zum Ziel-Element durch)
     function closeMenuIfOutside(e) {
         if (!menu.classList.contains('open')) return;
         if (!menu.contains(e.target)) {

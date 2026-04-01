@@ -531,12 +531,14 @@ button:focus {
     padding-right: 1.25rem;
 }
 
-.menu-button:hover {
-    scale: 1.05;
-}
+@media (hover: hover) and (pointer: fine) {
+    .menu-button:hover {
+        scale: 1.05;
+    }
 
-.menu.open .menu-button:hover {
-    scale: 1.01;
+    .menu.open .menu-button:hover {
+        scale: 1.01;
+    }
 }
 
 /* Größere Touch-Targets auf hochauflösenden Displays */
