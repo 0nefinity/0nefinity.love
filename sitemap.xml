@@ -782,6 +782,10 @@
     <lastmod>2026-03-31</lastmod>
   </url>
   <url>
+    <loc>https://0nefinity.love/meta-static.js</loc>
+    <lastmod>2026-04-01</lastmod>
+  </url>
+  <url>
     <loc>https://0nefinity.love/meta.css</loc>
     <lastmod>2026-04-01</lastmod>
   </url>
@@ -1128,6 +1132,10 @@
   <url>
     <loc>https://0nefinity.love/tools/controls.js</loc>
     <lastmod>2026-03-31</lastmod>
+  </url>
+  <url>
+    <loc>https://0nefinity.love/tools/generate-menu.py</loc>
+    <lastmod>2026-04-01</lastmod>
   </url>
   <url>
     <loc>https://0nefinity.love/tools/generate-sitemap.py</loc>
