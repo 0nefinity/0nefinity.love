@@ -594,9 +594,7 @@ button:focus {
     -webkit-appearance: none;
 }
 
-/* Gemeinsame Lupe (Suchfeld & Cursor in where-is-01) zusammengesetzt aus 0 (Glas) und 1 (Griff) */
-.menu-search::before,
-.menu-search::after,
+/* Gemeinsame Lupe (Cursor in where-is-01) zusammengesetzt aus 0 (Glas) und 1 (Griff) */
 .cursor-loupe::before,
 .cursor-loupe::after {
     font-family: 'Ysabeau', system-ui, -apple-system, BlinkMacSystemFont,
@@ -607,40 +605,40 @@ button:focus {
     pointer-events: none;
 }
 
-.menu-search::before, .cursor-loupe::before { content: '0'; }
-.menu-search::after, .cursor-loupe::after { content: '1'; }
+.cursor-loupe::before { content: '0'; }
+.cursor-loupe::after { content: '1'; }
 
-/* Suchfeld spezifische Lupe — alle Positionen in rem für Browser-Konsistenz */
-.menu-search::before {
-    left: 1.8rem;
-    top: 0.75rem; /* padding-top des Containers */
-    height: calc(0.4rem + 1em + 0.4rem); /* Input padding-top + font + padding-bottom */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    width: 1.2rem;
+/* Suchfeld-Lupe: echte DOM-Elemente statt Pseudo-Elemente für Browser-Konsistenz */
+.menu-loupe,
+.menu-loupe-handle {
+    font-family: 'Ysabeau', system-ui, -apple-system, BlinkMacSystemFont,
+        'Helvetica Neue', Arial, sans-serif;
+    position: absolute;
+    font-weight: 400;
+    line-height: 1;
+    pointer-events: none;
+    top: 50%;
 }
 
-.menu-search::after {
+.menu-loupe {
+    left: 1.8rem;
+    font-size: 1.5rem;
+    transform: translateY(-50%);
+}
+
+.menu-loupe-handle {
     left: 2.5rem;
-    top: 0.75rem; /* gleiche Basis wie ::before */
-    height: calc(0.4rem + 1em + 0.4rem);
-    display: flex;
-    align-items: flex-start;
-    padding-top: 0.15rem;
-    transform-origin: center left;
-    transform: rotate(-45deg);
     font-size: 1.4rem;
-    transition: transform 0.35s ease, left 0.35s ease, padding-top 0.35s ease;
+    transform-origin: center left;
+    transform: translateY(-50%) rotate(-45deg);
+    transition: transform 0.35s ease, left 0.35s ease;
 }
 
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
-.menu-search:has(input:disabled:active)::after {
+.menu-search:has(input:disabled:active) .menu-loupe-handle {
     left: 2.00rem;
-    padding-top: 0.05rem;
-    transform: rotate(-45deg) scaleX(1.1);
-    transition: transform 0.15s ease, left 0.15s ease, padding-top 0.15s ease;
+    transform: translateY(-60%) rotate(-45deg) scaleX(1.1);
+    transition: transform 0.15s ease, left 0.15s ease;
 }
 
 /* Disabled-Suchfeld: gleiche Optik, kleinere Schrift für längeren Placeholder */
