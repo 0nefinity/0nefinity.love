@@ -639,7 +639,7 @@ button:focus {
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
 .menu-search:has(input:disabled:active) .menu-loupe-handle {
     left: 2.00rem;
-    transform: translateY(-40%) rotate(-45deg) scaleX(1.1);
+    transform: translateY(-42%) rotate(-45deg) scaleX(1.1);
     transition: transform 0.15s ease, left 0.15s ease;
 }
 
