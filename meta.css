@@ -496,9 +496,15 @@ button:focus {
     white-space: nowrap;
 }
 
-/* Spans innerhalb des Buttons - verhindert Überlagerung */
+/* Button-Text: geschlossen ≡, offen 0 ≡ 1 ≡ ∞ */
+.menu-button .menu-open-text { display: none; }
+.menu-button .menu-closed-text { display: inline; }
+.menu-toggle-input:checked ~ .menu-button .menu-open-text { display: inline; }
+.menu-toggle-input:checked ~ .menu-button .menu-closed-text { display: none; }
+.menu.open .menu-button .menu-open-text { display: inline; }
+.menu.open .menu-button .menu-closed-text { display: none; }
+
 .menu-button span {
-    display: inline;
     white-space: pre;
 }
 
