@@ -17,7 +17,7 @@
 <body>
   <div id="pixi-container" class="_018-canvas"></div>
 
-  <script src="/tools/pixi.js"></script>
+  <script src="/tools/tools/pixi.js"></script>
   <script>
     // --- PixiJS Sand Simulation ---
 
@@ -1072,7 +1072,7 @@
 
     // Helper: get the PixiJS canvas element
     function getPixiCanvas() {
-      return pixiApp && pixiApp.canvas ? pixiApp.canvas : null;
+	      return pixiApp && pixiApp.renderer ? pixiApp.canvas : null;
     }
 
     document.addEventListener('mousemove', (e) => {
