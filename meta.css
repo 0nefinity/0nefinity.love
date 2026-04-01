@@ -674,6 +674,7 @@ button:focus {
     list-style: none;
     padding: 0 1.25rem 1rem 1.25rem; /* Unten Atemraum gegen den Abgrund */
     margin: 0;
+    white-space: normal; /* Überschreibt globales pre-wrap — sonst erzeugt Whitespace im statischen HTML Extra-Abstände */
 }
 
 /* Nested lists (folder contents) should always be visible when parent details is open */
