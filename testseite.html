@@ -8,5 +8,24 @@
 <!--#include virtual="/includes/something-in-the-body.html" -->
   <h1>Testseite</h1>
   <p>SSI-Menü mit statischem HTML + JS-Suche.</p>
+
+  <div style="margin: 2rem; padding: 1rem; border: 1px solid var(--text-color);">
+    <h3>Mööp-Tuning (1-Position bei :active)</h3>
+    <label>left: <input type="range" id="moep-left" min="0" max="4" step="0.05" value="1.7"> <span id="moep-left-val">1.7rem</span></label><br>
+    <label>top: <input type="range" id="moep-top" min="0" max="60" step="1" value="30"> <span id="moep-top-val">30%</span></label>
+  </div>
+  <script>
+    const style = document.createElement('style');
+    document.head.appendChild(style);
+    function update() {
+      const l = document.getElementById('moep-left').value;
+      const t = document.getElementById('moep-top').value;
+      document.getElementById('moep-left-val').textContent = l + 'rem';
+      document.getElementById('moep-top-val').textContent = t + '%';
+      style.textContent = `.menu-search:has(input:disabled:active)::after { left: ${l}rem !important; top: ${t}% !important; }`;
+    }
+    document.getElementById('moep-left').addEventListener('input', update);
+    document.getElementById('moep-top').addEventListener('input', update);
+  </script>
 </body>
 </html>
