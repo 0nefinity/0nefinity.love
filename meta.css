@@ -477,7 +477,7 @@ button:focus {
     -webkit-user-select: text;
 }
 
-/* Wrapper für Button + Inhalt im Menü */
+/* Wrapper für Button + Inhalt im Menü — über dem Backdrop */
 .menu-content-wrapper {
     user-select: text;
     -webkit-user-select: text;
@@ -486,6 +486,8 @@ button:focus {
     flex: 1 1 auto;
     min-height: 0; /* erlaubt innerem UL zu scrollen */
     max-height: 100%;
+    position: relative;
+    z-index: 1;
 }
 
 .menu.open .menu-content-wrapper,
@@ -506,6 +508,8 @@ button:focus {
     cursor: pointer;
     transform-origin: center;
     white-space: nowrap;
+    position: relative;
+    z-index: 1;
 }
 
 /* Button-Text: geschlossen ≡, offen 0 ≡ 1 ≡ ∞ */
@@ -629,8 +633,8 @@ button:focus {
 
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
 .menu-search:has(input:disabled:active)::after {
-    left: 1.55rem;
-    top: 38%;
+    left: 1.7rem;
+    top: 30%;
     transform: translate(0, 0.1rem) rotate(-45deg) scaleX(1.1);
     transition: transform 0.15s ease, left 0.15s ease, top 0.15s ease;
 }
