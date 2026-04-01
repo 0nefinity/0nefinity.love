@@ -110,6 +110,7 @@ def generate():
     lines.append('  <a href="/index.html" class="back-button" aria-label="Startseite">\u22C5</a>')
     lines.append('  <div class="menu">')
     lines.append('    <input type="checkbox" id="menu-toggle" class="menu-toggle-input">')
+    lines.append('    <label for="menu-toggle" class="menu-backdrop" aria-hidden="true"></label>')
     lines.append('    <label for="menu-toggle" class="menu-button" aria-label="Men\u00fc"><span class="menu-closed-text">\u2261</span><span class="menu-open-text">0 \u2261 1 \u2261 \u221E</span></label>')
     lines.append('    <div class="menu-content-wrapper">')
     lines.append('      <div class="menu-search"><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
