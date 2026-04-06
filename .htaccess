@@ -20,25 +20,17 @@ RewriteRule ^readme/?$ /README [R=302,L]
 # Pi-Quadrat Weiterleitung
 RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 
-# Textdateien durch PHP-Viewer anzeigen (.punkt, .dot, und andere Text-Extensions)
-# Nur wenn die Datei tatsächlich existiert
-# NICHT bei fetch/XHR-Requests (für JavaScript-Apps die rohen Text brauchen)
+# Textartige Dateien durch PHP-Viewer anzeigen
+# Auch Dateien ohne Endung oder mit weirden Text-Endungen; Web-/Script-/Binärdateien bleiben direkt auslieferbar.
+# NICHT bei fetch/XHR-Requests oder ?raw=1 (für JavaScript-Apps, die den rohen Text brauchen)
 RewriteCond %{REQUEST_FILENAME} -f
-RewriteCond %{REQUEST_FILENAME} \.(punkt|dot|txt|md)$ [NC]
 RewriteCond %{HTTP:X-Requested-With} !XMLHttpRequest
 RewriteCond %{HTTP:Accept} !application/json
-RewriteCond %{QUERY_STRING} !raw=1
-RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
+RewriteCond %{QUERY_STRING} !(^|&)raw=1(&|$)
+RewriteCond %{REQUEST_FILENAME} !\.(php[0-9]?|phtml|phar|html?|hmtl|shtml?|js|mjs|cjs|css|json|xml|svg|png|jpe?g|gif|webp|bmp|ico|avif|pdf|map|wasm|zip|gz|tar|7z|rar|mp3|mp4|m4a|ogg|wav|flac|mov|webm|ttf|otf|woff2?)$ [NC]
+RewriteRule ^(.+)$ /tools/weird-text-viewer.php?path=$1 [L,QSA,B]
 
-# Nur wenn die Datei existiert UND der Request-Pfad keinen Punkt enthält
-# Ausnahme: PHP-Dateien, HTML-Dateien und Verzeichnisse werden nicht umgeleitet
-RewriteCond %{REQUEST_FILENAME} -f
-RewriteCond %{REQUEST_FILENAME} !\.php$
-RewriteCond %{REQUEST_FILENAME} !\.html$
-RewriteCond %{REQUEST_URI} !\.[a-zA-Z0-9]+$
-RewriteRule ^(.+)$ /tools/weird-text-viewer.php [L]
-
-# Clean URLs: Redirect .html und .md Endungen zu URLs ohne Endung
+# Clean URLs: Redirect .html Endungen zu URLs ohne Endung
 # WICHTIG: Query-String mit [QSA] Flag erhalten!
 RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.html(\?.*)?\ HTTP
 RewriteRule ^(.+)\.html$ /$1 [R=302,L,QSA]
@@ -71,9 +63,15 @@ AddOutputFilter INCLUDES .html
 
 # Offenes Directory Listing (bewusst)
 Options +Indexes +Includes
+Options +Indexes +IncludesNOEXEC
 IndexOptions FancyIndexing NameWidth=* FoldersFirst
 IndexOrderDefault Ascending Name
 IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitattributes .gitmodules
+
+# Test: SSI gezielt auch für genau eine .html-Datei erlauben
+<Files "ssi-test-html.html">
+  SetOutputFilter INCLUDES
+</Files>
 
 # Nur wirklich heikle Dotfiles sperren; Stil-Dotfiles wie .dot oder .punkt bleiben erlaubt
 <FilesMatch "^\.((htaccess|htpasswd)|(env(\..*)?)|(gitignore|gitattributes|gitmodules))$">
