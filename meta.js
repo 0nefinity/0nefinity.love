@@ -149,11 +149,12 @@ const priorityItems = [
     { type: 'heading', text: 'legal stuff first:' },
     { type: 'file', path: 'impressum-und-datenschutz', name: 'impressum-und-datenschutz' },
     { type: 'heading', text: 'now the party:' },
-    { type: 'file', path: 'README', name: 'README' }
+    { type: 'file', path: 'README', name: 'README' },
+    { type: 'file', path: 'c0n1ri8ute.html', name: 'c0n1ri8ute' }
 ];
 
 // Files to exclude from dynamic content (already in priority items)
-const excludePaths = ['impressum-und-datenschutz', 'README'];
+const excludePaths = ['impressum-und-datenschutz', 'README', 'c0n1ri8ute', 'c0n1ri8ute.html'];
 
 /**
  * Render a single file link
