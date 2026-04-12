@@ -13,6 +13,11 @@ function startsWithPath($path, $prefix) {
     return $path === $prefix || strncmp($path, $prefix . '/', strlen($prefix) + 1) === 0;
 }
 
+function stripHtmlComments($content) {
+    $stripped = preg_replace('/<!--.*?-->/s', '', $content);
+    return $stripped === null ? $content : $stripped;
+}
+
 function resolveRequestedFile($documentRoot) {
     $requestedPath = (string)($_GET['path'] ?? '');
     if ($requestedPath === '' || strpos($requestedPath, "\0") !== false) {
@@ -56,8 +61,11 @@ if ($content === false) {
     failNotFound();
 }
 
+$content = stripHtmlComments($content);
+
 $fileName = basename($realPath);
 $title = $fileName;
+$showRelativePath = $relativePath !== $fileName;
 $isMarkdown = preg_match('/\.md$/i', $realPath) === 1;
 
 if ($isMarkdown) {
@@ -82,14 +90,16 @@ if ($isMarkdown) {
 </head>
 <body>
 
-<div class="O18">
+<main class="O18">
   <div class="text-viewer-header">
     <h1><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></h1>
+    <?php if ($showRelativePath): ?>
     <div><?php echo htmlspecialchars($relativePath, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
+    <?php endif; ?>
   </div>
 
   <div class="text-viewer-content"><?php echo $renderedContent; ?></div>
-</div>
+</main>
 
 </body>
 </html>
