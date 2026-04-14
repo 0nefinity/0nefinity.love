@@ -1042,77 +1042,83 @@
         }
 
         // ============================================
-        // GEOMETRISCHE FORMEN (Radiale Projektion)
+        // GEOMETRISCHE FORMEN
         // ============================================
-        // Statt Arc-Length-Mapping (erzeugt Swirl) wird jeder Kreispunkt
-        // rein radial auf die Polygon-Kante projiziert: Strahl vom Ursprung
-        // bei Winkel θ → Schnittpunkt mit Polygon. Kein Rotationsanteil!
 
-        function getPolygonVertices(sides, radius, rotationOffset = 0) {
-            const vertices = [];
+        // Erzeugt einen geschlossenen Pfad für ein reguläres Polygon
+        // mit dichten Zwischenpunkten auf den Kanten (für glatte RBF-Abbildung)
+        // rotationOffset: zusätzliche Drehung in Radiant (z.B. Math.PI/4 für 45°)
+        function generatePolygonPath(sides, radius, pointsPerEdge = 32, rotationOffset = 0) {
+            const path = [];
             for (let i = 0; i < sides; i++) {
-                const angle = (i / sides) * 2 * Math.PI - Math.PI / 2 + rotationOffset;
-                vertices.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+                const a1 = (i / sides) * 2 * Math.PI - Math.PI / 2 + rotationOffset;
+                const a2 = ((i + 1) / sides) * 2 * Math.PI - Math.PI / 2 + rotationOffset;
+                const x1 = Math.cos(a1) * radius, y1 = Math.sin(a1) * radius;
+                const x2 = Math.cos(a2) * radius, y2 = Math.sin(a2) * radius;
+                for (let j = 0; j < pointsPerEdge; j++) {
+                    const t = j / pointsPerEdge;
+                    path.push({ x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t });
+                }
             }
-            return vertices;
+            return path;
         }
 
-        function getStarVertices(points, outerRadius, innerRadius) {
-            const vertices = [];
-            const total = points * 2;
-            for (let i = 0; i < total; i++) {
-                const angle = (i / total) * 2 * Math.PI - Math.PI / 2;
-                const r = i % 2 === 0 ? outerRadius : innerRadius;
-                vertices.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+        // Stern: alternierend äußerer und innerer Radius
+        function generateStarPath(points, outerRadius, innerRadius, pointsPerEdge = 16) {
+            const path = [];
+            const totalVertices = points * 2;
+            for (let i = 0; i < totalVertices; i++) {
+                const a1 = (i / totalVertices) * 2 * Math.PI - Math.PI / 2;
+                const a2 = ((i + 1) / totalVertices) * 2 * Math.PI - Math.PI / 2;
+                const r1 = i % 2 === 0 ? outerRadius : innerRadius;
+                const r2 = (i + 1) % 2 === 0 ? outerRadius : innerRadius;
+                const x1 = Math.cos(a1) * r1, y1 = Math.sin(a1) * r1;
+                const x2 = Math.cos(a2) * r2, y2 = Math.sin(a2) * r2;
+                for (let j = 0; j < pointsPerEdge; j++) {
+                    const t = j / pointsPerEdge;
+                    path.push({ x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t });
+                }
             }
-            return vertices;
-        }
-
-        // Strahl vom Ursprung bei Winkel θ: Schnittpunkt-Abstand mit Polygon
-        function shapeRadiusAtAngle(vertices, theta) {
-            const cosT = Math.cos(theta);
-            const sinT = Math.sin(theta);
-            let bestT = Infinity;
-
-            for (let i = 0; i < vertices.length; i++) {
-                const j = (i + 1) % vertices.length;
-                const A = vertices[i], B = vertices[j];
-
-                // Cramer: Strahl t*(cosT,sinT) = A + s*(B-A)
-                const D = cosT * (B.y - A.y) - sinT * (B.x - A.x);
-                if (Math.abs(D) < 1e-12) continue; // parallel
-
-                const s = (A.x * sinT - A.y * cosT) / D;
-                if (s < 0 || s > 1) continue; // außerhalb der Kante
-
-                const t = (A.x * B.y - A.y * B.x) / D;
-                if (t > 0 && t < bestT) bestT = t;
-            }
-
-            return bestT === Infinity ? 1 : bestT;
+            return path;
         }
 
         const shapeDefinitions = {
-            square:   { name: 'Quadrat',   vertices: () => getPolygonVertices(4, 1.4, Math.PI / 4) },
-            triangle: { name: 'Dreieck',   vertices: () => getPolygonVertices(3, 1.5) },
-            pentagon: { name: 'Pentagon',   vertices: () => getPolygonVertices(5, 1.4) },
-            hexagon:  { name: 'Hexagon',   vertices: () => getPolygonVertices(6, 1.35) },
-            star5:    { name: 'Stern ★',   vertices: () => getStarVertices(5, 1.5, 0.6) },
-            star6:    { name: 'Stern ✡',   vertices: () => getStarVertices(6, 1.5, 0.75) }
+            square:   { name: 'Quadrat',   generate: () => generatePolygonPath(4, 1.4, 32, Math.PI / 4) },
+            triangle: { name: 'Dreieck',   generate: () => generatePolygonPath(3, 1.5) },
+            pentagon: { name: 'Pentagon',   generate: () => generatePolygonPath(5, 1.4) },
+            hexagon:  { name: 'Hexagon',   generate: () => generatePolygonPath(6, 1.35) },
+            star5:    { name: 'Stern ★',   generate: () => generateStarPath(5, 1.5, 0.6) },
+            star6:    { name: 'Stern ✡',   generate: () => generateStarPath(6, 1.5, 0.75) }
         };
 
         function generateShapeControlPoints(shapeId) {
             const shapeDef = shapeDefinitions[shapeId];
             if (!shapeDef) return [];
 
-            const vertices = shapeDef.vertices();
-            if (vertices.length < 3) return [];
+            const shapePath = shapeDef.generate();
+            if (shapePath.length === 0) return [];
 
-            // 256 Punkte → guter Kompromiss Schärfe vs. Performance
-            const numPoints = 256;
+            // Am rechtesten Punkt starten (θ=0 auf dem Kreis)
+            let bestIdx = 0, bestX = -Infinity;
+            for (let i = 0; i < shapePath.length; i++) {
+                if (shapePath[i].x > bestX) {
+                    bestX = shapePath[i].x;
+                    bestIdx = i;
+                }
+            }
+            const alignedPath = [...shapePath.slice(bestIdx), ...shapePath.slice(0, bestIdx)];
+
+            // Punktanzahl: 2er-Potenz für FFT
+            const numPoints = nextPow2(Math.max(64, alignedPath.length));
+
+            // Resamplen auf numPoints
+            const targetPoints = resamplePath(alignedPath, numPoints);
+
+            // Einflussradius aus Punktabstand
             const spacing = 2 * Math.PI / numPoints;
             const autoRadius = spacing * 1.0;
 
+            // Kreispunkte und Ziel-Verschiebungen
             const naiveDx = new Array(numPoints);
             const naiveDy = new Array(numPoints);
             const circlePositions = new Array(numPoints);
@@ -1122,11 +1128,8 @@
                 const cx = Math.cos(angle);
                 const cy = Math.sin(angle);
                 circlePositions[i] = { x: cx, y: cy };
-
-                // Radiale Projektion: rein radiale Verschiebung
-                const r = shapeRadiusAtAngle(vertices, angle);
-                naiveDx[i] = (r - 1) * cx;
-                naiveDy[i] = (r - 1) * cy;
+                naiveDx[i] = targetPoints[i].x - cx;
+                naiveDy[i] = targetPoints[i].y - cy;
             }
 
             // Zirkulant-FFT-Lösung
