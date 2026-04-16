@@ -16,36 +16,42 @@ Mit dem User **auf Deutsch** kommunizieren.
 
 ### Infrastruktur
 
-Alles läuft im **LXD-Container `0nefinity`** auf dem Host-Server. Ein Git-Repo, zwei Worktrees:
+Ein Git-Repo, zwei Worktrees, zwei Docker-Container auf dem Host-Server:
 
-| Pfad (im Container) | Branch | Domain | Zweck |
+| Pfad (Host) | Branch | Domain | Docker-Container |
 |---|---|---|---|
-| `/var/www/0nefinity.love/` | `main` | `0nefinity.love` | Stabile Live-Seite |
-| `/var/www/0nefinity-dev/` | `claude-dev` | `dev.0nefinity.love` | Entwicklung |
+| `/home/timbr/0nefinity/0nefinity.love/` | `main` | `0nefinity.love` | `0nefinity-live` (Volume `:ro`) |
+| `/home/timbr/0nefinity/dev.0nefinity.love/0nefinity-dev/` | `claude-dev` | `dev.0nefinity.love` | `0nefinity-dev` |
 
-- `/var/www/0nefinity-dev/` ist ein Git-Worktree von `/var/www/0nefinity.love/`
+- Git-Repo: `/home/timbr/0nefinity/0nefinity.love/.git`
 - Remote: `git@github.com:0nefinity/0nefinity.love.git`
+- Dev-Worktree zeigt auf `claude-dev` Branch
 
 ### Webserver
 
-- **Apache 2.4** mit PHP 8.3 im Container
-- Port **18** → `0nefinity.love` (main)
-- Port **129** → `dev.0nefinity.love` (claude-dev)
-- **nginx** auf dem Host proxied HTTPS → Container-Ports
-- Dateien bearbeiten → sofort live (kein Build nötig)
+- **nginx** auf dem Host terminiert TLS (Let's Encrypt) und proxied:
+  - `0nefinity.love` → `127.0.0.1:18`
+  - `dev.0nefinity.love` → `127.0.0.1:129`
+- **Apache 2.4 + PHP 8.3** in Docker-Containern (ein Image, zwei Container)
+- `.htaccess` regelt Rewrites, Clean URLs, SSI, PHP-Routing, Sicherheit
+- Dateien bearbeiten → sofort live (Volumes, kein Build nötig)
 
-### Verfügbare Tools im Container
-
-- PHP 8.3 (`php`)
-- Python 3.12 (`python3`)
-- Kein Node.js
-
-### Container-Zugriff vom Host
+### Docker-Setup
 
 ```bash
-lxc exec 0nefinity -- bash                    # Shell im Container
-lxc exec 0nefinity -- git -C /var/www/0nefinity-dev/ status   # Git-Befehle
+# Dateien unter /home/timbr/0nefinity/
+#   Dockerfile, docker-compose.yml, reverse-proxy.conf
+
+docker compose up -d              # Container starten
+docker compose build && docker compose up -d   # Image neu bauen + starten
+docker compose logs -f live       # Logs live-Container
+docker compose logs -f dev        # Logs dev-Container
 ```
+
+### Verfügbare Tools
+
+- PHP 8.3 (im Container)
+- Python 3.12 (auf dem Host)
 
 ## Architektur
 
