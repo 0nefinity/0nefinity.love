@@ -365,16 +365,21 @@ canvas {
     const photoCanvas = document.createElement('canvas');
     photoCanvas.style.display = 'none';
     controls.innerHTML = `
-      <label>Auto: <input type="checkbox" id="autoSpeedCheckbox" checked></label>
-      <label title="Ausrichtung der Zeichen am Radius">Rotation: <input type="checkbox" id="rotateCheckbox"></label>
+      <label title="Speed-Anzeige über Symbol an/aus">Speed-Anz: <input type="checkbox" id="speedDisplayCheckbox" checked></label>
+      <label title="Vertikaler Abstand der Speed-Anzeige zum Symbol (px)">Pos: <input type="number" id="speedDisplayOffset" value="22" step="1"></label>
+      <label>auto <input type="checkbox" id="autoSpeedCheckbox" checked></label>
       <label>Geschw: <input type="number" id="rotationSpeed" value="0" step="0.1" min="0"></label>
+      <label title="Logische Frames pro Sekunde. Über Bildschirm-Hz hinaus = simuliert." style="position:relative;">fps: <input type="number" id="fps" value="60" step="1" min="0"><span id="fpsHint" style="position:absolute; top:100%; left:0; font-size:0.7em; opacity:0.6; white-space:nowrap; pointer-events:none;"></span></label>
+      <label title="Ausrichtung der Zeichen am Radius">Rotation: <input type="checkbox" id="rotateCheckbox"></label>
       <div style="display:flex; gap:4px; align-items:center;">
         <label>Gr. Z(%): <input type="number" id="textSize" value="25" step="1" min="0"></label>
-        <label>Tr.(%): <input type="number" id="triangleSize" value="30" step="1" min="0"></label>
+        <label title="Radius des Symbol-Kreises (kann auch negativ sein)">Tr.(%): <input type="number" id="triangleSize" value="30" step="1"></label>
       </div>
       <div style="display:flex; gap:4px; align-items:center;">
         <label>≡G(%): <input type="number" id="equivSize" value="23" step="1" min="0"></label>
         <label>≡L(%): <input type="number" id="equivLength" value="100" step="1" min="0"></label>
+        <label title="Trennzeichen duplizieren">Dupl.: <input type="checkbox" id="duplicateIdentisch"></label>
+        <label id="duplicateSpacingLabel" title="Abstand zwischen duplizierten Trennzeichen (Faktor von ≡-Größe)" style="display:none;">Abst: <input type="number" id="duplicateSpacing" value="1.2" step="0.1" min="0"></label>
       </div>
 
       <div id="symbolSettingsGroup" style="display:flex; flex-direction:column; align-items:stretch; position: relative; margin-left: 5px;">
@@ -389,13 +394,12 @@ canvas {
         </table>
       </div>
 
-      <label>Dupl.: <input type="checkbox" id="duplicateIdentisch" title="Dupliziert das Trennzeichen"></label>
       <button id="takePhotoButton">Foto machen</button>
       <div class="info-popup">
         <div class="info-icon">i</div>
         <div class="info-text">Diese Muster, die das Teil augenscheinlich formt, resultieren nur aus der Bewegung. Zu jedem einzelnen Zeitpunkt ist das ursprüngliche Objekt nur genau einmal in seiner ursprünglichen Form (lediglich anders gedreht) sichtbar. Ein Foto vermag das Muster deshalb nicht einzufangen und wird immer nur das ursprüngliche Objekt in einer Ruheposition zeigen.</div>
       </div>
-	      <label>Frames: <input type="number" id="gifFrameCount" value="3" min="0" step="1"></label>
+	      <label title="Anzahl Frames für GIF-Export">GIF Frames: <input type="number" id="gifFrameCount" value="3" min="0" step="1"></label>
 	      <label>∞: <input type="checkbox" id="gifInfinite"></label>
       <button id="createGifButton">GIF erstellen</button>
       <label>Debug: <input type="checkbox" id="debugHitbox"></label>
@@ -525,10 +529,14 @@ canvas {
     symbolContainer.style.overflow = 'visible';
 
     // Erstelle den Canvas für die Animation (Globaler Fixed-Layer)
+    // DPR-aware: Pixel-Buffer = CSS-Größe × devicePixelRatio → scharfes Rendering auf Mobile/Retina
     const canvas = document.createElement('canvas');
     canvas.id = 'canvas';
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const initialDpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * initialDpr;
+    canvas.height = window.innerHeight * initialDpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
     canvas.style.position = 'fixed';
     canvas.style.top = '0';
     canvas.style.left = '0';
@@ -592,6 +600,27 @@ canvas {
     interactionLayer.addEventListener('mousedown', () => { interactionLayer.style.cursor = 'grabbing'; });
     interactionLayer.addEventListener('mouseup', () => { interactionLayer.style.cursor = 'grab'; });
     interactionLayer.addEventListener('mouseleave', () => { interactionLayer.style.cursor = 'grab'; });
+
+    // Klick aufs Symbol togglet Sichtbarkeit der Controls-Leiste (Drag/Zoom > 5px = kein Toggle)
+    let speedDisplayVisible = true; // wird via Checkbox in Controls gesteuert
+    let pointerDownX = null, pointerDownY = null;
+    interactionLayer.addEventListener('pointerdown', (e) => {
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
+    });
+    interactionLayer.addEventListener('pointerup', (e) => {
+      if (pointerDownX === null) return;
+      const dx = e.clientX - pointerDownX;
+      const dy = e.clientY - pointerDownY;
+      pointerDownX = null;
+      pointerDownY = null;
+      if (dx * dx + dy * dy > 25) return;
+      if (isPointInsideSymbolHitArea(e.clientX, e.clientY)) {
+        // !important via setProperty, damit Mobile-CSS (display: none !important) überstimmt wird
+        const isHidden = window.getComputedStyle(controls).display === 'none';
+        controls.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
+      }
+    });
 
     // Zoom2D für Zoom + Pan
     // Initialisierung in der Mitte des Bildschirms
@@ -1188,10 +1217,11 @@ canvas {
       const radius = minDim * (triangleSize / 100);
 
       const symbolCount = parseInt(document.getElementById('symbolCountInput').value) || 0;
-      if (symbolCount <= 0 || triangleSize <= 0) {
+      if (symbolCount <= 0) {
         context.restore();
         return;
       }
+      // Tr.(%)=0 ist erlaubt (Symbole überlagern in Mitte). Negative Werte → Symbole auf Gegenseite.
 
       const vertices = [];
       const angleStep = 360 / symbolCount;
@@ -1234,6 +1264,108 @@ canvas {
         }
       }
 
+      // Geschwindigkeits-Anzeige über Symbol: roh ≡ visuell-äquivalent (mod 360)
+      // 720°/frame ≡ 0°/frame (volle Umdrehung pro Frame = visuell still)
+      // 370°/frame ≡ 10°/frame (sieht aus wie 10°/frame Rotation)
+      // Nur für Live-Animation, nicht im Foto/GIF-Export
+      if (!forExport && targetCanvas === canvas && speedDisplayVisible) {
+        const speedFontSize = Math.max(minDim * 0.025, labelFontSize * 0.12);
+        const yPos = -radius - speedFontSize * 4 - speedDisplayOffset;
+        const speedRawInt = Math.round(rotationSpeed);
+
+        context.save();
+        context.font = `${speedFontSize}px monospace`;
+        context.fillStyle = textColor;
+        context.textBaseline = "alphabetic";
+
+        const charW = context.measureText("0").width;
+        const widthSlashFrame = context.measureText("°/frame").width;
+        // gap = 1.5*charW, sodass das erste ≡ exakt das gleiche visuelle Spacing hat
+        // wie das zweite (das innerhalb von wrapped " ≡ " mit echten Space-Chars steht).
+        const gap = 1.5 * charW;
+
+        // "speed: roh°/frame" — rechts-anchored bei x=-gap, wächst nach links
+        const speedRawText = String(speedRawInt).padStart(3, ' ');
+        context.textAlign = "right";
+        context.fillText(`speed: ${speedRawText}°/frame`, -gap, yPos);
+
+        // Center und Left-Edge der sichtbaren raw-Ziffern (ohne Leading-Spaces)
+        const trimmedRaw = speedRawText.trimStart();
+        const widthTrimmedRaw = context.measureText(trimmedRaw).width;
+        const rawNumEndX = -gap - widthSlashFrame;
+        const rawNumStartX = rawNumEndX - widthTrimmedRaw;
+        const rawNumCenterX = rawNumEndX - widthTrimmedRaw / 2;
+
+        // Wrapped-Sektion ab roh >= 360°
+        let wrapped360CenterX = null;
+        let final0CenterX = null;
+
+        if (Math.abs(speedRawInt) >= 360) {
+          let wrappedText;
+          if (speedRawInt === 360) {
+            wrappedText = `  0°/frame`;
+            final0CenterX = gap + context.measureText("  ").width + charW / 2;
+          } else if (speedRawInt > 0 && speedRawInt % 360 === 0) {
+            wrappedText = `360°/frame ≡ 0°/frame`;
+            wrapped360CenterX = gap + context.measureText("360").width / 2;
+            final0CenterX = gap + context.measureText("360°/frame ≡ ").width + charW / 2;
+          } else {
+            let speedWrappedInt = Math.round(((rotationSpeed % 360) + 360) % 360);
+            const wrappedPadded = String(speedWrappedInt).padStart(3, ' ');
+            wrappedText = `${wrappedPadded}°/frame`;
+            if (speedWrappedInt === 360) {
+              wrappedText += ` ≡ 0°/frame`;
+              wrapped360CenterX = gap + context.measureText("360").width / 2;
+              final0CenterX = gap + context.measureText("360°/frame ≡ ").width + charW / 2;
+            }
+          }
+
+          context.textAlign = "center";
+          context.fillText("≡", 0, yPos);
+
+          context.textAlign = "left";
+          context.fillText(wrappedText, gap, yPos);
+        }
+
+        // Annotations: "(N turns/frame)" unter jeweiligem Speed-Wert.
+        // Char 1 (= Ziffer N oder erste Ziffer von N) zentriert unter Center des Speed-Wertes.
+        function renderAnno(text, centerX) {
+          const annoFontSize = speedFontSize * 0.7;
+          const annoCharW = 0.7 * charW;
+          const annoLeftX = centerX - 1.5 * annoCharW;
+          context.font = `${annoFontSize}px monospace`;
+          context.textAlign = "left";
+          context.fillText(text, annoLeftX, yPos + speedFontSize * 1.0);
+        }
+
+        // Raw NNN: nur bei Vielfachem von 360 (>0).
+        // Center der N-Ziffern exakt unter Center der raw-Ziffern.
+        if (speedRawInt > 0 && speedRawInt % 360 === 0) {
+          const N = speedRawInt / 360;
+          const word = N === 1 ? 'turn' : 'turns';
+          const text = `(${N} ${word}/frame)`;
+          const digitCount = String(N).length;
+          const annoFontSize = speedFontSize * 0.7;
+          const annoCharW = 0.7 * charW;
+          // Center of N block = startX + (1 + digitCount/2) * annoCharW
+          // ("(" at index 0, N digits at indexes 1..digitCount)
+          const startX = rawNumCenterX - (1 + digitCount / 2) * annoCharW;
+          context.font = `${annoFontSize}px monospace`;
+          context.textAlign = "left";
+          context.fillText(text, startX, yPos + speedFontSize * 1.0);
+        }
+        // Wrapped "360": (1 turn/frame)
+        if (wrapped360CenterX !== null) {
+          renderAnno("(1 turn/frame)", wrapped360CenterX);
+        }
+        // Final "0": (0 turns/frame)
+        if (final0CenterX !== null) {
+          renderAnno("(0 turns/frame)", final0CenterX);
+        }
+
+        context.restore();
+      }
+
       // Zeichne Äquivalenzsymbole an den Kanten nur wenn equivSize > 0
       if (equivSize > 0 && equivLength > 0 && symbolCount > 1) {
         for (let i = 0; i < symbolCount; i++) {
@@ -1247,6 +1379,7 @@ canvas {
           context.translate(midX, midY);
           context.rotate(sideAngle);
           context.font = `bold ${equivFontSize}px Verdana`;
+          context.fillStyle = textColor;
           context.textAlign = "center";
           context.textBaseline = "middle";
 
@@ -1255,7 +1388,9 @@ canvas {
           
           if (duplicateEnabled) {
             const originalText = currentEquiv;
-            const desiredSpacing = equivFontSize * 1.2;
+            const duplicateSpacingFactor = parseFloat(document.getElementById('duplicateSpacing').value);
+            const spacingFactor = isNaN(duplicateSpacingFactor) ? 1.2 : duplicateSpacingFactor;
+            const desiredSpacing = equivFontSize * spacingFactor;
             const offset = desiredSpacing / (equivLength / 100);
             context.scale(1, equivLength / 100);
             context.fillText(originalText, 0, -offset);
@@ -1347,6 +1482,15 @@ canvas {
     let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
     let autoOffset = 0;
 
+    // Time-Warp Modell: fps verändert nicht die Bewegung pro Frame, sondern wie schnell
+    // der Cycle progressiert. speed-Wert pro Frame ist konstant, fps streckt/staucht Cycle-Zeit.
+    // → Gleicher speed-Wert ergibt immer gleiches Muster. Alias-Punkt bei speed=360 immer.
+    let fps = parseFloat(document.getElementById('fps').value) || 60;
+    let detectedHz = 60;
+    let userChangedFps = false;
+    let dtSamples = [];
+    let detectionDone = false;
+
 
 
     // Event-Listener für die Steuerelemente
@@ -1367,29 +1511,50 @@ canvas {
       resizeCanvasToFitContent();
     });
 
+    function updateFpsHint() {
+      const hint = document.getElementById('fpsHint');
+      if (!hint) return;
+      hint.textContent = (detectionDone && fps > detectedHz) ? '(simuliert)' : '';
+    }
+
+    document.getElementById('speedDisplayCheckbox').addEventListener('change', e => {
+      speedDisplayVisible = e.target.checked;
+    });
+
+    // Abst-Input für Dupl nur anzeigen wenn Dupl aktiv
+    function updateDuplicateSpacingVisibility() {
+      const enabled = document.getElementById('duplicateIdentisch').checked;
+      document.getElementById('duplicateSpacingLabel').style.display = enabled ? '' : 'none';
+    }
+    document.getElementById('duplicateIdentisch').addEventListener('change', updateDuplicateSpacingVisibility);
+    updateDuplicateSpacingVisibility();
+
+    // Speed-Display Vertikal-Offset, persistiert via localStorage
+    const SPEED_OFFSET_KEY = '0nefinity-symbol-speedOffset';
+    const storedOffset = localStorage.getItem(SPEED_OFFSET_KEY);
+    if (storedOffset !== null && !isNaN(parseFloat(storedOffset))) {
+      document.getElementById('speedDisplayOffset').value = storedOffset;
+    }
+    let speedDisplayOffset = parseFloat(document.getElementById('speedDisplayOffset').value) || 0;
+    document.getElementById('speedDisplayOffset').addEventListener('input', () => {
+      speedDisplayOffset = parseFloat(document.getElementById('speedDisplayOffset').value) || 0;
+      try { localStorage.setItem(SPEED_OFFSET_KEY, String(speedDisplayOffset)); } catch (e) {}
+    });
+
+    document.getElementById('fps').addEventListener('input', () => {
+      fps = parseFloat(document.getElementById('fps').value) || 0;
+      userChangedFps = true;
+      const newFactor = detectedHz > 0 ? fps / detectedHz : 0;
+      updateSnapshotFactor(newFactor);
+      updateFpsHint();
+    });
+
     document.getElementById('rotationSpeed').addEventListener('input', () => {
       manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
       if (!autoSpeedEnabled) {
         rotationSpeed = manualSpeed;
       } else {
-        let currentCycleSpeed;
-        if (isInStartPhase) {
-          const sp = AUTO_SPEED_CONFIG.START_PHASE;
-          if (autoSpeedTimer < sp.rampDuration) {
-            const t = autoSpeedTimer / sp.rampDuration;
-            currentCycleSpeed = lerp(sp.startSpeed, sp.rampTo, (1 - Math.cos(Math.PI * t)) / 2);
-          } else {
-            // Hold-Phase der Startphase
-            currentCycleSpeed = sp.rampTo;
-          }
-        } else if (autoSpeedTimer < currentStep.rampDuration) {
-          // Ramp der Hauptsequenz (cosine-eased)
-          const t = autoSpeedTimer / currentStep.rampDuration;
-          currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, (1 - Math.cos(Math.PI * t)) / 2);
-        } else {
-          // Hold der Hauptsequenz
-          currentCycleSpeed = autoSpeedTarget;
-        }
+        const currentCycleSpeed = computeAutoSpeed(getWarpedElapsed());
         autoOffset = manualSpeed - currentCycleSpeed;
         rotationSpeed = currentCycleSpeed + autoOffset;
       }
@@ -1400,34 +1565,124 @@ canvas {
       if (autoSpeedEnabled) {
         manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
         autoOffset = 0;
-
-        // Starte mit der Startphase
-        isInStartPhase = true;
-        stepIndex = 0;
-        currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
-        autoSpeedBase = manualSpeed;
-        autoSpeedTarget = autoSpeedBase + currentStep.increment;
-        autoSpeedTimer = 0;
-        cycleDuration = AUTO_SPEED_CONFIG.START_PHASE.rampDuration + AUTO_SPEED_CONFIG.START_PHASE.holdDuration;
-
+        resetSnapshot();
         rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.startSpeed + autoOffset;
         document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
       }
     });
 
-    // Geschwindigkeitsparameter für automatischen Modus
-    let isInStartPhase = true;
-    let stepIndex = 0;
-    let currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
+    // Time-Warp Snapshot: { realTimestamp ms, warpedSeconds, factor }
+    // warped elapsed = warpedSeconds + (Date.now() - realTimestamp)/1000 * factor
+    // factor = fps / detectedHz. Bei fps-Wechsel: snapshot updated für Continuity (kein Sprung).
+    // Persistiert in localStorage → übersteht Mobile-Browser Tab-Kill, kontinuiert echte Zeit.
+    // User-Reload (F5/Ctrl+R) → Reset. Browser-Auto-Restore → continue.
+    const SNAPSHOT_KEY = '0nefinity-symbol-snapshot';
+    const navEntry = performance.getEntriesByType('navigation')[0];
+    const isUserReload = navEntry && navEntry.type === 'reload';
+    let snapshot;
+
+    function loadSnapshot() {
+      try {
+        const raw = localStorage.getItem(SNAPSHOT_KEY);
+        if (!raw) return null;
+        const p = JSON.parse(raw);
+        if (typeof p.realTimestamp === 'number' && typeof p.warpedSeconds === 'number' && typeof p.factor === 'number') {
+          return p;
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function saveSnapshot() {
+      try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot)); } catch (e) {}
+    }
+
+    function getWarpedElapsed() {
+      return snapshot.warpedSeconds + (Date.now() - snapshot.realTimestamp) / 1000 * snapshot.factor;
+    }
+
+    function updateSnapshotFactor(newFactor) {
+      // Continuity: snapshote den aktuellen warped-Stand mit ALTEM Faktor, dann switch zu neu.
+      snapshot.warpedSeconds = getWarpedElapsed();
+      snapshot.realTimestamp = Date.now();
+      snapshot.factor = newFactor;
+      saveSnapshot();
+    }
+
+    function resetSnapshot() {
+      snapshot = {
+        realTimestamp: Date.now(),
+        warpedSeconds: 0,
+        factor: snapshot ? snapshot.factor : 1
+      };
+      saveSnapshot();
+    }
+
+    if (!isUserReload) {
+      const stored = loadSnapshot();
+      snapshot = stored || { realTimestamp: Date.now(), warpedSeconds: 0, factor: 1 };
+      if (!stored) saveSnapshot();
+    } else {
+      snapshot = { realTimestamp: Date.now(), warpedSeconds: 0, factor: 1 };
+      saveSnapshot();
+    }
 
     // Aufnahme-Steuerung (global innerhalb createGraphic)
-    let currentRecording = null; // { recorder, track, infinite, targetFrameCount, framesCaptured, stopRequested, cleanup }
+    let currentRecording = null;
 
-    let autoSpeedBase = manualSpeed;
-    let autoSpeedTarget = autoSpeedBase + currentStep.increment;
-    let autoSpeedTimer = 0;
-    // Wir prüfen, ob wir uns in der ursprünglichen Startphase befinden (nur beim ersten Laden)
-    isInStartPhase = (zoomState.offsetX === window.innerWidth / 2 && zoomState.offsetY === getResponsiveInitialOffsetY() && zoomState.scale === 1);
+    function computeAutoSpeed(elapsed) {
+      const sp = AUTO_SPEED_CONFIG.START_PHASE;
+      const steps = AUTO_SPEED_CONFIG.SPEED_STEPS;
+
+      if (elapsed < sp.rampDuration) {
+        const t = elapsed / sp.rampDuration;
+        return lerp(sp.startSpeed, sp.rampTo, (1 - Math.cos(Math.PI * t)) / 2);
+      }
+      const startPhaseEnd = sp.rampDuration + sp.holdDuration;
+      if (elapsed < startPhaseEnd) {
+        return sp.rampTo;
+      }
+
+      const T = elapsed - startPhaseEnd;
+      const cycleDur = steps.reduce((a, s) => a + s.rampDuration + s.holdDuration, 0);
+      const incPerCycle = steps.reduce((a, s) => a + s.increment, 0);
+      const cyclesCompleted = Math.floor(T / cycleDur);
+      const tInCycle = T - cyclesCompleted * cycleDur;
+      let stepBase = sp.rampTo + cyclesCompleted * incPerCycle;
+      let acc = 0;
+      for (const step of steps) {
+        const stepEnd = acc + step.rampDuration + step.holdDuration;
+        if (tInCycle < stepEnd) {
+          const tInStep = tInCycle - acc;
+          if (tInStep < step.rampDuration) {
+            const t = tInStep / step.rampDuration;
+            return lerp(stepBase, stepBase + step.increment, (1 - Math.cos(Math.PI * t)) / 2);
+          }
+          return stepBase + step.increment;
+        }
+        acc = stepEnd;
+        stepBase += step.increment;
+      }
+      return stepBase;
+    }
+
+    function computeIsInHoldPhase(elapsed) {
+      const sp = AUTO_SPEED_CONFIG.START_PHASE;
+      if (elapsed < sp.rampDuration) return false;
+      const startPhaseEnd = sp.rampDuration + sp.holdDuration;
+      if (elapsed < startPhaseEnd) return true;
+      const steps = AUTO_SPEED_CONFIG.SPEED_STEPS;
+      const cycleDur = steps.reduce((a, s) => a + s.rampDuration + s.holdDuration, 0);
+      const T = elapsed - startPhaseEnd;
+      const tInCycle = T - Math.floor(T / cycleDur) * cycleDur;
+      let acc = 0;
+      for (const step of steps) {
+        if (tInCycle < acc + step.rampDuration) return false;
+        if (tInCycle < acc + step.rampDuration + step.holdDuration) return true;
+        acc += step.rampDuration + step.holdDuration;
+      }
+      return false;
+    }
 
 
 
@@ -1439,9 +1694,20 @@ canvas {
 
 
     // Animationsparameter
+    // angle: float, gewrappt 0..360 — Float-Präzision egal wie schnell rotiert wird
     let angle = 0;
     let lastTimestamp = null;
     const ctx = canvas.getContext('2d');
+
+    // Tab-Visibility: bei Hidden snapshot speichern (vor evtl. Tab-Kill durch Browser).
+    // Bei Return Frame-Timestamp resetten, damit Winkel keinen Riesensprung macht.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        saveSnapshot();
+      } else {
+        lastTimestamp = null;
+      }
+    });
 
     let lastWindowWidth = window.innerWidth;
 
@@ -1461,13 +1727,18 @@ canvas {
       symbolContainer.style.height = getSymbolZoneHeight() + 'px';
 
       // Canvas und InteractionLayer sind fixed und Vollbild
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      // DPR-aware: Pixel-Buffer = CSS × dpr, Transform = dpr-scale → scharf auf Mobile
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
       canvas.style.position = 'fixed';
       canvas.style.top = '0';
       canvas.style.left = '0';
       canvas.style.zIndex = '50';
       canvas.style.pointerEvents = 'none';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       interactionLayer.style.position = 'fixed';
       interactionLayer.style.top = '0';
@@ -1503,74 +1774,53 @@ canvas {
       const dt = (timestamp - lastTimestamp) / 1000;
       lastTimestamp = timestamp;
 
-      // Echtzeit-Prüfung der Viewport-Größe
-      if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+      // Screen-Hz auf den ersten ~30 stabilen Frames detektieren.
+      // Default-fps wird gesetzt sobald detected, sofern User nicht selbst getippt hat.
+      if (!detectionDone && dt > 0.005 && dt < 0.05) {
+        dtSamples.push(dt);
+        if (dtSamples.length >= 30) {
+          dtSamples.sort((a, b) => a - b);
+          const median = dtSamples[15];
+          detectedHz = Math.max(1, Math.round(1 / median));
+          if (!userChangedFps) {
+            fps = detectedHz;
+            document.getElementById('fps').value = String(detectedHz);
+          }
+          updateSnapshotFactor(fps / detectedHz);
+          detectionDone = true;
+          updateFpsHint();
+        }
+      }
+
+      // Echtzeit-Prüfung der Viewport-Größe (mit DPR-aware Pixel-Buffer)
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== window.innerWidth * dpr || canvas.height !== window.innerHeight * dpr) {
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
       if (autoSpeedEnabled) {
-        autoSpeedTimer += dt;
-        let currentCycleSpeed;
+        const elapsed = getWarpedElapsed();
+        rotationSpeed = computeAutoSpeed(elapsed) + autoOffset;
+        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
 
-        if (isInStartPhase) {
-          // Startphase: Ramp-down von startSpeed auf 0, dann Hold
-          const sp = AUTO_SPEED_CONFIG.START_PHASE;
-          if (autoSpeedTimer < sp.rampDuration) {
-            const t = autoSpeedTimer / sp.rampDuration;
-            currentCycleSpeed = lerp(sp.startSpeed, sp.rampTo, (1 - Math.cos(Math.PI * t)) / 2);
-          } else if (autoSpeedTimer < sp.rampDuration + sp.holdDuration) {
-            currentCycleSpeed = sp.rampTo;
-          } else {
-            // Startphase beendet - zur Hauptsequenz wechseln
-            isInStartPhase = false;
-            autoSpeedTimer = 0;
-            autoSpeedBase = sp.rampTo;
-            autoSpeedTarget = autoSpeedBase + currentStep.increment;
-            cycleDuration = currentStep.rampDuration + currentStep.holdDuration;
-            currentCycleSpeed = autoSpeedBase;
-          }
-        } else {
-          // Hauptsequenz
-          if (autoSpeedTimer < currentStep.rampDuration) {
-            // Einfache Ramp: lerp + ease (sanfter Start, sanftes Ende)
-            const t = autoSpeedTimer / currentStep.rampDuration;
-            currentCycleSpeed = lerp(autoSpeedBase, autoSpeedTarget, (1 - Math.cos(Math.PI * t)) / 2);
-          } else if (autoSpeedTimer < cycleDuration) {
-            // Hold Phase - konstante Geschwindigkeit
-            currentCycleSpeed = autoSpeedTarget;
-
-            // Wenn Aufnahme läuft: Frame zählen/triggern
-            if (currentRecording && !currentRecording.stopRequested) {
-              currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-              if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-                try { currentRecording.recorder.stop(); } catch (e) { }
-                if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch (e) { } }
-                currentRecording.stopRequested = true;
-              }
-            }
-
-          } else {
-            // Zyklus abgeschlossen - nächsten Step starten
-            autoSpeedTimer -= cycleDuration;
-            autoSpeedBase = autoSpeedTarget;
-
-            // Nächsten Step auswählen
-            stepIndex = (stepIndex + 1) % AUTO_SPEED_CONFIG.SPEED_STEPS.length;
-            currentStep = AUTO_SPEED_CONFIG.SPEED_STEPS[stepIndex];
-
-            // Neue Zielgeschwindigkeit und Zyklusdauer berechnen
-            autoSpeedTarget = autoSpeedBase + currentStep.increment;
-            cycleDuration = currentStep.rampDuration + currentStep.holdDuration;
-
-            currentCycleSpeed = autoSpeedBase;
+        // Recording: nur in Hold-Phase Frames zählen (konstante Speed = sauber für GIF)
+        if (computeIsInHoldPhase(elapsed) && currentRecording && !currentRecording.stopRequested) {
+          currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
+          if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
+            try { currentRecording.recorder.stop(); } catch (e) { }
+            if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch (e) { } }
+            currentRecording.stopRequested = true;
           }
         }
-
-        rotationSpeed = currentCycleSpeed + autoOffset;
-        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
       }
-      angle += rotationSpeed;
+      // Time-Warp Modell: Bewegung pro echtem Frame = rotationSpeed direkt.
+      // fps wirkt nicht hier, sondern auf Cycle-Progressionsgeschwindigkeit (via getWarpedElapsed).
+      // Pattern bei gleichem speed-Wert immer identisch. Alias bei speed=360 immer.
+      angle = (angle + rotationSpeed) % 360;
 
       // Zeichne das Dreieck auf den Hauptcanvas
       drawTriangleOnCanvas(ctx, canvas);
@@ -1601,7 +1851,8 @@ canvas {
         const baseRadius = (triangleRadius + labelOverhang) * zoomState.scale;
 
         interactionHitRadius = Math.max(48, baseRadius); // 48px Minimum (Touch-Ziel)
-        interactionLayerVisible = triSize > 0;
+        const symbolCountForHit = parseInt(document.getElementById('symbolCountInput').value) || 0;
+        interactionLayerVisible = symbolCountForHit > 0;
 
         // Debug: Hitbox-Kreis zeichnen
         if (document.getElementById('debugHitbox').checked) {
