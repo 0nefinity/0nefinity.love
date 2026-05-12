@@ -1,0 +1,44 @@
+FROM php:8.3-apache
+
+# Apache-Module aktivieren
+RUN a2enmod rewrite include deflate headers
+
+# AllowOverride All für DocumentRoot, damit .htaccess greift
+RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+
+# ServerName unterdrücken (kommt über den Host-Header)
+RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
+
+# Hinter nginx-Reverse-Proxy: X-Forwarded-Proto als HTTPS erkennen
+# und echte Client-IP aus X-Forwarded-For übernehmen
+RUN a2enmod remoteip && \
+    printf '<IfModule mod_remoteip.c>\n  RemoteIPHeader X-Forwarded-For\n</IfModule>\n' \
+      >> /etc/apache2/apache2.conf
+
+# Apache das HTTPS-Schema beibringen, wenn hinter Proxy
+# Methode: mod_setenvif + mod_rewrite arbeiten zusammen
+COPY reverse-proxy.conf /etc/apache2/conf-enabled/reverse-proxy.conf
+
+# PHP mbstring (weird-text-viewer.php) + sqlite3 CLI für entrypoint + curl + openssl
+# pdo_sqlite + curl Extensions für /enternity auth
+RUN apt-get update && apt-get install -y \
+      libonig-dev \
+      libcurl4-openssl-dev \
+      libsqlite3-dev \
+      sqlite3 \
+      openssl \
+    && docker-php-ext-install mbstring pdo pdo_sqlite curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Baked-in .auth payload (Named Volume mountet leer und überdeckt die Repo-.auth/-Files,
+# also kopieren wir alles ins Image und der entrypoint seeded das Volume).
+RUN mkdir -p /usr/local/share/0nefinity/auth
+COPY 0nefinity.love/.auth/ /usr/local/share/0nefinity/auth/
+
+# Entrypoint
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+EXPOSE 80
