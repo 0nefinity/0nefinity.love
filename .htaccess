@@ -18,7 +18,6 @@ RewriteRule ^ https://www.0nefinity.love%{REQUEST_URI} [R=301,L]
 # Auth routes (pretty URLs) — MUST come before color.php catch-all
 RewriteRule ^enternity/?$ /enternity.php [L,QSA]
 RewriteRule ^admin/?$ /admin/index.php [L,QSA]
-RewriteRule ^admin/(.+)$ /admin/$1 [L,QSA]
 RewriteRule ^api/auth/login/?$ /api/auth/login.php [L,QSA]
 RewriteRule ^api/auth/logout/?$ /api/auth/logout.php [L,QSA]
 RewriteRule ^api/auth/me/?$ /api/auth/me.php [L,QSA]
