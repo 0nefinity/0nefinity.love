@@ -1,0 +1,24 @@
+services:
+  live:
+    build: .
+    container_name: 0nefinity-live
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18:80"
+    volumes:
+      - ./0nefinity.love:/var/www/html:ro
+      - 0nefinity-auth-live:/var/www/html/.auth
+
+  dev:
+    build: .
+    container_name: 0nefinity-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:129:80"
+    volumes:
+      - ./dev.0nefinity.love/0nefinity-dev:/var/www/html
+      - 0nefinity-auth-dev:/var/www/html/.auth
+
+volumes:
+  0nefinity-auth-live:
+  0nefinity-auth-dev:
