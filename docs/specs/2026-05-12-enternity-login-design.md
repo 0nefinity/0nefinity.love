@@ -1,7 +1,7 @@
 # Design-Spec: /enternity Login + /admin Dashboard
 
 **Datum:** 2026-05-12
-**Status:** Draft — Phase 1 (single user) als nächstes umsetzbar
+**Status:** Decisions finalisiert — Phase 1 implementierbar
 **Scope:** Authentifizierung für `0nefinity.love`, schützt `/admin`-Pfad. Restliche Site bleibt öffentlich.
 
 ---
@@ -14,20 +14,25 @@ Tim braucht einen geschützten `/admin`-Bereich auf `0nefinity.love` für Site-A
 ### Phasen-Roadmap
 
 **Phase 1 (jetzt):**
-- Single User: nur Tim als Admin
+- Single User: Username **fest `0nefinity`** (siehe Decision 1)
 - `/enternity` Login-Form, `/admin` Dashboard-Stub
-- PW initial via CLI-Script gesetzt
-- Keine Email, kein Passwort-Reset
+- PW initial via **Setup-Token-Flow** (siehe Decision 2): Container generiert beim ersten Start ein Token in `/app/.auth/setup-token`. Tim liest es per `docker exec`, gibt es auf `/enternity` statt PW ein, legt dann das echte PW fest. Token wird danach automatisch gelöscht. Setup-Modus aktiv solange `users`-Tabelle leer **UND** `setup-token`-File existiert.
+- Email optional (Decision 4)
+- Kein Passwort-Reset (nur CLI, Decision 5)
 - Logout funktioniert
 - Rate-Limiting gegen Brute-Force
+- HaveIBeenPwned-Check beim PW-Setzen (Decision: 2026 PW-Standards)
+- CSP-Header im **report-only**-Modus (Decision 6)
 
 **Phase 2 (später, nicht Teil dieser Spec):**
-- Mehrere User: Registrierung via Invite-Link oder offen
-- Email-Adresse pro User
+- Mehrere User: Registrierung via **Invite-Link** (Tim generiert Tokens via CLI, Decision 3)
+- Email-Adresse pro User **pflicht** (für Passkey-Recovery, Decision 4)
 - Passwort-Reset via Email
 - Rollen (admin vs. user)
 - Umami-Analytics ins Admin eingebettet
-- Optional: 2FA (TOTP)
+- **WebAuthn / Passkeys** als alternativer Login-Pfad (passwordless, biometrisch). Lib-Empfehlung: `web-auth/webauthn-lib` (PHP)
+- Optional: 2FA (TOTP) als Fallback wenn kein Passkey
+- CSP-Header zu **enforce** schärfen
 
 ### Nicht-Ziele
 - Keine SSO / OAuth-Provider
@@ -78,15 +83,45 @@ Tim braucht einen geschützten `/admin`-Bereich auf `0nefinity.love` für Site-A
 | Backend-Sprache | PHP 8.3 | Schon im Container, kein neuer Build |
 | Web-Server | Apache 2.4 (vorhanden) | Schon konfiguriert |
 | DB | SQLite (PDO) | Datei `/var/www/html/.auth/auth.sqlite`, kein DB-Server, reicht für <10k Usern |
-| Password-Hashing | Argon2id (`password_hash($pw, PASSWORD_ARGON2ID)`) | Argon2id ist 2026er State-of-the-Art, gewinnt Password-Hashing-Competition (2015), Memory-hard → ASIC/GPU-resistent. Bcrypt wäre auch ok, aber Argon2id ist seit PHP 7.3 nativ und bleibt erste Wahl. |
-| Session-Mechanismus | PHP-Session-Cookie (`PHPSESSID`) | HttpOnly+Secure+SameSite=Strict. Server-side Session-Data in `/var/lib/php/sessions` oder eigenem Pfad. **Kein JWT** — JWT lohnt sich erst bei verteilten Services. |
-| Rate-Limiting | Apache `mod_evasive` ODER selbst in PHP via SQLite-Tabelle `login_attempts(ip, ts)` | Eigenbau ist 30 Zeilen, voll kontrollierbar |
-| CSRF | SameSite=Strict + Double-Submit-Token im Form | SameSite=Strict allein reicht für Phase 1; Token als Defense-in-depth |
+| Password-Hashing | **Argon2id mit expliziten OWASP-2024+-Params** (siehe unten) | OWASP-Empfehlung 2024+, memory-hard → GPU/ASIC-resistent |
+| Password-Policy | **NIST 800-63B-3:** min 12 Zeichen, keine erzwungene Komplexität, HIBP-Check via k-anonymity | Länge schlägt Komplexität; Komplexitätsregeln sind nachweislich schädlich (NIST). HIBP verhindert bekannt-kompromittierte PWs. |
+| Session-Mechanismus | PHP-Session-Cookie (`PHPSESSID`) | HttpOnly+Secure+SameSite=Strict, **Lifetime 14 Tage** (vorher: 30 Tage idle). **Kein JWT** — lohnt sich erst bei verteilten Services. |
+| Rate-Limiting | Selbstgebaut in PHP via SQLite-Tabelle `login_attempts(ip, ts)` | **5 Fails/IP/min, exponential backoff bei wiederholten Fails** (1s, 2s, 4s, 8s …) |
+| CSRF | SameSite=Strict + **Double-Submit-Token** bei allen POST-Endpoints | Defense-in-depth |
+
+### Argon2id-Parameter (explizit setzen, OWASP 2024+)
+
+PHP-Default ist konservativ — wir setzen explizit:
+
+```php
+password_hash($pw, PASSWORD_ARGON2ID, [
+    'memory_cost' => 65536,   // 64 MiB
+    'time_cost'   => 4,
+    'threads'     => 1,
+]);
+```
+
+Begründung:
+- `memory_cost=65536` (64 MiB) → Memory-Hardness, ASIC-resistant
+- `time_cost=4` → vier Iterationen, ~150-300ms auf modernem Server
+- `threads=1` → deterministisch, kein Multi-Threading-Overhead bei Single-User-System
+
+`password_verify()` macht constant-time-Compare intern (timing-attack-resistent).
+
+### HIBP-Check (HaveIBeenPwned, k-anonymity)
+
+Beim Setzen eines neuen Passworts (Setup-Flow oder CLI):
+1. SHA1 vom PW berechnen, in HEX-uppercase
+2. Erste **5 Zeichen** an `https://api.pwnedpasswords.com/range/<5hex>` schicken
+3. Response ist Liste von Suffix-Hashes mit Treffer-Counts
+4. Lokal prüfen ob unser Hash-Suffix in Liste → ablehnen wenn ja
+
+**Wichtig:** Das echte PW (auch der volle Hash) verlässt **nie** den Server. Nur die ersten 5 Hex-Zeichen.
 
 ### Warum Argon2id statt bcrypt (für Tim)
 - Bcrypt (1999) ist CPU-hart aber leicht parallelisierbar auf GPUs/ASICs
 - Argon2id (2015) ist zusätzlich **Memory-hart** → Angreifer braucht viel RAM pro Versuch, das verteuert Brute-Force massiv
-- Beide sind sicher. Argon2id ist die moderne Empfehlung (OWASP 2023+)
+- Beide sind sicher. Argon2id ist die moderne Empfehlung (OWASP 2024+)
 - PHP 7.3+ liefert Argon2id native, ohne Extra-Lib
 
 ---
@@ -119,6 +154,17 @@ CREATE INDEX idx_attempts_ip_ts ON login_attempts(ip, ts);
 CREATE TABLE sessions (
   -- optional, nur falls eigene Session-Verwaltung gewünscht
   -- Phase 1 nutzen wir native PHP-Sessions, Tabelle nicht nötig
+);
+
+-- Phase 2 Vorbereitung (Schema ok in Phase 1 anzulegen, aber nicht benutzt):
+CREATE TABLE invite_tokens (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash  TEXT UNIQUE NOT NULL,      -- SHA256 vom Token, niemals Klartext speichern
+  email       TEXT,                       -- optional pre-fill
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL,           -- typisch 7 Tage
+  used_at     INTEGER,                    -- NULL = noch gültig
+  used_by_uid INTEGER REFERENCES users(id)
 );
 ```
 
@@ -237,19 +283,23 @@ Alle Endpoints im PHP-Container, geroutet via `.htaccess`-Rewrite oder als direk
 |---|---|---|
 | HTTPS only | ✅ | nginx + Certbot, schon aktiv |
 | HSTS | ✅ | Schon gesetzt (`max-age=63072000`) |
-| Cookie HttpOnly | ✅ | `session.cookie_httponly = 1` (php.ini oder `ini_set` vor `session_start`) |
+| Cookie HttpOnly | ✅ | `session.cookie_httponly = 1` |
 | Cookie Secure | ✅ | `session.cookie_secure = 1` (HTTPS-only) |
 | Cookie SameSite=Strict | ✅ | `session.cookie_samesite = 'Strict'` |
+| Cookie Lifetime 14 Tage | ✅ | `session.gc_maxlifetime = 1209600`, Cookie `expires = now+14d` |
 | Session-ID-Regenerate | ✅ | `session_regenerate_id(true)` nach Login |
-| CSRF-Token | ✅ | Double-Submit: Token in Session + Hidden-Input, Vergleich bei POST |
-| Argon2id PW-Hash | ✅ | `password_hash($pw, PASSWORD_ARGON2ID)` |
-| Constant-Time-Compare | ✅ | `password_verify()` macht das intern; bei User-Not-Found ein Dummy-Hash verifizieren (gegen Timing-Leak "user existiert?") |
-| Rate-Limit Login | ✅ | 5 fails/IP/min → 429; nach 20 fails/IP/h → 1h Sperre |
-| Generic Error-Message | ✅ | "Falsche Logindaten" — nicht verraten ob User existiert |
-| `.auth/` nicht webserv. | ✅ | `.htaccess` in `.auth/` mit `Require all denied` + `RewriteRule . - [F,L]` global für `/.auth/` |
-| CSP-Header | ⚠️ optional Phase 1 | nginx `add_header Content-Security-Policy "default-src 'self'; …"` — vorsicht inline-scripts auf 0nefinity (gibt's viele) |
-| 2FA | ❌ Phase 2 | TOTP via `paragonie/otp` o.ä. |
-| Audit-Log | ⚠️ teilweise | `login_attempts`-Tabelle loggt success/fail; reicht Phase 1 |
+| CSRF-Token (Double-Submit) | ✅ | Token in Session + Hidden-Input, Vergleich bei jedem POST |
+| Argon2id PW-Hash (OWASP 2024+) | ✅ | `password_hash` mit `memory_cost=65536, time_cost=4, threads=1` |
+| Min PW-Länge 12 Zeichen | ✅ | NIST 800-63B-3, Server-side check |
+| Keine erzwungene PW-Komplexität | ✅ | NIST: Komplexitätsregeln sind nachweislich schädlich |
+| HIBP-Check via k-anonymity | ✅ | SHA1-Prefix-Lookup auf `api.pwnedpasswords.com/range/<5hex>` beim Setzen |
+| Constant-Time-Compare | ✅ | `password_verify()` intern; bei User-Not-Found Dummy-Hash verifizieren |
+| Rate-Limit Login | ✅ | 5 Fails/IP/min → 429; exponential backoff (1s, 2s, 4s, 8s …) bei wiederholten Fails |
+| Generic Error-Message | ✅ | "Falsche Logindaten" — verraten nicht ob User existiert |
+| `.auth/` nicht webserv. | ✅ | `.htaccess` `Require all denied` + globale `RewriteRule ^\.auth(/|$) - [F,L]` |
+| CSP-Header report-only | ✅ Decision 6 | nginx `add_header Content-Security-Policy-Report-Only "…"` — loggt Violations, blockt nicht |
+| 2FA | ❌ Phase 2 | Passkeys (WebAuthn) bevorzugt; TOTP als Fallback |
+| Audit-Log | ✅ Phase 1 (basic) | `login_attempts`-Tabelle loggt success/fail mit IP+ts |
 
 ### Headers in nginx ergänzen (Phase 1)
 ```nginx
@@ -258,8 +308,13 @@ add_header X-Frame-Options "SAMEORIGIN" always;           # schon da
 add_header X-Content-Type-Options "nosniff" always;       # schon da
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;  # schon da
 add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
-# CSP optional — wegen vieler inline-scripts auf 0nefinity-Seiten erstmal weglassen oder report-only
+
+# CSP report-only (Phase 1) — Violations werden geloggt, nicht geblockt.
+# Phase 2: zu enforce schärfen sobald inline-scripts inventarisiert + auf nonce/hash umgestellt sind.
+add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; report-uri /api/csp-report" always;
 ```
+
+**Hinweis Phase 2:** CSP-Enforce erfordert dass alle inline-`<script>` und inline-`<style>` Tags auf 0nefinity entweder Nonces tragen oder externalisiert sind. Vorher report-only laufen lassen und Logs auswerten.
 
 ---
 
@@ -335,61 +390,127 @@ Damit bleibt `0nefinity.love/` weiterhin read-only-Mount für Git-Konsistenz, ab
 - restic/borg Path ergänzen: `/var/lib/docker/volumes/0nefinity_0nefinity-auth/_data/`
 - ODER simpler: tägliches `docker exec 0nefinity-live sqlite3 /var/www/html/.auth/auth.sqlite '.dump' > /backup/auth.sql`
 
-### CLI-Tool für initialen PW-Set
+### Setup-Token-Flow (initialer PW-Set über die Web-UI)
+
+**Ablauf:**
+1. Container-Entrypoint prüft beim Start: existiert `/var/www/html/.auth/auth.sqlite` und ist `users`-Tabelle leer?
+2. Falls ja: generiere `/var/www/html/.auth/setup-token` mit 32-Byte-Random (hex-encoded, 64 Zeichen) → `chmod 600`, owner `www-data`
+3. Falls schon User vorhanden: setup-token-Datei wird sicher gelöscht falls noch da
+4. Tim liest das Token: `docker exec 0nefinity-live cat /app/.auth/setup-token`
+5. Tim öffnet `/enternity`. Setup-Modus aktiv wenn:
+   - `users`-Tabelle leer **UND**
+   - `setup-token`-File existiert
+6. UI in Setup-Modus: zeigt "Setup" mit Token-Input + Username-Display (`0nefinity` fest) + neues-PW-Feld + PW-Bestätigung
+7. POST `/api/auth/setup`:
+   - Token-Vergleich (constant-time via `hash_equals`)
+   - PW-Validation: `strlen >= 12`, HIBP-Check
+   - User anlegen (`username='0nefinity'`, `password_hash` mit Argon2id-Params)
+   - Setup-Token-Datei **löschen** (`unlink`)
+   - Session starten, Redirect `/admin`
+
+**Sicherheit:**
+- Token nur einmal nutzbar (Datei wird nach Setup gelöscht)
+- Token nur lokal lesbar (`chmod 600`), kein Web-Access (`.auth/` ist via `.htaccess` deny)
+- Token wird **nie** geloggt
+- Falls Tim das Token nicht hat: `docker exec` reicht (Host-Zugriff)
+- Falls Token kompromittiert vor Setup: `docker exec 0nefinity-live rm /app/.auth/setup-token` + Container restart erzeugt neuen Token
+
+### CLI-Tool für PW-Reset + Invite-Tokens (Phase 1: nur Reset)
+
 ```bash
-# als Tim auf dem Host:
-docker exec -it 0nefinity-live php /var/www/html/tools/auth-cli.php create-user tim
-# prompted für PW (verstecktes input), hasht mit Argon2id, INSERTs in SQLite
+# PW-Reset (Phase 1 ist das der einzige Reset-Weg, Decision 5):
+docker exec -it 0nefinity-live php /var/www/html/tools/auth-cli.php set-password 0nefinity
+# prompted für neues PW (verstecktes input), HIBP-Check, hasht mit Argon2id-Params, UPDATE SQLite
+
+# User-Liste (debug/audit):
+docker exec 0nefinity-live php /var/www/html/tools/auth-cli.php list-users
+
+# Phase 2: Invite-Token generieren (jetzt Stub, später aktiv):
+docker exec 0nefinity-live php /var/www/html/tools/auth-cli.php create-invite --email foo@bar
+# → gibt URL aus: https://0nefinity.love/enternity?invite=<token>
 ```
 
 Das CLI-Tool ist nicht web-exposed (liegt in `tools/`, ist `.php`, aber wird nur via `docker exec` aufgerufen — extra-safe: bei web-access `php_sapi_name() === 'cli'` check, sonst exit).
 
 ---
 
-## 9. Implementierungs-Sequenz (für späteren Plan)
+## 9. Implementierungs-Sequenz (Detailliert: siehe Plan-Dokument)
 
-1. **DB + Bootstrap** — `.auth/auth.sqlite` Schema, `.auth/bootstrap.php` lib (session-config, PDO, csrf-helpers)
-2. **CLI-Tool** — `tools/auth-cli.php create-user`, `set-password`, `list-users`
-3. **`/enternity` UI** — `enternity.php` mit Form, eye-toggle, error-slot
-4. **Login-Endpoint** — `api/auth/login.php` mit Rate-Limit + CSRF + Argon2id-Verify
-5. **Session-Guard + `/admin`** — `admin/index.php` mit auth-redirect-helper
-6. **Logout + `/api/auth/me`**
-7. **`.htaccess`-Routing** (gleichzeitig mit Schritt 3-5)
-8. **docker-compose.yml** Volume-Update für `.auth/`
-9. **Dev-Testing auf `dev.0nefinity.love`** — Worktree ist git-broken laut Memory, also: Files direkt in `0nefinity.love/` (main) erstellen, Branch `claude-dev` nutzen, dann mergen
-10. **Deploy: Merge → main → Container restart für Volume-Pickup** (`docker compose down && docker compose up -d`)
+Der detaillierte Plan liegt unter `docs/plans/2026-05-12-enternity-login-plan.md`. Hier nur grobe Reihenfolge:
+
+1. **DB + Bootstrap** — Schema, PDO-Wrapper, Session-Config, CSRF-Helpers
+2. **HIBP-Lib** — k-anonymity-Check
+3. **CLI-Tool** — `set-password`, `list-users`, `create-invite` (Stub)
+4. **Container-Entrypoint** — Setup-Token-Generation beim Start
+5. **`.htaccess`-Routing** — `/enternity`, `/admin`, `/api/auth/*`, `.auth/` deny
+6. **docker-compose.yml** — Named Volume `0nefinity-auth` für `.auth/` rw-Mount
+7. **`/enternity` UI** — Form + Setup-Modus + eye-toggle
+8. **Setup-Endpoint** — `/api/auth/setup` (Token-Verify, HIBP, User-Create)
+9. **Login-Endpoint** — Rate-Limit + Exponential-Backoff + CSRF + Argon2id-Verify
+10. **Session-Guard + `/admin`** — Stub-Dashboard
+11. **Logout + `/api/auth/me`**
+12. **CSP-Report-only Header** + Report-Endpoint
+13. **Smoke-Tests** (curl) + Browser-Walkthrough
+14. **Deploy** — direkt auf main (Spec laut Memory ist Docs, Code via Feature-Branch + PR)
 
 ---
 
-## 10. Open Questions
+## 10. Decisions (final)
 
-1. **Username free choice oder festes "tim"?** — Spec lässt es offen (`users.username TEXT UNIQUE`). Tim entscheidet beim CLI-Setup.
-2. **Initiales PW-Setup:** CLI-Skript `auth-cli.php create-user tim` mit interaktivem PW-Prompt (verstecktes Input). Alternative: `--password "…"` Flag (history-leak-Risiko in shell).
-3. **Phase-2-Registrierung:** Invite-Link (Tim generiert Token, gibt URL raus) vs. offen mit Email-Verify. Offene Registrierung lädt zu Spam ein → Invite-Link empfohlen.
-4. **Email-Pflicht:** Phase 1 nullable, Phase 2 pflicht (für Reset). Falls Tim auch Phase 2 ohne Email will → kein Reset, nur Admin-PW-Reset via CLI.
-5. **Forgot Password Phase 1:** Weggelassen. Tim resettet via CLI (`auth-cli.php set-password tim`).
-6. **CSP-Header:** Erstmal weggelassen wegen vieler inline-scripts auf 0nefinity-Seiten. Falls gewünscht, später `report-only` einführen und gradually tighten.
-7. **2FA Phase 2:** TOTP via `paragonie/otphp` oder ähnlich, nicht jetzt.
-8. **Umami-Embed im Admin:** Iframe oder API-Pull? API-Pull (mit Umami-API-Token) ist sauberer für Custom-Dashboard, Iframe schneller. Phase 2 entscheiden.
+Diese Sektion ersetzt die ursprünglichen Open Questions. Tim's Antworten vom 2026-05-12:
+
+1. **Username:** **fest `0nefinity`** — kein Free-Choice. Schema bleibt `TEXT UNIQUE` für Phase-2-Mehrbenutzer-Kompatibilität, aber im Setup-Flow hartcodiert.
+
+2. **Initiales PW-Setup:** **Setup-Token-Flow** (nicht CLI-Prompt). Container generiert beim ersten Start ein 32-Byte-Random-Token in `/app/.auth/setup-token` (chmod 600). Tim liest es per `docker exec 0nefinity-live cat /app/.auth/setup-token`, öffnet `/enternity`, gibt Token statt PW ein, legt dann echtes PW fest. Token wird nach erfolgreichem Setup gelöscht. Setup-Modus erkennbar an: `users`-Tabelle leer **UND** `setup-token`-File existiert. Details siehe Abschnitt 8 "Setup-Token-Flow".
+
+3. **Phase-2-Registrierung:** **Invite-Link** — Tim generiert Tokens via CLI (`auth-cli.php create-invite`). Keine offene Registrierung (Spam-Vermeidung).
+
+4. **Email-Pflicht:** Phase 1 **optional** (NULL erlaubt), Phase 2 **pflicht** für Passkey-Recovery.
+
+5. **Forgot-PW Phase 1:** **weggelassen** — nur CLI-Reset via `auth-cli.php set-password 0nefinity`.
+
+6. **CSP-Header:** Phase 1 als **`Content-Security-Policy-Report-Only`** mit `report-uri /api/csp-report` → Violations loggen ohne zu blocken. Phase 2 zu `enforce` schärfen sobald inline-scripts auf Nonce/Hash umgestellt sind.
+
+7. **2FA Phase 2:** **WebAuthn/Passkeys** bevorzugt (passwordless, biometrisch), Lib-Empfehlung `web-auth/webauthn-lib`. TOTP nur als Fallback.
+
+8. **Umami-Embed im Admin:** Phase-2-Detail, hier noch offen.
+
+### Neue Decisions (2026 PW-Standards)
+
+9. **Password-Hash-Algorithmus:** Argon2id mit OWASP-2024+-Parametern (`memory_cost=65536, time_cost=4, threads=1`).
+
+10. **Password-Policy:** NIST 800-63B-3 — min 12 Zeichen, keine erzwungene Komplexität.
+
+11. **HIBP-Check:** Pflicht beim Setzen eines neuen PWs (Setup + CLI-Reset). k-anonymity API, nur 5-Hex-Prefix verlässt Server.
+
+12. **Session-Lifetime:** 14 Tage (war 30 Tage idle).
+
+13. **Rate-Limit-Strategie:** 5 Fails/IP/min + exponential backoff (1s, 2s, 4s, 8s …) bei wiederholten Fails statt fixer 1h-Sperre.
 
 ---
 
 ## 11. Aufwand-Schätzung Phase 1
 
+Aktualisiert nach Decisions (Setup-Token-Flow + HIBP-Check + CSP-Report-only):
+
 | Block | Stunden |
 |---|---|
 | DB-Schema + bootstrap.php + CSRF-Helpers | 1.0 |
-| CLI-Tool (create-user, set-password) | 0.5 |
-| `/enternity` HTML + CSS + eye-toggle | 1.0 |
-| Login-Endpoint + Rate-Limit + Tests | 1.5 |
+| Setup-Token-Generation in Container-Entrypoint | 0.4 |
+| HIBP-Check-Lib (k-anonymity, ~30 Zeilen + Tests) | 0.4 |
+| CLI-Tool (set-password, list-users, invite-stub) | 0.6 |
+| `/enternity` HTML + CSS + eye-toggle + Setup-Modus-UI | 1.3 |
+| Setup-Endpoint (`/api/auth/setup`) | 0.5 |
+| Login-Endpoint + Rate-Limit + Exponential-Backoff + Tests | 1.7 |
 | Logout + `/api/auth/me` | 0.3 |
 | `/admin` Stub + Auth-Guard | 0.7 |
+| CSP-Report-only Header + Report-Endpoint Stub | 0.4 |
 | `.htaccess` + docker-compose-Volume + Deploy | 0.5 |
 | Mobile + Dark-Mode-Polish | 0.5 |
-| End-to-end-Test (Login, Logout, Brute-Force, CSRF) | 1.0 |
-| **Total** | **~7h** |
+| End-to-end-Test (Setup, Login, Logout, Brute-Force, CSRF, HIBP) | 1.2 |
+| **Total** | **~9.5h** |
 
-Realistisch: **1 Arbeitstag** für Phase 1 inkl. Test+Deploy.
+Realistisch: **1–1.5 Arbeitstage** für Phase 1 inkl. Test+Deploy. Aufwand-Plus gegenüber Initial-Schätzung (~7h) durch Setup-Token-Flow, HIBP-Check und CSP-Reporting.
 
 ---
 
