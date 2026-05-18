@@ -1,33 +1,6 @@
 // meta-static.js — wie meta.js, aber Menü + Back-Button kommen aus SSI-Include.
-// JS liefert nur: Suche, Toggle-Enhancement, Viewport-Sync, Fonts, Tools, Dialog.
-
-// Fonts laden
-(function ensureProjectFontsStylesheet() {
-    const href = '/fonts-auswahl.css';
-    const existing = document.querySelector(`link[data-meta-fonts-auswahl="${href}"], link[href="${href}"]`);
-    if (existing) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = href;
-    link.setAttribute('data-meta-fonts-auswahl', href);
-    (document.head || document.documentElement).appendChild(link);
-})();
-
-(function ensureMetaFontsStylesheet() {
-    const href = '/tools/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/un0nefinity-fonts.css';
-    const existing = document.querySelector(`link[data-meta-un0nefinity-fonts="${href}"], link[href="${href}"]`);
-    if (existing) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = href;
-    link.setAttribute('data-meta-un0nefinity-fonts', href);
-    (document.head || document.documentElement).appendChild(link);
-})();
-
-// Tools synchron laden
-document.write('<script src="/tools/zoom.js"><\/script>');
-document.write('<script src="/tools/tools/decimal.js"><\/script>');
-document.write('<script src="/tools/controls.js"><\/script>');
+// JS liefert nur: Suchfunktion, Toggle-Enhancement, Viewport-Sync, Pre-Fitting, Dialog-Logik.
+// Fonts, Tools und Menü-/Dialog-HTML kommen aus den SSI-Includes.
 
 // _018Space
 (function (global) {
@@ -114,33 +87,126 @@ function fixStickyHover(el) {
 fixStickyHover(menuButton);
 if (backButton) fixStickyHover(backButton);
 
+// ─── Suchfunktion ───
+function initMenuSearch(menu, fileList) {
+    const menuSearch = menu.querySelector('.menu-search');
+    if (!menuSearch) return null;
+
+    const searchInput = menuSearch.querySelector('input');
+    if (!searchInput) return null;
+
+    searchInput.disabled = false;
+    searchInput.placeholder = 'type what you want…';
+    searchInput.setAttribute('aria-label', 'Menü durchsuchen');
+
+    const clearButton = document.createElement('button');
+    clearButton.type = 'button';
+    clearButton.classList.add('menu-search-clear');
+    clearButton.setAttribute('aria-label', 'Suche zurücksetzen');
+    clearButton.textContent = '×';
+    menuSearch.appendChild(clearButton);
+
+    function normalizeForSearch(str) {
+        return str
+            .toLocaleLowerCase('de')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function filterList(ul, query) {
+        let hasVisibleChild = false;
+        Array.from(ul.children).forEach(li => {
+            const isHeading = li.querySelector(':scope > .menu-heading');
+            const isSeparator = li.classList.contains('menu-separator');
+            if (isHeading || isSeparator) {
+                li.style.display = 'none';
+                return;
+            }
+            const details = li.querySelector(':scope > details');
+            if (details) {
+                const nestedList = details.querySelector(':scope > ul.folder-contents');
+                const childHasMatch = nestedList ? filterList(nestedList, query) : false;
+                li.style.display = childHasMatch ? '' : 'none';
+                details.open = !!(childHasMatch && query);
+                if (childHasMatch) hasVisibleChild = true;
+            } else {
+                const link = li.querySelector('a');
+                const text = link
+                    ? normalizeForSearch(link.textContent || '')
+                    : normalizeForSearch(li.textContent || '');
+                const match = text.includes(query);
+                li.style.display = match ? '' : 'none';
+                if (match) hasVisibleChild = true;
+            }
+        });
+        return hasVisibleChild;
+    }
+
+    function filter(queryRaw) {
+        const query = normalizeForSearch(queryRaw.trim());
+
+        if (!query) {
+            fileList.querySelectorAll('li').forEach(li => { li.style.display = ''; });
+            fileList.querySelectorAll('details').forEach(details => { details.open = false; });
+            return;
+        }
+
+        fileList.querySelectorAll('li').forEach(li => { li.style.display = ''; });
+
+        fileList.querySelectorAll(':scope > li').forEach(li => {
+            const heading = li.querySelector(':scope > .menu-heading');
+            const isSeparator = li.classList.contains('menu-separator');
+            if (heading || isSeparator) li.style.display = 'none';
+        });
+
+        filterList(fileList, query);
+    }
+
+    let searchTimeoutId = null;
+
+    searchInput.addEventListener('input', () => {
+        const value = searchInput.value;
+        clearButton.classList.toggle('visible', value.length > 0);
+        clearTimeout(searchTimeoutId);
+        searchTimeoutId = setTimeout(() => filter(value), 100);
+    });
+
+    clearButton.addEventListener('click', () => {
+        searchInput.value = '';
+        clearButton.classList.remove('visible');
+        filter('');
+        searchInput.focus();
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            searchInput.value = '';
+            filter('');
+            clearButton.classList.remove('visible');
+            searchInput.blur();
+        }
+    });
+
+    return {
+        reset() {
+            searchInput.value = '';
+            clearButton.classList.remove('visible');
+            filter('');
+        },
+        focus() {
+            searchInput.focus();
+            searchInput.select();
+        }
+    };
+}
+
 // ─── Menü-Toggle: JS übernimmt vom Checkbox-Hack ───
 if (menu && menuButton && menuToggle) {
     let touchHandled = false;
     const isDesktopDevice = window.matchMedia &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-    // Statisches Suchfeld aktivieren (SSI liefert das HTML, JS schaltet es frei)
-    const menuSearch = menu.querySelector('.menu-search');
-    let searchInput = null;
-    let clearButton = null;
-
-    if (menuSearch) {
-        searchInput = menuSearch.querySelector('input');
-        if (searchInput) {
-            searchInput.disabled = false;
-            searchInput.placeholder = 'type what you want…';
-            searchInput.setAttribute('aria-label', 'Menü durchsuchen');
-        }
-
-        clearButton = document.createElement('button');
-        clearButton.type = 'button';
-        clearButton.classList.add('menu-search-clear');
-        clearButton.setAttribute('aria-label', 'Suche zurücksetzen');
-        clearButton.textContent = '×';
-
-        menuSearch.appendChild(clearButton);
-    }
+    const search = initMenuSearch(menu, fileList);
 
     function openMenu() {
         menuToggle.checked = true;
@@ -152,16 +218,9 @@ if (menu && menuButton && menuToggle) {
         menuToggle.checked = false;
         menu.classList.remove('open');
         document.body.classList.remove('menu-open');
-        if (searchInput) {
-            searchInput.value = '';
-            filterMenu('');
-        }
-        if (clearButton) {
-            clearButton.classList.remove('visible');
-        }
+        if (search) search.reset();
     }
 
-    // Label-Klick abfangen → JS-Toggle statt Checkbox
     menuButton.addEventListener('click', (e) => {
         if (touchHandled) return;
         e.preventDefault();
@@ -169,10 +228,7 @@ if (menu && menuButton && menuToggle) {
             closeMenu();
         } else {
             openMenu();
-            if (isDesktopDevice && searchInput) {
-                searchInput.focus();
-                searchInput.select();
-            }
+            if (isDesktopDevice && search) search.focus();
         }
     });
 
@@ -187,121 +243,18 @@ if (menu && menuButton && menuToggle) {
         touchHandled = false;
     });
 
-    // Backdrop verstecken — JS übernimmt close-on-outside, Seite bleibt bedienbar
-    const backdrop = menu.querySelector('.menu-backdrop');
-    if (backdrop) {
-        backdrop.style.display = 'none';
-    }
-
-    // Klick außerhalb → Menü schließen (Klick geht trotzdem zum Ziel-Element durch)
     function closeMenuIfOutside(e) {
         if (!menu.classList.contains('open')) return;
-        if (!menu.contains(e.target)) {
-            closeMenu();
-        }
+        if (!menu.contains(e.target)) closeMenu();
     }
     document.addEventListener('click', closeMenuIfOutside);
     document.addEventListener('touchend', closeMenuIfOutside);
 
-    // ─── Suchfunktion ───
-    function normalizeForSearch(str) {
-        return str
-            .toLocaleLowerCase('de')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '');
-    }
-
-    function filterMenu(queryRaw) {
-        const query = normalizeForSearch(queryRaw.trim());
-
-        if (!query) {
-            fileList.querySelectorAll('li').forEach(li => {
-                li.style.display = '';
-            });
-            fileList.querySelectorAll('details').forEach(details => {
-                details.open = false;
-            });
-            return;
-        }
-
-        fileList.querySelectorAll('li').forEach(li => {
-            li.style.display = '';
-        });
-
-        fileList.querySelectorAll(':scope > li').forEach(li => {
-            const heading = li.querySelector(':scope > .menu-heading');
-            const isSeparator = li.classList.contains('menu-separator');
-            if (heading || isSeparator) {
-                li.style.display = 'none';
-            }
-        });
-
-        function filterList(ul) {
-            let hasVisibleChild = false;
-            Array.from(ul.children).forEach(li => {
-                const isHeading = li.querySelector(':scope > .menu-heading');
-                const isSeparator = li.classList.contains('menu-separator');
-                if (isHeading || isSeparator) {
-                    li.style.display = 'none';
-                    return;
-                }
-                const details = li.querySelector(':scope > details');
-                if (details) {
-                    const nestedList = details.querySelector(':scope > ul.folder-contents');
-                    const childHasMatch = nestedList ? filterList(nestedList) : false;
-                    li.style.display = childHasMatch ? '' : 'none';
-                    details.open = !!(childHasMatch && query);
-                    if (childHasMatch) hasVisibleChild = true;
-                } else {
-                    const link = li.querySelector('a');
-                    const text = link
-                        ? normalizeForSearch(link.textContent || '')
-                        : normalizeForSearch(li.textContent || '');
-                    const match = text.includes(query);
-                    li.style.display = match ? '' : 'none';
-                    if (match) hasVisibleChild = true;
-                }
-            });
-            return hasVisibleChild;
-        }
-
-        filterList(fileList);
-    }
-
-    // Suche mit Debounce
-    if (searchInput && clearButton) {
-        let searchTimeoutId = null;
-
-        searchInput.addEventListener('input', () => {
-            const value = searchInput.value;
-            clearButton.classList.toggle('visible', value.length > 0);
-            clearTimeout(searchTimeoutId);
-            searchTimeoutId = setTimeout(() => filterMenu(value), 100);
-        });
-
-        clearButton.addEventListener('click', () => {
-            searchInput.value = '';
-            clearButton.classList.remove('visible');
-            filterMenu('');
-            searchInput.focus();
-        });
-
-        searchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                searchInput.value = '';
-                filterMenu('');
-                clearButton.classList.remove('visible');
-                searchInput.blur();
-            }
-        });
-    }
-
-    // Scroll im Menü
     window.addEventListener('wheel', (event) => {
         if (event.ctrlKey || event.metaKey) return;
         if (!menu.classList.contains('open')) return;
         const hoveredElement = document.elementFromPoint(event.clientX, event.clientY);
-        const inMenu = hoveredElement && hoveredElement.closest('.menu');
+        const inMenu = hoveredElement && hoveredElement.closest('.menu-content-wrapper');
         if (!inMenu) return;
         event.preventDefault();
         fileList.scrollTop += event.deltaY;
@@ -359,28 +312,13 @@ function scheduleFitPreBlocks() {
 
 scheduleFitPreBlocks();
 
-// ─── Dialog ───
-const dialogBackdrop = document.createElement('div');
-dialogBackdrop.className = 'meta-dialog-backdrop';
-dialogBackdrop.hidden = true;
-dialogBackdrop.innerHTML = `
-    <div class="meta-dialog" role="dialog" aria-modal="true" aria-labelledby="meta-dialog-title" aria-describedby="meta-dialog-message">
-        <div class="meta-dialog-title" id="meta-dialog-title"></div>
-        <div class="meta-dialog-message" id="meta-dialog-message"></div>
-        <div class="meta-dialog-actions">
-            <button type="button" class="meta-dialog-secondary" data-dialog-action="dismiss"></button>
-            <button type="button" class="meta-dialog-secondary" data-dialog-action="cancel"></button>
-            <button type="button" class="meta-dialog-confirm" data-dialog-action="confirm"></button>
-        </div>
-    </div>
-`;
-document.body.appendChild(dialogBackdrop);
-
-const dialogTitleEl = dialogBackdrop.querySelector('#meta-dialog-title');
-const dialogMessageEl = dialogBackdrop.querySelector('#meta-dialog-message');
-const dialogConfirmBtn = dialogBackdrop.querySelector('[data-dialog-action="confirm"]');
-const dialogCancelBtn = dialogBackdrop.querySelector('[data-dialog-action="cancel"]');
-const dialogDismissBtn = dialogBackdrop.querySelector('[data-dialog-action="dismiss"]');
+// ─── Dialog (HTML kommt aus SSI-Include) ───
+const dialogBackdrop = document.querySelector('.meta-dialog-backdrop');
+const dialogTitleEl = document.getElementById('meta-dialog-title');
+const dialogMessageEl = document.getElementById('meta-dialog-message');
+const dialogConfirmBtn = document.querySelector('[data-dialog-action="confirm"]');
+const dialogCancelBtn = document.querySelector('[data-dialog-action="cancel"]');
+const dialogDismissBtn = document.querySelector('[data-dialog-action="dismiss"]');
 let dialogResolve = null;
 let dialogLastFocused = null;
 

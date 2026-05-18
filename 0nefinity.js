@@ -1544,7 +1544,10 @@ canvas {
     document.getElementById('fps').addEventListener('input', () => {
       fps = parseFloat(document.getElementById('fps').value) || 0;
       userChangedFps = true;
-      const newFactor = detectedHz > 0 ? fps / detectedHz : 0;
+      // Fixe Referenz 60: factor = fps / 60. So koppelt jede fps-Änderung (manuell ODER auto-detect)
+      // direkt an die Cycle-Geschwindigkeit. Ohne fixe Referenz würde auto-detect 60→89
+      // factor=1 lassen → keine sichtbare Animation-Änderung trotz fps-Display-Sprung.
+      const newFactor = fps / 60;
       updateSnapshotFactor(newFactor);
       updateFpsHint();
     });
@@ -1573,7 +1576,7 @@ canvas {
 
     // Time-Warp Snapshot: { realTimestamp ms, warpedSeconds, factor }
     // warped elapsed = warpedSeconds + (Date.now() - realTimestamp)/1000 * factor
-    // factor = fps / detectedHz. Bei fps-Wechsel: snapshot updated für Continuity (kein Sprung).
+    // factor = fps / 60 (fixe Referenz). Bei fps-Wechsel: snapshot updated für Continuity (kein Sprung).
     // Persistiert in localStorage → übersteht Mobile-Browser Tab-Kill, kontinuiert echte Zeit.
     // User-Reload (F5/Ctrl+R) → Reset. Browser-Auto-Restore → continue.
     const SNAPSHOT_KEY = '0nefinity-symbol-snapshot';
@@ -1786,7 +1789,7 @@ canvas {
             fps = detectedHz;
             document.getElementById('fps').value = String(detectedHz);
           }
-          updateSnapshotFactor(fps / detectedHz);
+          updateSnapshotFactor(fps / 60);
           detectionDone = true;
           updateFpsHint();
         }
