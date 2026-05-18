@@ -61,6 +61,7 @@ RewriteRule ^([^/]+)/?$ /tools/color.php?c=$1 [L,QSA]
 
 # Offenes Directory Listing (bewusst)
 Options +Indexes +IncludesNOEXEC
+AddOutputFilter INCLUDES .html
 IndexOptions FancyIndexing NameWidth=* FoldersFirst
 IndexOrderDefault Ascending Name
 IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitattributes .gitmodules
