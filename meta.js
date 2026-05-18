@@ -1,5 +1,32 @@
 // meta.js
 
+// Dev-only Live-Reload: pollt Last-Modified von Key-Files alle 2s, reload bei Change.
+// Nur aktiv auf dev.* Hostnames, prod bleibt unangetastet.
+(function devLiveReload() {
+  if (!window.location.hostname.startsWith('dev.')) return;
+  const watch = ['/0nefinity.js', '/meta.js', '/meta.css', location.pathname];
+  const versions = {};
+  let initialized = false;
+  async function check() {
+    for (const url of watch) {
+      try {
+        const res = await fetch(url + '?_lr=' + Date.now(), { method: 'HEAD', cache: 'no-cache' });
+        const v = res.headers.get('Last-Modified') || res.headers.get('ETag');
+        if (!v) continue;
+        if (initialized && versions[url] && versions[url] !== v) {
+          console.log('[live-reload]', url, 'changed → reload');
+          location.reload();
+          return;
+        }
+        versions[url] = v;
+      } catch (e) {}
+    }
+    initialized = true;
+  }
+  setInterval(check, 2000);
+  setTimeout(check, 100);
+})();
+
 // Projektweit nur die kuratierte 0nefinity-Auswahl laden.
 (function ensureProjectFontsStylesheet() {
     const href = '/fonts-auswahl.css';
