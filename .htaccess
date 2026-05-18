@@ -3,6 +3,9 @@ RewriteEngine On
 # Heikle Dot-Ordner direkt blocken, bevor andere Rewrite-Regeln greifen
 RewriteRule "(^|/)\.(git|ssh|vscode)(/|$)" - [F,L,NC]
 
+# /.auth/ niemals ausliefern (defense in depth — auch .auth/.htaccess deniest)
+RewriteRule "^\.auth(/|$)" - [F,L]
+
 # HTTPS erzwingen (funktioniert sowohl nativ als auch hinter nginx-Proxy)
 RewriteCond %{HTTPS} off
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
@@ -11,6 +14,15 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 # non-www -> www
 RewriteCond %{HTTP_HOST} ^0nefinity\.love$ [NC]
 RewriteRule ^ https://www.0nefinity.love%{REQUEST_URI} [R=301,L]
+
+# Auth routes (pretty URLs) — MUST come before color.php catch-all
+RewriteRule ^enternity/?$ /enternity.php [L,QSA]
+RewriteRule ^admin/?$ /admin/index.php [L,QSA]
+RewriteRule ^api/auth/login/?$ /api/auth/login.php [L,QSA]
+RewriteRule ^api/auth/logout/?$ /api/auth/logout.php [L,QSA]
+RewriteRule ^api/auth/me/?$ /api/auth/me.php [L,QSA]
+RewriteRule ^api/auth/setup/?$ /api/auth/setup.php [L,QSA]
+RewriteRule ^api/csp-report/?$ /api/csp-report.php [L,QSA]
 
 # Spezifische URL-Weiterleitungen (case-sensitive fixes)
 RewriteCond %{REQUEST_URI} !^/buyPi$
@@ -59,11 +71,7 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} !\.
 RewriteRule ^([^/]+)/?$ /tools/color.php?c=$1 [L,QSA]
 
-# SSI (Server Side Includes) für .html-Dateien aktivieren
-AddOutputFilter INCLUDES .html
-
 # Offenes Directory Listing (bewusst)
-Options +Indexes +Includes
 Options +Indexes +IncludesNOEXEC
 IndexOptions FancyIndexing NameWidth=* FoldersFirst
 IndexOrderDefault Ascending Name

@@ -467,8 +467,12 @@ button:focus {
 .menu-toggle-input:checked ~ .menu-backdrop {
     display: block;
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: var(--menu-open-width);
     z-index: 0;
+    pointer-events: none; /* Scroll geht durch zum Body; Klick-außerhalb macht JS */
 }
 
 /* Wrapper für den Button - erlaubt Text-Selektion */
