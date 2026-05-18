@@ -47,6 +47,7 @@
         let xRange, yRange;
         
         function resize() {
+                invalidateCurrentStateCache();
 	            const bounds = getCanvasBounds();
 	            width = bounds.width;
 	            height = bounds.height;
@@ -119,7 +120,9 @@
             influenceRadius: 1.5,
             applyToAll: false,
             gridDensity: 0.2,
-            showControlPoints: false
+            showControlPoints: false,
+            showAxes: true,
+            showGrid: true
         };
 
         const config = {
@@ -133,6 +136,8 @@
         let isRelaxing = false;
         let stateTransition = null;
         let nextControlPointId = 1;
+        let activeShape = null;   // null = keine Form, sonst shape-ID
+        let savedText = '';       // gemerkter Text wenn Form aktiv
         
         // ============================================
         // KOORDINATEN-TRANSFORMATION
@@ -193,7 +198,9 @@
                         : (typeof sourceConfig.influenceRadius === 'number' ? sourceConfig.influenceRadius : defaultEditorConfig.influenceRadius)),
                     applyToAll: typeof sourceConfig.applyToAll === 'boolean' ? sourceConfig.applyToAll : defaultEditorConfig.applyToAll,
                     showControlPoints: typeof sourceConfig.showControlPoints === 'boolean' ? sourceConfig.showControlPoints : defaultEditorConfig.showControlPoints,
-                    gridDensity: Math.max(0, typeof sourceConfig.gridDensity === 'number' ? sourceConfig.gridDensity : defaultEditorConfig.gridDensity)
+                    gridDensity: Math.max(0, typeof sourceConfig.gridDensity === 'number' ? sourceConfig.gridDensity : defaultEditorConfig.gridDensity),
+                    showAxes: typeof sourceConfig.showAxes === 'boolean' ? sourceConfig.showAxes : defaultEditorConfig.showAxes,
+                    showGrid: typeof sourceConfig.showGrid === 'boolean' ? sourceConfig.showGrid : defaultEditorConfig.showGrid
                 }
             };
         }
@@ -248,6 +255,8 @@
             syncToggleControl('applyToAll', config.applyToAll);
             syncToggleControl('showControlPoints', config.showControlPoints);
             syncSliderControl('gridDensity', config.gridDensity, 1);
+            syncToggleControl('showAxes', config.showAxes);
+            syncToggleControl('showGrid', config.showGrid);
         }
 
         function syncInfluenceRadiusControl() {
@@ -273,6 +282,8 @@
             config.applyToAll = normalizedState.config.applyToAll;
             config.showControlPoints = normalizedState.config.showControlPoints;
             config.gridDensity = normalizedState.config.gridDensity;
+            config.showAxes = normalizedState.config.showAxes;
+            config.showGrid = normalizedState.config.showGrid;
             syncEditorControls();
         }
 
@@ -283,6 +294,7 @@
             stateTransition = null;
             applyEditorState(targetState);
             clearInteractionState();
+            invalidateCurrentStateCache();
             draw();
         }
 
@@ -294,6 +306,7 @@
             deletingPoints.clear();
             isRelaxing = false;
             clearInteractionState();
+            invalidateCurrentStateCache();
 
             if (statesAreEqual(currentState, targetState)) {
                 stateTransition = null;
@@ -301,6 +314,7 @@
                 draw();
                 return;
             }
+
             stateTransition = {
                 sourceState: currentState,
                 targetState,
@@ -419,8 +433,12 @@
                         influenceRadius: config.influenceRadius,
                         applyToAll: config.applyToAll,
                         showControlPoints: config.showControlPoints,
-                        gridDensity: config.gridDensity
-                    }
+                        gridDensity: config.gridDensity,
+                        showAxes: config.showAxes,
+                        showGrid: config.showGrid
+                    },
+                    activeShape: activeShape,
+                    savedText: savedText
                 });
             }
 
@@ -494,16 +512,50 @@
             return Math.exp(-t * t);
         }
 
+        // Vorberechnete Werte pro Kontrollpunkt für schnelles Rendering
+        // Wird einmal pro State aufgerufen, nicht pro Pixel
+        function prepareStateForRendering(state) {
+            if (state._prepared) return;
+            const pts = state.controlPoints;
+            const applyAll = state.config.applyToAll;
+            const globalR = state.config.influenceRadius;
+            for (let i = 0; i < pts.length; i++) {
+                const cp = pts[i];
+                const r = applyAll ? globalR : (cp.radius ?? globalR);
+                cp._invR2 = r > 0 ? 1 / (r * r) : 0;
+                cp._cutoff2 = r * r * 16; // exp(-16) ≈ 1.1e-7 → vernachlässigbar
+                cp._rIsZero = r === 0;
+            }
+            state._prepared = true;
+        }
+
         function getDisplacementForState(state, mx, my) {
             let dx = 0;
             let dy = 0;
 
-            for (const cp of state.controlPoints) {
-                const dist = Math.hypot(mx - cp.x, my - cp.y);
-                const radius = getStatePointRadius(state, cp);
-                const weight = gaussian(dist, radius);
-                dx += cp.dx * weight;
-                dy += cp.dy * weight;
+            prepareStateForRendering(state);
+            const pts = state.controlPoints;
+
+            for (let i = 0; i < pts.length; i++) {
+                const cp = pts[i];
+                const ddx = mx - cp.x;
+                const ddy = my - cp.y;
+                const dist2 = ddx * ddx + ddy * ddy;
+
+                // Radius 0: Nur exakter Treffer zählt
+                if (cp._rIsZero) {
+                    if (dist2 === 0) { dx += cp.dx; dy += cp.dy; }
+                    continue;
+                }
+
+                // Early Exit: Gauß-Gewicht < 1e-7 → überspringen
+                if (dist2 > cp._cutoff2) continue;
+
+                // Gauß direkt aus dist² berechnen: exp(-dist²/r²)
+                // Kein Math.sqrt oder Math.hypot nötig!
+                const w = Math.exp(-dist2 * cp._invR2);
+                dx += cp.dx * w;
+                dy += cp.dy * w;
             }
 
             return { dx, dy };
@@ -525,6 +577,20 @@
             return config.applyToAll ? config.influenceRadius : (cp.radius || config.influenceRadius);
         }
         
+        // Gecacheter State für direkte Berechnung (vermeidet Objekt-Erzeugung pro Aufruf)
+        let cachedCurrentState = null;
+
+        function invalidateCurrentStateCache() {
+            cachedCurrentState = null;
+        }
+
+        function getCurrentState() {
+            if (!cachedCurrentState) {
+                cachedCurrentState = { controlPoints, config, _prepared: false };
+            }
+            return cachedCurrentState;
+        }
+
         function getDisplacement(mx, my) {
             if (stateTransition) {
                 const progress = getTransitionProgress();
@@ -537,19 +603,624 @@
                 };
             }
 
-            return getDisplacementForState({ controlPoints, config }, mx, my);
+            return getDisplacementForState(getCurrentState(), mx, my);
         }
-        
+
         function transformPoint(mx, my) {
             const disp = getDisplacement(mx, my);
             return mathToScreen(mx + disp.dx, my + disp.dy);
         }
         
         // ============================================
+        // SYMBOL → KONTUR-EXTRAKTION
+        // (adaptiert von fourieous.html)
+        // ============================================
+
+        function extractCharContour(char, fontFamily, fontSize) {
+            const tempCanvas = document.createElement('canvas');
+            const padding = 20;
+            const size = fontSize + padding * 2;
+            tempCanvas.width = size;
+            tempCanvas.height = size;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.clearRect(0, 0, size, size);
+            tempCtx.font = `${fontSize}px ${fontFamily}`;
+            tempCtx.fillStyle = 'white';
+            tempCtx.textBaseline = 'middle';
+            tempCtx.textAlign = 'center';
+            tempCtx.fillText(char, size / 2, size / 2);
+
+            const imageData = tempCtx.getImageData(0, 0, size, size);
+            const data = imageData.data;
+            const isFilled = (x, y) => {
+                if (x < 0 || x >= size || y < 0 || y >= size) return false;
+                return data[(y * size + x) * 4 + 3] > 128;
+            };
+            const isEdge = (x, y) => {
+                if (!isFilled(x, y)) return false;
+                return !isFilled(x-1, y) || !isFilled(x+1, y) ||
+                       !isFilled(x, y-1) || !isFilled(x, y+1);
+            };
+
+            const contours = [];
+            const visited = new Set();
+            const mooreNeighbors = [
+                [-1, 0], [-1, -1], [0, -1], [1, -1],
+                [1, 0], [1, 1], [0, 1], [-1, 1]
+            ];
+
+            for (let startY = 0; startY < size; startY++) {
+                for (let startX = 0; startX < size; startX++) {
+                    if (!isEdge(startX, startY)) continue;
+                    if (visited.has(`${startX},${startY}`)) continue;
+
+                    const contour = [];
+                    let x = startX, y = startY;
+                    let dir = 0;
+                    do {
+                        // Y-Flip: Canvas-Y geht nach unten, Math-Y nach oben
+                        contour.push({ x: x - size / 2, y: -(y - size / 2) });
+                        visited.add(`${x},${y}`);
+                        let found = false;
+                        const searchStart = (dir + 5) % 8;
+                        for (let i = 0; i < 8; i++) {
+                            const checkDir = (searchStart + i) % 8;
+                            const [ddx, ddy] = mooreNeighbors[checkDir];
+                            const nx = x + ddx, ny = y + ddy;
+                            const isStart = (nx === startX && ny === startY);
+                            if (isEdge(nx, ny) && (isStart || !visited.has(`${nx},${ny}`))) {
+                                x = nx; y = ny; dir = checkDir; found = true; break;
+                            }
+                        }
+                        if (!found) break;
+                    } while (x !== startX || y !== startY);
+
+                    if (contour.length >= 3) contours.push(contour);
+                }
+            }
+
+            contours.sort((a, b) => b.length - a.length);
+            return contours;
+        }
+
+        function resamplePath(points, targetCount) {
+            if (points.length <= 1 || targetCount <= 1) return points.slice(0, targetCount || 1);
+
+            // Kumulative Bogenlänge berechnen
+            const cumLen = [0];
+            for (let i = 1; i < points.length; i++) {
+                cumLen.push(cumLen[i - 1] + Math.hypot(
+                    points[i].x - points[i - 1].x,
+                    points[i].y - points[i - 1].y
+                ));
+            }
+            // Schließen: Abstand vom letzten zum ersten Punkt
+            const closeLen = Math.hypot(
+                points[0].x - points[points.length - 1].x,
+                points[0].y - points[points.length - 1].y
+            );
+            const totalLen = cumLen[cumLen.length - 1] + closeLen;
+            if (totalLen === 0) return [points[0]];
+
+            const result = [];
+            for (let i = 0; i < targetCount; i++) {
+                const targetDist = (i / targetCount) * totalLen;
+
+                // Segment finden (inklusive Schließ-Segment)
+                if (targetDist >= cumLen[cumLen.length - 1]) {
+                    // Im Schließ-Segment (letzter → erster Punkt)
+                    const segStart = cumLen[cumLen.length - 1];
+                    const t = closeLen > 0 ? (targetDist - segStart) / closeLen : 0;
+                    result.push({
+                        x: points[points.length - 1].x + (points[0].x - points[points.length - 1].x) * t,
+                        y: points[points.length - 1].y + (points[0].y - points[points.length - 1].y) * t
+                    });
+                } else {
+                    let seg = 0;
+                    while (seg < cumLen.length - 2 && cumLen[seg + 1] < targetDist) seg++;
+                    const segLen = cumLen[seg + 1] - cumLen[seg];
+                    const t = segLen > 0 ? (targetDist - cumLen[seg]) / segLen : 0;
+                    result.push({
+                        x: points[seg].x + (points[seg + 1].x - points[seg].x) * t,
+                        y: points[seg].y + (points[seg + 1].y - points[seg].y) * t
+                    });
+                }
+            }
+            return result;
+        }
+
+        // Mehrere Konturen zu einem geschlossenen Pfad verbinden (Faltung)
+        function connectContours(contours) {
+            if (contours.length === 0) return [];
+            if (contours.length === 1) return [...contours[0]];
+
+            let result = [...contours[0]];
+            for (let c = 1; c < contours.length; c++) {
+                const next = contours[c];
+                const anchor = result[result.length - 1];
+                let bestJ = 0, bestDist = Infinity;
+                for (let j = 0; j < next.length; j++) {
+                    const d = Math.hypot(anchor.x - next[j].x, anchor.y - next[j].y);
+                    if (d < bestDist) { bestDist = d; bestJ = j; }
+                }
+                // Kontour rotieren, sodass nächster Punkt zum Anker zuerst kommt
+                result.push(...next.slice(bestJ), ...next.slice(0, bestJ));
+            }
+            return result;
+        }
+
+        // Kontur normalisieren: zentrieren + auf targetRadius skalieren
+        function normalizeContour(points, targetRadius) {
+            if (points.length === 0) return [];
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (const p of points) {
+                if (p.x < minX) minX = p.x;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.y > maxY) maxY = p.y;
+            }
+            const cx = (minX + maxX) / 2;
+            const cy = (minY + maxY) / 2;
+            const maxDim = Math.max(maxX - minX, maxY - minY);
+            if (maxDim === 0) return points.map(() => ({ x: 0, y: 0 }));
+            const s = (targetRadius * 2) / maxDim;
+            return points.map(p => ({ x: (p.x - cx) * s, y: (p.y - cy) * s }));
+        }
+
+        // ============================================
+        // SYMBOL → KONTROLLPUNKTE
+        // ============================================
+
+        // Windungsrichtung: positiv = gegen Uhrzeigersinn
+        function computeWindingArea(points) {
+            let area = 0;
+            for (let i = 0; i < points.length; i++) {
+                const j = (i + 1) % points.length;
+                area += points[i].x * points[j].y - points[j].x * points[i].y;
+            }
+            return area / 2;
+        }
+
+        // ============================================
+        // FFT (Cooley-Tukey Radix-2, in-place)
+        // O(n log n) statt O(n²) DFT
+        // ============================================
+
+        function nextPow2(n) {
+            let p = 1;
+            while (p < n) p <<= 1;
+            return p;
+        }
+
+        // In-place FFT/IFFT auf Float64Arrays (Länge muss 2er-Potenz sein)
+        function fftInPlace(re, im, inverse) {
+            const n = re.length;
+            // Bit-Reversal-Permutation
+            for (let i = 1, j = 0; i < n; i++) {
+                let bit = n >> 1;
+                for (; j & bit; bit >>= 1) j ^= bit;
+                j ^= bit;
+                if (i < j) {
+                    let tmp = re[i]; re[i] = re[j]; re[j] = tmp;
+                    tmp = im[i]; im[i] = im[j]; im[j] = tmp;
+                }
+            }
+            // Butterfly-Operationen
+            const sign = inverse ? 1 : -1;
+            for (let len = 2; len <= n; len <<= 1) {
+                const halfLen = len >> 1;
+                const angle = sign * 2 * Math.PI / len;
+                const wR = Math.cos(angle);
+                const wI = Math.sin(angle);
+                for (let i = 0; i < n; i += len) {
+                    let curR = 1, curI = 0;
+                    for (let j = 0; j < halfLen; j++) {
+                        const a = i + j;
+                        const b = a + halfLen;
+                        const tR = re[b] * curR - im[b] * curI;
+                        const tI = re[b] * curI + im[b] * curR;
+                        re[b] = re[a] - tR;
+                        im[b] = im[a] - tI;
+                        re[a] += tR;
+                        im[a] += tI;
+                        const nextR = curR * wR - curI * wI;
+                        curI = curR * wI + curI * wR;
+                        curR = nextR;
+                    }
+                }
+            }
+            if (inverse) {
+                for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+            }
+        }
+
+        function solveCirculantRBF(n, targetDx, targetDy, radius) {
+            // n MUSS eine 2er-Potenz sein (damit FFT-Größe = Matrixgröße)
+            // Erste Zeile der zirkulanten Matrix:
+            // w₀[j] = gaussian(2·sin(π·j/n), radius)
+            const w0Re = new Float64Array(n);
+            for (let j = 0; j < n; j++) {
+                w0Re[j] = gaussian(2 * Math.sin(Math.PI * j / n), radius);
+            }
+
+            // FFT der ersten Zeile → Eigenwerte λ
+            const w0Im = new Float64Array(n);
+            fftInPlace(w0Re, w0Im, false);
+
+            // FFT der Zielverschiebungen
+            const txRe = new Float64Array(n);
+            const txIm = new Float64Array(n);
+            const tyRe = new Float64Array(n);
+            const tyIm = new Float64Array(n);
+            for (let i = 0; i < n; i++) { txRe[i] = targetDx[i]; tyRe[i] = targetDy[i]; }
+            fftInPlace(txRe, txIm, false);
+            fftInPlace(tyRe, tyIm, false);
+
+            // Division im Frequenzraum: D = T / λ
+            for (let k = 0; k < n; k++) {
+                const eR = w0Re[k], eI = w0Im[k];
+                const denom = eR * eR + eI * eI;
+                if (denom < 1e-30) {
+                    txRe[k] = txIm[k] = tyRe[k] = tyIm[k] = 0;
+                    continue;
+                }
+                const invD = 1 / denom;
+                const dxR = (txRe[k] * eR + txIm[k] * eI) * invD;
+                const dxI = (txIm[k] * eR - txRe[k] * eI) * invD;
+                const dyR = (tyRe[k] * eR + tyIm[k] * eI) * invD;
+                const dyI = (tyIm[k] * eR - tyRe[k] * eI) * invD;
+                txRe[k] = dxR; txIm[k] = dxI;
+                tyRe[k] = dyR; tyIm[k] = dyI;
+            }
+
+            // IFFT → Lösung im Ortsraum
+            fftInPlace(txRe, txIm, true);
+            fftInPlace(tyRe, tyIm, true);
+
+            const dx = new Array(n);
+            const dy = new Array(n);
+            for (let i = 0; i < n; i++) { dx[i] = txRe[i]; dy[i] = tyRe[i]; }
+            return { dx, dy };
+        }
+
+        // Text-Layout: Konturen aller Zeichen mit Position extrahieren
+        function layoutTextContours(text, fontFamily, fontSize) {
+            const lines = text.split(/\r?\n/);
+            const lineHeight = fontSize * 1.3;
+
+            // Temporäres Canvas für Zeichenbreiten
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.font = `${fontSize}px ${fontFamily}`;
+
+            const allContours = [];
+            const totalLines = lines.length;
+
+            for (let lineIdx = 0; lineIdx < totalLines; lineIdx++) {
+                const line = lines[lineIdx];
+                // Y: erste Zeile oben, math-Y geht nach oben
+                const y = ((totalLines - 1) / 2 - lineIdx) * lineHeight;
+
+                // Zeichenbreiten messen
+                const charWidths = [];
+                let totalWidth = 0;
+                for (const ch of line) {
+                    const w = tempCtx.measureText(ch).width;
+                    charWidths.push(w);
+                    totalWidth += w;
+                }
+
+                // Zentriert von links nach rechts
+                let x = -totalWidth / 2;
+                let charIdx = 0;
+                for (const ch of line) {
+                    if (ch !== ' ' && ch !== '\t') {
+                        const contours = extractCharContour(ch, fontFamily, fontSize);
+                        for (const contour of contours) {
+                            // Kontur mit Zeichenposition offsetten
+                            allContours.push(contour.map(p => ({
+                                x: p.x + x + charWidths[charIdx] / 2,
+                                y: p.y + y
+                            })));
+                        }
+                    }
+                    x += charWidths[charIdx];
+                    charIdx++;
+                }
+            }
+
+            return allContours;
+        }
+
+        function generateTextControlPoints(text, options = {}) {
+            const {
+                fontFamily = 'Arial, sans-serif',
+                fontSize = 200,
+                numPoints = null,
+                targetRadius = 1.5,
+                influenceRadius = null
+            } = options;
+
+            if (!text || !text.trim()) return [];
+
+            // Konturen für den gesamten Text layouten
+            const allContours = layoutTextContours(text, fontFamily, fontSize);
+            if (allContours.length === 0) return [];
+
+            // Alle Konturen zu einem Pfad verbinden
+            const connectedPath = connectContours(allContours);
+
+            // Normalisieren
+            let normalizedPath = normalizeContour(connectedPath, targetRadius);
+
+            // Windungsrichtung prüfen (nur sinnvoll bei Einzel-Konturen,
+            // bei Multi-Konturen ist es egal — Alignment reicht)
+            if (allContours.length === 1 && computeWindingArea(normalizedPath) < 0) {
+                normalizedPath = normalizedPath.slice().reverse();
+            }
+
+            // Am rechtesten Punkt starten (= θ=0 auf dem Kreis)
+            let bestIdx = 0, bestX = -Infinity;
+            for (let i = 0; i < normalizedPath.length; i++) {
+                if (normalizedPath[i].x > bestX) {
+                    bestX = normalizedPath[i].x;
+                    bestIdx = i;
+                }
+            }
+            const alignedPath = [...normalizedPath.slice(bestIdx), ...normalizedPath.slice(0, bestIdx)];
+
+            // Auto-Punktanzahl: 2er-Potenz (FFT-Voraussetzung)
+            // Mehr Text → mehr Punkte: 64, 128, 256, 512, 1024
+            const nonSpaceChars = text.replace(/\s/g, '').length;
+            const rawPoints = Math.min(1000, Math.max(48, nonSpaceChars * 48));
+            const autoNumPoints = numPoints ?? nextPow2(rawPoints);
+
+            // Resamplen
+            const targetPoints = resamplePath(alignedPath, autoNumPoints);
+
+            // Einflussradius aus Punktabstand auf dem Kreis
+            const spacing = 2 * Math.PI / autoNumPoints;
+            const autoRadius = influenceRadius ?? spacing * 1.0;
+
+            // Kreispunkte und Ziel-Verschiebungen
+            const circlePositions = [];
+            const naiveDx = [];
+            const naiveDy = [];
+
+            for (let i = 0; i < autoNumPoints; i++) {
+                const angle = (i / autoNumPoints) * 2 * Math.PI;
+                const cx = Math.cos(angle);
+                const cy = Math.sin(angle);
+                circlePositions.push({ x: cx, y: cy });
+                naiveDx.push(targetPoints[i].x - cx);
+                naiveDy.push(targetPoints[i].y - cy);
+            }
+
+            // Zirkulant-DFT-Lösung: O(n²) statt O(n³)
+            const solved = solveCirculantRBF(autoNumPoints, naiveDx, naiveDy, autoRadius);
+
+            return circlePositions.map((pos, i) => ({
+                id: `symbol-${i}`,
+                x: pos.x,
+                y: pos.y,
+                dx: solved.dx[i],
+                dy: solved.dy[i],
+                radius: autoRadius
+            }));
+        }
+
+        function applySymbol(text) {
+            if (!text || !text.trim()) {
+                startReset();
+                return;
+            }
+
+            const newPoints = generateTextControlPoints(text, {
+                targetRadius: 1.5
+            });
+
+            if (newPoints.length === 0) return;
+
+            const newState = {
+                controlPoints: newPoints,
+                config: {
+                    influenceRadius: config.influenceRadius,
+                    applyToAll: false,
+                    showControlPoints: config.showControlPoints,
+                    gridDensity: config.gridDensity,
+                    showAxes: config.showAxes,
+                    showGrid: config.showGrid
+                },
+                activeShape: null,
+                savedText: ''
+            };
+
+            if (window.undoRedoPanel) {
+                window.undoRedoPanel.saveState(newState);
+            }
+            startStateTransition(newState);
+        }
+
+        // ============================================
+        // GEOMETRISCHE FORMEN (Radiale Projektion)
+        // ============================================
+        // Statt Arc-Length-Mapping (erzeugt Swirl) wird jeder Kreispunkt
+        // rein radial auf die Polygon-Kante projiziert: Strahl vom Ursprung
+        // bei Winkel θ → Schnittpunkt mit Polygon. Kein Rotationsanteil!
+
+        function getPolygonVertices(sides, radius, rotationOffset = 0) {
+            const vertices = [];
+            for (let i = 0; i < sides; i++) {
+                const angle = (i / sides) * 2 * Math.PI - Math.PI / 2 + rotationOffset;
+                vertices.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+            }
+            return vertices;
+        }
+
+        function getStarVertices(points, outerRadius, innerRadius) {
+            const vertices = [];
+            const total = points * 2;
+            for (let i = 0; i < total; i++) {
+                const angle = (i / total) * 2 * Math.PI - Math.PI / 2;
+                const r = i % 2 === 0 ? outerRadius : innerRadius;
+                vertices.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+            }
+            return vertices;
+        }
+
+        // Strahl vom Ursprung bei Winkel θ: Schnittpunkt-Abstand mit Polygon
+        function shapeRadiusAtAngle(vertices, theta) {
+            const cosT = Math.cos(theta);
+            const sinT = Math.sin(theta);
+            let bestT = Infinity;
+
+            for (let i = 0; i < vertices.length; i++) {
+                const j = (i + 1) % vertices.length;
+                const A = vertices[i], B = vertices[j];
+
+                // Cramer: Strahl t*(cosT,sinT) = A + s*(B-A)
+                const D = cosT * (B.y - A.y) - sinT * (B.x - A.x);
+                if (Math.abs(D) < 1e-12) continue; // parallel
+
+                const s = (A.x * sinT - A.y * cosT) / D;
+                if (s < 0 || s > 1) continue; // außerhalb der Kante
+
+                const t = (A.x * B.y - A.y * B.x) / D;
+                if (t > 0 && t < bestT) bestT = t;
+            }
+
+            return bestT === Infinity ? 1 : bestT;
+        }
+
+        const shapeDefinitions = {
+            square:   { name: 'Quadrat',   vertices: () => getPolygonVertices(4, 1.4, Math.PI / 4) },
+            triangle: { name: 'Dreieck',   vertices: () => getPolygonVertices(3, 1.5) },
+            pentagon: { name: 'Pentagon',   vertices: () => getPolygonVertices(5, 1.4) },
+            hexagon:  { name: 'Hexagon',   vertices: () => getPolygonVertices(6, 1.35) },
+            star5:    { name: 'Stern ★',   vertices: () => getStarVertices(5, 1.5, 0.6) },
+            star6:    { name: 'Stern ✡',   vertices: () => getStarVertices(6, 1.5, 0.75) }
+        };
+
+        function generateShapeControlPoints(shapeId) {
+            const shapeDef = shapeDefinitions[shapeId];
+            if (!shapeDef) return [];
+
+            const vertices = shapeDef.vertices();
+            if (vertices.length < 3) return [];
+
+            // 256 Punkte → guter Kompromiss Schärfe vs. Performance
+            const numPoints = 256;
+            const spacing = 2 * Math.PI / numPoints;
+            const autoRadius = spacing * 1.0;
+
+            const naiveDx = new Array(numPoints);
+            const naiveDy = new Array(numPoints);
+            const circlePositions = new Array(numPoints);
+
+            for (let i = 0; i < numPoints; i++) {
+                const angle = (i / numPoints) * 2 * Math.PI;
+                const cx = Math.cos(angle);
+                const cy = Math.sin(angle);
+                circlePositions[i] = { x: cx, y: cy };
+
+                // Radiale Projektion: rein radiale Verschiebung
+                const r = shapeRadiusAtAngle(vertices, angle);
+                naiveDx[i] = (r - 1) * cx;
+                naiveDy[i] = (r - 1) * cy;
+            }
+
+            // Zirkulant-FFT-Lösung
+            const solved = solveCirculantRBF(numPoints, naiveDx, naiveDy, autoRadius);
+
+            return circlePositions.map((pos, i) => ({
+                id: `shape-${i}`,
+                x: pos.x,
+                y: pos.y,
+                dx: solved.dx[i],
+                dy: solved.dy[i],
+                radius: autoRadius
+            }));
+        }
+
+        function applyShape(shapeId) {
+            if (!shapeId) {
+                // Form deaktiviert → Text wiederherstellen
+                activeShape = null;
+                const textToRestore = savedText;
+                syncShapeTextUI();
+                if (textToRestore && textToRestore.trim()) {
+                    applySymbol(textToRestore);
+                } else {
+                    startReset();
+                }
+                return;
+            }
+
+            activeShape = shapeId;
+            syncShapeTextUI();
+
+            const newPoints = generateShapeControlPoints(shapeId);
+            if (newPoints.length === 0) return;
+
+            const newState = {
+                controlPoints: newPoints,
+                config: {
+                    influenceRadius: config.influenceRadius,
+                    applyToAll: false,
+                    showControlPoints: config.showControlPoints,
+                    gridDensity: config.gridDensity,
+                    showAxes: config.showAxes,
+                    showGrid: config.showGrid
+                },
+                activeShape: activeShape,
+                savedText: savedText
+            };
+
+            if (window.undoRedoPanel) {
+                window.undoRedoPanel.saveState(newState);
+            }
+            startStateTransition(newState);
+        }
+
+        // Synchronisiert UI-Zustand von Text-Textarea und Shape-Buttons
+        function syncShapeTextUI() {
+            const panel = window.undoRedoPanel;
+            if (!panel) return;
+
+            // Shape-Buttons aktualisieren
+            const btnEls = window._shapeBtnEls;
+            if (btnEls) {
+                for (const [id, btn] of Object.entries(btnEls)) {
+                    const isActive = activeShape === id;
+                    btn.style.opacity = isActive ? '1' : '0.5';
+                    btn.style.background = isActive ? 'var(--text-color, #fff)' : 'transparent';
+                    btn.style.color = isActive ? 'var(--bg-color, #000)' : 'var(--text-color, #fff)';
+                }
+            }
+
+            // Text-Textarea visuell dimmen (aber klickbar lassen für Focus-Handler!)
+            const textRow = panel.bodyEl?.querySelector('[data-key="symbol"]');
+            if (textRow) {
+                const textarea = textRow.querySelector('textarea');
+                if (textarea) {
+                    textarea.style.opacity = activeShape ? '0.35' : '1';
+                    if (!activeShape && savedText) {
+                        textarea.value = savedText;
+                        panel.params['symbol'] = savedText;
+                    }
+                }
+            }
+        }
+
+        // ============================================
         // RENDERING
         // ============================================
-        
+
         function draw() {
+            // Cache pro Frame invalidieren – prepareStateForRendering läuft
+            // einmal neu, innerhalb des Frames bleibt der Cache aktiv.
+            invalidateCurrentStateCache();
+
             const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || 'black';
             const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
             
@@ -563,6 +1234,7 @@
         }
         
         function drawGrid() {
+            if (!config.showGrid) return;
             const step = getRenderedGridDensity();
             const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
             
@@ -624,6 +1296,7 @@
         }
         
         function drawAxes() {
+            if (!config.showAxes) return;
             const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
             
             ctx.save();
@@ -927,8 +1600,11 @@
                 updateCanvasCursor(target);
             }
 
-            if (wasDragging && window.undoRedoPanel) {
-                window.undoRedoPanel.saveState(getControlPointsState());
+            if (wasDragging) {
+                invalidateCurrentStateCache();
+                if (window.undoRedoPanel) {
+                    window.undoRedoPanel.saveState(getControlPointsState());
+                }
             }
 
             draw();
@@ -976,6 +1652,10 @@
         function startReset() {
             finishStateTransition();
 
+            activeShape = null;
+            savedText = '';
+            syncShapeTextUI();
+
             if (window.undoRedoPanel) {
                 window.undoRedoPanel.saveState({
                     controlPoints: [],
@@ -983,9 +1663,15 @@
                         influenceRadius: config.influenceRadius,
                         applyToAll: config.applyToAll,
                         showControlPoints: config.showControlPoints,
-                        gridDensity: config.gridDensity
-                    }
+                        gridDensity: config.gridDensity,
+                        showAxes: config.showAxes,
+                        showGrid: config.showGrid
+                    },
+                    activeShape: null,
+                    savedText: ''
                 });
+                // Text-Feld leeren
+                window.undoRedoPanel.set('symbol', '');
             }
 
             isResetting = true;
@@ -1070,12 +1756,22 @@
                     influenceRadius: config.influenceRadius,
                     applyToAll: config.applyToAll,
                     showControlPoints: config.showControlPoints,
-                    gridDensity: config.gridDensity
-                }
+                    gridDensity: config.gridDensity,
+                    showAxes: config.showAxes,
+                    showGrid: config.showGrid
+                },
+                activeShape: activeShape,
+                savedText: savedText
             };
         }
-        
+
         function setControlPointsState(state) {
+            // Shape/Text-Zustand aus dem Undo/Redo-State wiederherstellen
+            if (state && typeof state.activeShape !== 'undefined') {
+                activeShape = state.activeShape;
+                savedText = state.savedText || '';
+                syncShapeTextUI();
+            }
             startStateTransition(state);
         }
         
@@ -1101,6 +1797,91 @@
             });
             
             panel
+                .addText('symbol', {
+                    label: 'Text',
+                    value: '',
+                    placeholder: '',
+                    onChange: v => {
+                        // Text eingegeben → Form deaktivieren
+                        if (v && v.trim()) {
+                            savedText = v;
+                            if (activeShape) {
+                                activeShape = null;
+                                syncShapeTextUI();
+                            }
+                        }
+                        applySymbol(v);
+                    }
+                })
+                .addDivider();
+
+            // Textarea-Focus: Form sofort invalidieren
+            requestAnimationFrame(() => {
+                const textRow = panel.bodyEl?.querySelector('[data-key="symbol"]');
+                if (textRow) {
+                    const textarea = textRow.querySelector('textarea');
+                    if (textarea) {
+                        textarea.addEventListener('focus', () => {
+                            if (activeShape) {
+                                applyShape(null);
+                            }
+                        });
+                    }
+                }
+            });
+
+            // Shape-Buttons als Toggle-Gruppe
+            const shapeButtons = [
+                { id: 'triangle', icon: '△', title: 'Dreieck' },
+                { id: 'square',   icon: '◻', title: 'Quadrat' },
+                { id: 'pentagon', icon: '⬠', title: 'Pentagon' },
+                { id: 'hexagon',  icon: '⬡', title: 'Hexagon' },
+                { id: 'star5',    icon: '★', title: 'Stern 5' },
+                { id: 'star6',    icon: '✡', title: 'Stern 6' }
+            ];
+
+            const shapeRow = document.createElement('div');
+            shapeRow.className = 'ctrl-row';
+            shapeRow.dataset.key = 'shape';
+            const shapeLabel = document.createElement('label');
+            shapeLabel.className = 'ctrl-label';
+            shapeLabel.textContent = 'Form';
+            const shapeGroup = document.createElement('div');
+            shapeGroup.style.cssText = 'display:flex; gap:4px; flex-wrap:wrap;';
+
+            const shapeBtnEls = {};
+            for (const sb of shapeButtons) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = sb.icon;
+                btn.title = sb.title;
+                btn.dataset.shapeId = sb.id;
+                btn.style.cssText = 'width:34px; height:34px; font-size:18px; display:flex; align-items:center; justify-content:center; padding:0; line-height:1; border:1px solid var(--text-color, #fff); background:transparent; color:var(--text-color, #fff); border-radius:4px; cursor:pointer; opacity:0.5; transition:opacity 0.15s, background 0.15s; box-sizing:border-box;';
+                btn.addEventListener('click', () => {
+                    if (activeShape === sb.id) {
+                        // Deaktivieren
+                        applyShape(null);
+                    } else {
+                        // Text merken bevor Form übernimmt
+                        const currentText = panel.get('symbol');
+                        if (currentText && currentText.trim()) {
+                            savedText = currentText;
+                        }
+                        applyShape(sb.id);
+                    }
+                });
+                shapeBtnEls[sb.id] = btn;
+                shapeGroup.appendChild(btn);
+            }
+
+            shapeRow.appendChild(shapeLabel);
+            shapeRow.appendChild(shapeGroup);
+            panel._currentContainer.appendChild(shapeRow);
+
+            // Globale Referenz für syncShapeTextUI
+            window._shapeBtnEls = shapeBtnEls;
+
+            panel.addDivider()
                 .addSlider('influenceRadius', {
                     label: 'Einflussradius',
                     min: 0,
@@ -1134,6 +1915,28 @@
                     onChange: v => {
                         finishStateTransition();
                         config.showControlPoints = v;
+                        syncEditorControls();
+                        panel.saveState(getControlPointsState());
+                        draw();
+                    }
+                })
+                .addToggle('showGrid', {
+                    label: 'Gitter anzeigen',
+                    value: config.showGrid,
+                    onChange: v => {
+                        finishStateTransition();
+                        config.showGrid = v;
+                        syncEditorControls();
+                        panel.saveState(getControlPointsState());
+                        draw();
+                    }
+                })
+                .addToggle('showAxes', {
+                    label: 'Achsen anzeigen',
+                    value: config.showAxes,
+                    onChange: v => {
+                        finishStateTransition();
+                        config.showAxes = v;
                         syncEditorControls();
                         panel.saveState(getControlPointsState());
                         draw();

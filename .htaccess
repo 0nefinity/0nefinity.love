@@ -14,11 +14,11 @@ RewriteRule ^ https://www.0nefinity.love%{REQUEST_URI} [R=301,L]
 
 # Spezifische URL-Weiterleitungen (case-sensitive fixes)
 RewriteCond %{REQUEST_URI} !^/buyPi$
-RewriteRule ^buypi$ /buyPi [R=302,L,NC]
-RewriteRule ^readme/?$ /README [R=302,L]
+RewriteRule ^buypi$ https://%{HTTP_HOST}/buyPi [R=302,L,NC]
+RewriteRule ^readme/?$ https://%{HTTP_HOST}/README [R=302,L]
 
 # Pi-Quadrat Weiterleitung
-RewriteRule ^piquadrat/?$ /kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
+RewriteRule ^piquadrat/?$ https://%{HTTP_HOST}/kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 
 # Textartige Dateien durch PHP-Viewer anzeigen
 # Auch Dateien ohne Endung oder mit weirden Text-Endungen; Web-/Script-/Binärdateien bleiben direkt auslieferbar.
@@ -32,8 +32,9 @@ RewriteRule ^(.+)$ /tools/weird-text-viewer.php?path=$1 [L,QSA,B]
 
 # Clean URLs: Redirect .html Endungen zu URLs ohne Endung
 # WICHTIG: Query-String mit [QSA] Flag erhalten!
+# Explizites https:// weil Apache hinter Reverse Proxy das Schema nicht kennt
 RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.html(\?.*)?\ HTTP
-RewriteRule ^(.+)\.html$ /$1 [R=302,L,QSA]
+RewriteRule ^(.+)\.html$ https://%{HTTP_HOST}/$1 [R=302,L,QSA]
 
 # Intern auf .html Dateien routen (wenn vorhanden)
 # QSA: Query-String erhalten!
@@ -81,4 +82,14 @@ IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitatt
 # Performance
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/plain text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
+
+# Security: Content Security Policy. Alles same-origin. Blockt extern Fonts/CDN/Tracker
+# als Regression-Guard nach Selfhosting-Cleanup.
+# 'unsafe-inline'/'unsafe-eval' nötig wegen vorhandenem Inline-Code (Skripte/Styles)
+# und Libraries wie p5/pixi die Function() nutzen.
+<IfModule mod_headers.c>
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-Content-Type-Options "nosniff"
 </IfModule>
