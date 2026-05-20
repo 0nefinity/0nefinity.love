@@ -125,18 +125,27 @@
             showGrid: true
         };
 
+        const defaultSpectralParams = {
+            kernelWidth: 1.0,  // ε: log-Slider, 1.0 = aktueller Default (autoRadius = spacing · ε)
+            twist: 0,          // α: lineare Phasen-Drift im FFT-Spektrum, 0 = keine Drehung
+            scale: 1.0         // s: Skalar-Skalierung der Lösung, 1.0 = aktuelle Stärke
+        };
+
         const config = {
             ...defaultEditorConfig,
             circleResolution: 720,
-            resetSpeed: 0.1
+            resetSpeed: 0.1,
+            spectralParams: { ...defaultSpectralParams },
+            textRenderMode: 'outline' // 'outline' | 'line'
         };
-        
+
         let isResetting = false;
         let deletingPoints = new Set();
         let isRelaxing = false;
         let stateTransition = null;
         let nextControlPointId = 1;
         let activeShape = null;   // null = keine Form, sonst shape-ID
+        let activeShapeSpectrum = null;  // FFT-Spektrum des aktiven Forms für Slider-Live-Modifier
         let savedText = '';       // gemerkter Text wenn Form aktiv
         
         // ============================================
@@ -1145,17 +1154,17 @@
             star6:    { name: 'Stern ✡',   vertices: () => getStarVertices(6, 1.5, 0.75) }
         };
 
-        function generateShapeControlPoints(shapeId) {
+        function generateShapeControlPoints(shapeId, spectralParams = defaultSpectralParams) {
             const shapeDef = shapeDefinitions[shapeId];
-            if (!shapeDef) return [];
+            if (!shapeDef) return { points: [], spectrum: null, autoRadius: null };
 
             const vertices = shapeDef.vertices();
-            if (vertices.length < 3) return [];
+            if (vertices.length < 3) return { points: [], spectrum: null, autoRadius: null };
 
             // 256 Punkte → guter Kompromiss Schärfe vs. Performance
             const numPoints = 256;
             const spacing = 2 * Math.PI / numPoints;
-            const autoRadius = spacing * 1.0;
+            const autoRadius = spacing * spectralParams.kernelWidth;
 
             const naiveDx = new Array(numPoints);
             const naiveDy = new Array(numPoints);
@@ -1173,10 +1182,11 @@
                 naiveDy[i] = (r - 1) * cy;
             }
 
-            // Zirkulant-FFT-Lösung
-            const solved = solveCirculantRBF(numPoints, naiveDx, naiveDy, autoRadius);
+            // Basis-Spektrum (ε-abhängig) und Modifier (twist + scale) getrennt
+            const spectrum = computeBaseSpectrum(numPoints, naiveDx, naiveDy, autoRadius);
+            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale);
 
-            return circlePositions.map((pos, i) => ({
+            const points = circlePositions.map((pos, i) => ({
                 id: `shape-${i}`,
                 x: pos.x,
                 y: pos.y,
@@ -1184,12 +1194,15 @@
                 dy: solved.dy[i],
                 radius: autoRadius
             }));
+
+            return { points, spectrum, autoRadius };
         }
 
         function applyShape(shapeId) {
             if (!shapeId) {
                 // Form deaktiviert → Text wiederherstellen
                 activeShape = null;
+                activeShapeSpectrum = null;
                 const textToRestore = savedText;
                 syncShapeTextUI();
                 if (textToRestore && textToRestore.trim()) {
@@ -1203,21 +1216,26 @@
             activeShape = shapeId;
             syncShapeTextUI();
 
-            const newPoints = generateShapeControlPoints(shapeId);
-            if (newPoints.length === 0) return;
+            const sp = config.spectralParams;
+            const result = generateShapeControlPoints(shapeId, sp);
+            if (result.points.length === 0) return;
+
+            activeShapeSpectrum = result.spectrum;
 
             const newState = {
-                controlPoints: newPoints,
+                controlPoints: result.points,
                 config: {
                     influenceRadius: config.influenceRadius,
                     applyToAll: false,
                     showControlPoints: config.showControlPoints,
                     gridDensity: config.gridDensity,
                     showAxes: config.showAxes,
-                    showGrid: config.showGrid
+                    showGrid: config.showGrid,
+                    spectralParams: { ...sp }
                 },
                 activeShape: activeShape,
-                savedText: savedText
+                savedText: savedText,
+                _shapeSpectrum: result.spectrum
             };
 
             if (window.undoRedoPanel) {
