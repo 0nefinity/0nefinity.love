@@ -1272,6 +1272,51 @@
                     }
                 }
             }
+
+            // Spektrale Slider mit Shape-Aktivität synchronisieren
+            if (typeof window._updateSpectralRowVisibility === 'function') {
+                window._updateSpectralRowVisibility();
+            }
+        }
+
+        // Wird aufgerufen wenn ein spektraler Parameter geändert wurde.
+        // key: 'kernelWidth' | 'twist' | 'scale'
+        // kernelWidth verlangt Re-Solve (neue Eigenwerte), twist/scale nur Re-Modifier.
+        function onSpectralParamChange(key) {
+            if (!activeShape) return;
+            finishStateTransition();
+
+            const sp = config.spectralParams;
+
+            if (key === 'kernelWidth') {
+                const result = generateShapeControlPoints(activeShape, sp);
+                if (result.points.length === 0) return;
+                activeShapeSpectrum = result.spectrum;
+                controlPoints = result.points.map(p => normalizeControlPoint(p));
+            } else {
+                if (!activeShapeSpectrum) {
+                    const result = generateShapeControlPoints(activeShape, sp);
+                    if (result.points.length === 0) return;
+                    activeShapeSpectrum = result.spectrum;
+                    controlPoints = result.points.map(p => normalizeControlPoint(p));
+                } else {
+                    const solved = applySpectralModifiers(activeShapeSpectrum, sp.twist, sp.scale);
+                    const numPoints = solved.dx.length;
+                    for (let i = 0; i < numPoints && i < controlPoints.length; i++) {
+                        controlPoints[i].dx = solved.dx[i];
+                        controlPoints[i].dy = solved.dy[i];
+                    }
+                }
+            }
+
+            // Cache-Invalidation für Render-Pipeline
+            for (const cp of controlPoints) {
+                cp._invR2 = undefined;
+                cp._cutoff2 = undefined;
+                cp._rIsZero = undefined;
+            }
+            invalidateCurrentStateCache();
+            draw();
         }
 
         // ============================================
@@ -1942,6 +1987,83 @@
 
             // Globale Referenz für syncShapeTextUI
             window._shapeBtnEls = shapeBtnEls;
+
+            // ============================================
+            // SPEKTRALE DOF-SLIDER (Kernel-Breite ε, Twist α, Stärke s)
+            // ============================================
+            const spectralRow = document.createElement('div');
+            spectralRow.className = 'ctrl-row';
+            spectralRow.dataset.key = 'spectralDof';
+            spectralRow.style.cssText = 'flex-direction:column; align-items:stretch; gap:6px;';
+
+            const spectralHeader = document.createElement('div');
+            spectralHeader.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
+            const spectralLabel = document.createElement('label');
+            spectralLabel.className = 'ctrl-label';
+            spectralLabel.textContent = 'Verzerrungs-DOF';
+            const spectralResetBtn = document.createElement('button');
+            spectralResetBtn.type = 'button';
+            spectralResetBtn.textContent = '↺';
+            spectralResetBtn.title = 'Zurücksetzen';
+            spectralResetBtn.style.cssText = 'min-width:40px; min-height:40px; padding:0; font-size:16px; border:1px solid var(--text-color, #fff); background:transparent; color:var(--text-color, #fff); border-radius:4px; cursor:pointer; opacity:0.7;';
+            spectralHeader.appendChild(spectralLabel);
+            spectralHeader.appendChild(spectralResetBtn);
+            spectralRow.appendChild(spectralHeader);
+
+            window._spectralSliders = {};
+
+            function makeSpectralSlider(key, displayLabel, min, max, step, decimals) {
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'display:flex; align-items:center; gap:6px;';
+                const lbl = document.createElement('span');
+                lbl.textContent = displayLabel;
+                lbl.style.cssText = 'flex:0 0 110px; font-size:12px; opacity:0.85;';
+                const range = document.createElement('input');
+                range.type = 'range';
+                range.min = String(min);
+                range.max = String(max);
+                range.step = String(step);
+                range.value = String(config.spectralParams[key]);
+                range.style.cssText = 'flex:1; min-height:40px;';
+                const valTxt = document.createElement('span');
+                valTxt.textContent = config.spectralParams[key].toFixed(decimals);
+                valTxt.style.cssText = 'flex:0 0 52px; text-align:right; font-size:12px; font-variant-numeric:tabular-nums; opacity:0.85;';
+                range.addEventListener('input', () => {
+                    const v = parseFloat(range.value);
+                    config.spectralParams[key] = v;
+                    valTxt.textContent = v.toFixed(decimals);
+                    onSpectralParamChange(key);
+                });
+                wrap.appendChild(lbl);
+                wrap.appendChild(range);
+                wrap.appendChild(valTxt);
+                spectralRow.appendChild(wrap);
+                window._spectralSliders[key] = { range, valTxt, decimals };
+            }
+
+            makeSpectralSlider('kernelWidth', 'Kernel-Breite ε', 0.1, 5.0, 0.05, 2);
+            makeSpectralSlider('twist',       'Twist α',         -6.28, 6.28, 0.02, 2);
+            makeSpectralSlider('scale',       'Stärke s',        -2.0, 2.0, 0.05, 2);
+
+            spectralResetBtn.addEventListener('click', () => {
+                config.spectralParams.kernelWidth = defaultSpectralParams.kernelWidth;
+                config.spectralParams.twist       = defaultSpectralParams.twist;
+                config.spectralParams.scale       = defaultSpectralParams.scale;
+                for (const [key, ui] of Object.entries(window._spectralSliders)) {
+                    const v = config.spectralParams[key];
+                    ui.range.value = String(v);
+                    ui.valTxt.textContent = v.toFixed(ui.decimals);
+                }
+                if (activeShape) onSpectralParamChange('kernelWidth');
+            });
+
+            panel._currentContainer.appendChild(spectralRow);
+
+            function updateSpectralRowVisibility() {
+                spectralRow.style.display = activeShape ? 'flex' : 'none';
+            }
+            window._updateSpectralRowVisibility = updateSpectralRowVisibility;
+            updateSpectralRowVisibility();
 
             panel.addDivider()
                 .addSlider('influenceRadius', {
