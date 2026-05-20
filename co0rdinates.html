@@ -801,8 +801,16 @@
                 if (path.length >= 2) paths.push(path);
             }
 
-            paths.sort((a, b) => b.length - a.length);
-            return paths;
+            // Spurien-Pruning: kurze Pfade < 10 Pixel sind Zhang-Suen-Junction-Artefakte
+            // (kleine Zacken die kein Teil der eigentlichen Glyphen-Struktur sind).
+            // Falls dadurch alle Pfade verloren gingen, behalte den längsten.
+            const longest = paths.reduce((m, p) => p.length > m ? p.length : m, 0);
+            const pruneThreshold = Math.min(10, Math.max(2, Math.floor(longest * 0.1)));
+            const pruned = paths.filter(p => p.length >= pruneThreshold);
+            const finalPaths = pruned.length > 0 ? pruned : (paths.length > 0 ? [paths[0]] : []);
+
+            finalPaths.sort((a, b) => b.length - a.length);
+            return finalPaths;
         }
 
         function resamplePath(points, targetCount) {
@@ -1107,17 +1115,25 @@
                 fontSize = 200,
                 numPoints = null,
                 targetRadius = 1.5,
-                influenceRadius = null
+                influenceRadius = null,
+                spectralParams = defaultSpectralParams
             } = options;
 
-            if (!text || !text.trim()) return [];
+            if (!text || !text.trim()) return { points: [], spectrum: null, autoRadius: null };
 
             // Konturen für den gesamten Text layouten
             const allContours = layoutTextContours(text, fontFamily, fontSize);
-            if (allContours.length === 0) return [];
+            if (allContours.length === 0) return { points: [], spectrum: null, autoRadius: null };
 
             // Alle Konturen zu einem Pfad verbinden
-            const connectedPath = connectContours(allContours);
+            let connectedPath = connectContours(allContours);
+
+            // Linien-Modus: Pfad mit reversed Kopie schließen → kein Sprung am Ende
+            // (Open-Skelett-Pfade ohne Doubling hätten Endpunkt ≠ Startpunkt → langer Bridge-Sprung)
+            if (config.textRenderMode === 'line' && connectedPath.length > 1) {
+                const reversed = connectedPath.slice(0, -1).reverse();
+                connectedPath = connectedPath.concat(reversed);
+            }
 
             // Normalisieren
             let normalizedPath = normalizeContour(connectedPath, targetRadius);
@@ -1139,7 +1155,6 @@
             const alignedPath = [...normalizedPath.slice(bestIdx), ...normalizedPath.slice(0, bestIdx)];
 
             // Auto-Punktanzahl: 2er-Potenz (FFT-Voraussetzung)
-            // Mehr Text → mehr Punkte: 64, 128, 256, 512, 1024
             const nonSpaceChars = text.replace(/\s/g, '').length;
             const rawPoints = Math.min(1000, Math.max(48, nonSpaceChars * 48));
             const autoNumPoints = numPoints ?? nextPow2(rawPoints);
@@ -1147,9 +1162,9 @@
             // Resamplen
             const targetPoints = resamplePath(alignedPath, autoNumPoints);
 
-            // Einflussradius aus Punktabstand auf dem Kreis
+            // Einflussradius aus Punktabstand auf dem Kreis, mit ε-Skalierung
             const spacing = 2 * Math.PI / autoNumPoints;
-            const autoRadius = influenceRadius ?? spacing * 1.0;
+            const autoRadius = influenceRadius ?? (spacing * spectralParams.kernelWidth);
 
             // Kreispunkte und Ziel-Verschiebungen
             const circlePositions = [];
@@ -1165,10 +1180,11 @@
                 naiveDy.push(targetPoints[i].y - cy);
             }
 
-            // Zirkulant-DFT-Lösung: O(n²) statt O(n³)
-            const solved = solveCirculantRBF(autoNumPoints, naiveDx, naiveDy, autoRadius);
+            // Basis-Spektrum + Modifier (analog zu Shape-Pipeline)
+            const spectrum = computeBaseSpectrum(autoNumPoints, naiveDx, naiveDy, autoRadius);
+            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale);
 
-            return circlePositions.map((pos, i) => ({
+            const points = circlePositions.map((pos, i) => ({
                 id: `symbol-${i}`,
                 x: pos.x,
                 y: pos.y,
@@ -1176,29 +1192,42 @@
                 dy: solved.dy[i],
                 radius: autoRadius
             }));
+
+            return { points, spectrum, autoRadius };
         }
+
+        let activeTextSpectrum = null;  // Spektrum + Text für Text-Spektral-Slider
+        let activeTextString = '';
 
         function applySymbol(text) {
             if (!text || !text.trim()) {
+                activeTextSpectrum = null;
+                activeTextString = '';
                 startReset();
                 return;
             }
 
-            const newPoints = generateTextControlPoints(text, {
-                targetRadius: 1.5
+            const sp = config.spectralParams;
+            const result = generateTextControlPoints(text, {
+                targetRadius: 1.5,
+                spectralParams: sp
             });
 
-            if (newPoints.length === 0) return;
+            if (result.points.length === 0) return;
+
+            activeTextSpectrum = result.spectrum;
+            activeTextString = text;
 
             const newState = {
-                controlPoints: newPoints,
+                controlPoints: result.points,
                 config: {
                     influenceRadius: config.influenceRadius,
                     applyToAll: false,
                     showControlPoints: config.showControlPoints,
                     gridDensity: config.gridDensity,
                     showAxes: config.showAxes,
-                    showGrid: config.showGrid
+                    showGrid: config.showGrid,
+                    spectralParams: { ...sp }
                 },
                 activeShape: null,
                 savedText: ''
@@ -1399,26 +1428,39 @@
         // key: 'kernelWidth' | 'twist' | 'scale'
         // kernelWidth verlangt Re-Solve (neue Eigenwerte), twist/scale nur Re-Modifier.
         function onSpectralParamChange(key) {
-            if (!activeShape) return;
+            const hasShape = !!activeShape;
+            const hasText  = !!activeTextString;
+            if (!hasShape && !hasText) return;
             finishStateTransition();
 
             const sp = config.spectralParams;
 
-            if (key === 'kernelWidth') {
-                const result = generateShapeControlPoints(activeShape, sp);
-                if (result.points.length === 0) return;
-                activeShapeSpectrum = result.spectrum;
-                controlPoints = result.points.map(p => normalizeControlPoint(p));
-            } else {
-                if (!activeShapeSpectrum) {
+            if (hasShape) {
+                if (key === 'kernelWidth' || !activeShapeSpectrum) {
                     const result = generateShapeControlPoints(activeShape, sp);
                     if (result.points.length === 0) return;
                     activeShapeSpectrum = result.spectrum;
                     controlPoints = result.points.map(p => normalizeControlPoint(p));
                 } else {
                     const solved = applySpectralModifiers(activeShapeSpectrum, sp.twist, sp.scale);
-                    const numPoints = solved.dx.length;
-                    for (let i = 0; i < numPoints && i < controlPoints.length; i++) {
+                    for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
+                        controlPoints[i].dx = solved.dx[i];
+                        controlPoints[i].dy = solved.dy[i];
+                    }
+                }
+            } else if (hasText) {
+                if (key === 'kernelWidth' || !activeTextSpectrum) {
+                    // Re-Solve: Skelett-/Konturen-Generation neu (Kernel-Breite oder erstes Mal)
+                    const result = generateTextControlPoints(activeTextString, {
+                        targetRadius: 1.5,
+                        spectralParams: sp
+                    });
+                    if (result.points.length === 0) return;
+                    activeTextSpectrum = result.spectrum;
+                    controlPoints = result.points.map(p => normalizeControlPoint(p));
+                } else {
+                    const solved = applySpectralModifiers(activeTextSpectrum, sp.twist, sp.scale);
+                    for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
                         controlPoints[i].dx = solved.dx[i];
                         controlPoints[i].dy = solved.dy[i];
                     }
@@ -2034,6 +2076,9 @@
                             }
                         }
                         applySymbol(v);
+                        if (typeof window._updateSpectralRowVisibility === 'function') {
+                            window._updateSpectralRowVisibility();
+                        }
                     }
                 })
                 .addDivider();
@@ -2176,7 +2221,9 @@
             panel._currentContainer.appendChild(spectralRow);
 
             function updateSpectralRowVisibility() {
-                spectralRow.style.display = activeShape ? 'flex' : 'none';
+                const hasText = typeof activeTextString !== 'undefined' && activeTextString && activeTextString.trim();
+                const visible = activeShape || hasText;
+                spectralRow.style.display = visible ? 'flex' : 'none';
             }
             window._updateSpectralRowVisibility = updateSpectralRowVisibility;
             updateSpectralRowVisibility();
