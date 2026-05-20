@@ -182,6 +182,17 @@ Default `ε=1.0, α=0, s=1` reproduziert die aktuelle Verzerrung **bit-exakt**. 
 - Slider-Werte-Label gut lesbar (mind. 14px)
 - Keine Hover-only-Interaktion
 
+## Erweiterung: Text-Modus Linien vs. Umrisse
+
+Zusätzlich zur Spektral-DOF wird im Text-Eingabe-Modus ein Toggle eingeführt:
+
+- **Umriss-Modus (Default, aktuelles Verhalten):** `extractCharContour` rasterisiert das Zeichen via `fillText` und traced via Moore-Neighbor die Außenkontur des gefüllten Glyphen. Resultat: geschlossener Außen-Polygonzug.
+- **Linien-Modus (neu):** Rasterisiertes Zeichen wird via **Zhang-Suen-Thinning** auf eine 1-Pixel-Skelett-Linie reduziert (klassische morphologische Skelettierung). Skelett-Pixel werden via DFS in zusammenhängende Pfad-Segmente getrennt; offene Pfade werden via `connectContours` mit Brücken verbunden so wie bei Multi-Glyphen.
+
+UI: kleiner Toggle-Button "Linie / Umriss" oberhalb oder neben dem Text-Eingabefeld. Sichtbar wenn Text-Eingabe aktiv. Default: Umriss (Status quo).
+
+Mathematische Konsequenz: Die nachgelagerte RBF-/Spektral-Pipeline ist unverändert — sie verarbeitet beliebige Kontroll-Punkt-Sequenzen. Spektral-Slider funktionieren in beiden Modi gleich.
+
 ## Out-of-Scope (v1)
 
 - Per-Kontrollpunkt-Variation (würde FFT-Circulant-Annahme brechen)
@@ -189,6 +200,7 @@ Default `ε=1.0, α=0, s=1` reproduziert die aktuelle Verzerrung **bit-exakt**. 
 - Custom-Shape-Import
 - Twist/Scale-Anwendung auf freie (nicht-Shape) Kontrollpunkte — math definierbar, aber UX unklar
 - Animation/Auto-Cycling der Slider
+- Hershey-Vektor-Font-Integration (Linien-Modus nutzt Skelettierung der gerasterten System-Schrift)
 
 ## Verifikations-Plan
 
