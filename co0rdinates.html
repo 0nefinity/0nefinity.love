@@ -692,6 +692,119 @@
             return contours;
         }
 
+        // Zhang-Suen-Thinning: reduziert gefüllte Pixel auf 1-Pixel-Skelett.
+        // Klassischer 2-Pass-Algorithmus, mutiert das übergebene boolesche Array.
+        function zhangSuenThin(filled, w, h) {
+            const idx = (x, y) => y * w + x;
+            const get = (x, y) => x >= 0 && x < w && y >= 0 && y < h && filled[idx(x, y)];
+
+            let changed = true;
+            while (changed) {
+                changed = false;
+                for (let pass = 0; pass < 2; pass++) {
+                    const toRemove = [];
+                    for (let y = 1; y < h - 1; y++) {
+                        for (let x = 1; x < w - 1; x++) {
+                            if (!filled[idx(x, y)]) continue;
+                            const p = [
+                                get(x,   y-1), get(x+1, y-1), get(x+1, y),
+                                get(x+1, y+1), get(x,   y+1), get(x-1, y+1),
+                                get(x-1, y),   get(x-1, y-1)
+                            ];
+                            let B = 0;
+                            for (let i = 0; i < 8; i++) if (p[i]) B++;
+                            if (B < 2 || B > 6) continue;
+                            let A = 0;
+                            for (let i = 0; i < 8; i++) if (!p[i] && p[(i + 1) % 8]) A++;
+                            if (A !== 1) continue;
+                            const c1 = pass === 0 ? (p[0] && p[2] && p[4]) : (p[0] && p[2] && p[6]);
+                            const c2 = pass === 0 ? (p[2] && p[4] && p[6]) : (p[0] && p[4] && p[6]);
+                            if (c1 || c2) continue;
+                            toRemove.push(idx(x, y));
+                        }
+                    }
+                    if (toRemove.length > 0) {
+                        for (const i of toRemove) filled[i] = false;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        // Extrahiert das Skelett eines Zeichens als ein oder mehrere offene Pfade.
+        // Jeder Pfad ist eine Sequenz 8-Neighbor-verbundener Skelett-Pixel.
+        function extractCharSkeleton(char, fontFamily, fontSize) {
+            const padding = 20;
+            const size = fontSize + padding * 2;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = size;
+            tempCanvas.height = size;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.clearRect(0, 0, size, size);
+            tempCtx.font = `${fontSize}px ${fontFamily}`;
+            tempCtx.fillStyle = 'white';
+            tempCtx.textBaseline = 'middle';
+            tempCtx.textAlign = 'center';
+            tempCtx.fillText(char, size / 2, size / 2);
+
+            const data = tempCtx.getImageData(0, 0, size, size).data;
+            const filled = new Array(size * size);
+            for (let i = 0; i < size * size; i++) filled[i] = data[i * 4 + 3] > 128;
+
+            zhangSuenThin(filled, size, size);
+
+            const idx = (x, y) => y * size + x;
+            const neighbors = [
+                [-1, -1], [0, -1], [1, -1],
+                [-1,  0],          [1,  0],
+                [-1,  1], [0,  1], [1,  1]
+            ];
+            const countNeighbors = (x, y) => {
+                let c = 0;
+                for (const [dx, dy] of neighbors) if (filled[idx(x + dx, y + dy)]) c++;
+                return c;
+            };
+            const visited = new Array(size * size).fill(false);
+
+            const findStart = (cond) => {
+                for (let y = 1; y < size - 1; y++) {
+                    for (let x = 1; x < size - 1; x++) {
+                        if (!filled[idx(x, y)] || visited[idx(x, y)]) continue;
+                        if (cond(x, y)) return { x, y };
+                    }
+                }
+                return null;
+            };
+
+            const paths = [];
+            while (true) {
+                let start = findStart((x, y) => countNeighbors(x, y) === 1)
+                         || findStart(() => true);
+                if (!start) break;
+
+                const path = [];
+                let cx = start.x, cy = start.y;
+                while (true) {
+                    visited[idx(cx, cy)] = true;
+                    path.push({ x: cx - size / 2, y: -(cy - size / 2) });
+                    let nx = -1, ny = -1;
+                    for (const [dx, dy] of neighbors) {
+                        const tx = cx + dx, ty = cy + dy;
+                        if (tx < 0 || tx >= size || ty < 0 || ty >= size) continue;
+                        if (!filled[idx(tx, ty)] || visited[idx(tx, ty)]) continue;
+                        nx = tx; ny = ty;
+                        break;
+                    }
+                    if (nx === -1) break;
+                    cx = nx; cy = ny;
+                }
+                if (path.length >= 2) paths.push(path);
+            }
+
+            paths.sort((a, b) => b.length - a.length);
+            return paths;
+        }
+
         function resamplePath(points, targetCount) {
             if (points.length <= 1 || targetCount <= 1) return points.slice(0, targetCount || 1);
 
@@ -968,7 +1081,10 @@
                 let charIdx = 0;
                 for (const ch of line) {
                     if (ch !== ' ' && ch !== '\t') {
-                        const contours = extractCharContour(ch, fontFamily, fontSize);
+                        const extractor = config.textRenderMode === 'line'
+                            ? extractCharSkeleton
+                            : extractCharContour;
+                        const contours = extractor(ch, fontFamily, fontSize);
                         for (const contour of contours) {
                             // Kontur mit Zeichenposition offsetten
                             allContours.push(contour.map(p => ({
@@ -2064,6 +2180,55 @@
             }
             window._updateSpectralRowVisibility = updateSpectralRowVisibility;
             updateSpectralRowVisibility();
+
+            // ============================================
+            // TEXT-STIL-TOGGLE (Umriss vs. Linie / Skelett)
+            // ============================================
+            const renderModeRow = document.createElement('div');
+            renderModeRow.className = 'ctrl-row';
+            renderModeRow.dataset.key = 'textRenderMode';
+            const renderModeLabel = document.createElement('label');
+            renderModeLabel.className = 'ctrl-label';
+            renderModeLabel.textContent = 'Text-Stil';
+            const renderModeGroup = document.createElement('div');
+            renderModeGroup.style.cssText = 'display:flex; gap:4px;';
+
+            const modeButtons = [
+                { id: 'outline', label: 'Umriss' },
+                { id: 'line',    label: 'Linie'  }
+            ];
+            const modeBtnEls = {};
+            for (const m of modeButtons) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = m.label;
+                btn.dataset.modeId = m.id;
+                btn.style.cssText = 'min-width:60px; min-height:40px; padding:0 10px; font-size:13px; border:1px solid var(--text-color, #fff); background:transparent; color:var(--text-color, #fff); border-radius:4px; cursor:pointer; opacity:0.5; transition:opacity 0.15s, background 0.15s;';
+                btn.addEventListener('click', () => {
+                    if (config.textRenderMode === m.id) return;
+                    config.textRenderMode = m.id;
+                    syncTextRenderModeUI();
+                    const currentText = panel.get('symbol');
+                    if (currentText && currentText.trim() && !activeShape) {
+                        applySymbol(currentText);
+                    }
+                });
+                modeBtnEls[m.id] = btn;
+                renderModeGroup.appendChild(btn);
+            }
+            renderModeRow.appendChild(renderModeLabel);
+            renderModeRow.appendChild(renderModeGroup);
+            panel._currentContainer.appendChild(renderModeRow);
+
+            function syncTextRenderModeUI() {
+                for (const [id, btn] of Object.entries(modeBtnEls)) {
+                    const active = config.textRenderMode === id;
+                    btn.style.opacity = active ? '1' : '0.5';
+                    btn.style.background = active ? 'var(--text-color, #fff)' : 'transparent';
+                    btn.style.color = active ? 'var(--bg-color, #000)' : 'var(--text-color, #fff)';
+                }
+            }
+            syncTextRenderModeUI();
 
             panel.addDivider()
                 .addSlider('influenceRadius', {
