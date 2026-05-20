@@ -834,16 +834,14 @@
             }
         }
 
-        function solveCirculantRBF(n, targetDx, targetDy, radius) {
-            // n MUSS eine 2er-Potenz sein (damit FFT-Größe = Matrixgröße)
-            // Erste Zeile der zirkulanten Matrix:
-            // w₀[j] = gaussian(2·sin(π·j/n), radius)
+        // Berechnet das Basis-Spektrum S_base[k] = T[k] / λ(ε)[k] der RBF-Lösung
+        // ohne Twist/Skalierung. n MUSS 2er-Potenz sein.
+        function computeBaseSpectrum(n, targetDx, targetDy, radius) {
+            // Erste Zeile der zirkulanten Matrix: w₀[j] = gaussian(2·sin(π·j/n), radius)
             const w0Re = new Float64Array(n);
             for (let j = 0; j < n; j++) {
                 w0Re[j] = gaussian(2 * Math.sin(Math.PI * j / n), radius);
             }
-
-            // FFT der ersten Zeile → Eigenwerte λ
             const w0Im = new Float64Array(n);
             fftInPlace(w0Re, w0Im, false);
 
@@ -856,31 +854,77 @@
             fftInPlace(txRe, txIm, false);
             fftInPlace(tyRe, tyIm, false);
 
-            // Division im Frequenzraum: D = T / λ
+            // Division im Frequenzraum: S_base = T / λ
+            const dxRe = new Float64Array(n);
+            const dxIm = new Float64Array(n);
+            const dyRe = new Float64Array(n);
+            const dyIm = new Float64Array(n);
             for (let k = 0; k < n; k++) {
                 const eR = w0Re[k], eI = w0Im[k];
                 const denom = eR * eR + eI * eI;
-                if (denom < 1e-30) {
-                    txRe[k] = txIm[k] = tyRe[k] = tyIm[k] = 0;
-                    continue;
-                }
+                if (denom < 1e-30) continue; // bleibt 0
                 const invD = 1 / denom;
-                const dxR = (txRe[k] * eR + txIm[k] * eI) * invD;
-                const dxI = (txIm[k] * eR - txRe[k] * eI) * invD;
-                const dyR = (tyRe[k] * eR + tyIm[k] * eI) * invD;
-                const dyI = (tyIm[k] * eR - tyRe[k] * eI) * invD;
-                txRe[k] = dxR; txIm[k] = dxI;
-                tyRe[k] = dyR; tyIm[k] = dyI;
+                dxRe[k] = (txRe[k] * eR + txIm[k] * eI) * invD;
+                dxIm[k] = (txIm[k] * eR - txRe[k] * eI) * invD;
+                dyRe[k] = (tyRe[k] * eR + tyIm[k] * eI) * invD;
+                dyIm[k] = (tyIm[k] * eR - tyRe[k] * eI) * invD;
+            }
+            return { dxRe, dxIm, dyRe, dyIm };
+        }
+
+        // Wendet Twist (lineare Phasen-Drift im FFT-Spektrum) und Skalierung an,
+        // führt IFFT durch und liefert reelle Verschiebungs-Werte pro Kontrollpunkt.
+        // Phase wird Hermitian-symmetrisch appliziert damit IFFT-Output reell bleibt.
+        function applySpectralModifiers(spectrum, twist, scale) {
+            const n = spectrum.dxRe.length;
+            const dxRe = new Float64Array(n);
+            const dxIm = new Float64Array(n);
+            const dyRe = new Float64Array(n);
+            const dyIm = new Float64Array(n);
+
+            // DC bleibt reell, nur skaliert
+            dxRe[0] = scale * spectrum.dxRe[0];
+            dyRe[0] = scale * spectrum.dyRe[0];
+
+            const half = n >> 1;
+            for (let k = 1; k < half; k++) {
+                const c = Math.cos(twist * k);
+                const s = Math.sin(twist * k);
+                // F[k] *= scale · e^(iαk)
+                const xR = spectrum.dxRe[k] * c - spectrum.dxIm[k] * s;
+                const xI = spectrum.dxRe[k] * s + spectrum.dxIm[k] * c;
+                const yR = spectrum.dyRe[k] * c - spectrum.dyIm[k] * s;
+                const yI = spectrum.dyRe[k] * s + spectrum.dyIm[k] * c;
+                dxRe[k] = scale * xR;
+                dxIm[k] = scale * xI;
+                dyRe[k] = scale * yR;
+                dyIm[k] = scale * yI;
+                // Hermitian-Spiegel: F[n-k] = conj(F[k])
+                dxRe[n - k] =  dxRe[k];
+                dxIm[n - k] = -dxIm[k];
+                dyRe[n - k] =  dyRe[k];
+                dyIm[n - k] = -dyIm[k];
+            }
+            // Nyquist (N gerade): rein reell, mit cos-Faktor
+            if ((n & 1) === 0) {
+                const cn = Math.cos(twist * half);
+                dxRe[half] = scale * spectrum.dxRe[half] * cn;
+                dyRe[half] = scale * spectrum.dyRe[half] * cn;
             }
 
-            // IFFT → Lösung im Ortsraum
-            fftInPlace(txRe, txIm, true);
-            fftInPlace(tyRe, tyIm, true);
+            fftInPlace(dxRe, dxIm, true);
+            fftInPlace(dyRe, dyIm, true);
 
             const dx = new Array(n);
             const dy = new Array(n);
-            for (let i = 0; i < n; i++) { dx[i] = txRe[i]; dy[i] = tyRe[i]; }
+            for (let i = 0; i < n; i++) { dx[i] = dxRe[i]; dy[i] = dyRe[i]; }
             return { dx, dy };
+        }
+
+        // Backward-compat: solveCirculantRBF(...) ≡ applySpectralModifiers(computeBaseSpectrum(...), 0, 1)
+        function solveCirculantRBF(n, targetDx, targetDy, radius) {
+            const spectrum = computeBaseSpectrum(n, targetDx, targetDy, radius);
+            return applySpectralModifiers(spectrum, 0, 1);
         }
 
         // Text-Layout: Konturen aller Zeichen mit Position extrahieren
