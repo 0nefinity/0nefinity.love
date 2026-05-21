@@ -136,7 +136,8 @@
             circleResolution: 720,
             resetSpeed: 0.1,
             spectralParams: { ...defaultSpectralParams },
-            textRenderMode: 'outline' // 'outline' | 'line'
+            textRenderMode: 'outline', // 'outline' | 'line'
+            textStartAngle: 0 // Offset für Pfad-Einstieg auf Einheitskreis (0..2π)
         };
 
         let isResetting = false;
@@ -1152,7 +1153,10 @@
                     bestIdx = i;
                 }
             }
-            const alignedPath = [...normalizedPath.slice(bestIdx), ...normalizedPath.slice(0, bestIdx)];
+            // Optionaler Einstiegs-Winkel: verschiebt den θ=0-Punkt zyklisch um den Pfad
+            const startOffset = Math.round((config.textStartAngle / (2 * Math.PI)) * normalizedPath.length);
+            const startIdx = ((bestIdx + startOffset) % normalizedPath.length + normalizedPath.length) % normalizedPath.length;
+            const alignedPath = [...normalizedPath.slice(startIdx), ...normalizedPath.slice(0, startIdx)];
 
             // Auto-Punktanzahl: 2er-Potenz (FFT-Voraussetzung)
             const nonSpaceChars = text.replace(/\s/g, '').length;
@@ -2200,16 +2204,32 @@
                         panel.set('scale',       defaultSpectralParams.scale);
                         onSpectralParamChange('kernelWidth');
                     }
+                })
+                .addSlider('textStartAngle', {
+                    label: 'Einstieg-Winkel',
+                    min: 0,
+                    max: 6.283,
+                    step: 0.05,
+                    value: config.textStartAngle,
+                    decimals: 2,
+                    onChange: v => {
+                        config.textStartAngle = v;
+                        if (typeof activeTextString !== 'undefined' && activeTextString) {
+                            applySymbol(activeTextString);
+                        }
+                    }
                 });
 
             function updateSpectralRowVisibility() {
                 const hasText = typeof activeTextString !== 'undefined' && activeTextString && activeTextString.trim();
                 const visible = !!(activeShape || hasText);
-                const keys = ['kernelWidth', 'twist', 'scale', 'spectralReset'];
-                for (const k of keys) {
+                const spectralKeys = ['kernelWidth', 'twist', 'scale', 'spectralReset'];
+                for (const k of spectralKeys) {
                     const row = panel.bodyEl?.querySelector(`[data-key="${k}"]`);
                     if (row) row.style.display = visible ? '' : 'none';
                 }
+                const textOnlyRow = panel.bodyEl?.querySelector('[data-key="textStartAngle"]');
+                if (textOnlyRow) textOnlyRow.style.display = hasText ? '' : 'none';
             }
             window._updateSpectralRowVisibility = updateSpectralRowVisibility;
             updateSpectralRowVisibility();
