@@ -1329,18 +1329,27 @@
             const spacing = 2 * Math.PI / numPoints;
             const autoRadius = spacing * spectralParams.kernelWidth;
 
+            // startAngle rotiert die Polygon-Vertices PHYSISCH (Form dreht sichtbar)
+            // statt nur den Kontrollpunkt-Index zu permutieren (was visuell invariant wäre,
+            // weil Position UND Target dieselbe Rotation hätten)
+            const sa = config.startAngle || 0;
+            const rotatedVerts = sa ? vertices.map(v => ({
+                x: v.x * Math.cos(sa) - v.y * Math.sin(sa),
+                y: v.x * Math.sin(sa) + v.y * Math.cos(sa)
+            })) : vertices;
+
             const naiveDx = new Array(numPoints);
             const naiveDy = new Array(numPoints);
             const circlePositions = new Array(numPoints);
 
             for (let i = 0; i < numPoints; i++) {
-                const angle = (i / numPoints) * 2 * Math.PI + config.startAngle;
+                const angle = (i / numPoints) * 2 * Math.PI;
                 const cx = Math.cos(angle);
                 const cy = Math.sin(angle);
                 circlePositions[i] = { x: cx, y: cy };
 
-                // Radiale Projektion: rein radiale Verschiebung
-                const r = shapeRadiusAtAngle(vertices, angle);
+                // Radiale Projektion auf rotiertes Polygon
+                const r = shapeRadiusAtAngle(rotatedVerts, angle);
                 naiveDx[i] = (r - 1) * cx;
                 naiveDy[i] = (r - 1) * cy;
             }
