@@ -128,7 +128,8 @@
         const defaultSpectralParams = {
             kernelWidth: 1.0,  // ε: log-Slider, 1.0 = aktueller Default (autoRadius = spacing · ε)
             twist: 0,          // α: lineare Phasen-Drift im FFT-Spektrum, 0 = keine Drehung
-            scale: 1.0         // s: Skalar-Skalierung der Lösung, 1.0 = aktuelle Stärke
+            scale: 1.0,        // s: Skalar-Skalierung der Lösung, 1.0 = aktuelle Stärke
+            chirp: 0           // β: quadratische Phasen-Drift, low-k bleibt fast unverändert
         };
 
         const config = {
@@ -137,7 +138,8 @@
             resetSpeed: 0.1,
             spectralParams: { ...defaultSpectralParams },
             textRenderMode: 'outline', // 'outline' | 'line'
-            textStartAngle: 0 // Offset für Pfad-Einstieg auf Einheitskreis (0..2π)
+            startAngle: 0,        // Offset für Pfad-Einstieg auf Einheitskreis (0..2π) — Text + Shapes
+            glyphStartAngle: 0    // Pro-Glyph-Bridge-Punkt: zyklische Rotation jeder Kontur (0..2π)
         };
 
         let isResetting = false;
@@ -1006,7 +1008,7 @@
         // Wendet Twist (lineare Phasen-Drift im FFT-Spektrum) und Skalierung an,
         // führt IFFT durch und liefert reelle Verschiebungs-Werte pro Kontrollpunkt.
         // Phase wird Hermitian-symmetrisch appliziert damit IFFT-Output reell bleibt.
-        function applySpectralModifiers(spectrum, twist, scale) {
+        function applySpectralModifiers(spectrum, twist, scale, chirp = 0) {
             const n = spectrum.dxRe.length;
             const dxRe = new Float64Array(n);
             const dxIm = new Float64Array(n);
@@ -1018,10 +1020,12 @@
             dyRe[0] = scale * spectrum.dyRe[0];
 
             const half = n >> 1;
+            const halfSq = half * half;
             for (let k = 1; k < half; k++) {
-                const c = Math.cos(twist * k);
-                const s = Math.sin(twist * k);
-                // F[k] *= scale · e^(iαk)
+                // F[k] *= scale · e^(i·(α·k + β·π·(k/half)²))
+                const phase = twist * k + chirp * Math.PI * (k * k) / halfSq;
+                const c = Math.cos(phase);
+                const s = Math.sin(phase);
                 const xR = spectrum.dxRe[k] * c - spectrum.dxIm[k] * s;
                 const xI = spectrum.dxRe[k] * s + spectrum.dxIm[k] * c;
                 const yR = spectrum.dyRe[k] * c - spectrum.dyIm[k] * s;
@@ -1036,9 +1040,10 @@
                 dyRe[n - k] =  dyRe[k];
                 dyIm[n - k] = -dyIm[k];
             }
-            // Nyquist (N gerade): rein reell, mit cos-Faktor
+            // Nyquist (N gerade): rein reell, mit cos-Faktor — (half/half)² = 1
             if ((n & 1) === 0) {
-                const cn = Math.cos(twist * half);
+                const phaseN = twist * half + chirp * Math.PI;
+                const cn = Math.cos(phaseN);
                 dxRe[half] = scale * spectrum.dxRe[half] * cn;
                 dyRe[half] = scale * spectrum.dyRe[half] * cn;
             }
@@ -1052,10 +1057,10 @@
             return { dx, dy };
         }
 
-        // Backward-compat: solveCirculantRBF(...) ≡ applySpectralModifiers(computeBaseSpectrum(...), 0, 1)
+        // Backward-compat: solveCirculantRBF(...) ≡ applySpectralModifiers(computeBaseSpectrum(...), 0, 1, 0)
         function solveCirculantRBF(n, targetDx, targetDy, radius) {
             const spectrum = computeBaseSpectrum(n, targetDx, targetDy, radius);
-            return applySpectralModifiers(spectrum, 0, 1);
+            return applySpectralModifiers(spectrum, 0, 1, 0);
         }
 
         // Text-Layout: Konturen aller Zeichen mit Position extrahieren
@@ -1094,7 +1099,16 @@
                             ? extractCharSkeleton
                             : extractCharContour;
                         const contours = extractor(ch, fontFamily, fontSize);
-                        for (const contour of contours) {
+                        for (const rawContour of contours) {
+                            // Optional: zyklische Rotation jeder Glyph-Kontur → Bridge-Punkt wandert
+                            const contour = (() => {
+                                if (!config.glyphStartAngle) return rawContour;
+                                const n = rawContour.length;
+                                if (n < 2) return rawContour;
+                                const offset = Math.round((config.glyphStartAngle / (2 * Math.PI)) * n);
+                                const idx = ((offset % n) + n) % n;
+                                return [...rawContour.slice(idx), ...rawContour.slice(0, idx)];
+                            })();
                             // Kontur mit Zeichenposition offsetten
                             allContours.push(contour.map(p => ({
                                 x: p.x + x + charWidths[charIdx] / 2,
@@ -1154,7 +1168,7 @@
                 }
             }
             // Optionaler Einstiegs-Winkel: verschiebt den θ=0-Punkt zyklisch um den Pfad
-            const startOffset = Math.round((config.textStartAngle / (2 * Math.PI)) * normalizedPath.length);
+            const startOffset = Math.round((config.startAngle / (2 * Math.PI)) * normalizedPath.length);
             const startIdx = ((bestIdx + startOffset) % normalizedPath.length + normalizedPath.length) % normalizedPath.length;
             const alignedPath = [...normalizedPath.slice(startIdx), ...normalizedPath.slice(0, startIdx)];
 
@@ -1186,7 +1200,7 @@
 
             // Basis-Spektrum + Modifier (analog zu Shape-Pipeline)
             const spectrum = computeBaseSpectrum(autoNumPoints, naiveDx, naiveDy, autoRadius);
-            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale);
+            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale, spectralParams.chirp || 0);
 
             const points = circlePositions.map((pos, i) => ({
                 id: `symbol-${i}`,
@@ -1320,7 +1334,7 @@
             const circlePositions = new Array(numPoints);
 
             for (let i = 0; i < numPoints; i++) {
-                const angle = (i / numPoints) * 2 * Math.PI;
+                const angle = (i / numPoints) * 2 * Math.PI + config.startAngle;
                 const cx = Math.cos(angle);
                 const cy = Math.sin(angle);
                 circlePositions[i] = { x: cx, y: cy };
@@ -1331,9 +1345,9 @@
                 naiveDy[i] = (r - 1) * cy;
             }
 
-            // Basis-Spektrum (ε-abhängig) und Modifier (twist + scale) getrennt
+            // Basis-Spektrum (ε-abhängig) und Modifier (twist + scale + chirp) getrennt
             const spectrum = computeBaseSpectrum(numPoints, naiveDx, naiveDy, autoRadius);
-            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale);
+            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale, spectralParams.chirp || 0);
 
             const points = circlePositions.map((pos, i) => ({
                 id: `shape-${i}`,
@@ -1446,7 +1460,7 @@
                     activeShapeSpectrum = result.spectrum;
                     controlPoints = result.points.map(p => normalizeControlPoint(p));
                 } else {
-                    const solved = applySpectralModifiers(activeShapeSpectrum, sp.twist, sp.scale);
+                    const solved = applySpectralModifiers(activeShapeSpectrum, sp.twist, sp.scale, sp.chirp || 0);
                     for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
                         controlPoints[i].dx = solved.dx[i];
                         controlPoints[i].dy = solved.dy[i];
@@ -1463,7 +1477,7 @@
                     activeTextSpectrum = result.spectrum;
                     controlPoints = result.points.map(p => normalizeControlPoint(p));
                 } else {
-                    const solved = applySpectralModifiers(activeTextSpectrum, sp.twist, sp.scale);
+                    const solved = applySpectralModifiers(activeTextSpectrum, sp.twist, sp.scale, sp.chirp || 0);
                     for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
                         controlPoints[i].dx = solved.dx[i];
                         controlPoints[i].dy = solved.dy[i];
@@ -2181,6 +2195,18 @@
                         onSpectralParamChange('twist');
                     }
                 })
+                .addSlider('chirp', {
+                    label: 'Chirp β',
+                    min: -1,
+                    max: 1,
+                    step: 0.01,
+                    value: config.spectralParams.chirp,
+                    decimals: 2,
+                    onChange: v => {
+                        config.spectralParams.chirp = v;
+                        onSpectralParamChange('chirp');
+                    }
+                })
                 .addSlider('scale', {
                     label: 'Stärke s',
                     min: -2,
@@ -2199,21 +2225,43 @@
                         config.spectralParams.kernelWidth = defaultSpectralParams.kernelWidth;
                         config.spectralParams.twist       = defaultSpectralParams.twist;
                         config.spectralParams.scale       = defaultSpectralParams.scale;
+                        config.spectralParams.chirp       = defaultSpectralParams.chirp;
+                        config.startAngle                 = 0;
+                        config.glyphStartAngle            = 0;
                         panel.set('kernelWidth', defaultSpectralParams.kernelWidth);
                         panel.set('twist',       defaultSpectralParams.twist);
                         panel.set('scale',       defaultSpectralParams.scale);
+                        panel.set('chirp',       defaultSpectralParams.chirp);
+                        panel.set('startAngle',      0);
+                        panel.set('glyphStartAngle', 0);
                         onSpectralParamChange('kernelWidth');
                     }
                 })
-                .addSlider('textStartAngle', {
+                .addSlider('startAngle', {
                     label: 'Einstieg-Winkel',
                     min: 0,
                     max: 6.283,
                     step: 0.05,
-                    value: config.textStartAngle,
+                    value: config.startAngle,
                     decimals: 2,
                     onChange: v => {
-                        config.textStartAngle = v;
+                        config.startAngle = v;
+                        if (activeShape) {
+                            onSpectralParamChange('kernelWidth'); // forciert re-solve mit neuem startAngle
+                        } else if (typeof activeTextString !== 'undefined' && activeTextString) {
+                            applySymbol(activeTextString);
+                        }
+                    }
+                })
+                .addSlider('glyphStartAngle', {
+                    label: 'Brücken-Punkt',
+                    min: 0,
+                    max: 6.283,
+                    step: 0.05,
+                    value: config.glyphStartAngle,
+                    decimals: 2,
+                    onChange: v => {
+                        config.glyphStartAngle = v;
                         if (typeof activeTextString !== 'undefined' && activeTextString) {
                             applySymbol(activeTextString);
                         }
@@ -2223,12 +2271,12 @@
             function updateSpectralRowVisibility() {
                 const hasText = typeof activeTextString !== 'undefined' && activeTextString && activeTextString.trim();
                 const visible = !!(activeShape || hasText);
-                const spectralKeys = ['kernelWidth', 'twist', 'scale', 'spectralReset'];
+                const spectralKeys = ['kernelWidth', 'twist', 'chirp', 'scale', 'spectralReset', 'startAngle'];
                 for (const k of spectralKeys) {
                     const row = panel.bodyEl?.querySelector(`[data-key="${k}"]`);
                     if (row) row.style.display = visible ? '' : 'none';
                 }
-                const textOnlyRow = panel.bodyEl?.querySelector('[data-key="textStartAngle"]');
+                const textOnlyRow = panel.bodyEl?.querySelector('[data-key="glyphStartAngle"]');
                 if (textOnlyRow) textOnlyRow.style.display = hasText ? '' : 'none';
             }
             window._updateSpectralRowVisibility = updateSpectralRowVisibility;
