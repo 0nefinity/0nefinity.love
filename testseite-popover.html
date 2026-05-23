@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Testseite Popover-Menü</title>
+  <style>
+    :root {
+      --bg-color: black;
+      --text-color: white;
+      --menu-open-width: 21rem;
+      --font-family: Verdana, Geneva, Tahoma, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: var(--font-family);
+      line-height: 1.5;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    main {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 2rem;
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    h1, h2 { margin: 1.5rem 0 0.5rem; }
+    p { margin: 0.5rem 0; }
+
+    /* ─── Nav ─── */
+    nav {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 1000;
+    }
+
+    /* ─── Menü-Button ─── */
+    .menu-button {
+      background: none;
+      border: none;
+      color: var(--text-color);
+      font-size: 3.5rem;
+      cursor: pointer;
+      width: 4.375rem;
+      height: 4.375rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .menu-button:hover {
+      opacity: 0.8;
+    }
+
+    .menu-button .menu-open-text { display: none; }
+    .menu-button .menu-closed-text { display: inline; }
+
+    /* Button-Text wechseln wenn Popover offen */
+    nav:has(:popover-open) .menu-button .menu-open-text {
+      display: inline;
+      font-size: 1.2rem;
+    }
+    nav:has(:popover-open) .menu-button .menu-closed-text { display: none; }
+
+    /* ─── Popover (das Menü) ─── */
+    #menu-popover:popover-open {
+      /* Reset browser popover defaults */
+      border: none;
+      padding: 0;
+      margin: 0;
+      background: var(--bg-color);
+      color: var(--text-color);
+      inset: unset;
+
+      /* Positionierung */
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: auto;
+      width: var(--menu-open-width);
+      max-width: 90vw;
+      height: 100vh;
+      height: 100dvh;
+
+      /* Layout */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Popover-Backdrop (optional, für Dimming) */
+    #menu-popover::backdrop {
+      background: transparent;
+    }
+
+    /* ─── Suchfeld ─── */
+    .menu-search {
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .menu-search input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid rgba(255,255,255,0.3);
+      color: var(--text-color);
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 0.25rem 0;
+      outline: none;
+    }
+
+    .menu-loupe { font-size: 1.2rem; }
+    .menu-loupe-handle { font-size: 0.7rem; margin-left: -0.3rem; }
+
+    /* ─── File-List ─── */
+    #file-list {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      list-style: none;
+      padding: 0.5rem 1.25rem 1rem;
+      margin: 0;
+    }
+
+    #file-list li {
+      padding: 0.3rem 0;
+    }
+
+    #file-list a {
+      color: var(--text-color);
+      text-decoration: none;
+      opacity: 0.8;
+    }
+
+    #file-list a:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    .menu-heading {
+      opacity: 0.5;
+      font-style: italic;
+      font-size: 0.85rem;
+    }
+
+    .menu-separator {
+      border-top: 1px solid rgba(255,255,255,0.1);
+      margin: 0.5rem 0;
+    }
+
+    /* Scrollbar */
+    #file-list::-webkit-scrollbar { width: 0.25rem; }
+    #file-list::-webkit-scrollbar-thumb { background: var(--text-color); opacity: 0.5; }
+    #file-list::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+
+<main>
+  <h1>Testseite — Popover-Menü</h1>
+  <p>Menü nutzt die Popover API statt Checkbox-Hack. Kein JS nötig für: Öffnen, Schließen, Klick-außerhalb-schließt.</p>
+
+  <h2>Scroll-Test</h2>
+  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+  <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+  <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p>
+  <h2>Noch mehr Text</h2>
+  <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+  <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p>
+  <p>Totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
+  <h2>Und weiter</h2>
+  <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit.</p>
+  <p>Sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
+  <p>Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit.</p>
+  <h2>Immer noch</h2>
+  <p>At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti.</p>
+  <p>Quos dolores et quas molestias excepturi sint occaecati cupiditate non provident.</p>
+  <p>Similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga.</p>
+  <h2>Fast am Ende</h2>
+  <p>Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio.</p>
+  <p>Cumque nihil impedit quo minus id quod maxime placeat facere possimus, omnis voluptas assumenda est.</p>
+  <p>Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae.</p>
+  <h2>Ende</h2>
+  <p>Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat.</p>
+  <p>Das war's. Jetzt kannst du scrollen.</p>
+</main>
+
+<nav id="meta-nav" aria-label="Hauptnavigation">
+  <button class="menu-button" popovertarget="menu-popover" aria-label="Menü">
+    <span class="menu-closed-text">≡</span>
+    <span class="menu-open-text">0 ≡ 1 ≡ ∞</span>
+  </button>
+
+  <div id="menu-popover" popover>
+    <div class="menu-search">
+      <span class="menu-loupe" aria-hidden="true">0</span>
+      <span class="menu-loupe-handle" aria-hidden="true">1</span>
+      <input type="search" placeholder="activate js or use browser search" disabled>
+    </div>
+    <ul id="file-list">
+      <li><span class="menu-heading">test items:</span></li>
+      <li><a href="#">README</a></li>
+      <li><a href="#">impressum-und-datenschutz</a></li>
+      <li><a href="#">testseite</a></li>
+      <li><a href="#">kreisausdingen</a></li>
+      <li><a href="#">buyPi</a></li>
+      <li class="menu-separator"></li>
+      <li><a href="#">0nefinity manifesto</a></li>
+      <li><a href="#">die unendliche eins</a></li>
+      <li><a href="#">goldener schnitt</a></li>
+      <li><a href="#">fibonacci spirale</a></li>
+      <li><a href="#">mandelbrot zoom</a></li>
+      <li><a href="#">pi visualisierung</a></li>
+      <li><a href="#">euler identität</a></li>
+      <li><a href="#">primzahl sieb</a></li>
+      <li><a href="#">collatz vermutung</a></li>
+      <li><a href="#">sierpinski dreieck</a></li>
+      <li><a href="#">koch schneeflocke</a></li>
+      <li><a href="#">julia menge</a></li>
+      <li><a href="#">lorenz attraktor</a></li>
+      <li><a href="#">game of life</a></li>
+      <li><a href="#">harmonische reihe</a></li>
+      <li><a href="#">binärbaum</a></li>
+      <li><a href="#">fraktale dimension</a></li>
+      <li><a href="#">zeta funktion</a></li>
+      <li><a href="#">pascalsches dreieck</a></li>
+      <li><a href="#">catalan zahlen</a></li>
+      <li><a href="#">möbius band</a></li>
+      <li><a href="#">klein flasche</a></li>
+      <li><a href="#">torus knoten</a></li>
+      <li><a href="#">penrose kachelung</a></li>
+      <li><a href="#">voronoi diagramm</a></li>
+      <li><a href="#">delaunay triangulation</a></li>
+      <li><a href="#">perlin noise</a></li>
+      <li><a href="#">reaction diffusion</a></li>
+      <li><a href="#">strange attractor</a></li>
+      <li><a href="#">double pendulum</a></li>
+      <li><a href="#">wave equation</a></li>
+      <li><a href="#">fourier transform</a></li>
+      <li><a href="#">laplace operator</a></li>
+      <li><a href="#">navier stokes</a></li>
+      <li><a href="#">schrödinger gleichung</a></li>
+      <li><a href="#">dirac gleichung</a></li>
+      <li><a href="#">maxwell gleichungen</a></li>
+      <li><a href="#">hamilton operator</a></li>
+      <li><a href="#">lagrange mechanik</a></li>
+      <li><a href="#">noether theorem</a></li>
+      <li><a href="#">gödel unvollständigkeit</a></li>
+      <li><a href="#">cantor diagonalisierung</a></li>
+      <li><a href="#">hilbert hotel</a></li>
+      <li><a href="#">banach tarski</a></li>
+      <li><a href="#">riemann hypothese</a></li>
+    </ul>
+  </div>
+</nav>
+
+</body>
+</html>
