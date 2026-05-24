@@ -479,7 +479,7 @@ self.onmessage = function(e) {
     const fontFamily = FONT_OPTIONS[state.font] || FONT_OPTIONS.sans;
     let fontSize = 600;
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
-    const padding = size * 0.18;
+    const padding = size * 0.28;        // großzügig damit die SDF am Rand sicher groß ist
     const maxW = size - padding * 2;
     const maxH = size - padding * 2;
     let m = ctx.measureText(text);
@@ -574,18 +574,16 @@ self.onmessage = function(e) {
     }
 
     float sampleText(vec3 p) {
-        // Canvas-Y geht nach unten, World-Y nach oben → uv.y flippen,
-        // sonst stehen Buchstaben auf dem Kopf.
+        // Y flippen weil Canvas-Y nach unten geht, World-Y nach oben.
         vec2 uv = vec2(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
-        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-            // outside SDF texture: use rectangular boundary distance
-            vec2 q = abs(p.xy) - vec2(1.0);
-            float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
-            float dz = abs(p.z) - uTextThickness;
-            vec2 e = vec2(outside, dz);
-            return min(max(e.x, e.y), 0.0) + length(max(e, 0.0));
-        }
-        float d2 = texture(uSdf, uv).r;     // 2D signed distance, normalized
+        // Kontinuierliche Distance (kein hartes if-else):
+        // - Sample-UV wird auf [0,1] geklemmt (CLAMP_TO_EDGE gibt Rand-Wert).
+        // - Punkte außerhalb des UV-Bereichs bekommen zusätzlich die Distance
+        //   zum UV-Rand draufgerechnet, sodass das DE überall Lipschitz bleibt
+        //   und keine Box als Fallback-Geometrie sichtbar wird.
+        vec2 outXY = max(abs(p.xy) - 1.0, 0.0);
+        vec2 clipped = clamp(uv, 0.001, 0.999);
+        float d2 = texture(uSdf, clipped).r + length(outXY);
         float dz = abs(p.z) - uTextThickness;
         vec2 e = vec2(d2, dz);
         return min(max(e.x, e.y), 0.0) + length(max(e, 0.0));
