@@ -256,13 +256,12 @@
     // keine Lücken zwischen Buchstaben → keine grauen "Loch"-Pixel beim Fliegen.
     'unendlich': {
       pipe: [
-        { type: 'mod', params: { px: 1.2, py: 1.2, pz: 1.2 } },
+        { type: 'mod', params: { px: 1.5, py: 1.5, pz: 1.5 } },
       ],
-      // textScale ≈ period: 1en sichtbar einzeln, fast berührend.
-      // MAX_DIST=200 + maxMarches=224 sorgen dafür dass Strahlen in jeder
-      // Richtung lange genug laufen um eine Kopie zu finden, statt im
-      // schwarzen Nichts zu verschwinden.
-      iter: 1, camPos: [0, 0, 4], scale: 1.0, maxMarches: 224,
+      // Klassisches Grid: kleine 1en, Raum dazwischen, viele Kopien in jeder
+      // Richtung sichtbar. MAX_DIST=200 + maxMarches=256 + fog 0.25 sorgen
+      // dafür dass auch sehr entfernte Kopien noch erkennbar bleiben.
+      iter: 1, camPos: [0, 0, 8], scale: 0.45, maxMarches: 256,
     },
   };
 
@@ -485,7 +484,7 @@ self.onmessage = function(e) {
     const fontFamily = FONT_OPTIONS[state.font] || FONT_OPTIONS.sans;
     let fontSize = 600;
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
-    const padding = size * 0.20;
+    const padding = size * 0.28;
     const maxW = size - padding * 2;
     const maxH = size - padding * 2;
     let m = ctx.measureText(text);
