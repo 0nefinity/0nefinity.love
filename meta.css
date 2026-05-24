@@ -2971,4 +2971,66 @@ pre {
     word-wrap: break-word;
 }
 
+/* ─── Math-Notation Helper-Box ───────────────────────────────────────────
+   Kompakte Vorschlags-Box bei `pi` / `infinity` Tipperkennung.
+   Position via JS (absolute, scroll-relativ). */
+.math-helper-box {
+    position: absolute;
+    z-index: 4500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-color, #000) 92%, rgba(255,255,255,0.06));
+    color: var(--text-color);
+    font-family: var(--font-family);
+    font-size: 0.82rem;
+    line-height: 1.1;
+    white-space: nowrap;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    user-select: none;
+}
+
+.math-helper-box[hidden] {
+    display: none;
+}
+
+.math-helper-box .math-helper-text {
+    opacity: 0.92;
+    padding: 0 0.15rem;
+}
+
+.math-helper-box button {
+    appearance: none;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-fill-08);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1;
+    min-width: 1.6rem;
+    height: 1.4rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.math-helper-box button:hover,
+.math-helper-box button:focus {
+    background: var(--ui-fill-20);
+    border-color: var(--ui-border-stronger);
+    outline: none;
+}
+
+.math-helper-box .math-helper-accept {
+    background: var(--ui-fill-15);
+}
+
+.math-helper-box .math-helper-accept:hover,
+.math-helper-box .math-helper-accept:focus {
+    background: var(--ui-fill-30);
+}
 
