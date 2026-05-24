@@ -177,6 +177,22 @@
       ],
       glsl: (i) => `z.xyz -= vec3(uFold${i}_x, uFold${i}_y, uFold${i}_z);`,
     },
+    // ∞ — Domain repetition: 1 Objekt → unendlich Kopien durch periodisches mod.
+    // Pro Achse: period 0 = aus, sonst Periodenlänge.
+    mod: {
+      label: '∞ Mod (unendlich kopieren)',
+      params: [
+        { name: 'px', label: 'period x', min: 0, max: 8, step: 0.01, default: 2 },
+        { name: 'py', label: 'period y', min: 0, max: 8, step: 0.01, default: 2 },
+        { name: 'pz', label: 'period z', min: 0, max: 8, step: 0.01, default: 0 },
+      ],
+      glsl: (i) => `{
+        float px = uFold${i}_px, py = uFold${i}_py, pz = uFold${i}_pz;
+        if (px > 0.001) z.x = mod(z.x + px * 0.5, px) - px * 0.5;
+        if (py > 0.001) z.y = mod(z.y + py * 0.5, py) - py * 0.5;
+        if (pz > 0.001) z.z = mod(z.z + pz * 0.5, pz) - pz * 0.5;
+      }`,
+    },
   };
 
   /* ─── Presets ──────────────────────────────────────────────────────────── */
@@ -214,6 +230,14 @@
         { type: 'translate', params: { x: 0.1, y: 0.1, z: 0 } },
       ],
       iter: 4, camDist: 6, scale: 1.0,
+    },
+    // PySpace 3:55 — DE(x) = norm(mod(x, p) - c) - r:
+    // domain repetition reicht alleine schon für ∞ Kopien.
+    'unendlich': {
+      pipe: [
+        { type: 'mod', params: { px: 1.5, py: 1.5, pz: 0 } },
+      ],
+      iter: 1, camDist: 6, scale: 0.5,
     },
   };
 
@@ -401,7 +425,7 @@ self.onmessage = function(e) {
     } else {
       firstSdfDone = true;
       if (!hasUrlState) {
-        setStatus('Text eingeben → unten ein Preset wählen (kristallin / sierpinski / chaotisch / spiegel) für Fraktal-Effekt', 9000);
+        setStatus('Text eingeben → unten ein Preset wählen (∞ unendlich / kristallin / sierpinski / chaotisch / spiegel) für Fraktal-Effekt', 9000);
       } else {
         statusEl.classList.add('hidden');
       }
@@ -707,6 +731,7 @@ self.onmessage = function(e) {
   }
 
   /* ─── Camera math ──────────────────────────────────────────────────────── */
+  // Orbit-Kamera: rotiert um textPos. Wenn Text bewegt wird, folgt das Pivot.
   function camBasis() {
     const yaw = state.cam.yaw, pitch = state.cam.pitch;
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
@@ -714,7 +739,9 @@ self.onmessage = function(e) {
     const fwd   = [-sy * cp, sp, -cy * cp];
     const right = [ cy,      0,  -sy];
     const up    = [ sy * sp, cp, cy * sp];
-    const pos   = [-fwd[0] * state.cam.dist, -fwd[1] * state.cam.dist, -fwd[2] * state.cam.dist];
+    const t = state.textPos;
+    const d = state.cam.dist;
+    const pos = [t[0] - fwd[0] * d, t[1] - fwd[1] * d, t[2] - fwd[2] * d];
     return { pos, fwd, right, up };
   }
   function euler3x3Inv(euler) {
@@ -809,26 +836,74 @@ self.onmessage = function(e) {
     requestAnimationFrame(loop);
   }
 
-  /* ─── Input: Drag, Wheel, Touch ────────────────────────────────────────── */
-  const drag = { active: false, mode: 'translate', x: 0, y: 0, p0: null, r0: null };
+  /* ─── Input: Hit-Test, Drag, Wheel, Touch ─────────────────────────────── */
+  // Hit-Test: gl.readPixels am Cursor → vergleicht mit Background-Farbe.
+  // diff > threshold => Klick lag auf gerendertem Fraktal/Text, sonst leerer Raum.
+  function pickAtScreen(clientX, clientY) {
+    if (!prog || !state.sdfTex) return false;
+    render();                                      // sicherstellen dass Frame frisch ist
+    const pxX = Math.floor(clientX * canvas.width  / window.innerWidth);
+    const pxY = Math.floor((window.innerHeight - clientY) * canvas.height / window.innerHeight);
+    if (pxX < 0 || pxY < 0 || pxX >= canvas.width || pxY >= canvas.height) return false;
+    const px = new Uint8Array(4);
+    gl.readPixels(pxX, pxY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const bg = hex2rgb(state.colors.bg);
+    const diff = Math.abs(px[0] - bg[0]*255)
+               + Math.abs(px[1] - bg[1]*255)
+               + Math.abs(px[2] - bg[2]*255);
+    return diff > 18;
+  }
 
-  canvas.addEventListener('pointerdown', (e) => {
-    if (e.target !== canvas) return;
+  const drag = { active: false, mode: 'orbitCam', x: 0, y: 0, p0: null, r0: null, c0: null };
+
+  function startDrag(e, forceMode = null) {
     drag.active = true;
     drag.x = e.clientX;
     drag.y = e.clientY;
     drag.p0 = [...state.textPos];
     drag.r0 = [...state.textRot];
     drag.c0 = { ...state.cam };
-    drag.mode = (e.shiftKey || e.button === 2) ? 'rotateText' : 'translateText';
+    if (forceMode) {
+      drag.mode = forceMode;
+    } else {
+      const hit = pickAtScreen(e.clientX, e.clientY);
+      if (hit) {
+        drag.mode = (e.shiftKey || e.button === 2) ? 'rotateText' : 'translateText';
+        canvas.style.cursor = (drag.mode === 'rotateText') ? 'grabbing' : 'move';
+      } else {
+        drag.mode = 'orbitCam';
+        canvas.style.cursor = 'grabbing';
+      }
+    }
+  }
+  function endDrag() {
+    drag.active = false;
+    canvas.style.cursor = '';
+  }
+
+  const activePointers = new Set();
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.target !== canvas) return;
+    activePointers.add(e.pointerId);
+    // Mehrfinger-Touch: pinch übernimmt, kein single-pointer-drag
+    if (e.pointerType === 'touch' && activePointers.size > 1) { endDrag(); return; }
+    if (e.pointerType === 'touch') {
+      startDrag(e, 'orbitCam');   // Touch immer orbit, kein Hit-Test (zu fummelig)
+    } else {
+      startDrag(e);                // Mouse: Hit-Test → orbit oder text-manipulation
+    }
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!drag.active) return;
     const dx = (e.clientX - drag.x) / window.innerHeight;
     const dy = (e.clientY - drag.y) / window.innerHeight;
-    if (drag.mode === 'translateText') {
-      // Move in the camera's right/up plane (in world units)
+    if (drag.mode === 'orbitCam') {
+      // Standard-Orbit: dx = yaw, dy = pitch. Pitch invertiert für "drag-up = camera nach oben".
+      state.cam.yaw   = drag.c0.yaw   + dx * 3;
+      state.cam.pitch = Math.max(-1.5, Math.min(1.5, drag.c0.pitch - dy * 3));
+      syncPanelValue('camDist', state.cam.dist);
+    } else if (drag.mode === 'translateText') {
       const cam = camBasis();
       const speed = 2.0;
       state.textPos[0] = drag.p0[0] + dx * cam.right[0] * speed - dy * cam.up[0] * speed;
@@ -837,8 +912,7 @@ self.onmessage = function(e) {
       syncPanelValue('posX', state.textPos[0]);
       syncPanelValue('posY', state.textPos[1]);
       syncPanelValue('posZ', state.textPos[2]);
-    } else {
-      // rotate text via yaw/pitch on its own axes
+    } else if (drag.mode === 'rotateText') {
       state.textRot[1] = drag.r0[1] + dx * 3;
       state.textRot[0] = drag.r0[0] + dy * 3;
       syncPanelValue('rotX', state.textRot[0]);
@@ -847,8 +921,8 @@ self.onmessage = function(e) {
     state.needsRender = true;
     syncURL();
   });
-  canvas.addEventListener('pointerup',     () => { drag.active = false; });
-  canvas.addEventListener('pointercancel', () => { drag.active = false; });
+  canvas.addEventListener('pointerup',     (e) => { activePointers.delete(e.pointerId); endDrag(); });
+  canvas.addEventListener('pointercancel', (e) => { activePointers.delete(e.pointerId); endDrag(); });
   canvas.addEventListener('contextmenu',   (e) => e.preventDefault());
 
   canvas.addEventListener('wheel', (e) => {
