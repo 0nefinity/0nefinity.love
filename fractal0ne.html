@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<!--
+  fractal0ne — beliebigen Text im Browser fraktalisieren.
+  Inspired by HackerPoet/PySpace (GLSL Fractal Ray Marcher).
+  Spec: /docs/specs/2026-05-24-fractal0ne-design.md
+-->
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>fractal0ne</title>
+  <link href="/meta.css" rel="stylesheet">
+  <script src="/meta.js"></script>
+  <script src="/tools/controls.js"></script>
+
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    #gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+    #status { position: fixed; left: 1rem; bottom: 1rem; padding: 0.4rem 0.7rem; background: rgba(0,0,0,0.6);
+              color: #fff; font: 12px ui-monospace, monospace; border-radius: 6px;
+              backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+              pointer-events: none; transition: opacity 0.3s; }
+    #status.hidden { opacity: 0; }
+    .fold-pipeline { display: flex; flex-direction: column; gap: 0.4rem; }
+    .fold-item { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.45rem 0.55rem;
+                 background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
+    .fold-item-head { display: flex; align-items: center; gap: 0.4rem; }
+    .fold-item-head select { flex: 1; height: 32px; border-radius: 9999px; padding: 0 0.6rem;
+                            background: var(--bg-color, #000); color: var(--text-color, #fff);
+                            border: 1.5px solid currentColor; font: inherit; cursor: pointer; }
+    .fold-item-head .fold-btn { width: 32px; height: 32px; min-width: 32px; border-radius: 50%;
+                                background: transparent; color: currentColor; border: 1.5px solid currentColor;
+                                cursor: pointer; font: 14px/1 inherit; display: flex; align-items: center; justify-content: center; }
+    .fold-item-head .fold-btn:disabled { opacity: 0.3; cursor: default; }
+    .fold-item-params { display: flex; flex-direction: column; gap: 0.25rem; padding-left: 0.2rem; }
+    .fold-param-row { display: flex; align-items: center; gap: 0.5rem; font-size: 11px; }
+    .fold-param-row label { flex: 0 0 4rem; opacity: 0.7; }
+    .fold-param-row input[type=range] { flex: 1; min-width: 0; }
+    .fold-param-row .fold-param-val { flex: 0 0 3.5rem; text-align: right; font-family: ui-monospace, monospace; opacity: 0.8; }
+    .fold-add-row { display: flex; gap: 0.4rem; }
+    .fold-add-row select { flex: 1; height: 32px; border-radius: 9999px; padding: 0 0.6rem;
+                          background: var(--bg-color, #000); color: var(--text-color, #fff);
+                          border: 1.5px solid currentColor; cursor: pointer; }
+    .fold-add-row button { width: 32px; height: 32px; border-radius: 50%;
+                          background: currentColor; border: none; cursor: pointer;
+                          display: flex; align-items: center; justify-content: center; }
+    .fold-add-row button span { color: var(--bg-color, #000); font-size: 18px; line-height: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="status">init…</div>
+
+  <script>
+  /* =========================================================================
+   * fractal0ne main module
+   * ========================================================================= */
+  'use strict';
+
+  const $ = (sel) => document.querySelector(sel);
+  const statusEl = $('#status');
+  function setStatus(msg, hideAfter = 0) {
+    statusEl.textContent = msg;
+    statusEl.classList.remove('hidden');
+    if (hideAfter > 0) setTimeout(() => statusEl.classList.add('hidden'), hideAfter);
+  }
+
+  /* ─── Fold-Definitionen ──────────────────────────────────────────────────
+   * Pro Fold: GLSL-Snippet-Generator + UI-Parameter-Metadata.
+   * Beim Compile wird der GLSL-Block in applyFolds() injiziert,
+   * Parameter werden als Uniforms `uFold{i}_{name}` declared + gesetzt.
+   * ──────────────────────────────────────────────────────────────────────── */
+  const FOLDS = {
+    sierpinski: {
+      label: 'Sierpinski-Fold',
+      params: [],
+      glsl: () => `
+        z.xy -= min(z.x + z.y, 0.0);
+        z.xz -= min(z.x + z.z, 0.0);
+        z.yz -= min(z.y + z.z, 0.0);`,
+    },
+    menger: {
+      label: 'Menger-Fold',
+      params: [],
+      glsl: () => `{
+        float a = min(z.x - z.y, 0.0); z.x -= a; z.y += a;
+        a = min(z.x - z.z, 0.0); z.x -= a; z.z += a;
+        a = min(z.y - z.z, 0.0); z.y -= a; z.z += a;
+      }`,
+    },
+    sphere: {
+      label: 'Sphere-Fold',
+      params: [
+        { name: 'minR', label: 'min R', min: 0.01, max: 4, step: 0.01, default: 0.5 },
+        { name: 'maxR', label: 'max R', min: 0.1, max: 8, step: 0.01, default: 2.0 },
+      ],
+      glsl: (i) => `{
+        float r2 = dot(z.xyz, z.xyz);
+        z *= max(uFold${i}_maxR / max(uFold${i}_minR, r2), 1.0);
+      }`,
+    },
+    box: {
+      label: 'Box-Fold',
+      params: [
+        { name: 'rx', label: 'rx', min: 0.1, max: 4, step: 0.01, default: 1.0 },
+        { name: 'ry', label: 'ry', min: 0.1, max: 4, step: 0.01, default: 1.0 },
+        { name: 'rz', label: 'rz', min: 0.1, max: 4, step: 0.01, default: 1.0 },
+      ],
+      glsl: (i) => `{
+        vec3 r = vec3(uFold${i}_rx, uFold${i}_ry, uFold${i}_rz);
+        z.xyz = clamp(z.xyz, -r, r) * 2.0 - z.xyz;
+      }`,
+    },
+    abs: {
+      label: 'Abs-Fold',
+      params: [
+        { name: 'cx', label: 'cx', min: -4, max: 4, step: 0.01, default: 0 },
+        { name: 'cy', label: 'cy', min: -4, max: 4, step: 0.01, default: 0 },
+        { name: 'cz', label: 'cz', min: -4, max: 4, step: 0.01, default: 0 },
+      ],
+      glsl: (i) => `{
+        vec3 c = vec3(uFold${i}_cx, uFold${i}_cy, uFold${i}_cz);
+        z.xyz = abs(z.xyz - c) + c;
+      }`,
+    },
+    plane: {
+      label: 'Plane-Fold',
+      params: [
+        { name: 'nx', label: 'nx', min: -1, max: 1, step: 0.01, default: 1 },
+        { name: 'ny', label: 'ny', min: -1, max: 1, step: 0.01, default: 0 },
+        { name: 'nz', label: 'nz', min: -1, max: 1, step: 0.01, default: 0 },
+        { name: 'd',  label: 'd',  min: -2, max: 2, step: 0.01, default: 0 },
+      ],
+      glsl: (i) => `{
+        vec3 n = normalize(vec3(uFold${i}_nx, uFold${i}_ny, uFold${i}_nz) + vec3(1e-5));
+        z.xyz -= 2.0 * min(0.0, dot(z.xyz, n) - uFold${i}_d) * n;
+      }`,
+    },
+    rotX: {
+      label: 'Rotate X',
+      params: [{ name: 'a', label: 'angle', min: -3.14159, max: 3.14159, step: 0.01, default: 0.3 }],
+      glsl: (i) => `{
+        float s = sin(uFold${i}_a), c = cos(uFold${i}_a);
+        z.yz = vec2(c*z.y + s*z.z, c*z.z - s*z.y);
+      }`,
+    },
+    rotY: {
+      label: 'Rotate Y',
+      params: [{ name: 'a', label: 'angle', min: -3.14159, max: 3.14159, step: 0.01, default: 0.3 }],
+      glsl: (i) => `{
+        float s = sin(uFold${i}_a), c = cos(uFold${i}_a);
+        z.xz = vec2(c*z.x - s*z.z, c*z.z + s*z.x);
+      }`,
+    },
+    rotZ: {
+      label: 'Rotate Z',
+      params: [{ name: 'a', label: 'angle', min: -3.14159, max: 3.14159, step: 0.01, default: 0.3 }],
+      glsl: (i) => `{
+        float s = sin(uFold${i}_a), c = cos(uFold${i}_a);
+        z.xy = vec2(c*z.x + s*z.y, c*z.y - s*z.x);
+      }`,
+    },
+    scale: {
+      label: 'Scale',
+      params: [{ name: 's', label: 'factor', min: 0.1, max: 4, step: 0.01, default: 2.0 }],
+      glsl: (i) => `z *= uFold${i}_s;`,
+    },
+    translate: {
+      label: 'Translate',
+      params: [
+        { name: 'x', label: 'x', min: -4, max: 4, step: 0.01, default: 0 },
+        { name: 'y', label: 'y', min: -4, max: 4, step: 0.01, default: 0 },
+        { name: 'z', label: 'z', min: -4, max: 4, step: 0.01, default: 0 },
+      ],
+      glsl: (i) => `z.xyz -= vec3(uFold${i}_x, uFold${i}_y, uFold${i}_z);`,
+    },
+  };
+
+  /* ─── Presets ──────────────────────────────────────────────────────────── */
+  const PRESETS = {
+    klar: [],
+    kristallin: [
+      { type: 'box', params: { rx: 1.0, ry: 1.0, rz: 1.0 } },
+      { type: 'sphere', params: { minR: 0.5, maxR: 2.0 } },
+      { type: 'scale', params: { s: 2.0 } },
+      { type: 'rotY', params: { a: 0.3 } },
+    ],
+    chaotisch: [
+      { type: 'sierpinski', params: {} },
+      { type: 'rotX', params: { a: 0.7 } },
+      { type: 'menger', params: {} },
+      { type: 'scale', params: { s: 1.7 } },
+      { type: 'translate', params: { x: 0.3, y: 0.2, z: 0 } },
+      { type: 'rotY', params: { a: 0.5 } },
+    ],
+    spiegelhalle: [
+      { type: 'abs', params: { cx: 0, cy: 0, cz: 0 } },
+      { type: 'rotY', params: { a: 0.4 } },
+      { type: 'translate', params: { x: 0, y: -0.5, z: 0 } },
+      { type: 'sphere', params: { minR: 1.0, maxR: 1.5 } },
+    ],
+    leer: [],
+  };
+
+  /* ─── State ────────────────────────────────────────────────────────────── */
+  const FONT_OPTIONS = {
+    'sans':       'system-ui, -apple-system, sans-serif',
+    'serif':      'ui-serif, "Times New Roman", serif',
+    'mono':       'ui-monospace, "SF Mono", Menlo, monospace',
+    'georgia':    'Georgia, serif',
+    'helvetica':  'Helvetica, Arial, sans-serif',
+    'courier':    '"Courier New", monospace',
+    'impact':     'Impact, sans-serif',
+    'verdana':    'Verdana, sans-serif',
+  };
+
+  const state = {
+    text: '0NE',
+    font: 'sans',
+    iterations: 8,
+    pipeline: PRESETS.kristallin.map(deepClone),
+    textPos:    [0, 0, 0],
+    textRot:    [0, 0, 0],
+    textScale:  1.5,
+    textThickness: 0.18,
+    cam:        { dist: 5.0, yaw: 0.3, pitch: -0.2 },
+    colors:     { bg: '#000000', fg: '#ffffff', glow: '#88aaff' },
+    resScale:   detectMobile() ? 0.5 : 0.75,
+    maxMarches: detectMobile() ? 48 : 80,
+    sdfTex:     null,
+    sdfPad:     0,        // padding ratio for normalization
+    needsCompile: true,
+    needsRender:  true,
+    autoRotate:   false,
+  };
+
+  function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+  function detectMobile() {
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 768;
+  }
+
+  /* ─── URL state ────────────────────────────────────────────────────────── */
+  function encodeState() {
+    const p = new URLSearchParams();
+    p.set('text', state.text);
+    p.set('font', state.font);
+    p.set('iter', String(state.iterations));
+    p.set('thk',  state.textThickness.toFixed(3));
+    p.set('scl',  state.textScale.toFixed(3));
+    p.set('pos',  state.textPos.map(v => v.toFixed(3)).join(','));
+    p.set('rot',  state.textRot.map(v => v.toFixed(3)).join(','));
+    p.set('cam',  `${state.cam.dist.toFixed(3)},${state.cam.yaw.toFixed(3)},${state.cam.pitch.toFixed(3)}`);
+    p.set('col',  `${state.colors.bg.slice(1)},${state.colors.fg.slice(1)},${state.colors.glow.slice(1)}`);
+    try { p.set('pipe', btoa(unescape(encodeURIComponent(JSON.stringify(state.pipeline))))); }
+    catch (e) { /* ignore */ }
+    return p.toString();
+  }
+  function decodeState() {
+    const p = new URLSearchParams(location.search);
+    if (p.has('text')) state.text = p.get('text');
+    if (p.has('font') && FONT_OPTIONS[p.get('font')]) state.font = p.get('font');
+    if (p.has('iter')) state.iterations = Math.max(0, Math.min(32, parseInt(p.get('iter')) || 0));
+    if (p.has('thk'))  state.textThickness = parseFloat(p.get('thk')) || 0;
+    if (p.has('scl'))  state.textScale = parseFloat(p.get('scl')) || 1;
+    if (p.has('pos')) state.textPos = p.get('pos').split(',').map(parseFloat);
+    if (p.has('rot')) state.textRot = p.get('rot').split(',').map(parseFloat);
+    if (p.has('cam')) {
+      const c = p.get('cam').split(',').map(parseFloat);
+      state.cam = { dist: c[0] || 5, yaw: c[1] || 0, pitch: c[2] || 0 };
+    }
+    if (p.has('col')) {
+      const c = p.get('col').split(',');
+      if (c[0]) state.colors.bg   = '#' + c[0];
+      if (c[1]) state.colors.fg   = '#' + c[1];
+      if (c[2]) state.colors.glow = '#' + c[2];
+    }
+    if (p.has('pipe')) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(p.get('pipe')))));
+        if (Array.isArray(decoded)) state.pipeline = decoded.filter(f => FOLDS[f.type]);
+      } catch (e) { /* keep default */ }
+    }
+  }
+  let urlWriteTimer = 0;
+  function syncURL() {
+    clearTimeout(urlWriteTimer);
+    urlWriteTimer = setTimeout(() => {
+      const q = encodeState();
+      history.replaceState(null, '', '?' + q);
+    }, 300);
+  }
+
+  /* ─── Worker: JFA-SDF aus Canvas ───────────────────────────────────────── */
+  const WORKER_SRC = `
+self.onmessage = function(e) {
+  const { width, height, alpha, jobId } = e.data;
+  // Build binary mask: 1 = inside (alpha > 127), 0 = outside
+  const N = width * height;
+  const mask = new Uint8Array(N);
+  for (let i = 0; i < N; i++) mask[i] = alpha[i] > 127 ? 1 : 0;
+
+  // Seeds: boundary pixels know themselves
+  const seedX = new Int32Array(N).fill(-1);
+  const seedY = new Int32Array(N).fill(-1);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const here = mask[i];
+      let boundary = false;
+      if (x > 0 && mask[i-1] !== here) boundary = true;
+      else if (x < width-1 && mask[i+1] !== here) boundary = true;
+      else if (y > 0 && mask[i-width] !== here) boundary = true;
+      else if (y < height-1 && mask[i+width] !== here) boundary = true;
+      if (boundary) { seedX[i] = x; seedY[i] = y; }
+    }
+  }
+
+  // Jump-Flooding passes
+  const sx2 = new Int32Array(N);
+  const sy2 = new Int32Array(N);
+  function pass(step) {
+    sx2.set(seedX); sy2.set(seedY);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        let bx = seedX[i], by = seedY[i];
+        let bd = bx === -1 ? 1e18 : (bx-x)*(bx-x) + (by-y)*(by-y);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx*step, ny = y + dy*step;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            const ni = ny * width + nx;
+            const sx = seedX[ni], sy = seedY[ni];
+            if (sx === -1) continue;
+            const d = (sx-x)*(sx-x) + (sy-y)*(sy-y);
+            if (d < bd) { bd = d; bx = sx; by = sy; }
+          }
+        }
+        sx2[i] = bx; sy2[i] = by;
+      }
+    }
+    seedX.set(sx2); seedY.set(sy2);
+  }
+
+  let step = 1;
+  while (step < Math.max(width, height)) step <<= 1;
+  step >>= 1;
+  while (step >= 1) { pass(step); step >>= 1; }
+  pass(1);   // cleanup pass
+
+  // Signed Distance
+  const dist = new Float32Array(N);
+  let maxAbs = 1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const sx = seedX[i], sy = seedY[i];
+      let d = sx === -1 ? 1e9 : Math.sqrt((sx-x)*(sx-x) + (sy-y)*(sy-y));
+      if (mask[i] === 1) d = -d;
+      dist[i] = d;
+      if (Math.abs(d) > maxAbs && d < 1e8) maxAbs = Math.abs(d);
+    }
+  }
+  // Normalize to roughly [-1, 1]
+  const half = Math.min(width, height) * 0.5;
+  for (let i = 0; i < N; i++) dist[i] = dist[i] / half;
+
+  self.postMessage({ jobId, dist, width, height }, [dist.buffer]);
+};`;
+
+  const workerBlob = new Blob([WORKER_SRC], { type: 'application/javascript' });
+  const workerURL = URL.createObjectURL(workerBlob);
+  const sdfWorker = new Worker(workerURL);
+  let sdfJobCounter = 0;
+  let sdfLatestJob = -1;
+  sdfWorker.onmessage = (e) => {
+    const { jobId, dist, width, height } = e.data;
+    if (jobId !== sdfLatestJob) return;  // stale
+    uploadSdfTexture(dist, width, height);
+    state.needsRender = true;
+    setStatus('sdf ready', 800);
+  };
+
+  function generateSdfTexture() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const text = state.text || ' ';
+    const fontFamily = FONT_OPTIONS[state.font] || FONT_OPTIONS.sans;
+    let fontSize = 600;
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    const padding = size * 0.18;
+    const maxW = size - padding * 2;
+    const maxH = size - padding * 2;
+    let m = ctx.measureText(text);
+    const tw = m.width;
+    const th = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) || fontSize;
+    const scale = Math.min(maxW / Math.max(1, tw), maxH / Math.max(1, th), 1);
+    fontSize = Math.max(40, Math.floor(fontSize * scale));
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    m = ctx.measureText(text);
+    const yOff = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+    ctx.fillText(text, size / 2, size / 2 + yOff);
+
+    const img = ctx.getImageData(0, 0, size, size);
+    const alpha = new Uint8Array(size * size);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = img.data[i * 4];  // R channel
+
+    sdfJobCounter += 1;
+    sdfLatestJob = sdfJobCounter;
+    setStatus('computing sdf…');
+    sdfWorker.postMessage({ width: size, height: size, alpha, jobId: sdfLatestJob }, [alpha.buffer]);
+  }
+
+  /* ─── WebGL2 setup ─────────────────────────────────────────────────────── */
+  const canvas = $('#gl');
+  const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, premultipliedAlpha: false });
+  if (!gl) {
+    setStatus('WebGL2 nicht verfügbar — bitte Browser updaten');
+    throw new Error('WebGL2 required');
+  }
+
+  // Fullscreen triangle (covers viewport with single tri)
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,  3,-1,  -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  const VERT_SRC = `#version 300 es
+  in vec2 aPos;
+  out vec2 vUV;
+  void main() {
+    vUV = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+  }`;
+
+  function buildFragmentShader() {
+    // Collect per-fold uniforms + body
+    const uniformDecls = [];
+    const bodyLines    = [];
+    state.pipeline.forEach((f, i) => {
+      const def = FOLDS[f.type];
+      if (!def) return;
+      def.params.forEach(p => {
+        uniformDecls.push(`uniform float uFold${i}_${p.name};`);
+      });
+      bodyLines.push(`// ${def.label}`);
+      bodyLines.push(def.glsl(i));
+    });
+    const foldsBody = bodyLines.length ? bodyLines.join('\n        ') : '// (no folds)';
+
+    return `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    in vec2 vUV;
+
+    uniform vec2  uResolution;
+    uniform float uTime;
+    uniform float uIterations;
+    uniform int   uMaxMarches;
+    uniform vec3  uCamPos;
+    uniform vec3  uCamRight;
+    uniform vec3  uCamUp;
+    uniform vec3  uCamFwd;
+    uniform sampler2D uSdf;
+    uniform vec3  uTextPos;
+    uniform mat3  uTextRotInv;
+    uniform float uTextScale;
+    uniform float uTextThickness;
+    uniform vec3  uBgColor;
+    uniform vec3  uFgColor;
+    uniform vec3  uGlowColor;
+    ${uniformDecls.join('\n    ')}
+
+    const float FOV     = 1.2;
+    const float MIN_DIST = 0.0012;
+    const float MAX_DIST = 24.0;
+
+    void applyFolds(inout vec4 z) {
+        ${foldsBody}
+    }
+
+    float sampleText(vec3 p) {
+        vec2 uv = p.xy * 0.5 + 0.5;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            // outside SDF texture: use rectangular boundary distance
+            vec2 q = abs(p.xy) - vec2(1.0);
+            float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+            float dz = abs(p.z) - uTextThickness;
+            vec2 e = vec2(outside, dz);
+            return min(max(e.x, e.y), 0.0) + length(max(e, 0.0));
+        }
+        float d2 = texture(uSdf, uv).r;     // 2D signed distance, normalized
+        float dz = abs(p.z) - uTextThickness;
+        vec2 e = vec2(d2, dz);
+        return min(max(e.x, e.y), 0.0) + length(max(e, 0.0));
+    }
+
+    float DE(vec3 p) {
+        vec4 z = vec4(p, 1.0);
+        int iter = int(uIterations);
+        for (int i = 0; i < 32; i++) {
+            if (i >= iter) break;
+            applyFolds(z);
+        }
+        vec3 q = z.xyz / max(0.0001, z.w);
+        q -= uTextPos;
+        q = uTextRotInv * q;
+        q /= uTextScale;
+        float d = sampleText(q);
+        return d * uTextScale * max(0.0001, z.w);
+    }
+
+    vec3 calcNormal(vec3 p) {
+        float h = 0.002;
+        vec2 k = vec2(1.0, -1.0);
+        return normalize(
+            k.xyy * DE(p + k.xyy * h) +
+            k.yyx * DE(p + k.yyx * h) +
+            k.yxy * DE(p + k.yxy * h) +
+            k.xxx * DE(p + k.xxx * h)
+        );
+    }
+
+    void main() {
+        vec2 ndc = (gl_FragCoord.xy * 2.0 - uResolution) / max(uResolution.y, 1.0);
+        vec3 ray = normalize(uCamFwd + ndc.x * uCamRight * FOV + ndc.y * uCamUp * FOV);
+
+        float td = 0.0;
+        float closest = 1.0;
+        vec3 p;
+        bool hit = false;
+        int steps = 0;
+        for (int s = 0; s < 256; s++) {
+            if (s >= uMaxMarches) break;
+            p = uCamPos + ray * td;
+            float d = DE(p);
+            closest = min(closest, max(0.0, d * 2.0 / max(0.05, td)));
+            if (d < MIN_DIST * max(1.0, td * 0.5)) { hit = true; steps = s; break; }
+            if (td > MAX_DIST) break;
+            td += d;
+            steps = s;
+        }
+
+        vec3 col = uBgColor;
+        if (hit) {
+            vec3 n = calcNormal(p);
+            vec3 lightDir = normalize(vec3(0.4, 0.7, 0.6));
+            float diff = max(0.0, dot(n, lightDir));
+            float ambient = 0.25;
+            float fog = clamp(td / MAX_DIST, 0.0, 1.0);
+            vec3 surface = uFgColor * (ambient + 0.85 * diff);
+            col = mix(surface, uBgColor, fog * 0.7);
+        }
+        // glow
+        col += uGlowColor * (1.0 - closest) * (1.0 - clamp(td / MAX_DIST, 0.0, 1.0)) * 0.45;
+        outColor = vec4(col, 1.0);
+    }`;
+  }
+
+  let prog = null;
+  let progLocs = {};
+  let progFoldLocs = [];
+
+  function compileShader(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(sh);
+      gl.deleteShader(sh);
+      throw new Error('Shader compile error:\n' + log + '\n--- source ---\n' + src);
+    }
+    return sh;
+  }
+  function buildProgram() {
+    let nextProg, vs, fs;
+    try {
+      vs = compileShader(gl.VERTEX_SHADER, VERT_SRC);
+      fs = compileShader(gl.FRAGMENT_SHADER, buildFragmentShader());
+      nextProg = gl.createProgram();
+      gl.attachShader(nextProg, vs);
+      gl.attachShader(nextProg, fs);
+      gl.bindAttribLocation(nextProg, 0, 'aPos');
+      gl.linkProgram(nextProg);
+      if (!gl.getProgramParameter(nextProg, gl.LINK_STATUS)) {
+        throw new Error('Link error: ' + gl.getProgramInfoLog(nextProg));
+      }
+    } catch (err) {
+      console.error('[shader build failed]', err);
+      setStatus('shader-fehler: pipeline ungültig', 2500);
+      if (vs) gl.deleteShader(vs);
+      if (fs) gl.deleteShader(fs);
+      if (nextProg) gl.deleteProgram(nextProg);
+      return false;
+    }
+    if (prog) gl.deleteProgram(prog);
+    prog = nextProg;
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+
+    progLocs = {
+      uResolution:    gl.getUniformLocation(prog, 'uResolution'),
+      uTime:          gl.getUniformLocation(prog, 'uTime'),
+      uIterations:    gl.getUniformLocation(prog, 'uIterations'),
+      uMaxMarches:    gl.getUniformLocation(prog, 'uMaxMarches'),
+      uCamPos:        gl.getUniformLocation(prog, 'uCamPos'),
+      uCamRight:      gl.getUniformLocation(prog, 'uCamRight'),
+      uCamUp:         gl.getUniformLocation(prog, 'uCamUp'),
+      uCamFwd:        gl.getUniformLocation(prog, 'uCamFwd'),
+      uSdf:           gl.getUniformLocation(prog, 'uSdf'),
+      uTextPos:       gl.getUniformLocation(prog, 'uTextPos'),
+      uTextRotInv:    gl.getUniformLocation(prog, 'uTextRotInv'),
+      uTextScale:     gl.getUniformLocation(prog, 'uTextScale'),
+      uTextThickness: gl.getUniformLocation(prog, 'uTextThickness'),
+      uBgColor:       gl.getUniformLocation(prog, 'uBgColor'),
+      uFgColor:       gl.getUniformLocation(prog, 'uFgColor'),
+      uGlowColor:     gl.getUniformLocation(prog, 'uGlowColor'),
+    };
+    progFoldLocs = state.pipeline.map((f, i) => {
+      const def = FOLDS[f.type];
+      const locs = {};
+      if (!def) return locs;
+      def.params.forEach(p => {
+        locs[p.name] = gl.getUniformLocation(prog, `uFold${i}_${p.name}`);
+      });
+      return locs;
+    });
+    return true;
+  }
+
+  /* ─── SDF Texture upload ───────────────────────────────────────────────── */
+  function uploadSdfTexture(dist, w, h) {
+    if (state.sdfTex) gl.deleteTexture(state.sdfTex);
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, w, h, 0, gl.RED, gl.HALF_FLOAT, packFloat16(dist));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    state.sdfTex = tex;
+  }
+  function packFloat16(f32) {
+    const out = new Uint16Array(f32.length);
+    const buf = new ArrayBuffer(4);
+    const fl  = new Float32Array(buf);
+    const u32 = new Uint32Array(buf);
+    for (let i = 0; i < f32.length; i++) {
+      fl[0] = f32[i];
+      const x = u32[0];
+      const sign = (x >>> 16) & 0x8000;
+      let mant = x & 0x7fffff;
+      let exp  = (x >>> 23) & 0xff;
+      if (exp === 255) { out[i] = sign | 0x7c00 | (mant ? 1 : 0); continue; }
+      if (exp === 0)   { out[i] = sign; continue; }
+      let newExp = exp - 127 + 15;
+      if (newExp >= 31) { out[i] = sign | 0x7c00; continue; }
+      if (newExp <= 0) {
+        if (newExp < -10) { out[i] = sign; continue; }
+        mant = (mant | 0x800000) >> (1 - newExp);
+        out[i] = sign | (mant >> 13);
+        continue;
+      }
+      out[i] = sign | (newExp << 10) | (mant >> 13);
+    }
+    return out;
+  }
+
+  /* ─── Camera math ──────────────────────────────────────────────────────── */
+  function camBasis() {
+    const yaw = state.cam.yaw, pitch = state.cam.pitch;
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cy = Math.cos(yaw),   sy = Math.sin(yaw);
+    const fwd   = [-sy * cp, sp, -cy * cp];
+    const right = [ cy,      0,  -sy];
+    const up    = [ sy * sp, cp, cy * sp];
+    const pos   = [-fwd[0] * state.cam.dist, -fwd[1] * state.cam.dist, -fwd[2] * state.cam.dist];
+    return { pos, fwd, right, up };
+  }
+  function euler3x3Inv(euler) {
+    // ZYX intrinsic Euler. Inverse = transpose for rotations.
+    const [ex, ey, ez] = euler;
+    const cx = Math.cos(ex), sx = Math.sin(ex);
+    const cy = Math.cos(ey), sy = Math.sin(ey);
+    const cz = Math.cos(ez), sz = Math.sin(ez);
+    // R = Rz * Ry * Rx (apply X first, then Y, then Z)
+    const m = [
+      cy*cz, sx*sy*cz - cx*sz, cx*sy*cz + sx*sz,
+      cy*sz, sx*sy*sz + cx*cz, cx*sy*sz - sx*cz,
+      -sy,   sx*cy,            cx*cy,
+    ];
+    // transpose, column-major for GL
+    return new Float32Array([
+      m[0], m[3], m[6],
+      m[1], m[4], m[7],
+      m[2], m[5], m[8],
+    ]);
+  }
+
+  function hex2rgb(h) {
+    const x = parseInt(h.slice(1), 16);
+    return [((x >> 16) & 0xff) / 255, ((x >> 8) & 0xff) / 255, (x & 0xff) / 255];
+  }
+
+  /* ─── Render ───────────────────────────────────────────────────────────── */
+  let startTime = performance.now();
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.floor(window.innerWidth  * dpr * state.resScale));
+    const h = Math.max(1, Math.floor(window.innerHeight * dpr * state.resScale));
+    canvas.width  = w;
+    canvas.height = h;
+    canvas.style.width  = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    gl.viewport(0, 0, w, h);
+    state.needsRender = true;
+  }
+  window.addEventListener('resize', resize);
+
+  function render() {
+    if (state.needsCompile) {
+      const ok = buildProgram();
+      if (ok) state.needsCompile = false;
+    }
+    if (!prog || !state.sdfTex) return;
+    if (state.autoRotate) { state.cam.yaw += 0.005; state.needsRender = true; }
+
+    gl.useProgram(prog);
+    gl.uniform2f(progLocs.uResolution, canvas.width, canvas.height);
+    gl.uniform1f(progLocs.uTime, (performance.now() - startTime) / 1000);
+    gl.uniform1f(progLocs.uIterations, state.iterations);
+    gl.uniform1i(progLocs.uMaxMarches, state.maxMarches);
+
+    const cam = camBasis();
+    gl.uniform3fv(progLocs.uCamPos,   cam.pos);
+    gl.uniform3fv(progLocs.uCamRight, cam.right);
+    gl.uniform3fv(progLocs.uCamUp,    cam.up);
+    gl.uniform3fv(progLocs.uCamFwd,   cam.fwd);
+
+    gl.uniform3fv(progLocs.uTextPos, state.textPos);
+    gl.uniformMatrix3fv(progLocs.uTextRotInv, false, euler3x3Inv(state.textRot));
+    gl.uniform1f(progLocs.uTextScale, state.textScale);
+    gl.uniform1f(progLocs.uTextThickness, state.textThickness);
+
+    gl.uniform3fv(progLocs.uBgColor,   hex2rgb(state.colors.bg));
+    gl.uniform3fv(progLocs.uFgColor,   hex2rgb(state.colors.fg));
+    gl.uniform3fv(progLocs.uGlowColor, hex2rgb(state.colors.glow));
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, state.sdfTex);
+    gl.uniform1i(progLocs.uSdf, 0);
+
+    state.pipeline.forEach((f, i) => {
+      const def = FOLDS[f.type];
+      if (!def) return;
+      def.params.forEach(p => {
+        const loc = progFoldLocs[i]?.[p.name];
+        if (loc) gl.uniform1f(loc, f.params[p.name] ?? p.default);
+      });
+    });
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  function loop() {
+    if (state.needsRender || state.autoRotate) {
+      render();
+      state.needsRender = state.autoRotate;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  /* ─── Input: Drag, Wheel, Touch ────────────────────────────────────────── */
+  const drag = { active: false, mode: 'translate', x: 0, y: 0, p0: null, r0: null };
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.target !== canvas) return;
+    drag.active = true;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    drag.p0 = [...state.textPos];
+    drag.r0 = [...state.textRot];
+    drag.c0 = { ...state.cam };
+    drag.mode = (e.shiftKey || e.button === 2) ? 'rotateText' : 'translateText';
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag.active) return;
+    const dx = (e.clientX - drag.x) / window.innerHeight;
+    const dy = (e.clientY - drag.y) / window.innerHeight;
+    if (drag.mode === 'translateText') {
+      // Move in the camera's right/up plane (in world units)
+      const cam = camBasis();
+      const speed = 2.0;
+      state.textPos[0] = drag.p0[0] + dx * cam.right[0] * speed - dy * cam.up[0] * speed;
+      state.textPos[1] = drag.p0[1] + dx * cam.right[1] * speed - dy * cam.up[1] * speed;
+      state.textPos[2] = drag.p0[2] + dx * cam.right[2] * speed - dy * cam.up[2] * speed;
+      syncPanelValue('posX', state.textPos[0]);
+      syncPanelValue('posY', state.textPos[1]);
+      syncPanelValue('posZ', state.textPos[2]);
+    } else {
+      // rotate text via yaw/pitch on its own axes
+      state.textRot[1] = drag.r0[1] + dx * 3;
+      state.textRot[0] = drag.r0[0] + dy * 3;
+      syncPanelValue('rotX', state.textRot[0]);
+      syncPanelValue('rotY', state.textRot[1]);
+    }
+    state.needsRender = true;
+    syncURL();
+  });
+  canvas.addEventListener('pointerup',     () => { drag.active = false; });
+  canvas.addEventListener('pointercancel', () => { drag.active = false; });
+  canvas.addEventListener('contextmenu',   (e) => e.preventDefault());
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    state.cam.dist = Math.max(0.5, Math.min(40, state.cam.dist + e.deltaY * 0.005));
+    syncPanelValue('camDist', state.cam.dist);
+    state.needsRender = true;
+    syncURL();
+  }, { passive: false });
+
+  // Touch: pinch = zoom, two-finger rotate around center
+  const touches = new Map();
+  canvas.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+  }, { passive: true });
+  canvas.addEventListener('touchmove', (e) => {
+    if (touches.size >= 2 && e.touches.length >= 2) {
+      e.preventDefault();
+      const a = e.touches[0], b = e.touches[1];
+      const t1 = touches.get(a.identifier), t2 = touches.get(b.identifier);
+      if (!t1 || !t2) return;
+      const d0 = Math.hypot(t1.x - t2.x, t1.y - t2.y);
+      const d1 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const factor = d0 > 0 ? d1 / d0 : 1;
+      state.cam.dist = Math.max(0.5, Math.min(40, state.cam.dist / factor));
+      syncPanelValue('camDist', state.cam.dist);
+      touches.set(a.identifier, { x: a.clientX, y: a.clientY });
+      touches.set(b.identifier, { x: b.clientX, y: b.clientY });
+      state.needsRender = true;
+      syncURL();
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) touches.delete(t.identifier);
+  });
+
+  /* ─── Panel UI ─────────────────────────────────────────────────────────── */
+  let panel = null;
+  function syncPanelValue(key, val) {
+    if (!panel || !panel.params) return;
+    panel.params[key] = val;
+    // try to repaint a slider row if present
+    const row = panel.bodyEl?.querySelector(`[data-key="${key}"]`);
+    if (row) {
+      const range  = row.querySelector('.ctrl-range');
+      const input  = row.querySelector('.ctrl-value-input');
+      const display = row.querySelector('.ctrl-value-display');
+      if (range)   range.value = val;
+      if (input)   input.value = Number(val).toFixed(3);
+      if (display) display.textContent = Number(val).toFixed(3);
+    }
+  }
+
+  function buildPanel() {
+    panel = Controls.createPanel({ id: 'fractal0ne-panel', position: 'left' });
+
+    panel.addText('text', {
+      label: 'Text',
+      value: state.text,
+      placeholder: '0NE',
+      onChange: (v) => { state.text = v; generateSdfTexture(); syncURL(); }
+    });
+
+    panel.addSelect('font', {
+      label: 'Font',
+      options: Object.keys(FONT_OPTIONS).map(k => ({ value: k, label: k })),
+      value: state.font,
+      onChange: (v) => { state.font = v; generateSdfTexture(); syncURL(); }
+    });
+
+    panel.addDivider();
+
+    panel.addSlider('thickness', {
+      label: 'Dicke', min: 0.01, max: 1.5, step: 0.005, value: state.textThickness, decimals: 3,
+      onChange: (v) => { state.textThickness = v; state.needsRender = true; syncURL(); }
+    });
+    panel.addSlider('scale', {
+      label: 'Scale', min: 0.1, max: 5, step: 0.01, value: state.textScale, decimals: 2,
+      onChange: (v) => { state.textScale = v; state.needsRender = true; syncURL(); }
+    });
+    panel.addSlider('iterations', {
+      label: 'Iter', min: 0, max: 32, step: 1, value: state.iterations,
+      onChange: (v) => { state.iterations = v|0; state.needsRender = true; syncURL(); }
+    });
+
+    panel.addDivider();
+
+    // Position + Rotation
+    ['X','Y','Z'].forEach((axis, i) => {
+      panel.addSlider('pos' + axis, {
+        label: 'pos ' + axis, min: -4, max: 4, step: 0.01, value: state.textPos[i], decimals: 2,
+        onChange: (v) => { state.textPos[i] = v; state.needsRender = true; syncURL(); }
+      });
+    });
+    ['X','Y','Z'].forEach((axis, i) => {
+      panel.addSlider('rot' + axis, {
+        label: 'rot ' + axis, min: -3.14159, max: 3.14159, step: 0.01, value: state.textRot[i], decimals: 2,
+        onChange: (v) => { state.textRot[i] = v; state.needsRender = true; syncURL(); }
+      });
+    });
+    panel.addSlider('camDist', {
+      label: 'cam dist', min: 0.5, max: 40, step: 0.01, value: state.cam.dist, decimals: 2,
+      onChange: (v) => { state.cam.dist = v; state.needsRender = true; syncURL(); }
+    });
+    panel.addButtonGroup('placement', {
+      buttons: [
+        { label: 'zentrieren', onClick: () => {
+            state.textPos = [0,0,0]; state.textRot = [0,0,0];
+            state.cam.yaw = 0.3; state.cam.pitch = -0.2; state.cam.dist = 5;
+            ['posX','posY','posZ','rotX','rotY','rotZ','camDist'].forEach(k => syncPanelValue(k, k.startsWith('cam') ? 5 : 0));
+            state.needsRender = true; syncURL();
+        } },
+        { label: 'auto-rot', onClick: () => { state.autoRotate = !state.autoRotate; state.needsRender = true; } },
+      ]
+    });
+
+    panel.addDivider();
+
+    // Pipeline editor (custom DOM)
+    const pipeContainer = document.createElement('div');
+    pipeContainer.className = 'ctrl-row';
+    pipeContainer.style.flexDirection = 'column';
+    pipeContainer.style.alignItems = 'stretch';
+    pipeContainer.style.gap = '0.5rem';
+    const pipeLabel = document.createElement('label');
+    pipeLabel.className = 'ctrl-label';
+    pipeLabel.textContent = 'Fold-Pipeline';
+    pipeLabel.style.flex = 'unset';
+    pipeContainer.appendChild(pipeLabel);
+
+    const pipeList = document.createElement('div');
+    pipeList.className = 'fold-pipeline';
+    pipeContainer.appendChild(pipeList);
+
+    const addRow = document.createElement('div');
+    addRow.className = 'fold-add-row';
+    const addSelect = document.createElement('select');
+    Object.entries(FOLDS).forEach(([key, def]) => {
+      const opt = document.createElement('option');
+      opt.value = key; opt.textContent = def.label;
+      addSelect.appendChild(opt);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.title = 'Fold hinzufügen';
+    const addSpan = document.createElement('span');
+    addSpan.textContent = '+';
+    addBtn.appendChild(addSpan);
+    addBtn.addEventListener('click', () => {
+      const type = addSelect.value;
+      const def = FOLDS[type];
+      const params = {};
+      def.params.forEach(p => { params[p.name] = p.default; });
+      state.pipeline.push({ type, params });
+      state.needsCompile = true;
+      state.needsRender = true;
+      renderPipeline();
+      syncURL();
+    });
+    addRow.appendChild(addSelect);
+    addRow.appendChild(addBtn);
+    pipeContainer.appendChild(addRow);
+
+    panel.bodyEl.appendChild(pipeContainer);
+
+    function renderPipeline() {
+      pipeList.innerHTML = '';
+      state.pipeline.forEach((fold, idx) => {
+        const def = FOLDS[fold.type];
+        if (!def) return;
+        const item = document.createElement('div');
+        item.className = 'fold-item';
+
+        const head = document.createElement('div');
+        head.className = 'fold-item-head';
+
+        const typeSel = document.createElement('select');
+        Object.entries(FOLDS).forEach(([key, d]) => {
+          const opt = document.createElement('option');
+          opt.value = key; opt.textContent = d.label;
+          if (key === fold.type) opt.selected = true;
+          typeSel.appendChild(opt);
+        });
+        typeSel.addEventListener('change', () => {
+          const newType = typeSel.value;
+          const newDef = FOLDS[newType];
+          const newParams = {};
+          newDef.params.forEach(p => { newParams[p.name] = p.default; });
+          state.pipeline[idx] = { type: newType, params: newParams };
+          state.needsCompile = true; state.needsRender = true;
+          renderPipeline(); syncURL();
+        });
+
+        const upBtn = document.createElement('button');
+        upBtn.className = 'fold-btn'; upBtn.textContent = '↑'; upBtn.title = 'hoch';
+        upBtn.disabled = idx === 0;
+        upBtn.addEventListener('click', () => {
+          [state.pipeline[idx-1], state.pipeline[idx]] = [state.pipeline[idx], state.pipeline[idx-1]];
+          state.needsCompile = true; state.needsRender = true;
+          renderPipeline(); syncURL();
+        });
+
+        const downBtn = document.createElement('button');
+        downBtn.className = 'fold-btn'; downBtn.textContent = '↓'; downBtn.title = 'runter';
+        downBtn.disabled = idx === state.pipeline.length - 1;
+        downBtn.addEventListener('click', () => {
+          [state.pipeline[idx+1], state.pipeline[idx]] = [state.pipeline[idx], state.pipeline[idx+1]];
+          state.needsCompile = true; state.needsRender = true;
+          renderPipeline(); syncURL();
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'fold-btn'; delBtn.textContent = '×'; delBtn.title = 'löschen';
+        delBtn.addEventListener('click', () => {
+          state.pipeline.splice(idx, 1);
+          state.needsCompile = true; state.needsRender = true;
+          renderPipeline(); syncURL();
+        });
+
+        head.append(typeSel, upBtn, downBtn, delBtn);
+        item.appendChild(head);
+
+        if (def.params.length) {
+          const paramsBox = document.createElement('div');
+          paramsBox.className = 'fold-item-params';
+          def.params.forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'fold-param-row';
+            const lbl = document.createElement('label'); lbl.textContent = p.label;
+            const rng = document.createElement('input');
+            rng.type = 'range'; rng.min = p.min; rng.max = p.max; rng.step = p.step;
+            rng.value = fold.params[p.name] ?? p.default;
+            const val = document.createElement('span');
+            val.className = 'fold-param-val';
+            val.textContent = Number(rng.value).toFixed(2);
+            rng.addEventListener('input', () => {
+              const v = parseFloat(rng.value);
+              fold.params[p.name] = v;
+              val.textContent = v.toFixed(2);
+              state.needsRender = true;
+              syncURL();
+            });
+            row.append(lbl, rng, val);
+            paramsBox.appendChild(row);
+          });
+          item.appendChild(paramsBox);
+        }
+
+        pipeList.appendChild(item);
+      });
+    }
+    renderPipeline();
+
+    panel.addDivider();
+
+    // Colors
+    function addColorInput(panel, key, label, getter, setter) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.dataset.key = key;
+      const lab = document.createElement('label');
+      lab.className = 'ctrl-label'; lab.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'color'; inp.value = getter();
+      inp.style.flex = '1'; inp.style.height = '32px'; inp.style.borderRadius = '6px';
+      inp.style.border = '1.5px solid currentColor'; inp.style.background = 'transparent';
+      inp.style.cursor = 'pointer';
+      inp.addEventListener('input', () => { setter(inp.value); state.needsRender = true; syncURL(); });
+      row.append(lab, inp);
+      panel.bodyEl.appendChild(row);
+    }
+    addColorInput(panel, 'bg',   'Hintergrund', () => state.colors.bg,   v => state.colors.bg = v);
+    addColorInput(panel, 'fg',   'Vordergrund', () => state.colors.fg,   v => state.colors.fg = v);
+    addColorInput(panel, 'glow', 'Glow',        () => state.colors.glow, v => state.colors.glow = v);
+
+    panel.addDivider();
+
+    panel.addSlider('resScale', {
+      label: 'res', min: 0.25, max: 1.0, step: 0.05, value: state.resScale, decimals: 2,
+      onChange: (v) => { state.resScale = v; resize(); }
+    });
+    panel.addSlider('marches', {
+      label: 'max steps', min: 16, max: 256, step: 1, value: state.maxMarches,
+      onChange: (v) => { state.maxMarches = v|0; state.needsRender = true; }
+    });
+
+    panel.addDivider();
+
+    // Presets
+    panel.addButtonGroup('presets', {
+      buttons: Object.keys(PRESETS).map(name => ({
+        key: name, label: name,
+        onClick: () => {
+          state.pipeline = PRESETS[name].map(deepClone);
+          state.needsCompile = true; state.needsRender = true;
+          renderPipeline(); syncURL();
+        }
+      }))
+    });
+
+    panel.addButton('share', {
+      label: 'URL kopieren',
+      onClick: () => {
+        const url = location.origin + location.pathname + '?' + encodeState();
+        navigator.clipboard.writeText(url).then(
+          () => setStatus('URL kopiert', 1500),
+          () => setStatus('clipboard fehlgeschlagen', 1500)
+        );
+      }
+    });
+  }
+
+  /* ─── Init ─────────────────────────────────────────────────────────────── */
+  decodeState();
+  resize();
+  buildPanel();
+  generateSdfTexture();
+  setStatus('lade…', 1500);
+  loop();
+
+  window.fractal0ne = { state, FOLDS, PRESETS };
+  </script>
+</body>
+</html>
