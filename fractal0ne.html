@@ -16,10 +16,13 @@
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
     #gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
-    #status { position: fixed; left: 1rem; bottom: 1rem; padding: 0.4rem 0.7rem; background: rgba(0,0,0,0.6);
-              color: #fff; font: 12px ui-monospace, monospace; border-radius: 6px;
+    #status { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%);
+              padding: 0.6rem 1rem; background: rgba(0,0,0,0.75);
+              color: #fff; font: 13px/1.4 system-ui, sans-serif; border-radius: 999px;
               backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-              pointer-events: none; transition: opacity 0.3s; }
+              pointer-events: none; transition: opacity 0.4s;
+              max-width: calc(100vw - 2rem); text-align: center;
+              box-shadow: 0 4px 24px rgba(0,0,0,0.4); z-index: 20; }
     #status.hidden { opacity: 0; }
     .fold-pipeline { display: flex; flex-direction: column; gap: 0.4rem; }
     .fold-item { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.45rem 0.55rem;
@@ -177,29 +180,41 @@
   };
 
   /* ─── Presets ──────────────────────────────────────────────────────────── */
+  // Pro Preset: pipeline + empfohlene iter + empfohlene cam-dist + empfohlener textScale.
+  // Sanfte Werte: zu aggressive scale-folds (× 2) replizieren den Text 2^iter-fach klein
+  // und produzieren einen homogenen Glow-Nebel. Wir wollen sichtbare Kopien.
   const PRESETS = {
-    klar: [],
-    kristallin: [
-      { type: 'box', params: { rx: 1.0, ry: 1.0, rz: 1.0 } },
-      { type: 'sphere', params: { minR: 0.5, maxR: 2.0 } },
-      { type: 'scale', params: { s: 2.0 } },
-      { type: 'rotY', params: { a: 0.3 } },
-    ],
-    chaotisch: [
-      { type: 'sierpinski', params: {} },
-      { type: 'rotX', params: { a: 0.7 } },
-      { type: 'menger', params: {} },
-      { type: 'scale', params: { s: 1.7 } },
-      { type: 'translate', params: { x: 0.3, y: 0.2, z: 0 } },
-      { type: 'rotY', params: { a: 0.5 } },
-    ],
-    spiegelhalle: [
-      { type: 'abs', params: { cx: 0, cy: 0, cz: 0 } },
-      { type: 'rotY', params: { a: 0.4 } },
-      { type: 'translate', params: { x: 0, y: -0.5, z: 0 } },
-      { type: 'sphere', params: { minR: 1.0, maxR: 1.5 } },
-    ],
-    leer: [],
+    klar:        { pipe: [], iter: 0, camDist: 5, scale: 1.5 },
+    spiegel: {
+      pipe: [
+        { type: 'abs',  params: { cx: 0, cy: 0, cz: 0 } },
+        { type: 'rotY', params: { a: 0.35 } },
+      ],
+      iter: 4, camDist: 4, scale: 1.8,
+    },
+    kristallin: {
+      pipe: [
+        { type: 'sphere', params: { minR: 0.6, maxR: 1.4 } },
+        { type: 'rotY',   params: { a: 0.5 } },
+      ],
+      iter: 5, camDist: 5, scale: 1.0,
+    },
+    sierpinski: {
+      pipe: [
+        { type: 'sierpinski', params: {} },
+        { type: 'rotY',       params: { a: 0.4 } },
+      ],
+      iter: 5, camDist: 4, scale: 1.5,
+    },
+    chaotisch: {
+      pipe: [
+        { type: 'rotX',   params: { a: 0.6 } },
+        { type: 'menger', params: {} },
+        { type: 'rotY',   params: { a: 0.4 } },
+        { type: 'translate', params: { x: 0.1, y: 0.1, z: 0 } },
+      ],
+      iter: 4, camDist: 6, scale: 1.0,
+    },
   };
 
   /* ─── State ────────────────────────────────────────────────────────────── */
@@ -217,8 +232,8 @@
   const state = {
     text: '0NE',
     font: 'sans',
-    iterations: 8,
-    pipeline: PRESETS.kristallin.map(deepClone),
+    iterations: 0,
+    pipeline: [],
     textPos:    [0, 0, 0],
     textRot:    [0, 0, 0],
     textScale:  1.5,
@@ -374,12 +389,23 @@ self.onmessage = function(e) {
   const sdfWorker = new Worker(workerURL);
   let sdfJobCounter = 0;
   let sdfLatestJob = -1;
+  const hasUrlState = location.search && location.search.length > 1;
+  let firstSdfDone = false;
   sdfWorker.onmessage = (e) => {
     const { jobId, dist, width, height } = e.data;
     if (jobId !== sdfLatestJob) return;  // stale
     uploadSdfTexture(dist, width, height);
     state.needsRender = true;
-    setStatus('sdf ready', 800);
+    if (firstSdfDone) {
+      setStatus('sdf ready', 800);
+    } else {
+      firstSdfDone = true;
+      if (!hasUrlState) {
+        setStatus('Text eingeben → unten ein Preset wählen (kristallin / sierpinski / chaotisch / spiegel) für Fraktal-Effekt', 9000);
+      } else {
+        statusEl.classList.add('hidden');
+      }
+    }
   };
 
   function generateSdfTexture() {
@@ -562,8 +588,9 @@ self.onmessage = function(e) {
             vec3 surface = uFgColor * (ambient + 0.85 * diff);
             col = mix(surface, uBgColor, fog * 0.7);
         }
-        // glow
-        col += uGlowColor * (1.0 - closest) * (1.0 - clamp(td / MAX_DIST, 0.0, 1.0)) * 0.45;
+        // glow — sehr selektiv: nur bei echtem knappen Vorbei-Streifen, nicht für alles in der Nähe
+        float glowAmt = pow(1.0 - closest, 6.0);
+        col += uGlowColor * glowAmt * (1.0 - clamp(td / MAX_DIST, 0.0, 1.0)) * 0.15;
         outColor = vec4(col, 1.0);
     }`;
   }
@@ -1110,12 +1137,21 @@ self.onmessage = function(e) {
 
     panel.addDivider();
 
-    // Presets
+    // Presets — Pipeline + iter + cam + scale gemeinsam setzen, damit der Effekt direkt sichtbar wird
     panel.addButtonGroup('presets', {
       buttons: Object.keys(PRESETS).map(name => ({
         key: name, label: name,
         onClick: () => {
-          state.pipeline = PRESETS[name].map(deepClone);
+          const p = PRESETS[name];
+          state.pipeline   = p.pipe.map(deepClone);
+          state.iterations = p.iter;
+          state.cam.dist   = p.camDist;
+          state.textScale  = p.scale;
+          state.cam.yaw    = 0.3;
+          state.cam.pitch  = -0.2;
+          syncPanelValue('iterations', state.iterations);
+          syncPanelValue('camDist',    state.cam.dist);
+          syncPanelValue('scale',      state.textScale);
           state.needsCompile = true; state.needsRender = true;
           renderPipeline(); syncURL();
         }
@@ -1139,7 +1175,7 @@ self.onmessage = function(e) {
   resize();
   buildPanel();
   generateSdfTexture();
-  setStatus('lade…', 1500);
+  // initial hint is shown after first SDF is ready (see sdfWorker.onmessage)
   loop();
 
   window.fractal0ne = { state, FOLDS, PRESETS };
