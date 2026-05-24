@@ -592,6 +592,7 @@
 
   let ambientLight;
   let spotFloor, spotBack, spotSide;
+  let spotBackB, spotSideB;   // second sphere's wall spots (dualMode only)
   let lampFloor, lampBack, lampSide;
   let lightConeFloor, lightConeBack, lightConeSide;
   let baseBgColor, textColorThree;
@@ -617,6 +618,7 @@
   let glyphChars = { ...DEFAULT_GLYPH_CHARS };
 
   const DUAL_GAP = 2.5; // center-to-center Y distance in sphere radii (primary at y=0, second below)
+  function secondSphereY() { return -DUAL_GAP * (params.sphereRadius || 1); }
   function derivedGlyphs(base) { return { left: base.right, right: base.left, floor: base.floor }; }
 
   const GLYPH_URL_KEYS = { left: 'g0', right: 'g1', floor: 'g8' };
@@ -827,6 +829,8 @@
     if (spotFloor) spotFloor.intensity = spotIntensity;
     if (spotBack) spotBack.intensity = spotIntensity;
     if (spotSide) spotSide.intensity = spotIntensity;
+    if (spotBackB) spotBackB.intensity = spotIntensity;
+    if (spotSideB) spotSideB.intensity = spotIntensity;
 
     // wallBrightness = Fog-Opacity (0 = unsichtbar, 1 = voll sichtbar)
     if (fogMaterials && fogMaterials.length > 0) {
@@ -863,6 +867,13 @@
         s.mesh.position.y = (i === 0) ? 0 : -DUAL_GAP * r;
       });
       needsUniformUpdate = true;  // Matrix-Inverse muss neu berechnet werden
+      if (spotBackB) {
+        const yB = secondSphereY();
+        spotBackB.position.set(0, yB, params.lightDistance);
+        if (spotBackB.target) spotBackB.target.position.set(0, yB, -params.wallDistance);
+        spotSideB.position.set(params.lightDistance, yB, 0);
+        if (spotSideB.target) spotSideB.target.position.set(-params.wallDistance, yB, 0);
+      }
     }
 
     // Shader-Uniforms aktualisieren
@@ -893,6 +904,9 @@
       if (spotSide && spotSide.target) {
         spotSide.target.position.set(-params.wallDistance, 0, 0);
       }
+      const yB = secondSphereY();
+      if (spotBackB && spotBackB.target) spotBackB.target.position.set(0, yB, -params.wallDistance);
+      if (spotSideB && spotSideB.target) spotSideB.target.position.set(-params.wallDistance, yB, 0);
     }
 
     if (typeof params.wallSize === 'number') {
@@ -907,6 +921,9 @@
       if (spotFloor) spotFloor.position.set(0, d, 0);
       if (spotBack) spotBack.position.set(0, 0, d);
       if (spotSide) spotSide.position.set(d, 0, 0);
+      const yB = secondSphereY();
+      if (spotBackB) spotBackB.position.set(0, yB, d);
+      if (spotSideB) spotSideB.position.set(d, yB, 0);
     }
 
     if (typeof params.lampScale === 'number') {
@@ -949,7 +966,7 @@
       }
     }
 
-    const spots = [spotFloor, spotBack, spotSide];
+    const spots = [spotFloor, spotBack, spotSide, spotBackB, spotSideB].filter(Boolean);
     spots.forEach(spot => {
       if (!spot) return;
       if (typeof params.spotAngle === 'number') {
@@ -3054,6 +3071,18 @@
 	      params.lightDistance, 0, 0,
 	      -params.wallDistance, 0, 0
 	    );
+
+    if (dualMode) {
+      const yB = secondSphereY();
+      // second sphere back wall (light along -Z, at the lower sphere height)
+      spotBackB = addSpot(initialSpotIntensity,
+        0, yB, params.lightDistance,
+        0, yB, -params.wallDistance);
+      // second sphere side wall (light along -X)
+      spotSideB = addSpot(initialSpotIntensity,
+        params.lightDistance, yB, 0,
+        -params.wallDistance, yB, 0);
+    }
 
 		    const lampColor = textColorThree;
 		    lampFloor = createLampMesh(lampColor);
