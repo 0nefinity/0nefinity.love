@@ -1059,33 +1059,31 @@
     return texture;
   }
 
-  function updateGlyphTextures() {
-    // Texturen für alle drei Achsen erstellen/aktualisieren
+  function updateGlyphTexturesFor(entry) {
     const rot0   = (params.glyphRot0   || 0) * Math.PI / 180;
     const rotInf = (params.glyphRotInf || 0) * Math.PI / 180;
     const rot1   = (params.glyphRot1   || 0) * Math.PI / 180;
-
-    // Alte Texturen freigeben (dispose + image nullen für GC)
-    if (glyphTextures.x) { glyphTextures.x.dispose(); glyphTextures.x.image = null; }
-    if (glyphTextures.y) { glyphTextures.y.dispose(); glyphTextures.y.image = null; }
-    if (glyphTextures.z) { glyphTextures.z.dispose(); glyphTextures.z.image = null; }
-
-    // Cursor anzeigen wenn Schatten aktiv ist UND cursorVisible true
-    const showCursorLeft  = activeGlyphTarget === 'left'  && cursorVisible;
-    const showCursorFloor = activeGlyphTarget === 'floor' && cursorVisible;
-    const showCursorRight = activeGlyphTarget === 'right' && cursorVisible;
-
-    // Keine Fallbacks: Leere Eingabe = nichts auf der Kugel
-    glyphTextures.x = createGlyphTexture(glyphChars.left, rot0, showCursorLeft);
-    glyphTextures.y = createGlyphTexture(glyphChars.floor, rotInf, showCursorFloor);
-    glyphTextures.z = createGlyphTexture(glyphChars.right, rot1, showCursorRight);
-
-    // Shader-Uniforms aktualisieren
-    if (sphereMesh && sphereMesh.material && sphereMesh.material.uniforms) {
-      sphereMesh.material.uniforms.uGlyphTexX.value = glyphTextures.x;
-      sphereMesh.material.uniforms.uGlyphTexY.value = glyphTextures.y;
-      sphereMesh.material.uniforms.uGlyphTexZ.value = glyphTextures.z;
+    const t = entry.glyphTextures;
+    if (t.x) { t.x.dispose(); t.x.image = null; }
+    if (t.y) { t.y.dispose(); t.y.image = null; }
+    if (t.z) { t.z.dispose(); t.z.image = null; }
+    const isPrimary = (spheres[0] && entry === spheres[0]);
+    const showL = isPrimary && activeGlyphTarget === 'left'  && cursorVisible;
+    const showF = isPrimary && activeGlyphTarget === 'floor' && cursorVisible;
+    const showR = isPrimary && activeGlyphTarget === 'right' && cursorVisible;
+    t.x = createGlyphTexture(entry.glyphChars.left,  rot0,   showL);
+    t.y = createGlyphTexture(entry.glyphChars.floor, rotInf, showF);
+    t.z = createGlyphTexture(entry.glyphChars.right, rot1,   showR);
+    if (entry.mesh && entry.mesh.material && entry.mesh.material.uniforms) {
+      entry.mesh.material.uniforms.uGlyphTexX.value = t.x;
+      entry.mesh.material.uniforms.uGlyphTexY.value = t.y;
+      entry.mesh.material.uniforms.uGlyphTexZ.value = t.z;
     }
+  }
+
+  function updateGlyphTextures() {
+    spheres.forEach(updateGlyphTexturesFor);
+    if (spheres[0]) glyphTextures = spheres[0].glyphTextures; // keep legacy global in sync
   }
 
   // Cursor-Blink starten/stoppen
@@ -2066,14 +2064,14 @@
     }
     spheres = [];
 
-    // Glyph-Texturen erstellen
-    updateGlyphTextures();
-
     // Primäre Kugel aufbauen
     spheres.push(buildOneSphere(glyphChars, 0));
 
     // Legacy-Alias für alle bestehenden Call-Sites
     sphereMesh = spheres[0].mesh;
+
+    // Glyph-Texturen erstellen (nach push, damit updateGlyphTexturesFor die entry kennt)
+    updateGlyphTextures();
 
     updateGeometryFromParams();
   }
