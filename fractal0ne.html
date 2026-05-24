@@ -574,7 +574,9 @@ self.onmessage = function(e) {
     }
 
     float sampleText(vec3 p) {
-        vec2 uv = p.xy * 0.5 + 0.5;
+        // Canvas-Y geht nach unten, World-Y nach oben → uv.y flippen,
+        // sonst stehen Buchstaben auf dem Kopf.
+        vec2 uv = vec2(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
             // outside SDF texture: use rectangular boundary distance
             vec2 q = abs(p.xy) - vec2(1.0);
@@ -730,6 +732,8 @@ self.onmessage = function(e) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    // Note: Y-Flip wird im Shader gemacht (sampleText), nicht hier — bei ArrayBuffer-
+    // Quellen ignoriert WebGL UNPACK_FLIP_Y_WEBGL.
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, w, h, 0, gl.RED, gl.HALF_FLOAT, packFloat16(dist));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
