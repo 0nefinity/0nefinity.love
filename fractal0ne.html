@@ -49,10 +49,9 @@
                           display: flex; align-items: center; justify-content: center; }
     .fold-add-row button span { color: var(--bg-color, #000); font-size: 18px; line-height: 1; }
 
-    /* Mod-CTA-Button: oben mittig, direkt über der "1" — auf Mobile vom Panel
-       unten nicht verdeckt. */
+    /* Mod-CTA-Button: mittig unter der "1" — sofort sichtbar */
     #mod-cta {
-      position: fixed; left: 50%; top: 4.5rem; transform: translateX(-50%);
+      position: fixed; left: 50%; top: calc(50% + 100px); transform: translateX(-50%);
       padding: 0.85rem 1.5rem;
       background: rgba(255,255,255,0.95); color: #000;
       border: none; border-radius: 999px;
@@ -257,9 +256,13 @@
     // keine Lücken zwischen Buchstaben → keine grauen "Loch"-Pixel beim Fliegen.
     'unendlich': {
       pipe: [
-        { type: 'mod', params: { px: 1.5, py: 1.5, pz: 1.5 } },
+        { type: 'mod', params: { px: 1.2, py: 1.2, pz: 1.2 } },
       ],
-      iter: 1, camPos: [0, 0, 4], scale: 0.75, maxMarches: 192,
+      // textScale ≈ period: 1en sichtbar einzeln, fast berührend.
+      // MAX_DIST=200 + maxMarches=224 sorgen dafür dass Strahlen in jeder
+      // Richtung lange genug laufen um eine Kopie zu finden, statt im
+      // schwarzen Nichts zu verschwinden.
+      iter: 1, camPos: [0, 0, 4], scale: 1.0, maxMarches: 224,
     },
   };
 
@@ -464,9 +467,7 @@ self.onmessage = function(e) {
     } else {
       firstSdfDone = true;
       statusEl.classList.add('hidden');
-      if (!hasUrlState) {
-        setTimeout(spawnModCTA, 3000);
-      }
+      if (!hasUrlState) spawnModCTA();   // sofort sichtbar
     }
   };
 
@@ -484,7 +485,7 @@ self.onmessage = function(e) {
     const fontFamily = FONT_OPTIONS[state.font] || FONT_OPTIONS.sans;
     let fontSize = 600;
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
-    const padding = size * 0.28;        // großzügig damit die SDF am Rand sicher groß ist
+    const padding = size * 0.20;
     const maxW = size - padding * 2;
     const maxH = size - padding * 2;
     let m = ctx.measureText(text);
@@ -572,7 +573,7 @@ self.onmessage = function(e) {
 
     const float FOV     = 1.2;
     const float MIN_DIST = 0.0012;
-    const float MAX_DIST = 80.0;
+    const float MAX_DIST = 200.0;
 
     void applyFolds(inout vec4 z) {
         ${foldsBody}
@@ -663,7 +664,9 @@ self.onmessage = function(e) {
             float ambient = 0.45;
             float fog = clamp(td / MAX_DIST, 0.0, 1.0);
             vec3 surface = uFgColor * (ambient + 0.65 * diff + rim);
-            col = mix(surface, uBgColor, fog * 0.5);
+            // Sanfter Fog: bei MAX_DIST nur ~25% bg-mix, damit ferne Kopien
+            // erkennbar bleiben statt komplett ins Schwarz zu verschwinden.
+            col = mix(surface, uBgColor, fog * 0.25);
         }
         // glow — sehr selektiv: nur bei echtem knappen Vorbei-Streifen
         float glowAmt = pow(1.0 - closest, 6.0);
