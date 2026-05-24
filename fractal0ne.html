@@ -48,6 +48,26 @@
                           background: currentColor; border: none; cursor: pointer;
                           display: flex; align-items: center; justify-content: center; }
     .fold-add-row button span { color: var(--bg-color, #000); font-size: 18px; line-height: 1; }
+
+    /* Mod-CTA-Button: erscheint mit Fade-In nach 3 sec, mittig unten */
+    #mod-cta {
+      position: fixed; left: 50%; bottom: 2rem; transform: translateX(-50%);
+      padding: 0.85rem 1.5rem;
+      background: rgba(255,255,255,0.95); color: #000;
+      border: none; border-radius: 999px;
+      font: 600 14px/1 system-ui, sans-serif;
+      cursor: pointer; z-index: 25;
+      box-shadow: 0 6px 30px rgba(120,180,255,0.4), 0 0 0 1px rgba(255,255,255,0.6);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.6s, transform 0.4s, background 0.2s;
+      animation: cta-pulse 2.4s ease-in-out infinite;
+    }
+    #mod-cta.show { opacity: 1; pointer-events: auto; }
+    #mod-cta:hover { background: #fff; }
+    @keyframes cta-pulse {
+      0%, 100% { box-shadow: 0 6px 30px rgba(120,180,255,0.4), 0 0 0 1px rgba(255,255,255,0.6); }
+      50%      { box-shadow: 0 6px 50px rgba(120,180,255,0.8), 0 0 0 2px rgba(255,255,255,0.8); }
+    }
   </style>
 </head>
 <body>
@@ -196,31 +216,29 @@
   };
 
   /* ─── Presets ──────────────────────────────────────────────────────────── */
-  // Pro Preset: pipeline + empfohlene iter + empfohlene cam-dist + empfohlener textScale.
-  // Sanfte Werte: zu aggressive scale-folds (× 2) replizieren den Text 2^iter-fach klein
-  // und produzieren einen homogenen Glow-Nebel. Wir wollen sichtbare Kopien.
+  // Pro Preset: pipeline + iter + cam.pos (Startposition) + textScale + optional maxMarches.
   const PRESETS = {
-    klar:        { pipe: [], iter: 0, camDist: 5, scale: 1.5 },
+    klar:        { pipe: [], iter: 0, camPos: [0, 0, 5], scale: 1.5 },
     spiegel: {
       pipe: [
         { type: 'abs',  params: { cx: 0, cy: 0, cz: 0 } },
         { type: 'rotY', params: { a: 0.35 } },
       ],
-      iter: 4, camDist: 4, scale: 1.8,
+      iter: 4, camPos: [0, 0, 4], scale: 1.8,
     },
     kristallin: {
       pipe: [
         { type: 'sphere', params: { minR: 0.6, maxR: 1.4 } },
         { type: 'rotY',   params: { a: 0.5 } },
       ],
-      iter: 5, camDist: 5, scale: 1.0,
+      iter: 5, camPos: [0, 0, 5], scale: 1.0,
     },
     sierpinski: {
       pipe: [
         { type: 'sierpinski', params: {} },
         { type: 'rotY',       params: { a: 0.4 } },
       ],
-      iter: 5, camDist: 4, scale: 1.5,
+      iter: 5, camPos: [0, 0, 4], scale: 1.5,
     },
     chaotisch: {
       pipe: [
@@ -229,15 +247,14 @@
         { type: 'rotY',   params: { a: 0.4 } },
         { type: 'translate', params: { x: 0.1, y: 0.1, z: 0 } },
       ],
-      iter: 4, camDist: 6, scale: 1.0,
+      iter: 4, camPos: [0, 0, 6], scale: 1.0,
     },
-    // PySpace 3:55 — DE(x) = norm(mod(x, p) - c) - r:
-    // domain repetition reicht alleine schon für ∞ Kopien in alle Richtungen.
+    // PySpace 3:55 — domain repetition reicht alleine schon für ∞ Kopien.
     'unendlich': {
       pipe: [
         { type: 'mod', params: { px: 1.5, py: 1.5, pz: 1.5 } },
       ],
-      iter: 1, camDist: 10, scale: 0.45, maxMarches: 160,
+      iter: 1, camPos: [0, 0, 8], scale: 0.45, maxMarches: 160,
     },
   };
 
@@ -254,7 +271,7 @@
   };
 
   const state = {
-    text: '0NE',
+    text: '1',
     font: 'sans',
     iterations: 0,
     pipeline: [],
@@ -262,12 +279,12 @@
     textRot:    [0, 0, 0],
     textScale:  1.5,
     textThickness: 0.18,
-    cam:        { dist: 5.0, yaw: 0.3, pitch: -0.2 },
+    // FPS-Cam: eigene Position + Blickrichtung, kein Orbit-Pivot.
+    cam:        { pos: [0, 0, 5], yaw: 0, pitch: 0 },
     colors:     { bg: '#000000', fg: '#ffffff', glow: '#88aaff' },
     resScale:   detectMobile() ? 0.5 : 0.75,
     maxMarches: detectMobile() ? 48 : 80,
     sdfTex:     null,
-    sdfPad:     0,        // padding ratio for normalization
     needsCompile: true,
     needsRender:  true,
     autoRotate:   false,
@@ -278,7 +295,12 @@
     return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 768;
   }
 
-  /* ─── URL state ────────────────────────────────────────────────────────── */
+  /* ─── URL state ──────────────────────────────────────────────────────────
+   * Wichtig: wir schreiben NICHT bei jedem State-Change in die URL. Die URL
+   * bleibt sauber. Nur der Share-Button serialisiert den State auf Wunsch.
+   * decodeState() liest beim Initial-Load weiterhin Params, falls eine
+   * geteilte URL geöffnet wird.
+   * ──────────────────────────────────────────────────────────────────────── */
   function encodeState() {
     const p = new URLSearchParams();
     p.set('text', state.text);
@@ -288,7 +310,9 @@
     p.set('scl',  state.textScale.toFixed(3));
     p.set('pos',  state.textPos.map(v => v.toFixed(3)).join(','));
     p.set('rot',  state.textRot.map(v => v.toFixed(3)).join(','));
-    p.set('cam',  `${state.cam.dist.toFixed(3)},${state.cam.yaw.toFixed(3)},${state.cam.pitch.toFixed(3)}`);
+    p.set('cp',   state.cam.pos.map(v => v.toFixed(3)).join(','));
+    p.set('cy',   state.cam.yaw.toFixed(3));
+    p.set('cx',   state.cam.pitch.toFixed(3));
     p.set('col',  `${state.colors.bg.slice(1)},${state.colors.fg.slice(1)},${state.colors.glow.slice(1)}`);
     try { p.set('pipe', btoa(unescape(encodeURIComponent(JSON.stringify(state.pipeline))))); }
     catch (e) { /* ignore */ }
@@ -303,10 +327,9 @@
     if (p.has('scl'))  state.textScale = parseFloat(p.get('scl')) || 1;
     if (p.has('pos')) state.textPos = p.get('pos').split(',').map(parseFloat);
     if (p.has('rot')) state.textRot = p.get('rot').split(',').map(parseFloat);
-    if (p.has('cam')) {
-      const c = p.get('cam').split(',').map(parseFloat);
-      state.cam = { dist: c[0] || 5, yaw: c[1] || 0, pitch: c[2] || 0 };
-    }
+    if (p.has('cp'))  state.cam.pos   = p.get('cp').split(',').map(parseFloat);
+    if (p.has('cy'))  state.cam.yaw   = parseFloat(p.get('cy'));
+    if (p.has('cx'))  state.cam.pitch = parseFloat(p.get('cx'));
     if (p.has('col')) {
       const c = p.get('col').split(',');
       if (c[0]) state.colors.bg   = '#' + c[0];
@@ -320,14 +343,8 @@
       } catch (e) { /* keep default */ }
     }
   }
-  let urlWriteTimer = 0;
-  function syncURL() {
-    clearTimeout(urlWriteTimer);
-    urlWriteTimer = setTimeout(() => {
-      const q = encodeState();
-      history.replaceState(null, '', '?' + q);
-    }, 300);
-  }
+  // No-op stub: kept so old call-sites don't need to be touched.
+  function syncURL() {}
 
   /* ─── Worker: JFA-SDF aus Canvas ───────────────────────────────────────── */
   const WORKER_SRC = `
@@ -415,19 +432,35 @@ self.onmessage = function(e) {
   let sdfLatestJob = -1;
   const hasUrlState = location.search && location.search.length > 1;
   let firstSdfDone = false;
+  let modCtaSpawned = false;
+  function spawnModCTA() {
+    if (modCtaSpawned) return;
+    modCtaSpawned = true;
+    const btn = document.createElement('button');
+    btn.id = 'mod-cta';
+    btn.type = 'button';
+    btn.textContent = '∞  enable mod operator';
+    btn.addEventListener('click', () => {
+      applyPreset('unendlich');
+      btn.classList.remove('show');
+      setTimeout(() => btn.remove(), 600);
+    });
+    document.body.appendChild(btn);
+    requestAnimationFrame(() => btn.classList.add('show'));
+  }
   sdfWorker.onmessage = (e) => {
     const { jobId, dist, width, height } = e.data;
     if (jobId !== sdfLatestJob) return;  // stale
     uploadSdfTexture(dist, width, height);
     state.needsRender = true;
     if (firstSdfDone) {
-      setStatus('sdf ready', 800);
+      // status nur für sehr ephemere events, nicht jedes Render
+      statusEl.classList.add('hidden');
     } else {
       firstSdfDone = true;
+      statusEl.classList.add('hidden');
       if (!hasUrlState) {
-        setStatus('Text eingeben → unten ein Preset wählen (∞ unendlich / kristallin / sierpinski / chaotisch / spiegel) für Fraktal-Effekt', 9000);
-      } else {
-        statusEl.classList.add('hidden');
+        setTimeout(spawnModCTA, 3000);
       }
     }
   };
@@ -731,7 +764,8 @@ self.onmessage = function(e) {
   }
 
   /* ─── Camera math ──────────────────────────────────────────────────────── */
-  // Orbit-Kamera: rotiert um textPos. Wenn Text bewegt wird, folgt das Pivot.
+  // FPS-Cam: position + look-direction. Drag rotiert nur den Blick, wheel
+  // fliegt entlang forward.
   function camBasis() {
     const yaw = state.cam.yaw, pitch = state.cam.pitch;
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
@@ -739,10 +773,7 @@ self.onmessage = function(e) {
     const fwd   = [-sy * cp, sp, -cy * cp];
     const right = [ cy,      0,  -sy];
     const up    = [ sy * sp, cp, cy * sp];
-    const t = state.textPos;
-    const d = state.cam.dist;
-    const pos = [t[0] - fwd[0] * d, t[1] - fwd[1] * d, t[2] - fwd[2] * d];
-    return { pos, fwd, right, up };
+    return { pos: state.cam.pos, fwd, right, up };
   }
   function euler3x3Inv(euler) {
     // ZYX intrinsic Euler. Inverse = transpose for rotations.
@@ -836,47 +867,19 @@ self.onmessage = function(e) {
     requestAnimationFrame(loop);
   }
 
-  /* ─── Input: Hit-Test, Drag, Wheel, Touch ─────────────────────────────── */
-  // Hit-Test: gl.readPixels am Cursor → vergleicht mit Background-Farbe.
-  // diff > threshold => Klick lag auf gerendertem Fraktal/Text, sonst leerer Raum.
-  function pickAtScreen(clientX, clientY) {
-    if (!prog || !state.sdfTex) return false;
-    render();                                      // sicherstellen dass Frame frisch ist
-    const pxX = Math.floor(clientX * canvas.width  / window.innerWidth);
-    const pxY = Math.floor((window.innerHeight - clientY) * canvas.height / window.innerHeight);
-    if (pxX < 0 || pxY < 0 || pxX >= canvas.width || pxY >= canvas.height) return false;
-    const px = new Uint8Array(4);
-    gl.readPixels(pxX, pxY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    const bg = hex2rgb(state.colors.bg);
-    const diff = Math.abs(px[0] - bg[0]*255)
-               + Math.abs(px[1] - bg[1]*255)
-               + Math.abs(px[2] - bg[2]*255);
-    return diff > 18;
-  }
+  /* ─── Input: Look, Fly, Touch ─────────────────────────────────────────── */
+  // Drag = nur Blickrichtung drehen. Wheel = entlang fwd bewegen. Wie Free-Fly.
+  const drag = { active: false, x: 0, y: 0, yaw0: 0, pitch0: 0 };
 
-  const drag = { active: false, mode: 'orbitCam', x: 0, y: 0, p0: null, r0: null, c0: null };
-
-  function startDrag(e, forceMode = null) {
-    drag.active = true;
-    drag.x = e.clientX;
-    drag.y = e.clientY;
-    drag.p0 = [...state.textPos];
-    drag.r0 = [...state.textRot];
-    drag.c0 = { ...state.cam };
-    if (forceMode) {
-      drag.mode = forceMode;
-    } else {
-      const hit = pickAtScreen(e.clientX, e.clientY);
-      if (hit) {
-        drag.mode = (e.shiftKey || e.button === 2) ? 'rotateText' : 'translateText';
-        canvas.style.cursor = (drag.mode === 'rotateText') ? 'grabbing' : 'move';
-      } else {
-        drag.mode = 'orbitCam';
-        canvas.style.cursor = 'grabbing';
-      }
-    }
+  function startLook(e) {
+    drag.active   = true;
+    drag.x        = e.clientX;
+    drag.y        = e.clientY;
+    drag.yaw0     = state.cam.yaw;
+    drag.pitch0   = state.cam.pitch;
+    canvas.style.cursor = 'grabbing';
   }
-  function endDrag() {
+  function endLook() {
     drag.active = false;
     canvas.style.cursor = '';
   }
@@ -885,55 +888,37 @@ self.onmessage = function(e) {
   canvas.addEventListener('pointerdown', (e) => {
     if (e.target !== canvas) return;
     activePointers.add(e.pointerId);
-    // Mehrfinger-Touch: pinch übernimmt, kein single-pointer-drag
-    if (e.pointerType === 'touch' && activePointers.size > 1) { endDrag(); return; }
-    if (e.pointerType === 'touch') {
-      startDrag(e, 'orbitCam');   // Touch immer orbit, kein Hit-Test (zu fummelig)
-    } else {
-      startDrag(e);                // Mouse: Hit-Test → orbit oder text-manipulation
-    }
+    if (activePointers.size > 1) { endLook(); return; }   // pinch handler übernimmt
+    startLook(e);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!drag.active) return;
     const dx = (e.clientX - drag.x) / window.innerHeight;
     const dy = (e.clientY - drag.y) / window.innerHeight;
-    if (drag.mode === 'orbitCam') {
-      // Standard-Orbit: dx = yaw, dy = pitch. Pitch invertiert für "drag-up = camera nach oben".
-      state.cam.yaw   = drag.c0.yaw   + dx * 3;
-      state.cam.pitch = Math.max(-1.5, Math.min(1.5, drag.c0.pitch - dy * 3));
-      syncPanelValue('camDist', state.cam.dist);
-    } else if (drag.mode === 'translateText') {
-      const cam = camBasis();
-      const speed = 2.0;
-      state.textPos[0] = drag.p0[0] + dx * cam.right[0] * speed - dy * cam.up[0] * speed;
-      state.textPos[1] = drag.p0[1] + dx * cam.right[1] * speed - dy * cam.up[1] * speed;
-      state.textPos[2] = drag.p0[2] + dx * cam.right[2] * speed - dy * cam.up[2] * speed;
-      syncPanelValue('posX', state.textPos[0]);
-      syncPanelValue('posY', state.textPos[1]);
-      syncPanelValue('posZ', state.textPos[2]);
-    } else if (drag.mode === 'rotateText') {
-      state.textRot[1] = drag.r0[1] + dx * 3;
-      state.textRot[0] = drag.r0[0] + dy * 3;
-      syncPanelValue('rotX', state.textRot[0]);
-      syncPanelValue('rotY', state.textRot[1]);
-    }
+    state.cam.yaw   = drag.yaw0   + dx * 3;
+    state.cam.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, drag.pitch0 - dy * 3));
     state.needsRender = true;
-    syncURL();
   });
-  canvas.addEventListener('pointerup',     (e) => { activePointers.delete(e.pointerId); endDrag(); });
-  canvas.addEventListener('pointercancel', (e) => { activePointers.delete(e.pointerId); endDrag(); });
+  canvas.addEventListener('pointerup',     (e) => { activePointers.delete(e.pointerId); endLook(); });
+  canvas.addEventListener('pointercancel', (e) => { activePointers.delete(e.pointerId); endLook(); });
   canvas.addEventListener('contextmenu',   (e) => e.preventDefault());
 
+  // Wheel = fly forward/backward along current view-direction.
+  // Speed adaptiert sich an Entfernung zum Origin, damit nahe + ferne Manöver smooth bleiben.
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    state.cam.dist = Math.max(0.5, Math.min(40, state.cam.dist + e.deltaY * 0.005));
-    syncPanelValue('camDist', state.cam.dist);
+    const cam = camBasis();
+    const dist = Math.hypot(state.cam.pos[0], state.cam.pos[1], state.cam.pos[2]);
+    const speed = 0.003 * (1 + dist * 0.3);
+    const step = -e.deltaY * speed;
+    state.cam.pos[0] += cam.fwd[0] * step;
+    state.cam.pos[1] += cam.fwd[1] * step;
+    state.cam.pos[2] += cam.fwd[2] * step;
     state.needsRender = true;
-    syncURL();
   }, { passive: false });
 
-  // Touch: pinch = zoom, two-finger rotate around center
+  // Touch: 1-finger look (via pointerdown), 2-finger pinch = fly forward
   const touches = new Map();
   canvas.addEventListener('touchstart', (e) => {
     for (const t of e.changedTouches) touches.set(t.identifier, { x: t.clientX, y: t.clientY });
@@ -946,13 +931,15 @@ self.onmessage = function(e) {
       if (!t1 || !t2) return;
       const d0 = Math.hypot(t1.x - t2.x, t1.y - t2.y);
       const d1 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      const factor = d0 > 0 ? d1 / d0 : 1;
-      state.cam.dist = Math.max(0.5, Math.min(40, state.cam.dist / factor));
-      syncPanelValue('camDist', state.cam.dist);
+      const cam = camBasis();
+      const dist = Math.hypot(state.cam.pos[0], state.cam.pos[1], state.cam.pos[2]);
+      const step = (d1 - d0) * 0.01 * (1 + dist * 0.3);  // spread = forward
+      state.cam.pos[0] += cam.fwd[0] * step;
+      state.cam.pos[1] += cam.fwd[1] * step;
+      state.cam.pos[2] += cam.fwd[2] * step;
       touches.set(a.identifier, { x: a.clientX, y: a.clientY });
       touches.set(b.identifier, { x: b.clientX, y: b.clientY });
       state.needsRender = true;
-      syncURL();
     }
   }, { passive: false });
   canvas.addEventListener('touchend', (e) => {
@@ -976,8 +963,42 @@ self.onmessage = function(e) {
     }
   }
 
+  // Apply a named preset. Updates state + redraws pipeline editor if panel exists.
+  function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    state.pipeline   = p.pipe.map(deepClone);
+    state.iterations = p.iter;
+    state.cam.pos    = [...p.camPos];
+    state.cam.yaw    = 0;
+    state.cam.pitch  = 0;
+    state.textScale  = p.scale;
+    if (p.maxMarches) state.maxMarches = p.maxMarches;
+    syncPanelValue('iterations', state.iterations);
+    syncPanelValue('scale',      state.textScale);
+    syncPanelValue('marches',    state.maxMarches);
+    state.needsCompile = true;
+    state.needsRender  = true;
+    if (typeof state._renderPipeline === 'function') state._renderPipeline();
+  }
+
   function buildPanel() {
     panel = Controls.createPanel({ id: 'fractal0ne-panel', position: 'left' });
+
+    // Share button im Header — kopiert vollen State als URL in Clipboard.
+    // Icon: YouTube-Share-Style (Pfeil nach rechts mit Kurve).
+    panel.addHeaderButton({
+      icon: '↗',
+      title: 'Diesen Stand teilen — URL in Zwischenablage kopieren',
+      onClick: () => {
+        const url = location.origin + location.pathname + '?' + encodeState();
+        navigator.clipboard.writeText(url).then(
+          () => setStatus('URL in Zwischenablage kopiert', 1800),
+          () => setStatus('Clipboard fehlgeschlagen', 1800)
+        );
+      },
+      className: 'fractal0ne-share',
+    });
 
     panel.addText('text', {
       label: 'Text',
@@ -1023,17 +1044,15 @@ self.onmessage = function(e) {
         onChange: (v) => { state.textRot[i] = v; state.needsRender = true; syncURL(); }
       });
     });
-    panel.addSlider('camDist', {
-      label: 'cam dist', min: 0.5, max: 40, step: 0.01, value: state.cam.dist, decimals: 2,
-      onChange: (v) => { state.cam.dist = v; state.needsRender = true; syncURL(); }
-    });
     panel.addButtonGroup('placement', {
       buttons: [
-        { label: 'zentrieren', onClick: () => {
-            state.textPos = [0,0,0]; state.textRot = [0,0,0];
-            state.cam.yaw = 0.3; state.cam.pitch = -0.2; state.cam.dist = 5;
-            ['posX','posY','posZ','rotX','rotY','rotZ','camDist'].forEach(k => syncPanelValue(k, k.startsWith('cam') ? 5 : 0));
-            state.needsRender = true; syncURL();
+        { label: 'reset view', onClick: () => {
+            state.cam.pos   = [0, 0, 5];
+            state.cam.yaw   = 0;
+            state.cam.pitch = 0;
+            state.textPos = [0, 0, 0]; state.textRot = [0, 0, 0];
+            ['posX','posY','posZ','rotX','rotY','rotZ'].forEach(k => syncPanelValue(k, 0));
+            state.needsRender = true;
         } },
         { label: 'auto-rot', onClick: () => { state.autoRotate = !state.autoRotate; state.needsRender = true; } },
       ]
@@ -1175,6 +1194,7 @@ self.onmessage = function(e) {
       });
     }
     renderPipeline();
+    state._renderPipeline = renderPipeline;
 
     panel.addDivider();
 
@@ -1216,34 +1236,11 @@ self.onmessage = function(e) {
       buttons: Object.keys(PRESETS).map(name => ({
         key: name, label: name,
         onClick: () => {
-          const p = PRESETS[name];
-          state.pipeline   = p.pipe.map(deepClone);
-          state.iterations = p.iter;
-          state.cam.dist   = p.camDist;
-          state.textScale  = p.scale;
-          state.cam.yaw    = 0.3;
-          state.cam.pitch  = -0.2;
-          if (p.maxMarches) state.maxMarches = p.maxMarches;
-          syncPanelValue('iterations', state.iterations);
-          syncPanelValue('camDist',    state.cam.dist);
-          syncPanelValue('scale',      state.textScale);
-          syncPanelValue('marches',    state.maxMarches);
-          state.needsCompile = true; state.needsRender = true;
-          renderPipeline(); syncURL();
+          applyPreset(name);
         }
       }))
     });
 
-    panel.addButton('share', {
-      label: 'URL kopieren',
-      onClick: () => {
-        const url = location.origin + location.pathname + '?' + encodeState();
-        navigator.clipboard.writeText(url).then(
-          () => setStatus('URL kopiert', 1500),
-          () => setStatus('clipboard fehlgeschlagen', 1500)
-        );
-      }
-    });
   }
 
   /* ─── Init ─────────────────────────────────────────────────────────────── */
