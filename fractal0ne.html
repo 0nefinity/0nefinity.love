@@ -232,12 +232,12 @@
       iter: 4, camDist: 6, scale: 1.0,
     },
     // PySpace 3:55 — DE(x) = norm(mod(x, p) - c) - r:
-    // domain repetition reicht alleine schon für ∞ Kopien.
+    // domain repetition reicht alleine schon für ∞ Kopien in alle Richtungen.
     'unendlich': {
       pipe: [
-        { type: 'mod', params: { px: 1.5, py: 1.5, pz: 0 } },
+        { type: 'mod', params: { px: 1.5, py: 1.5, pz: 1.5 } },
       ],
-      iter: 1, camDist: 6, scale: 0.5,
+      iter: 1, camDist: 10, scale: 0.45, maxMarches: 160,
     },
   };
 
@@ -534,7 +534,7 @@ self.onmessage = function(e) {
 
     const float FOV     = 1.2;
     const float MIN_DIST = 0.0012;
-    const float MAX_DIST = 24.0;
+    const float MAX_DIST = 80.0;
 
     void applyFolds(inout vec4 z) {
         ${foldsBody}
@@ -1223,9 +1223,11 @@ self.onmessage = function(e) {
           state.textScale  = p.scale;
           state.cam.yaw    = 0.3;
           state.cam.pitch  = -0.2;
+          if (p.maxMarches) state.maxMarches = p.maxMarches;
           syncPanelValue('iterations', state.iterations);
           syncPanelValue('camDist',    state.cam.dist);
           syncPanelValue('scale',      state.textScale);
+          syncPanelValue('marches',    state.maxMarches);
           state.needsCompile = true; state.needsRender = true;
           renderPipeline(); syncURL();
         }
