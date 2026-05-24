@@ -603,6 +603,7 @@
 
   let gebEnabled = true;  // 018 Mode ist immer aktiv
   let invertMode = false;
+  let dualMode = false;   // GEB-Mode (Hofstadter): 2 spheres + 5 lamps. NOT gebEnabled (that is the glyph-cutout flag).
 
   // Lampen-Zustände (an/aus)
   let lampStates = {
@@ -743,6 +744,12 @@
       invertMode = true;
     }
 
+    // GEB-Mode aus URL laden
+    const gebFromUrl = urlParams.get('geb');
+    if (gebFromUrl === '1') {
+      dualMode = true;
+    }
+
     // Lampen-Zustände aus URL laden (z.B. lights=110 → floor=1, back=1, side=0)
     const lightsFromUrl = urlParams.get('lights');
     if (lightsFromUrl && lightsFromUrl.length === 3) {
@@ -785,6 +792,13 @@
       urlParams.set('invert', '1');
     } else {
       urlParams.delete('invert');
+    }
+
+    // GEB-Mode in URL schreiben
+    if (dualMode) {
+      urlParams.set('geb', '1');
+    } else {
+      urlParams.delete('geb');
     }
 
     // Lampen-Zustände in URL schreiben
