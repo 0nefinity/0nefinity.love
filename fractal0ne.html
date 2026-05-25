@@ -285,7 +285,7 @@
     textPos:    [0, 0, 0],
     textRot:    [0, 0, 0],
     textScale:  1.5,
-    textThickness: 0.18,
+    textThickness: 0.05,
     // FPS-Cam: eigene Position + Blickrichtung, kein Orbit-Pivot.
     cam:        { pos: [0, 0, 5], yaw: 0, pitch: 0 },
     colors:     { bg: '#000000', fg: '#ffffff', glow: '#88aaff' },
@@ -581,17 +581,17 @@ self.onmessage = function(e) {
     float sampleText(vec3 p) {
         // Y flippen weil Canvas-Y nach unten geht, World-Y nach oben.
         vec2 uv = vec2(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
-        // Kontinuierliche Distance (kein hartes if-else):
-        // - Sample-UV wird auf [0,1] geklemmt (CLAMP_TO_EDGE gibt Rand-Wert).
-        // - Punkte außerhalb des UV-Bereichs bekommen zusätzlich die Distance
-        //   zum UV-Rand draufgerechnet, sodass das DE überall Lipschitz bleibt
-        //   und keine Box als Fallback-Geometrie sichtbar wird.
         vec2 outXY = max(abs(p.xy) - 1.0, 0.0);
         vec2 clipped = clamp(uv, 0.001, 0.999);
         float d2 = texture(uSdf, clipped).r + length(outXY);
         float dz = abs(p.z) - uTextThickness;
-        vec2 e = vec2(d2, dz);
-        return min(max(e.x, e.y), 0.0) + length(max(e, 0.0));
+        // Edge-rounding: Minkowski-Sum mit einer Kugel-Radius R rundet die
+        // Z-Extrude-Kanten ab. Ohne dieses Smoothing produzieren die
+        // scharfen front/side-Übergänge bei dünner Schrift sternförmige
+        // Aliasing-Artefakte beim Sampling der calcNormal-Punkte.
+        const float R = 0.008;
+        vec2 e = vec2(d2 - R, dz - R);
+        return min(max(e.x, e.y), 0.0) + length(max(e, 0.0)) + R;
     }
 
     float DE(vec3 p) {
@@ -795,6 +795,7 @@ self.onmessage = function(e) {
   // FPS-Cam: position + look-direction. Drag rotiert nur den Blick, wheel
   // fliegt entlang forward.
   function camBasis() {
+    wrapCamForMod();   // verhindert float32-precision-loss bei langem Scrollen
     const yaw = state.cam.yaw, pitch = state.cam.pitch;
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     const cy = Math.cos(yaw),   sy = Math.sin(yaw);
@@ -802,6 +803,26 @@ self.onmessage = function(e) {
     const right = [ cy,      0,  -sy];
     const up    = [ sy * sp, cp, cy * sp];
     return { pos: state.cam.pos, fwd, right, up };
+  }
+
+  // Wenn die Pipeline reines mod ist, ist die Welt streng periodisch.
+  // Wir wrapen cam.pos auf [-period/2, period/2] — mathematisch identisch
+  // (User sieht das gleiche), aber float32 bleibt präzise auch nach
+  // langem Reinzoomen in eine Richtung.
+  function wrapCamForMod() {
+    if (state.pipeline.length !== 1) return;
+    const fold = state.pipeline[0];
+    if (fold.type !== 'mod') return;
+    const px = fold.params.px || 0;
+    const py = fold.params.py || 0;
+    const pz = fold.params.pz || 0;
+    const wrap = (v, p) => {
+      if (p <= 0.001 || !Number.isFinite(v)) return Number.isFinite(v) ? v : 0;
+      return ((v + p/2) % p + p) % p - p/2;
+    };
+    state.cam.pos[0] = wrap(state.cam.pos[0], px);
+    state.cam.pos[1] = wrap(state.cam.pos[1], py);
+    state.cam.pos[2] = wrap(state.cam.pos[2], pz);
   }
   function euler3x3Inv(euler) {
     // ZYX intrinsic Euler. Inverse = transpose for rotations.
