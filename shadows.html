@@ -511,6 +511,10 @@
         <label for="showLamps">Show Lamps</label>
         <input id="showLamps" type="checkbox" checked>
       </div>
+      <div class="row toggle-row">
+        <label for="gebMode">GEB-Mode</label>
+        <input id="gebMode" type="checkbox">
+      </div>
       <!-- 018 Mode ist jetzt immer aktiv -->
 
       <div class="row">
@@ -594,6 +598,7 @@
   let spotFloor, spotBack, spotSide;
   let spotBackB, spotSideB;   // second sphere's wall spots (dualMode only)
   let lampFloor, lampBack, lampSide;
+  let lampBackB, lampSideB, lightConeBackB, lightConeSideB;  // second sphere's lamp meshes + cones (dualMode only)
   let lightConeFloor, lightConeBack, lightConeSide;
   let baseBgColor, textColorThree;
   let floor, backWall, sideWall;  // Nebel-Scheiben (fog layers)
@@ -931,6 +936,8 @@
       if (lampFloor) lampFloor.scale.set(s, s, s);
       if (lampBack) lampBack.scale.set(s, s, s);
       if (lampSide) lampSide.scale.set(s, s, s);
+      if (lampBackB) lampBackB.scale.set(s, s, s);
+      if (lampSideB) lampSideB.scale.set(s, s, s);
     }
 
     // Hit-Layer und Outline Radien aktualisieren (wenn spotAngle sich ändert)
@@ -1557,6 +1564,11 @@
     updateLamp(lampFloor, lightConeFloor, lampStates.floor);
     updateLamp(lampBack, lightConeBack, lampStates.back);
     updateLamp(lampSide, lightConeSide, lampStates.side);
+    // GEB-Mode: zweite Kugel hat (noch) keine Einzel-Toggles -> folgen dem Master "Show Lamps"
+    if (lampBackB) {
+      updateLamp(lampBackB, lightConeBackB, true);
+      updateLamp(lampSideB, lightConeSideB, true);
+    }
   }
 
   // Custom Depth Shader für korrekte Schatten durch Löcher UND Tunnel-Wände
@@ -2198,6 +2210,11 @@
   }
 
 
+  // Orbit-Ziel: Einzel-Modus = Ursprung, GEB-Mode = vertikaler Mittelpunkt der zwei Kugeln
+  function orbitTargetY() {
+    return dualMode ? secondSphereY() / 2 : 0;
+  }
+
   function applyCameraFromParams() {
     if (!camera || !controls) return;
 
@@ -2226,9 +2243,10 @@
     const y = r * Math.sin(elRad);
     const z = r * cosEl * Math.cos(azRad);
 
-    camera.position.set(x, y, z);
-    controls.target.set(0, 0, 0);
-    camera.lookAt(0, 0, 0);
+    const ty = orbitTargetY();
+    camera.position.set(x, y + ty, z);
+    controls.target.set(0, ty, 0);
+    camera.lookAt(0, ty, 0);
     camera.updateProjectionMatrix();
   }
 
@@ -2679,13 +2697,36 @@
         if (lampFloor) lampFloor.visible = visible;
         if (lampBack)  lampBack.visible  = visible;
         if (lampSide)  lampSide.visible  = visible;
+        // GEB-Mode: Lampen der zweiten Kugel folgen demselben Master-Toggle
+        if (lampBackB) lampBackB.visible = visible;
+        if (lampSideB) lampSideB.visible = visible;
         // Lichtkegel mit Lampen zusammen
         if (lightConeFloor) lightConeFloor.visible = visible;
         if (lightConeBack)  lightConeBack.visible  = visible;
         if (lightConeSide)  lightConeSide.visible  = visible;
+        if (lightConeBackB) lightConeBackB.visible = visible;
+        if (lightConeSideB) lightConeSideB.visible = visible;
       };
       lampsEl.addEventListener('change', applyLampVisibility);
       applyLampVisibility(); // Initialzustand
+    }
+
+    // GEB-Mode Toggle: struktureller Moduswechsel (1 vs 2 Kugeln, 3 vs 5 Lampen)
+    // -> URL anpassen + neu laden, damit init() sauber neu aufbaut. Andere Params bleiben erhalten.
+    const gebEl = document.getElementById('gebMode');
+    if (gebEl) {
+      gebEl.checked = dualMode;
+      gebEl.addEventListener('change', (e) => {
+        dualMode = e.target.checked;
+        const urlParams = new URLSearchParams(window.location.search);
+        if (dualMode) {
+          urlParams.set('geb', '1');
+        } else {
+          urlParams.delete('geb');
+        }
+        const qs = urlParams.toString();
+        window.location.search = qs ? '?' + qs : '';
+      });
     }
 
     // Decay Segmented Control mit animierter Brightness-Anpassung
@@ -2822,7 +2863,7 @@
 
         // Kamera zurücksetzen (aus Config-Defaults)
         if (camera && controls) {
-          controls.target.set(0, 0, 0);
+          controls.target.set(0, orbitTargetY(), 0);
           applyCameraFromParams();  // Nutzt die soeben gesetzten Default-Werte
         }
 
@@ -2925,7 +2966,7 @@
     container.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0, 0);
+    controls.target.set(0, orbitTargetY(), 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
     controls.enablePan = false; // kein Verschieben der Szene
@@ -3151,6 +3192,16 @@
 		    lightConeBack  = createLightCone(lampColor);
 		    lightConeSide  = createLightCone(lampColor);
 		    scene.add(lightConeFloor, lightConeBack, lightConeSide);
+
+		    // GEB-Mode: Lampen + Lichtkegel der zweiten Kugel (zwei zusätzliche Spots)
+		    if (dualMode) {
+		      lampBackB = createLampMesh(lampColor);
+		      lampSideB = createLampMesh(lampColor);
+		      scene.add(lampBackB, lampSideB);
+		      lightConeBackB = createLightCone(lampColor);
+		      lightConeSideB = createLightCone(lampColor);
+		      scene.add(lightConeBackB, lightConeSideB);
+		    }
 		
     fogMaterials = [];
 
@@ -4079,6 +4130,12 @@
       updateLightCone(spotFloor, lightConeFloor);
       updateLightCone(spotBack, lightConeBack);
       updateLightCone(spotSide, lightConeSide);
+      if (lampBackB) {
+        updateLampForSpot(spotBackB, lampBackB);
+        updateLampForSpot(spotSideB, lampSideB);
+        updateLightCone(spotBackB, lightConeBackB);
+        updateLightCone(spotSideB, lightConeSideB);
+      }
     }
 
     if (controls) controls.update();
