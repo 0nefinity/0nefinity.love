@@ -1773,6 +1773,15 @@
     uniform vec3 uFogColor;
     uniform float uLightActive;    // 1.0 = Licht aktiv, 0.0 = aus
 
+    // GEB-Mode: zweite Kugel + eigenes Spotlight (gleiche Wand-Scheibe, zweite Glyphe)
+    uniform float uSphere2Active;  // 1.0 = zweite Kugel rendern, 0.0 = Single-Mode
+    uniform vec3 uSphere2Pos;      // Zentrum der zweiten Kugel (Weltkoordinaten)
+    uniform vec3 uLight2Pos;       // Position des zweiten Spotlights
+    uniform vec3 uLight2Dir;       // Richtung des zweiten Spotlights
+    uniform sampler2D uGlyph2TexX;
+    uniform sampler2D uGlyph2TexY;
+    uniform sampler2D uGlyph2TexZ;
+
     varying vec3 vWorldPos;
     varying vec3 vLocalPos;
 
@@ -1815,15 +1824,26 @@
       return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
     }
 
-    // Prüft ob Punkt in mindestens einem Loch liegt (Normal-Modus)
-    bool isInHole(vec3 p) {
-      return countHoles(p) > 0;
+    // Wie countHoles, aber für die zweite Kugel (eigene, getauschte Glyphen).
+    int countHoles2(vec3 p) {
+      if (uGebEnabled == 0) return 0;
+      float glyphScale = uGlyphSize * 0.3;
+      float threshold = 0.5;
+      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
+      bool inX = sampleGlyph(uGlyph2TexX, uvX) > threshold;
+      if (uInvertMode == 1 && !inX) return 0;
+      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
+      bool inY = sampleGlyph(uGlyph2TexY, uvY) > threshold;
+      if (uInvertMode == 1 && !inY) return 0;
+      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
+      bool inZ = sampleGlyph(uGlyph2TexZ, uvZ) > threshold;
+      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
     }
 
-    // Prüft ob der Strahl von 'from' nach 'to' die Kugel trifft (außer durch Löcher)
-    // Im invertierten Modus: Trifft der Strahl die Schnittmenge aller 3 Glyph-Zylinder?
-    bool rayHitsSphere(vec3 from, vec3 to) {
-      vec3 rayOrigin = from - uSpherePos;  // In Kugel-lokale Koordinaten (aber noch skaliert)
+    // Prüft ob der Strahl von 'from' nach 'to' die Kugel mit Zentrum 'center' trifft
+    // (außer durch Löcher). useSecond=true → Glyphen der zweiten Kugel.
+    bool rayHitsSphereAt(vec3 from, vec3 to, vec3 center, bool useSecond) {
+      vec3 rayOrigin = from - center;  // In Kugel-lokale Koordinaten (aber noch skaliert)
       vec3 rayDir = normalize(to - from);
       float rayLength = length(to - from);
 
@@ -1858,7 +1878,7 @@
           // WICHTIG: Normalisiere auf Einheitskoordinaten für countHoles
           // countHoles erwartet Koordinaten einer Einheitskugel (radius=1)
           vec3 pNorm = p / uSphereRadius;
-          int holeCount = countHoles(pNorm);
+          int holeCount = useSecond ? countHoles2(pNorm) : countHoles(pNorm);
           if (holeCount == 3) {
             return true;
           }
@@ -1871,7 +1891,7 @@
         vec3 p = rayOrigin + rayDir * t;
         // WICHTIG: Normalisiere auf Einheitskoordinaten für countHoles
         vec3 pNorm = p / uSphereRadius;
-        int holeCount = countHoles(pNorm);
+        int holeCount = useSecond ? countHoles2(pNorm) : countHoles(pNorm);
         if (holeCount == 0) {
           return true;
         }
@@ -1881,11 +1901,12 @@
     }
 
     // Berechnet Spotlight-Intensität mit Decay (0 = außerhalb, 1 = voll im Kegel)
-    float getSpotlight(vec3 pos) {
-      vec3 toPoint = pos - uLightPos;
+    // Parametrisiert über Lichtposition/-richtung (für getrennte Wand-Spots im GEB-Mode).
+    float getSpotlightFrom(vec3 pos, vec3 lightPos, vec3 lightDir) {
+      vec3 toPoint = pos - lightPos;
       float distance = length(toPoint);
       vec3 toPointDir = toPoint / distance;
-      float cosAngle = dot(toPointDir, uLightDir);
+      float cosAngle = dot(toPointDir, lightDir);
 
       // Außerhalb des Kegels?
       if (cosAngle < uSpotAngle) return 0.0;
@@ -1911,22 +1932,26 @@
 
       vec3 samplePos = vWorldPos;
 
-      // 1. Spotlight-Intensität (Kegel-Form + Decay)
-      float spotIntensity = getSpotlight(samplePos);
+      // Beitrag 1: primäre Kugel + zugehöriges Spotlight
+      float intensity = 0.0;
+      float spot1 = getSpotlightFrom(samplePos, uLightPos, uLightDir);
+      if (spot1 > 0.0 && !rayHitsSphereAt(samplePos, uLightPos, uSpherePos, false)) {
+        intensity += spot1;
+      }
 
-      // 2. Schatten-Check (Kugel blockiert Licht?)
-      float lightRatio = 0.0;
-      if (spotIntensity > 0.0) {
-        bool inShadow = rayHitsSphere(samplePos, uLightPos);
-        if (!inShadow) {
-          lightRatio = spotIntensity;
+      // Beitrag 2: zweite Kugel + zweites Spotlight (GEB-Mode).
+      // Auf den Wänden ergeben die beiden Spots zwei übereinander gestapelte
+      // Glyphen; auf dem Boden teilen sich beide Kugeln dieselbe Lichtquelle
+      // (uLight2Pos == uLightPos) und projizieren dasselbe ∞ nach unten → bleibt eins.
+      if (uSphere2Active > 0.5) {
+        float spot2 = getSpotlightFrom(samplePos, uLight2Pos, uLight2Dir);
+        if (spot2 > 0.0 && !rayHitsSphereAt(samplePos, uLight2Pos, uSphere2Pos, true)) {
+          intensity += spot2;
         }
       }
 
-      // 3. Licht-Intensität: brightness × spotIntensity (mit decay)
-      // uLightIntensity = brightness / 100, normalisiert
-      // Bei brightness=100 → uLightIntensity=1.0 → volle Helligkeit
-      float intensity = lightRatio * uLightIntensity;
+      // Licht-Intensität: brightness × spotIntensity (mit decay)
+      intensity = min(intensity, 1.0) * uLightIntensity;
 
       vec3 color = uFogColor * intensity;
       float opacity = uFogDensity;
@@ -1957,7 +1982,15 @@
         uFogDensity: { value: 1.0 },
         uLightIntensity: { value: brightness },
         uFogColor: { value: textColorThree || new THREE.Color(1, 1, 1) },
-        uLightActive: { value: 1.0 }  // Wird in updateFogUniforms gesetzt
+        uLightActive: { value: 1.0 },  // Wird in updateFogUniforms gesetzt
+        // GEB-Mode (zweite Kugel + zweites Spotlight); im Single-Mode inaktiv
+        uSphere2Active: { value: 0.0 },
+        uSphere2Pos: { value: new THREE.Vector3(0, 0, 0) },
+        uLight2Pos: { value: lightPos.clone() },
+        uLight2Dir: { value: lightDir.clone() },
+        uGlyph2TexX: { value: glyphTextures.x },
+        uGlyph2TexY: { value: glyphTextures.y },
+        uGlyph2TexZ: { value: glyphTextures.z }
       },
       vertexShader: fogVertexShader,
       fragmentShader: fogFragmentShader,
@@ -2009,6 +2042,29 @@
         _tempLightDir.copy(spotSide.target.position).sub(spotSide.position).normalize();
         mat.uniforms.uLightDir.value.copy(_tempLightDir);
         mat.uniforms.uLightActive.value = lampStates.side ? 1.0 : 0.0;
+      }
+
+      // GEB-Mode: zweite Kugel + zweites Spotlight pro Scheibe einschalten
+      if (dualMode && spheres[1]) {
+        const yB = secondSphereY();
+        mat.uniforms.uSphere2Active.value = 1.0;
+        mat.uniforms.uSphere2Pos.value.set(0, yB, 0);
+        const g2 = spheres[1].glyphTextures;
+        mat.uniforms.uGlyph2TexX.value = g2.x;
+        mat.uniforms.uGlyph2TexY.value = g2.y;
+        mat.uniforms.uGlyph2TexZ.value = g2.z;
+        // Zweites Spotlight: Boden teilt sich spotFloor (shared), Wände nutzen die B-Spots
+        let spot2 = null;
+        if (idx === 0) spot2 = spotFloor;       // Boden: gemeinsames Licht → ein ∞
+        else if (idx === 1) spot2 = spotBackB;  // Rückwand: zweite Glyphe unten
+        else if (idx === 2) spot2 = spotSideB;  // Seitenwand: zweite Glyphe unten
+        if (spot2 && spot2.target) {
+          mat.uniforms.uLight2Pos.value.copy(spot2.position);
+          _tempLightDir.copy(spot2.target.position).sub(spot2.position).normalize();
+          mat.uniforms.uLight2Dir.value.copy(_tempLightDir);
+        }
+      } else {
+        mat.uniforms.uSphere2Active.value = 0.0;
       }
     });
   }
