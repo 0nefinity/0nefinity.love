@@ -655,14 +655,18 @@ self.onmessage = function(e) {
             // damit die Schattierung an jeder Kopie gleich aussieht.
             float h = max(0.0006, td * 0.001);
             vec3 n = calcNormal(p, h);
-            vec3 lightDir = normalize(vec3(0.4, 0.7, 0.6));
-            // Wrap-Lighting + Rim damit jede Kopie auch ohne perfekten Winkel
-            // gleich hell aussieht — kein "grau" mehr bei ungünstig orientierten Buchstaben.
-            float diff = max(0.0, dot(n, lightDir) * 0.5 + 0.5);
-            float rim  = pow(1.0 - max(0.0, dot(n, -ray)), 2.0) * 0.35;
-            float ambient = 0.45;
+            // Zwei Lichter + Rim für mehr Plastizität: ein helles
+            // Haupt-Licht von rechts-oben-vorn macht klare Schattenseiten,
+            // ein schwaches Fill von links-unten-hinten verhindert dass
+            // ungünstig orientierte Kopien komplett dunkel werden.
+            vec3 keyDir  = normalize(vec3( 0.5,  0.7,  0.5));
+            vec3 fillDir = normalize(vec3(-0.4, -0.3, -0.4));
+            float key  = max(0.0, dot(n, keyDir));
+            float fill = max(0.0, dot(n, fillDir)) * 0.25;
+            float rim  = pow(1.0 - max(0.0, dot(n, -ray)), 3.0) * 0.4;
+            float ambient = 0.18;
             float fog = clamp(td / MAX_DIST, 0.0, 1.0);
-            vec3 surface = uFgColor * (ambient + 0.65 * diff + rim);
+            vec3 surface = uFgColor * (ambient + 0.85 * key + fill + rim);
             // Sanfter Fog: bei MAX_DIST nur ~25% bg-mix, damit ferne Kopien
             // erkennbar bleiben statt komplett ins Schwarz zu verschwinden.
             col = mix(surface, uBgColor, fog * 0.25);
