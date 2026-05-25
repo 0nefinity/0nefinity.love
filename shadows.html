@@ -623,6 +623,7 @@
   let glyphChars = { ...DEFAULT_GLYPH_CHARS };
 
   const DUAL_GAP = 2.5; // center-to-center Y distance in sphere radii (primary at y=0, second below)
+  const DUAL_DEFAULT_RADIUS = 2.5; // GEB-Mode-Default ohne URL-r: groß genug für lesbare Wand-Glyphen
   function secondSphereY() { return -DUAL_GAP * (params.sphereRadius || 1); }
   function derivedGlyphs(base) { return { left: base.right, right: base.left, floor: base.floor }; }
 
@@ -759,6 +760,15 @@
     const gebFromUrl = urlParams.get('geb');
     if (gebFromUrl === '1') {
       dualMode = true;
+    }
+
+    // GEB-Mode Default-Radius: Bei r=1 sind die zwei Kugeln so klein, dass die
+    // Wand-Glyphen zu unlesbaren Flecken werden. Wenn der User keinen eigenen
+    // Radius gesetzt hat (kein 'r' in der URL), auf einen größeren Wert anheben,
+    // damit der GEB-Effekt sofort lesbar ist. Einzel-Modus bleibt unberührt,
+    // ein explizites ?r=... wird respektiert.
+    if (dualMode && !urlParams.has(PARAMS_CONFIG.sphereRadius.urlKey)) {
+      params.sphereRadius = DUAL_DEFAULT_RADIUS;
     }
 
     // Lampen-Zustände aus URL laden (z.B. lights=110 → floor=1, back=1, side=0)
