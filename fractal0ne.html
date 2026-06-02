@@ -645,7 +645,7 @@ self.onmessage = function(e) {
         vec3 p;
         bool hit = false;
         int steps = 0;
-        for (int s = 0; s < 256; s++) {
+        for (int s = 0; s < 2048; s++) {
             if (s >= uMaxMarches) break;
             p = uCamPos + ray * td;
             float d = DE(p);
@@ -1336,7 +1336,7 @@ self.onmessage = function(e) {
       onChange: (v) => { state.resScale = v; resize(); }
     });
     panel.addSlider('marches', {
-      label: 'max steps', min: 16, max: 256, step: 1, value: state.maxMarches,
+      label: 'max steps', min: 16, max: 2048, step: 1, value: state.maxMarches,
       onChange: (v) => { state.maxMarches = v|0; state.needsRender = true; }
     });
 
