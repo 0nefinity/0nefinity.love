@@ -16,6 +16,13 @@
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
     #gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+    /* Dunkler Streifen oben damit Header-Buttons (Hamburger, Refresh, Share)
+       auf hellem Fraktal-Hintergrund lesbar bleiben. */
+    body::before {
+      content: ''; position: fixed; left: 0; right: 0; top: 0; height: 92px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.0) 100%);
+      pointer-events: none; z-index: 5;
+    }
     #status { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%);
               padding: 0.6rem 1rem; background: rgba(0,0,0,0.75);
               color: #fff; font: 13px/1.4 system-ui, sans-serif; border-radius: 999px;
@@ -589,7 +596,7 @@ self.onmessage = function(e) {
         // Z-Extrude-Kanten ab. Ohne dieses Smoothing produzieren die
         // scharfen front/side-Übergänge bei dünner Schrift sternförmige
         // Aliasing-Artefakte beim Sampling der calcNormal-Punkte.
-        const float R = 0.008;
+        const float R = 0.014;
         vec2 e = vec2(d2 - R, dz - R);
         return min(max(e.x, e.y), 0.0) + length(max(e, 0.0)) + R;
     }
@@ -651,9 +658,9 @@ self.onmessage = function(e) {
 
         vec3 col = uBgColor;
         if (hit) {
-            // adaptive normal sample radius: weit weg → größer, nah → kleiner,
-            // damit die Schattierung an jeder Kopie gleich aussieht.
-            float h = max(0.0006, td * 0.001);
+            // adaptive normal sample radius: weiter weg = größere h für AA,
+            // sehr nah = kleines h für scharfe Kanten.
+            float h = clamp(td * 0.0015, 0.0012, 0.05);
             vec3 n = calcNormal(p, h);
             // Zwei Lichter + Rim für mehr Plastizität: ein helles
             // Haupt-Licht von rechts-oben-vorn macht klare Schattenseiten,
@@ -953,17 +960,31 @@ self.onmessage = function(e) {
   canvas.addEventListener('pointercancel', (e) => { activePointers.delete(e.pointerId); endLook(); });
   canvas.addEventListener('contextmenu',   (e) => e.preventDefault());
 
-  // Wheel = fly forward/backward along current view-direction.
-  // Speed adaptiert sich an Entfernung zum Origin, damit nahe + ferne Manöver smooth bleiben.
+  // Konstruiert den selben Ray, den der Shader für den Pixel unter dem
+  // Cursor benutzt — damit Wheel-Zoom genau dahin fliegt, wo man hinzeigt.
+  function rayThroughCursor(clientX, clientY) {
+    const cam = camBasis();
+    const FOV = 1.2;
+    const w = window.innerWidth, h = window.innerHeight;
+    const ndcX = (clientX * 2 - w) / h;
+    const ndcY = (h - clientY * 2) / h;
+    let rx = cam.fwd[0] + ndcX * cam.right[0] * FOV + ndcY * cam.up[0] * FOV;
+    let ry = cam.fwd[1] + ndcX * cam.right[1] * FOV + ndcY * cam.up[1] * FOV;
+    let rz = cam.fwd[2] + ndcX * cam.right[2] * FOV + ndcY * cam.up[2] * FOV;
+    const len = Math.hypot(rx, ry, rz) || 1;
+    return [rx / len, ry / len, rz / len];
+  }
+
+  // Wheel = fly toward whatever you point at, not just screen center.
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const cam = camBasis();
+    const dir = rayThroughCursor(e.clientX, e.clientY);
     const dist = Math.hypot(state.cam.pos[0], state.cam.pos[1], state.cam.pos[2]);
     const speed = 0.003 * (1 + dist * 0.3);
     const step = -e.deltaY * speed;
-    state.cam.pos[0] += cam.fwd[0] * step;
-    state.cam.pos[1] += cam.fwd[1] * step;
-    state.cam.pos[2] += cam.fwd[2] * step;
+    state.cam.pos[0] += dir[0] * step;
+    state.cam.pos[1] += dir[1] * step;
+    state.cam.pos[2] += dir[2] * step;
     state.needsRender = true;
   }, { passive: false });
 
@@ -1012,6 +1033,39 @@ self.onmessage = function(e) {
     }
   }
 
+  // Komplett-Reset auf den Default-Zustand (wie nach Hard-Reload).
+  function resetToDefault() {
+    state.text = '1';
+    state.font = 'sans';
+    state.iterations = 0;
+    state.pipeline = [];
+    state.textPos = [0, 0, 0];
+    state.textRot = [0, 0, 0];
+    state.textScale = 1.5;
+    state.textThickness = 0.05;
+    state.cam.pos = [0, 0, 5];
+    state.cam.yaw = 0;
+    state.cam.pitch = 0;
+    state.colors = { bg: '#000000', fg: '#ffffff', glow: '#88aaff' };
+    state.needsCompile = true;
+    state.needsRender = true;
+    if (panel) {
+      ['posX','posY','posZ','rotX','rotY','rotZ'].forEach(k => syncPanelValue(k, 0));
+      syncPanelValue('iterations', 0);
+      syncPanelValue('scale', state.textScale);
+      syncPanelValue('thickness', state.textThickness);
+      const textInput = panel.bodyEl?.querySelector('[data-key="text"] input, [data-key="text"] textarea');
+      if (textInput) { textInput.value = '1'; panel.params.text = '1'; }
+    }
+    generateSdfTexture();
+    if (typeof state._renderPipeline === 'function') state._renderPipeline();
+    // CTA wieder spawnen (User-Onboarding nochmal)
+    const existing = document.getElementById('mod-cta');
+    if (existing) existing.remove();
+    modCtaSpawned = false;
+    spawnModCTA();
+  }
+
   // Apply a named preset. Updates state + redraws pipeline editor if panel exists.
   function applyPreset(name) {
     const p = PRESETS[name];
@@ -1034,8 +1088,16 @@ self.onmessage = function(e) {
   function buildPanel() {
     panel = Controls.createPanel({ id: 'fractal0ne-panel', position: 'left' });
 
+    // Refresh: Default-Zustand wiederherstellen (Text "1", leere Pipeline,
+    // Kamera vorne, CTA wieder einblenden).
+    panel.addHeaderButton({
+      icon: '↻',
+      title: 'Zurücksetzen — Ausgangszustand',
+      onClick: () => resetToDefault(),
+      className: 'fractal0ne-refresh',
+    });
+
     // Share button im Header — kopiert vollen State als URL in Clipboard.
-    // Icon: YouTube-Share-Style (Pfeil nach rechts mit Kurve).
     panel.addHeaderButton({
       icon: '↗',
       title: 'Diesen Stand teilen — URL in Zwischenablage kopieren',
@@ -1292,12 +1354,16 @@ self.onmessage = function(e) {
 
   }
 
-  /* ─── Init ─────────────────────────────────────────────────────────────── */
+  /* ─── Init ───────────────────────────────────────────────────────────────
+   * Geteilte Links (URL mit Params) werden weiterhin geöffnet — danach
+   * räumen wir die URL aber sofort wieder auf. So landet jeder Hard-Reload
+   * im Default, statt ewig im letzten Zustand zu hängen.
+   * ──────────────────────────────────────────────────────────────────────── */
   decodeState();
+  if (hasUrlState) history.replaceState(null, '', location.pathname);
   resize();
   buildPanel();
   generateSdfTexture();
-  // initial hint is shown after first SDF is ready (see sdfWorker.onmessage)
   loop();
 
   window.fractal0ne = { state, FOLDS, PRESETS };
