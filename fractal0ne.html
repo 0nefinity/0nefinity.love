@@ -1001,12 +1001,25 @@ self.onmessage = function(e) {
       if (!t1 || !t2) return;
       const d0 = Math.hypot(t1.x - t2.x, t1.y - t2.y);
       const d1 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const prevMidX = (t1.x + t2.x) / 2;
+      const prevMidY = (t1.y + t2.y) / 2;
+      const midX = (a.clientX + b.clientX) / 2;
+      const midY = (a.clientY + b.clientY) / 2;
       const cam = camBasis();
       const dist = Math.hypot(state.cam.pos[0], state.cam.pos[1], state.cam.pos[2]);
-      const step = (d1 - d0) * 0.01 * (1 + dist * 0.3);  // spread = forward
-      state.cam.pos[0] += cam.fwd[0] * step;
-      state.cam.pos[1] += cam.fwd[1] * step;
-      state.cam.pos[2] += cam.fwd[2] * step;
+      // Pinch = fly along ray-through-midpoint (zoomt dorthin wo Finger spreizen).
+      const dir = rayThroughCursor(midX, midY);
+      const step = (d1 - d0) * 0.01 * (1 + dist * 0.3);
+      state.cam.pos[0] += dir[0] * step;
+      state.cam.pos[1] += dir[1] * step;
+      state.cam.pos[2] += dir[2] * step;
+      // Midpoint-Drift = pan in screen-plane (welt schiebt unter Fingern).
+      const panSpeed = 0.004 * (1 + dist * 0.3);
+      const panDX = midX - prevMidX;
+      const panDY = midY - prevMidY;
+      state.cam.pos[0] -= cam.right[0] * panDX * panSpeed - cam.up[0] * panDY * panSpeed;
+      state.cam.pos[1] -= cam.right[1] * panDX * panSpeed - cam.up[1] * panDY * panSpeed;
+      state.cam.pos[2] -= cam.right[2] * panDX * panSpeed - cam.up[2] * panDY * panSpeed;
       touches.set(a.identifier, { x: a.clientX, y: a.clientY });
       touches.set(b.identifier, { x: b.clientX, y: b.clientY });
       state.needsRender = true;
