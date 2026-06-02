@@ -952,8 +952,12 @@ self.onmessage = function(e) {
     if (!drag.active) return;
     const dx = (e.clientX - drag.x) / window.innerHeight;
     const dy = (e.clientY - drag.y) / window.innerHeight;
+    // "Klebrige" Steuerung: Drag-Richtung = Welt-Richtung (Drag rechts → Welt
+     // bewegt sich nach rechts, Drag runter → Welt nach unten). Konsistent mit
+     // Pan/Pinch. Pitch-Vorzeichen war vorher FPS-style invertiert → fühlte
+     // sich auf der Y-Achse spiegelverkehrt an.
     state.cam.yaw   = drag.yaw0   + dx * 3;
-    state.cam.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, drag.pitch0 - dy * 3));
+    state.cam.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, drag.pitch0 + dy * 3));
     state.needsRender = true;
   });
   canvas.addEventListener('pointerup',     (e) => { activePointers.delete(e.pointerId); endLook(); });
