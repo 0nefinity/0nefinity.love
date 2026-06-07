@@ -369,6 +369,7 @@ canvas {
       <label title="Vertikaler Abstand der Speed-Anzeige zum Symbol (px)">Pos: <input type="number" id="speedDisplayOffset" value="22" step="1"></label>
       <label>auto <input type="checkbox" id="autoSpeedCheckbox" checked></label>
       <label>Geschw: <input type="number" id="rotationSpeed" value="0" step="0.1" min="0"></label>
+      <label title="°/Kreis (Konvention: 360). Bei Änderung dreht das Symbol visuell identisch, nur die Speed-Zahl rechnet um.">°/Kreis: <input type="number" id="degPerCircle" value="360" step="1" min="1"></label>
       <label title="Logische Frames pro Sekunde. Über Bildschirm-Hz hinaus = simuliert." style="position:relative;">fps: <input type="number" id="fps" value="60" step="1" min="0"><span id="fpsHint" style="position:absolute; top:100%; left:0; font-size:0.7em; opacity:0.6; white-space:nowrap; pointer-events:none;"></span></label>
       <label title="Ausrichtung der Zeichen am Radius">Rotation: <input type="checkbox" id="rotateCheckbox"></label>
       <div style="display:flex; gap:4px; align-items:center;">
@@ -402,7 +403,7 @@ canvas {
 	      <label title="Anzahl Frames für GIF-Export">GIF Frames: <input type="number" id="gifFrameCount" value="3" min="0" step="1"></label>
 	      <label>∞: <input type="checkbox" id="gifInfinite"></label>
       <button id="createGifButton">GIF erstellen</button>
-      <label>Debug: <input type="checkbox" id="debugHitbox"></label>
+      <label>debug (buggy): <input type="checkbox" id="debugHitbox"></label>
     `;
     document.body.insertBefore(controls, document.body.firstChild);
 
@@ -1264,14 +1265,16 @@ canvas {
         }
       }
 
-      // Geschwindigkeits-Anzeige über Symbol: roh ≡ visuell-äquivalent (mod 360)
-      // 720°/frame ≡ 0°/frame (volle Umdrehung pro Frame = visuell still)
-      // 370°/frame ≡ 10°/frame (sieht aus wie 10°/frame Rotation)
+      // Geschwindigkeits-Anzeige über Symbol: roh ≡ visuell-äquivalent (mod degPerCircle)
+      // Bei degPerCircle=360 (default): 720°/frame ≡ 0°/frame; 370°/frame ≡ 10°/frame
+      // Bei degPerCircle=361: 722°/frame ≡ 0°/frame; 371°/frame ≡ 10°/frame
       // Nur für Live-Animation, nicht im Foto/GIF-Export
       if (!forExport && targetCanvas === canvas && speedDisplayVisible) {
         const speedFontSize = Math.max(minDim * 0.025, labelFontSize * 0.12);
         const yPos = -radius - speedFontSize * 4 - speedDisplayOffset;
-        const speedRawInt = Math.round(rotationSpeed);
+        const speedDisplayed = toUser(rotationSpeed);
+        const speedRawInt = Math.round(speedDisplayed);
+        const dpcStr = String(degPerCircle);
 
         context.save();
         context.font = `${speedFontSize}px monospace`;
@@ -1300,23 +1303,23 @@ canvas {
         let wrapped360CenterX = null;
         let final0CenterX = null;
 
-        if (Math.abs(speedRawInt) >= 360) {
+        if (Math.abs(speedRawInt) >= degPerCircle) {
           let wrappedText;
-          if (speedRawInt === 360) {
+          if (speedRawInt === degPerCircle) {
             wrappedText = `  0°/frame`;
             final0CenterX = gap + context.measureText("  ").width + charW / 2;
-          } else if (speedRawInt > 0 && speedRawInt % 360 === 0) {
-            wrappedText = `360°/frame ≡ 0°/frame`;
-            wrapped360CenterX = gap + context.measureText("360").width / 2;
-            final0CenterX = gap + context.measureText("360°/frame ≡ ").width + charW / 2;
+          } else if (speedRawInt > 0 && speedRawInt % degPerCircle === 0) {
+            wrappedText = `${dpcStr}°/frame ≡ 0°/frame`;
+            wrapped360CenterX = gap + context.measureText(dpcStr).width / 2;
+            final0CenterX = gap + context.measureText(`${dpcStr}°/frame ≡ `).width + charW / 2;
           } else {
-            let speedWrappedInt = Math.round(((rotationSpeed % 360) + 360) % 360);
+            let speedWrappedInt = Math.round(((speedDisplayed % degPerCircle) + degPerCircle) % degPerCircle);
             const wrappedPadded = String(speedWrappedInt).padStart(3, ' ');
             wrappedText = `${wrappedPadded}°/frame`;
-            if (speedWrappedInt === 360) {
+            if (speedWrappedInt === degPerCircle) {
               wrappedText += ` ≡ 0°/frame`;
-              wrapped360CenterX = gap + context.measureText("360").width / 2;
-              final0CenterX = gap + context.measureText("360°/frame ≡ ").width + charW / 2;
+              wrapped360CenterX = gap + context.measureText(dpcStr).width / 2;
+              final0CenterX = gap + context.measureText(`${dpcStr}°/frame ≡ `).width + charW / 2;
             }
           }
 
@@ -1338,10 +1341,10 @@ canvas {
           context.fillText(text, annoLeftX, yPos + speedFontSize * 1.0);
         }
 
-        // Raw NNN: nur bei Vielfachem von 360 (>0).
+        // Raw NNN: nur bei Vielfachem von degPerCircle (>0).
         // Center der N-Ziffern exakt unter Center der raw-Ziffern.
-        if (speedRawInt > 0 && speedRawInt % 360 === 0) {
-          const N = speedRawInt / 360;
+        if (speedRawInt > 0 && speedRawInt % degPerCircle === 0) {
+          const N = speedRawInt / degPerCircle;
           const word = N === 1 ? 'turn' : 'turns';
           const text = `(${N} ${word}/frame)`;
           const digitCount = String(N).length;
@@ -1477,7 +1480,13 @@ canvas {
     let triangleSize = parseFloat(document.getElementById('triangleSize').value) || 30;
     let equivSize = parseFloat(document.getElementById('equivSize').value) || 25;
     let equivLength = parseFloat(document.getElementById('equivLength').value) || 100;
-    let manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
+    // degPerCircle: nur Display-Konvention. Intern bleibt rotationSpeed in echten 360°-Grad/Frame.
+    // Input-Feld zeigt user-units = rotationSpeed * degPerCircle / 360.
+    let degPerCircle = parseFloat(document.getElementById('degPerCircle').value) || 360;
+    if (degPerCircle <= 0) degPerCircle = 360;
+    const toReal = v => v * 360 / degPerCircle;
+    const toUser = v => v * degPerCircle / 360;
+    let manualSpeed = toReal(parseFloat(document.getElementById('rotationSpeed').value) || 0);
     let rotationSpeed = manualSpeed;
     let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
     let autoOffset = 0;
@@ -1552,8 +1561,17 @@ canvas {
       updateFpsHint();
     });
 
+    document.getElementById('degPerCircle').addEventListener('input', () => {
+      const newDpc = parseFloat(document.getElementById('degPerCircle').value);
+      if (!Number.isFinite(newDpc) || newDpc <= 0) return;
+      // rotationSpeed bleibt intern in echten Grad → visuelle Drehung unverändert.
+      // Nur das Input-Feld zeigt jetzt einen neuen Display-Wert.
+      degPerCircle = newDpc;
+      document.getElementById('rotationSpeed').value = toUser(rotationSpeed).toFixed(1);
+    });
+
     document.getElementById('rotationSpeed').addEventListener('input', () => {
-      manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
+      manualSpeed = toReal(parseFloat(document.getElementById('rotationSpeed').value) || 0);
       if (!autoSpeedEnabled) {
         rotationSpeed = manualSpeed;
       } else {
@@ -1566,11 +1584,11 @@ canvas {
     document.getElementById('autoSpeedCheckbox').addEventListener('change', e => {
       autoSpeedEnabled = e.target.checked;
       if (autoSpeedEnabled) {
-        manualSpeed = parseFloat(document.getElementById('rotationSpeed').value) || 0;
+        manualSpeed = toReal(parseFloat(document.getElementById('rotationSpeed').value) || 0);
         autoOffset = 0;
         resetSnapshot();
         rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.startSpeed + autoOffset;
-        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
+        document.getElementById('rotationSpeed').value = toUser(rotationSpeed).toFixed(1);
       }
     });
 
@@ -1808,7 +1826,7 @@ canvas {
       if (autoSpeedEnabled) {
         const elapsed = getWarpedElapsed();
         rotationSpeed = computeAutoSpeed(elapsed) + autoOffset;
-        document.getElementById('rotationSpeed').value = rotationSpeed.toFixed(1);
+        document.getElementById('rotationSpeed').value = toUser(rotationSpeed).toFixed(1);
 
         // Recording: nur in Hold-Phase Frames zählen (konstante Speed = sauber für GIF)
         if (computeIsInHoldPhase(elapsed) && currentRecording && !currentRecording.stopRequested) {
