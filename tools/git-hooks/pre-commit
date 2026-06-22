@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+# only regenerate if an .html page (not the include itself) is staged
+if git diff --cached --name-only | grep -qE '\.html$' \
+   && ! git diff --cached --name-only | grep -q 'includes/something-in-the-body.html'; then
+  python3 tools/generate-menu.py
+  git add includes/something-in-the-body.html
+fi
