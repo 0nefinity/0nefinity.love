@@ -67,16 +67,6 @@ const menuToggle = document.getElementById('menu-toggle');
 const menuButton = menu?.querySelector('.menu-button');
 const backButton = document.querySelector('#meta-nav .back-button');
 
-// ─── Back-Button: auxclick für Mittelklick ───
-if (backButton) {
-    backButton.addEventListener('auxclick', (event) => {
-        if (event.button === 1) {
-            window.open('/index.html', '_blank');
-            event.preventDefault();
-        }
-    });
-}
-
 // ─── Sticky-Hover-Fix für Touch/Stylus ───
 function fixStickyHover(el) {
     el.addEventListener('pointerleave', () => {
