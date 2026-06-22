@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>GEB Cover — Rekonstruktion</title>
+<style>
+  :root{ --wall:#cdc6b6; --wall2:#bdb6a6; --floor:#a89e8a; --wood:#b88a52; --wood-d:#946b3a; --wood-t:#cda06a; --shadow:#14110c; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#000;color:#e8e8e8;
+    font-family:Georgia,'Times New Roman',serif;
+    display:flex;flex-direction:column;align-items:center;
+    padding:30px 16px 70px;}
+  h1{font-size:1.3rem;font-weight:400;letter-spacing:.18em;margin:0 0 2px;text-align:center;}
+  .sub{font-style:italic;color:#9a9a9a;font-size:.95rem;margin:0 0 22px;text-align:center;}
+  svg{display:block;}
+  .note{max-width:580px;margin:30px auto 0;color:#9a9a9a;font-size:13.5px;
+    font-family:system-ui,sans-serif;line-height:1.6;border-top:1px solid #2a2a2a;padding-top:18px;}
+  .note b{color:#d8d8d8;} .map{font-family:monospace;color:#c9b27a;}
+  .legend{font-family:monospace;color:#888;font-size:11px;}
+</style>
+</head>
+<body>
+
+  <h1>GÖDEL · ESCHER · BACH</h1>
+  <p class="sub">an Eternal Golden Braid — ein Raum, eine ∞-Lichtquelle</p>
+
+  <svg width="380" height="500" viewBox="0 0 380 500">
+
+    <!-- ===== EIN gemeinsamer Raum: zwei Wände + Boden (Innen-Ecke) ===== -->
+    <polygon points="190,70 50,140 50,330 190,260" fill="var(--wall)"/>   <!-- linke Wand -->
+    <polygon points="190,70 330,140 330,330 190,260" fill="var(--wall2)"/> <!-- rechte Wand -->
+    <polygon points="190,260 50,330 190,400 330,330" fill="var(--floor)"/> <!-- Boden -->
+
+    <!-- ===== EINE Lichtquelle ganz oben (∞ / B-Licht) ===== -->
+    <circle cx="190" cy="30" r="11" fill="#fff3c4"/>
+    <circle cx="190" cy="30" r="20" fill="#fff3c4" opacity="0.18"/>
+    <text x="208" y="34" class="legend" fill="#c9b27a">eine Lampe → ∞ / B</text>
+
+    <!-- Strahl-Kegel: von der einen Lampe runter durch BEIDE Klötze auf EIN B ===== -->
+    <polygon points="190,30 150,360 230,360" fill="#fff3c4" opacity="0.08"/>
+    <line x1="190" y1="30" x2="160" y2="360" stroke="#fff3c4" stroke-width="1" stroke-dasharray="3 4" opacity="0.45"/>
+    <line x1="190" y1="30" x2="220" y2="360" stroke="#fff3c4" stroke-width="1" stroke-dasharray="3 4" opacity="0.45"/>
+
+    <!-- ===== EIN geteilter B-Schatten auf dem Boden ===== -->
+    <text x="0" y="0" fill="var(--shadow)" font-size="70" font-weight="bold" font-family="Georgia,serif"
+          transform="translate(190,350) scale(1.2,0.55)" text-anchor="middle">B</text>
+
+    <!-- ===== Schatten G / E auf den Wänden (zwischen den Klötzen getauscht) ===== -->
+    <!-- oberer Klotz: G links, E rechts -->
+    <text x="0" y="0" fill="var(--shadow)" font-size="46" font-weight="bold" font-family="Georgia,serif"
+          transform="translate(95,165) skewY(27) scale(1,0.9)" text-anchor="middle" opacity="0.92">G</text>
+    <text x="0" y="0" fill="var(--shadow)" font-size="46" font-weight="bold" font-family="Georgia,serif"
+          transform="translate(285,165) skewY(-27) scale(1,0.9)" text-anchor="middle" opacity="0.92">E</text>
+    <!-- unterer Klotz: E links, G rechts (vertauscht) -->
+    <text x="0" y="0" fill="var(--shadow)" font-size="46" font-weight="bold" font-family="Georgia,serif"
+          transform="translate(110,240) skewY(27) scale(1,0.9)" text-anchor="middle" opacity="0.78">E</text>
+    <text x="0" y="0" fill="var(--shadow)" font-size="46" font-weight="bold" font-family="Georgia,serif"
+          transform="translate(270,240) skewY(-27) scale(1,0.9)" text-anchor="middle" opacity="0.78">G</text>
+
+    <!-- ===== Zwei Klötze, gestapelt auf der ∞-Achse, im selben Strahl ===== -->
+    <!-- oberer Klotz -->
+    <g>
+      <polygon points="190,120 158,138 158,176 190,194" fill="var(--wood-d)"/>
+      <polygon points="190,120 222,138 222,176 190,194" fill="var(--wood)"/>
+      <polygon points="190,120 158,138 190,156 222,138" fill="var(--wood-t)"/>
+    </g>
+    <!-- unterer Klotz -->
+    <g>
+      <polygon points="190,200 158,218 158,256 190,274" fill="var(--wood-d)"/>
+      <polygon points="190,200 222,218 222,256 190,274" fill="var(--wood)"/>
+      <polygon points="190,200 158,218 190,236 222,218" fill="var(--wood-t)"/>
+    </g>
+
+    <text x="240" y="150" class="legend">Klotz 1 (G·E)</text>
+    <text x="240" y="232" class="legend">Klotz 2 (E·G)</text>
+  </svg>
+
+  <p class="note">
+    Korrigiert: <b>ein</b> Raum, beide Klötze auf der <b>senkrechten ∞-Achse gestapelt</b>, <b>eine</b> Lampe von oben.
+    Weil der <b>B</b>-Querschnitt beider Klötze identisch ist, durchleuchtet der eine Strahl beide und erzeugt
+    <b>einen einzigen geteilten B-Schatten</b> unten — darum braucht ∞ nur eine Lichtquelle. Nur <b>G/E</b> (auf den
+    Wänden) sind pro Klotz verschieden und vertauscht.
+    <br><br>
+    Für shadows: <span class="map">∞</span> = eine Boden-Lampe, Strahl durch beide Kugeln → ein ∞.
+    <span class="map">0/1</span> = je Kugel eigener Wand-Schatten, getauscht. Kugel 1 <span class="map">0·1·∞</span>,
+    Kugel 2 <span class="map">1·0·∞</span>.
+    <br><br>
+    Passt's jetzt?
+  </p>
+
+</body>
+</html>
