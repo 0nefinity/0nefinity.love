@@ -18,5 +18,10 @@ for f in "$@"; do
   perl -ni -e 'print unless m{<script[^>]*src="/tools/tools/decimal\.js"}' "$f"
   # 5) insert body-include right before the closing </body>
   perl -0pi -e 's{(</body>)}{<!--#include virtual="/includes/something-in-the-body.html" -->\n$1}s' "$f"
+  # verify both includes landed; fail loud rather than leave a menu-less page
+  if ! grep -q 'something-in-the-head.html' "$f" || ! grep -q 'something-in-the-body.html' "$f"; then
+    echo "ERROR: conversion incomplete for $f (missing head or body include)" >&2
+    exit 1
+  fi
   echo "converted: $f"
 done
