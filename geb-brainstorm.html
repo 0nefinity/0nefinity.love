@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>GEB-Modus Brainstorm</title>
+<style>
+  :root { --bg:#0a0a0a; --fg:#e8e8e8; --dim:#888; --line:#333; --a:#4a9eff; --b:#ff7a4a; --good:#6ad66a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 28px 20px 60px; line-height:1.5; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin:0 0 6px; }
+  .subtitle { color: var(--dim); font-size: 14px; margin: 0 0 28px; }
+  .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; }
+  .card { border:1px solid var(--line); border-radius:8px; overflow:hidden; cursor:pointer;
+    transition: border-color .15s, transform .15s; background:#111; }
+  .card:hover { border-color:#666; transform: translateY(-2px); }
+  .card.sel { border-color: var(--a); box-shadow: 0 0 0 1px var(--a); }
+  .card-img { padding:12px; background:#0a0a0a; }
+  .card-body { padding: 12px 14px 16px; }
+  .card-body h3 { margin:0 0 6px; font-size:1.05rem; }
+  .desc { color:#aaa; font-size:12.5px; margin:0; }
+  .warn { color: var(--b); }
+  .good { color: var(--good); }
+  svg { display:block; width:100%; height:auto; background:#0a0a0a; border:1px solid #222; border-radius:4px; }
+  svg text { fill:#ddd; font-family:monospace; font-size:11px; }
+  .floor { fill:#1e1e1e; stroke:#555; stroke-width:.5; }
+  .sphereA { fill:var(--a); opacity:.9; } .sphereB { fill:var(--b); opacity:.9; }
+  .glyph { fill:#fff; font-weight:bold; font-size:13px; text-anchor:middle; }
+  .ray { stroke:#ffd24a; stroke-width:1; stroke-dasharray:2 2; opacity:.6; }
+  .bad { stroke:#ff4444; stroke-width:1.5; }
+  .lbl { fill:#888; font-size:9px; }
+  .note { margin-top:26px; color:var(--dim); font-size:13px; border-top:1px solid var(--line); padding-top:18px; }
+  .pick { margin-top:14px; font-size:13px; color:var(--good); min-height:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GEB-Modus: "vertikal versetzt" — wie im 3D-Raum?</h1>
+  <p class="subtitle">Beide Kugeln ∞ nach unten, 0/1 auf zwei Wand-Achsen getauscht. Drei Wege das Cover-Layout umzusetzen.</p>
+
+  <div class="cards">
+
+    <div class="card" data-choice="strict-vertical" onclick="pick(this)">
+      <div class="card-img">
+        <svg viewBox="0 0 200 200">
+          <text x="100" y="14" text-anchor="middle" class="lbl">Seitenansicht</text>
+          <line class="floor" x1="20" y1="180" x2="180" y2="180" />
+          <circle class="sphereA" cx="100" cy="70" r="26" /><text class="glyph" x="100" y="74">0</text>
+          <circle class="sphereB" cx="100" cy="135" r="26" /><text class="glyph" x="100" y="139">1</text>
+          <line class="bad" x1="100" y1="96" x2="100" y2="109" />
+          <text x="118" y="106" fill="#ff7a4a" font-size="9">∞ kollidiert</text>
+          <line class="ray" x1="100" y1="161" x2="100" y2="180" />
+        </svg>
+      </div>
+      <div class="card-body">
+        <h3>1 — Echt übereinander (Y)</h3>
+        <p class="desc">Cover 1:1. <span class="warn">Aber: obere ∞ trifft untere Kugel, nur 1× ∞ am Boden.</span></p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="vertical-own-floor" onclick="pick(this)">
+      <div class="card-img">
+        <svg viewBox="0 0 200 200">
+          <text x="100" y="14" text-anchor="middle" class="lbl">jede Kugel eigener Boden</text>
+          <line class="floor" x1="20" y1="92" x2="120" y2="92" />
+          <circle class="sphereA" cx="70" cy="55" r="22" /><text class="glyph" x="70" y="59">0</text>
+          <line class="ray" x1="70" y1="77" x2="70" y2="92" /><text x="70" y="89" class="glyph" font-size="9">∞</text>
+          <line class="floor" x1="80" y1="188" x2="180" y2="188" />
+          <circle class="sphereB" cx="130" cy="150" r="22" /><text class="glyph" x="130" y="154">1</text>
+          <line class="ray" x1="130" y1="172" x2="130" y2="188" /><text x="130" y="185" class="glyph" font-size="9">∞</text>
+        </svg>
+      </div>
+      <div class="card-body">
+        <h3>2 — Versetzt, je eigener Boden</h3>
+        <p class="desc">Zwei kleine Bühnen, vertikal getrennt. <span class="good">Beide ∞ sichtbar.</span></p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="camera-vertical" onclick="pick(this)">
+      <div class="card-img">
+        <svg viewBox="0 0 200 200">
+          <text x="100" y="14" text-anchor="middle" class="lbl">Top-Down (Boden)</text>
+          <rect class="floor" x="25" y="25" width="150" height="150" />
+          <circle class="sphereA" cx="75" cy="70" r="24" /><text class="glyph" x="75" y="74">0</text>
+          <circle class="sphereB" cx="125" cy="130" r="24" /><text class="glyph" x="125" y="134">1</text>
+          <text x="100" y="195" text-anchor="middle" class="lbl">wirkt vertikal je nach Kamera</text>
+        </svg>
+      </div>
+      <div class="card-body">
+        <h3>3 — Diagonal, sieht vertikal aus</h3>
+        <p class="desc">In Z+Y versetzt → im Frame untereinander, beide ∞ erreichen Boden. <span class="good">Kein Block.</span></p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="pick" id="pick"></div>
+
+  <p class="note">
+    Kernfrage: Ist ∞-nach-unten heilig (→ 2 oder 3), oder darf bei zwei Kugeln eine ∞ die andere treffen (→ 1, Cover-treu)?
+    Antwort gern im Terminal — die Auswahl hier ist nur zum Draufzeigen.
+  </p>
+</div>
+
+<script>
+  function pick(el){
+    document.querySelectorAll('.card').forEach(c=>c.classList.remove('sel'));
+    el.classList.add('sel');
+    document.getElementById('pick').textContent = 'Gewählt: ' + el.querySelector('h3').textContent + ' — sag im Terminal Bescheid.';
+  }
+</script>
+</body>
+</html>

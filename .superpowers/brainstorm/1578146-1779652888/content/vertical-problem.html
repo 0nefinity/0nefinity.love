@@ -1,0 +1,78 @@
+<h2>Vertikal versetzt — wie genau im 3D-Raum?</h2>
+<p class="subtitle">Auf dem Cover stehen sie untereinander. Im Raum mit ∞-nach-unten gibt es drei Wege das umzusetzen. Welcher trifft's?</p>
+
+<style>
+  .v-svg { background: #0a0a0a; border: 1px solid #333; border-radius: 4px; }
+  .v-svg text { fill: #ddd; font-family: monospace; font-size: 11px; }
+  .v-svg .wall { fill: #161616; stroke: #444; stroke-width: 0.5; }
+  .v-svg .floor { fill: #1e1e1e; stroke: #555; stroke-width: 0.5; }
+  .v-svg .sphereA { fill: #4a9eff; opacity: 0.9; }
+  .v-svg .sphereB { fill: #ff7a4a; opacity: 0.9; }
+  .v-svg .glyph { fill: white; font-weight: bold; font-size: 13px; text-anchor: middle; }
+  .v-svg .ray { stroke: #ffd24a; stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.6; }
+  .v-svg .bad { stroke: #ff4444; stroke-width: 1.5; }
+  .v-svg .lbl { fill: #888; font-size: 9px; }
+  .desc-mini { color: #aaa; font-size: 12px; margin-top: 6px; }
+  .warn { color: #ff7a4a; font-size: 11px; }
+  .good { color: #6ad66a; font-size: 11px; }
+</style>
+
+<div class="cards">
+
+  <div class="card" data-choice="strict-vertical" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 12px; background: #0a0a0a;">
+      <svg class="v-svg" viewBox="0 0 200 200" width="100%">
+        <text x="100" y="14" text-anchor="middle" class="lbl">Seitenansicht</text>
+        <line class="floor" x1="20" y1="180" x2="180" y2="180" />
+        <circle class="sphereA" cx="100" cy="70" r="26" /><text class="glyph" x="100" y="74">0</text>
+        <circle class="sphereB" cx="100" cy="135" r="26" /><text class="glyph" x="100" y="139">1</text>
+        <line class="bad" x1="100" y1="96" x2="100" y2="109" />
+        <text x="118" y="106" class="warn" style="font-size:9px">∞ kollidiert</text>
+        <line class="ray" x1="100" y1="161" x2="100" y2="180" />
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>1 — Echt übereinander (Y)</h3>
+      <p class="desc-mini">Wie Cover-Bild 1:1. <span class="warn">Aber: obere ∞ trifft untere Kugel, nur 1× ∞ am Boden.</span></p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="vertical-own-floor" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 12px; background: #0a0a0a;">
+      <svg class="v-svg" viewBox="0 0 200 200" width="100%">
+        <text x="100" y="14" text-anchor="middle" class="lbl">jede Kugel eigener Boden</text>
+        <line class="floor" x1="20" y1="92" x2="120" y2="92" />
+        <circle class="sphereA" cx="70" cy="55" r="22" /><text class="glyph" x="70" y="59">0</text>
+        <line class="ray" x1="70" y1="77" x2="70" y2="92" /><text x="70" y="88" class="glyph" style="font-size:9px">∞</text>
+        <line class="floor" x1="80" y1="188" x2="180" y2="188" />
+        <circle class="sphereB" cx="130" cy="150" r="22" /><text class="glyph" x="130" y="154">1</text>
+        <line class="ray" x1="130" y1="172" x2="130" y2="188" /><text x="130" y="184" class="glyph" style="font-size:9px">∞</text>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>2 — Versetzt, je eigener Boden</h3>
+      <p class="desc-mini">Vertikal getrennt, jede Kugel hat eigenen Boden/Wände-Satz. <span class="good">Beide ∞ sichtbar.</span> Zwei kleine Bühnen.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="camera-vertical" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 12px; background: #0a0a0a;">
+      <svg class="v-svg" viewBox="0 0 200 200" width="100%">
+        <text x="100" y="14" text-anchor="middle" class="lbl">Top-Down (Boden)</text>
+        <rect class="floor" x="25" y="25" width="150" height="150" />
+        <circle class="sphereA" cx="75" cy="70" r="24" /><text class="glyph" x="75" y="74">0</text>
+        <circle class="sphereB" cx="125" cy="130" r="24" /><text class="glyph" x="125" y="134">1</text>
+        <text x="100" y="195" text-anchor="middle" class="lbl">wirkt vertikal je nach Kamera</text>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>3 — Diagonal, sieht vertikal aus</h3>
+      <p class="desc-mini">In Z+Y versetzt → im Kamera-Frame erscheint untereinander, aber beide ∞ erreichen Boden. <span class="good">Kein Block.</span></p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top: 22px; font-size: 12px;">
+  Frage dahinter: ist ∞-nach-unten heilig (dann brauchts Variante 2 oder 3), oder darf bei zwei Kugeln eine ∞ die andere Kugel treffen (Variante 1, Cover-treu)?
+</p>
