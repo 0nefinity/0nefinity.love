@@ -163,7 +163,7 @@ Expected: ≥4 (all markers present).
 
 Add a temporary `pi(5)` to a test page body OR test via Playwright on testseite after injecting text. Minimal check: load testseite headless, confirm `window._018Math` is defined and `window._018Space` is defined, and console has zero errors.
 ```bash
-cd ~/0nefinity/dev.0nefinity.love && node tools/check-no-js-page.mjs https://dev.0nefinity.love/testseite
+cd ~/0nefinity/dev.0nefinity.love && python3 tools/check-no-js-page.py https://dev.0nefinity.love/testseite
 ```
 (Helper script created in Task 4; if running this task first, do the equivalent manual Playwright check: page loads, `typeof window._018Math === 'object'`, 0 console errors.)
 Expected: `_018Math` present, `_018Space` present, 0 console errors.
@@ -257,79 +257,86 @@ git commit -m "add idempotent meta.js->SSI page conversion script"
 
 **Why:** We need an automatable acceptance check that a page works WITH and WITHOUT JavaScript. Used by every conversion task.
 
+**Environment note:** Playwright on this host is the **Python** package (`~/.local/lib/python3.12/site-packages/playwright`, browsers cached in `~/.cache/ms-playwright`). There is no project-level Node `playwright`. So the checker is **Python** — no install needed (avoids the global-install denylist entirely). Verified working: `python3` + `sync_playwright` loads testseite and counts 354 `#file-list a` links.
+
 **Files:**
-- Create: `tools/check-no-js-page.mjs`
+- Create: `tools/check-no-js-page.py`
 
 **Interfaces:**
-- Consumes: a URL. Produces: exit 0 + report if page passes both JS-on and JS-off checks; exit 1 otherwise.
+- Consumes: a URL (argv[1]). Produces: exit 0 + `PASS <url>` if page passes both JS-on and JS-off checks; exit 1 + `FAIL <url>` with reasons otherwise.
 
-- [ ] **Step 1: Confirm Playwright is available**
+- [ ] **Step 1: Write the checker**
 
-```bash
-cd ~/0nefinity/dev.0nefinity.love && ls .superpowers 2>/dev/null; node -e "require.resolve('playwright')" 2>/dev/null && echo "playwright ok" || echo "need: npm i -D playwright (ask Tim)"
-```
-If absent, STOP and ask Tim before installing (global install is on the safety denylist).
+Create `tools/check-no-js-page.py`:
+```python
+#!/usr/bin/env python3
+import sys
+from playwright.sync_api import sync_playwright
 
-- [ ] **Step 2: Write the checker**
+url = sys.argv[1] if len(sys.argv) > 1 else None
+if not url:
+    print("usage: check-no-js-page.py <url>", file=sys.stderr); sys.exit(2)
 
-Create `tools/check-no-js-page.mjs`:
-```js
-import { chromium } from 'playwright';
-const url = process.argv[2];
-if (!url) { console.error('usage: check-no-js-page.mjs <url>'); process.exit(2); }
-let fail = false;
-const browser = await chromium.launch();
+fail = []
+with sync_playwright() as p:
+    browser = p.chromium.launch()
 
-// --- JS ENABLED: framework loads, no console errors, no failed requests ---
-{
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  const errors = [], failed = [];
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  page.on('requestfailed', r => failed.push(r.url()));
-  await page.goto(url, { waitUntil: 'networkidle' });
-  const hasSpace = await page.evaluate(() => typeof window._018Space === 'object');
-  const dupControls = await page.evaluate(() =>
-    [...document.scripts].filter(s => s.src.includes('/tools/controls.js')).length);
-  if (errors.length) { console.error('JS-on console errors:', errors); fail = true; }
-  if (failed.length) { console.error('JS-on failed requests:', failed); fail = true; }
-  if (!hasSpace) { console.error('JS-on: window._018Space missing'); fail = true; }
-  if (dupControls > 1) { console.error('JS-on: controls.js loaded', dupControls, 'times'); fail = true; }
-  await ctx.close();
-}
+    # --- JS ENABLED: framework loads, no console errors, no failed requests ---
+    ctx = browser.new_context()
+    page = ctx.new_page()
+    errors, failed = [], []
+    page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    page.on("requestfailed", lambda r: failed.append(r.url))
+    page.goto(url, wait_until="networkidle")
+    has_space = page.evaluate("() => typeof window._018Space === 'object'")
+    dup_controls = page.evaluate(
+        "() => [...document.scripts].filter(s => s.src.includes('/tools/controls.js')).length")
+    if errors: fail.append(f"JS-on console errors: {errors}")
+    if failed: fail.append(f"JS-on failed requests: {failed}")
+    if not has_space: fail.append("JS-on: window._018Space missing")
+    if dup_controls > 1: fail.append(f"JS-on: controls.js loaded {dup_controls}x")
+    ctx.close()
 
-// --- JS DISABLED: static menu present + search disabled ---
-{
-  const ctx = await browser.newContext({ javaScriptEnabled: false });
-  const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'load' });
-  const links = await page.locator('#file-list a').count();
-  const searchDisabled = await page.locator('.menu-search input[disabled]').count();
-  const loupe = await page.locator('.menu-loupe').count();
-  if (links < 50) { console.error('JS-off: menu has too few links:', links); fail = true; }
-  if (searchDisabled !== 1) { console.error('JS-off: search not disabled'); fail = true; }
-  if (loupe !== 1) { console.error('JS-off: loupe missing'); fail = true; }
-  await ctx.close();
-}
+    # --- JS DISABLED: static menu present + search disabled ---
+    ctx = browser.new_context(java_script_enabled=False)
+    page = ctx.new_page()
+    page.goto(url, wait_until="load")
+    links = page.locator("#file-list a").count()
+    search_disabled = page.locator(".menu-search input[disabled]").count()
+    loupe = page.locator(".menu-loupe").count()
+    if links < 50: fail.append(f"JS-off: too few menu links: {links}")
+    if search_disabled != 1: fail.append("JS-off: search not disabled")
+    if loupe != 1: fail.append("JS-off: loupe missing")
+    ctx.close()
 
-await browser.close();
-console.log(fail ? 'FAIL' : 'PASS', url);
-process.exit(fail ? 1 : 0);
+    browser.close()
+
+for f in fail:
+    print("  -", f, file=sys.stderr)
+print("FAIL" if fail else "PASS", url)
+sys.exit(1 if fail else 0)
 ```
 
-- [ ] **Step 3: Run it against the already-converted testseite**
+- [ ] **Step 2: Run it against the already-converted testseite**
 
 ```bash
-cd ~/0nefinity/dev.0nefinity.love && node tools/check-no-js-page.mjs https://dev.0nefinity.love/testseite
+cd ~/0nefinity/dev.0nefinity.love && python3 tools/check-no-js-page.py https://dev.0nefinity.love/testseite
 ```
 Expected: `PASS https://dev.0nefinity.love/testseite`.
+
+- [ ] **Step 3: Negative control (prove it can fail)**
+
+```bash
+cd ~/0nefinity/dev.0nefinity.love && python3 tools/check-no-js-page.py https://dev.0nefinity.love/index; echo "exit=$?"
+```
+`index` is NOT yet converted (no static menu without JS) → expect `FAIL` + exit 1 (proves the JS-off menu check actually detects a missing static menu). This confirms the checker isn't a rubber stamp.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd ~/0nefinity/dev.0nefinity.love
-git add tools/check-no-js-page.mjs
-git commit -m "add no-JS + JS-on page verification helper (Playwright)"
+git add tools/check-no-js-page.py
+git commit -m "add no-JS + JS-on page verification helper (Python Playwright)"
 ```
 
 ---
@@ -342,7 +349,7 @@ git commit -m "add no-JS + JS-on page verification helper (Playwright)"
 - Modify: `index.html`, `README.html`, `fractal0ne.html`
 
 **Interfaces:**
-- Consumes: `tools/convert-to-ssi.sh`, `tools/check-no-js-page.mjs` from Tasks 3–4.
+- Consumes: `tools/convert-to-ssi.sh`, `tools/check-no-js-page.py` from Tasks 3–4.
 
 - [ ] **Step 1: Convert the three pages**
 
@@ -380,7 +387,7 @@ Expected: each ≥2 (includes resolved server-side).
 
 ```bash
 cd ~/0nefinity/dev.0nefinity.love
-for u in index README fractal0ne; do node tools/check-no-js-page.mjs "https://dev.0nefinity.love/$u"; done
+for u in index README fractal0ne; do python3 tools/check-no-js-page.py "https://dev.0nefinity.love/$u"; done
 ```
 Expected: three `PASS` lines. Pay special attention to `fractal0ne` (canvas page — confirm the WebGL/canvas still inits, no console errors, controls.js not double-loaded).
 
@@ -434,7 +441,7 @@ Expected: 0 meta.js, 0 /meta.css, head-include count ≈ total converted pages, 
 ```bash
 cd ~/0nefinity/dev.0nefinity.love
 for u in taschenrechner shadows co0rdinates game0f1ife where-is-01 numberline bibelaufdenpunkt; do
-  node tools/check-no-js-page.mjs "https://dev.0nefinity.love/$u" || echo "  ^ FAILED: $u";
+  python3 tools/check-no-js-page.py "https://dev.0nefinity.love/$u" || echo "  ^ FAILED: $u";
 done
 ```
 Expected: all `PASS`. `bibelaufdenpunkt` exercises the dialog (`_018Dialog`); confirm no console errors. Investigate any FAIL individually before proceeding (systematic-debugging).
@@ -548,7 +555,7 @@ Expected: NO output.
 cd ~/0nefinity/dev.0nefinity.love
 # force the dev container to re-read by re-requesting; SSI is per-request so no restart needed
 for u in index testseite shadows bibelaufdenpunkt; do
-  node tools/check-no-js-page.mjs "https://dev.0nefinity.love/$u" || echo "FAIL $u";
+  python3 tools/check-no-js-page.py "https://dev.0nefinity.love/$u" || echo "FAIL $u";
 done
 curl -sI https://dev.0nefinity.love/meta.js | head -1   # MUST be 200
 curl -sI https://dev.0nefinity.love/meta-static.js | head -1   # 404 is fine/expected
@@ -570,7 +577,7 @@ git push origin claude-dev
 1. `grep -rl 'src="/meta\.js"' --include='*.html' . | grep -v 00_Archiv` → **empty** (no page loads the framework directly; it comes via the head-include).
 2. Old JS-menu framework gone; final framework file is named `meta.js` again (`meta-static.js` no longer exists; `grep -rl 'meta-static' .` excluding `00_Archiv` → empty).
 3. Static menu include: ~250–450 links, **0** font files, < 150 KB.
-4. `tools/check-no-js-page.mjs` returns **PASS** for: index, README, fractal0ne (canvas), bibelaufdenpunkt (dialog), shadows, co0rdinates, testseite.
+4. `tools/check-no-js-page.py` returns **PASS** for: index, README, fractal0ne (canvas), bibelaufdenpunkt (dialog), shadows, co0rdinates, testseite.
 5. JS-off: every sampled page shows the static menu (≥50 links), disabled search, loupe present.
 6. JS-on: `window._018Space` and `window._018Math` defined, **0 console errors**, **0** failed requests, no script double-loaded.
 7. Adding a new `.html` page + committing auto-updates the menu (pre-commit hook).
