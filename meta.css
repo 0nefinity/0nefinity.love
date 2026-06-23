@@ -618,10 +618,23 @@ button:focus {
 .cursor-loupe::before { content: '0'; }
 .cursor-loupe::after { content: '1'; }
 
+/* Lupen-Font: Ysabeau auf nur '0' und '1' gesubsettet (wght 400) und inline
+   base64-eingebettet, damit die Lupe OHNE JS und bei kaltem Cache sofort in
+   der richtigen Schrift rendert. Separater Font-Download trifft sonst die
+   rotierte (composited) Lupen-Glyphe zu spät -> Fallback friert ohne
+   JS-Repaint ein. ~1KB, kein Extra-Request. (CSP: font-src erlaubt data:.) */
+@font-face {
+    font-family: 'YsabeauLoupe';
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url(data:font/ttf;base64,AAEAAAAOAIAAAwBgR1BPU0R2THUAAANAAAAAIEdTVUKTFYIWAAADYAAAADZPUy8yX2VbMAAAAggAAABgU1RBVOd+zC8AAAOYAAAASGNtYXAADACEAAACaAAAADRnYXNwAAAAEAAAAzgAAAAIZ2x5Zszo6EwAAADsAAAAimhlYWQtPdoYAAABoAAAADZoaGVhCl4AdQAAAeQAAAAkaG10eAVnAK8AAAHYAAAADGxvY2EAMgBFAAABmAAAAAhtYXhwABkBUwAAAXgAAAAgbmFtZQp8GfkAAAKcAAAAenBvc3T/nwAyAAADGAAAACAAAgAq//sB3gGjAA8AHwAARSImJjU0NjYzMhYWFRQGBicyNjY1NCYmIyIGBhUUFhYBBT9jOTliPz5jOTlhPytEJiZELCtFKChGBThgPj1fNjdfPzxhNjcoRy0tSCooRi4tSSkAAAEAIgAAAPMBngAHAABTMxEjERcHJ8QvRBqOGQGe/mIBiiJSLAAAAAABAAAAAwDuAAoAYwAHAAEAAAAAAAAAAAAAAAAABAABAAAAAAAyAEUAAQAAAAIAg/afhChfDzz1AAMD6AAAAADhiBEPAAAAAOZfhMb/ov7dBpsEAAABAAYAAgAAAAAAAAIPAGMCBwAqAVEAIgABAAAEHv7fAAAFW/+i/DcGmwABAAAAAAAAAAAAAAAAAAAAAwAEAiQBkAAFAAACigJYAAAASwKKAlgAAAFeADIA+QAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAABOT05FAKAAMAAxBB7+3wAABCABNwAAAAEAAAAAAZ4CkgAAACAABAAAAAIAAAADAAAAFAADAAEAAAAUAAQAIAAAAAQABAABAAAAMf//AAAAMP///9EAAQAAAAAAAAAFAEIAAwABBAkAAgAIAAAAAwABBAkBBgAMAAgAAwABBAkBDAAOABQAAwABBAkBEwAMACIAAwABBAkBFAAKAC4AQgBvAGwAZABXAGUAaQBnAGgAdABSAGUAZwB1AGwAYQByAEkAdABhAGwAaQBjAFIAbwBtAGEAbgAAAAMAAAAAAAD/nAAyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAB//8ADwABAAAACgAcAB4AAURGTFQACAAEAAAAAP//AAAAAAAAAAEAAAAKADIANAAEREZMVAAaY3lybAAkZ3JlawAkbGF0bgAkAAQAAAAA//8AAAAAAAAAAAAAAAAAAQABAAgAAgAAABQAAgAAACQAAndnaHQBBgAAaXRhbAETAAEABAAUAAMAAAACAQwBkAAAArwAAAADAAEAAgEUAAAAAAABAAA=) format('truetype');
+}
+
 /* Suchfeld-Lupe: echte DOM-Elemente statt Pseudo-Elemente für Browser-Konsistenz */
 .menu-loupe,
 .menu-loupe-handle {
-    font-family: 'Ysabeau', system-ui, -apple-system, BlinkMacSystemFont,
+    font-family: 'YsabeauLoupe', 'Ysabeau', system-ui, -apple-system, BlinkMacSystemFont,
         'Helvetica Neue', Arial, sans-serif;
     position: absolute;
     font-weight: 400;
@@ -632,7 +645,7 @@ button:focus {
     color: var(--text-color);
 }
 
-/* translateZ(0): erzwingt einen 3D-Compositing-Layer. Ohne ihn rastert der
+/*: erzwingt einen 3D-Compositing-Layer. Ohne ihn rastert der
    2D-transform-Layer der Lupe beim Menü-Öffnen einmal im (evtl. noch nicht
    geladenen) Fallback-Font und wird ohne JS-Repaint nie neu gemalt — die Lupe
    bliebe in der falschen Schrift. Der 3D-Layer rastert frisch mit dem dann
@@ -640,21 +653,21 @@ button:focus {
 .menu-loupe {
     left: 2rem;
     font-size: 1.5rem;
-    transform: translateY(-65%) translateZ(0);
+    transform: translateY(-65%);
 }
 
 .menu-loupe-handle {
     left: 2.5rem;
     font-size: 1.4rem;
     transform-origin: center left;
-    transform: translateY(-15%) rotate(-45deg) translateZ(0);
+    transform: translateY(-15%) rotate(-45deg);
     transition: transform 0.35s ease 0.3s, left 0.35s ease 0.3s; /* Rückweg: 0.3s Delay */
 }
 
 /* Disabled-Gimmick: Klick auf disabled Input → 1 wird zum Durchstrich (⊘) */
 .menu-search:has(input:disabled:active) .menu-loupe-handle {
     left: 2.00rem;
-    transform: translateY(-42%) rotate(-45deg) scaleX(1.1) translateZ(0);
+    transform: translateY(-42%) rotate(-45deg) scaleX(1.1);
     transition: transform 0.1s ease 0s, left 0.1s ease 0s; /* Hinweg: schnell aber sichtbar */
 }
 
