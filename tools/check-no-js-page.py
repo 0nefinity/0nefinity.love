@@ -32,7 +32,7 @@ with sync_playwright() as p:
     page.goto(url, wait_until="load")
     links = page.locator("#file-list a").count()
     search_disabled = page.locator(".menu-search input[disabled]").count()
-    loupe = page.locator(".menu-loupe").count()
+    loupe = page.locator(".meta-loupe").count()
     if links < 50: fail.append(f"JS-off: too few menu links: {links}")
     if search_disabled != 1: fail.append("JS-off: search not disabled")
     if loupe != 1: fail.append("JS-off: loupe missing")
