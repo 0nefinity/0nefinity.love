@@ -634,8 +634,8 @@ button:focus {
     position: absolute;
     left: 0.85rem;
     top: 50%;
-    transform: translateY(-58%); /* Linse vertikal zentrieren (Linse sitzt unten im viewBox) */
-    height: 1.15rem;
+    transform: translateY(-59%); /* auf die Linsenmitte zentrieren (Linse sitzt unten im viewBox) */
+    height: 1.55rem;
     width: auto;
     z-index: 1;
 }
