@@ -112,7 +112,7 @@ def generate():
     lines.append('<label for="menu-toggle" class="menu-backdrop" aria-hidden="true"></label>')
     lines.append('<label for="menu-toggle" class="menu-button" aria-label="Men\u00fc"><span class="menu-closed-text">\u2261</span><span class="menu-open-text">0 \u2261 1 \u2261 \u221E</span></label>')
     lines.append('<div class="menu-content-wrapper">')
-    lines.append('<div class="menu-search"><span class="menu-loupe" aria-hidden="true">0</span><span class="menu-loupe-handle" aria-hidden="true">1</span><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
+    lines.append('<div class="menu-search"><svg class="meta-loupe" viewBox="2 408 782 637" aria-hidden="true" focusable="false"><g transform="translate(0,1000) scale(1,-1)"><path d="M261 -5Q198 -5 148.5 23.0Q99 51 70.5 99.0Q42 147 42 209Q42 270 70.5 317.5Q99 365 148.0 392.0Q197 419 260 419Q322 419 371.5 391.5Q421 364 449.5 316.5Q478 269 478 206Q478 146 449.5 97.5Q421 49 372.5 22.0Q324 -5 261 -5ZM261 50Q304 50 338.0 70.0Q372 90 391.0 125.5Q410 161 410 206Q410 251 391.0 287.0Q372 323 338.0 344.0Q304 365 260 365Q217 365 182.5 345.0Q148 325 128.0 290.0Q108 255 108 209Q108 164 128.0 127.5Q148 91 183.0 70.5Q218 50 261 50Z"/><g class="meta-loupe-handle" transform="translate(560,-40) rotate(-45,250,500)"><path d="M196 414H243V0H175V394L201 360L59 278L34 322Z"/></g></g></svg><input type="search" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"></div>')
     lines.append('<ul id="file-list">')
 
     # Priority items
