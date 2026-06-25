@@ -629,14 +629,16 @@ button:focus {
     transform: translate(122px, 0) rotate(-45deg) scaleY(1.2);
 }
 
-/* Menü-Such-Lupe: SVG links im Suchfeld, vertikal zentriert */
+/* Menü-Such-Lupe: das 0+1-Konstrukt wird (quadratischer viewBox +
+   preserveAspectRatio) unverzerrt in ein Quadrat an der linken Kante der
+   Suchleiste skaliert und darin zentriert. */
 .menu-search .meta-loupe {
     position: absolute;
-    left: 0.9rem;
+    left: 1.3rem; /* im linken Innen-Padding des Input-Borders */
     top: 50%;
-    transform: translateY(-46%); /* ganze Lupe vertikal mittig (Linse oben, Stiel unten-rechts) */
-    height: 1.45rem;
-    width: auto;
+    transform: translateY(-50%);
+    height: 1.5rem;
+    aspect-ratio: 1 / 1; /* Quadrat */
     z-index: 1;
 }
 
