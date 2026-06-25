@@ -617,25 +617,25 @@ button:focus {
     overflow: visible;
 }
 
-.meta-loupe-handle {
-    transform-box: fill-box;
-    transform-origin: center;
-}
-
 /* ⊘-Stoppschild bei Klick aufs deaktivierte Suchfeld (no-JS): der Stiel '1'
    legt sich als Diagonale mittig durch die Linse '0'. Reine CSS-Transform auf
-   der SVG-Gruppe — kein JS, kein Font-Freeze (SVG-Pfade rastern immer korrekt). */
+   der SVG-Gruppe — kein JS, kein Font-Freeze (SVG-Pfade rastern immer korrekt).
+   transform-box/-origin NUR hier (nicht in der Basis-Regel) — sonst würden sie
+   das rotate-Zentrum des Ruhe-Attribut-Transforms überschreiben und die Lupe
+   spiegeln. */
 .menu-search:has(input:disabled:active) .meta-loupe-handle {
+    transform-box: fill-box;
+    transform-origin: center;
     transform: translate(122px, 0) rotate(-45deg) scaleY(1.2);
 }
 
 /* Menü-Such-Lupe: SVG links im Suchfeld, vertikal zentriert */
 .menu-search .meta-loupe {
     position: absolute;
-    left: 0.85rem;
+    left: 0.9rem;
     top: 50%;
-    transform: translateY(-59%); /* auf die Linsenmitte zentrieren (Linse sitzt unten im viewBox) */
-    height: 1.55rem;
+    transform: translateY(-46%); /* ganze Lupe vertikal mittig (Linse oben, Stiel unten-rechts) */
+    height: 1.45rem;
     width: auto;
     z-index: 1;
 }
