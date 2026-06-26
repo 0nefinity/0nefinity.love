@@ -619,6 +619,14 @@ canvas {
         // !important via setProperty, damit Mobile-CSS (display: none !important) überstimmt wird
         const isHidden = window.getComputedStyle(controls).display === 'none';
         controls.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
+      } else {
+        // Tap außerhalb Symbol: fullscreen-Layer schluckt sonst Klicks auf Seiteninhalt
+        // (Links/Buttons unterm Symbol). Klick ans darunterliegende Element durchreichen.
+        interactionLayer.style.pointerEvents = 'none';
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        interactionLayer.style.pointerEvents = 'auto';
+        const clickable = under && under.closest('a, button, [onclick]');
+        if (clickable) clickable.click();
       }
     });
 
