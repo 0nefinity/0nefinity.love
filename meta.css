@@ -617,16 +617,22 @@ button:focus {
     overflow: visible;
 }
 
-/* ⊘-Stoppschild bei Klick aufs deaktivierte Suchfeld (no-JS): der Stiel '1'
-   legt sich als Diagonale mittig durch die Linse '0'. Reine CSS-Transform auf
-   der SVG-Gruppe — kein JS, kein Font-Freeze (SVG-Pfade rastern immer korrekt).
-   transform-box/-origin NUR hier (nicht in der Basis-Regel) — sonst würden sie
-   das rotate-Zentrum des Ruhe-Attribut-Transforms überschreiben und die Lupe
-   spiegeln. */
-.menu-search:has(input:disabled:active) .meta-loupe-handle {
+/* Stiel '1' im Ruhezustand (Lupengriff). Position als CSS-Transform (nicht als
+   SVG-Attribut), damit der Wechsel zum ⊘ ein sauberer, animierbarer Transform-
+   Übergang ist. transform-box: fill-box → alle Transforms um die Glyph-Mitte. */
+.meta-loupe-handle {
     transform-box: fill-box;
     transform-origin: center;
-    transform: translate(122px, 0) rotate(-45deg) scaleY(1.2);
+    transform: translate(386.5px, 356px) rotate(-45deg);
+    transition: transform 0.25s ease;
+}
+
+/* ⊘-Stoppschild bei Klick aufs deaktivierte Suchfeld (no-JS): die '1' rutscht
+   EXAKT entlang ihrer eigenen −45°-Achse nach links-oben (Delta zu Ruhe =
+   (−310,−310) = exakt 45°) und liegt dann als Diagonale exakt mittig durch die
+   Linse '0'. Reine CSS-Transform, kein JS, kein Font-Freeze. */
+.menu-search:has(input:disabled:active) .meta-loupe-handle {
+    transform: translate(76.5px, 46px) rotate(-45deg);
 }
 
 /* Menü-Such-Lupe: das 0+1-Konstrukt wird (quadratischer viewBox +
