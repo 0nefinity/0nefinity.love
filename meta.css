@@ -641,7 +641,10 @@ button:focus {
     transition: transform 0.13s ease 0s;
 }
 .menu-search:has(input:disabled:active) .meta-loupe-handle {
-    transform: translate(255.5px, 0) rotate(-45deg);
+    /* nicht die Bbox-Mitte, sondern die STRICH-Mitte der '1' landet exakt auf
+       der Kreis-Mitte der '0' (die Fahne versetzt die Bbox-Mitte sonst ~50u
+       schräg) → Schräg-Strich genau mittig durch den Kreis. */
+    transform: translate(205.7px, 49.8px) rotate(-45deg);
     transition: transform 0.13s ease 0s;
 }
 
