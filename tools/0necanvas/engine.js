@@ -355,31 +355,38 @@
     return out;
   }
 
-  // greedy sub-pixel polyline decimation: drops points that deviate less
-  // than tol (world units) from the local chord. Returns original array
-  // when nothing significant can be dropped.
+  // angle-based sub-pixel polyline decimation: drops interior points while
+  // the estimated sagitta of the skipped arc (chord * accumulated turn / 8)
+  // stays below tol (world units). Straight runs collapse to their
+  // endpoints; smooth curves keep enough points to stay round at the
+  // current zoom (the old greedy-chord test only measured one point
+  // against its immediate neighbour, so slow arcs collapsed into visible
+  // polygon edges). DECIM_MAX_TURN caps the accumulated turn so loops and
+  // sharp corners are never skipped wholesale.
+  var DECIM_MAX_TURN = 0.9; // rad; max direction change per kept point
   function decimatePts(pts, tol) {
     var n = pts.length >> 1;
     if (n <= 16) return pts;
-    var t2 = tol * tol;
+    var t64 = 64 * tol * tol; // (chord*turn/8)^2 >= tol^2  <=>  turn^2*chord^2 >= 64*tol^2
     var out = [pts[0], pts[1]];
-    var ax = pts[0], ay = pts[1];
+    var keptX = pts[0], keptY = pts[1];
+    var prevX = pts[0], prevY = pts[1];
+    var sx = 0, sy = 0, haveSeg = false;
+    var turn = 0;
     for (var i = 1; i < n - 1; i++) {
-      var bx = pts[2 * i], by = pts[2 * i + 1];
-      var cx = pts[2 * i + 2], cy = pts[2 * i + 3];
-      var ux = cx - ax, uy = cy - ay;
-      var vx = bx - ax, vy = by - ay;
-      var L2 = ux * ux + uy * uy;
-      var d2;
-      if (L2 < 1e-12) {
-        d2 = vx * vx + vy * vy;
-      } else {
-        var cr = ux * vy - uy * vx;
-        d2 = (cr * cr) / L2;
+      var x = pts[2 * i], y = pts[2 * i + 1];
+      var dx = x - prevX, dy = y - prevY;
+      if (dx * dx + dy * dy < 1e-12) continue;
+      if (haveSeg) {
+        turn += Math.abs(Math.atan2(sx * dy - sy * dx, sx * dx + sy * dy));
       }
-      if (d2 > t2) {
-        out.push(bx, by);
-        ax = bx; ay = by;
+      sx = dx; sy = dy; haveSeg = true;
+      prevX = x; prevY = y;
+      var kx = x - keptX, ky = y - keptY;
+      if (turn >= DECIM_MAX_TURN || turn * turn * (kx * kx + ky * ky) >= t64) {
+        out.push(x, y);
+        keptX = x; keptY = y;
+        turn = 0;
       }
     }
     out.push(pts[2 * n - 2], pts[2 * n - 1]);
