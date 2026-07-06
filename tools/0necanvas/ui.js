@@ -78,6 +78,29 @@
     return s + (entry.unit ? ' ' + entry.unit : '');
   }
 
+  // like fmtValue, but keeps typed precision beyond entry.decimals
+  function fmtValueSmart(v, entry) {
+    var n = Number(v);
+    if (!isFinite(n)) return fmtValue(v, entry);
+    var decimals = entry.decimals;
+    if (decimals == null) {
+      var step = entry.step;
+      decimals = (step && step < 1) ? (step < 0.1 ? 2 : 1) : 0;
+    }
+    var s = n.toFixed(decimals);
+    if (parseFloat(s) !== n) s = String(n);
+    return s + (entry.unit ? ' ' + entry.unit : '');
+  }
+
+  // "5 000", "5,5 px", "1e3" -> number; null when nothing numeric was typed
+  function parseTypedNumber(raw) {
+    var s = String(raw).trim().replace(/\s+/g, '').replace(',', '.');
+    var m = s.match(/-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/);
+    if (!m) return null;
+    var n = parseFloat(m[0]);
+    return isFinite(n) ? n : null;
+  }
+
   // reconstruct the engine's per-frame view object for hit()/drag() calls
   function makeView() {
     var r = els.canvas.getBoundingClientRect();
@@ -284,9 +307,130 @@
     handle.addEventListener('pointercancel', onEnd);
   }
 
+  /* ---------- runtime slider ranges (session-only, never serialized) ---------- */
+
+  var runtimeRanges = {};   // 'blockId:key' -> {min, max, step}
+
+  function rangeOverride(block, entry, create) {
+    var k = block.id + ':' + entry.key;
+    if (!runtimeRanges[k] && create) {
+      runtimeRanges[k] = { min: entry.min, max: entry.max, step: entry.step };
+    }
+    return runtimeRanges[k] || null;
+  }
+
+  function effRange(block, entry) {
+    var o = rangeOverride(block, entry, false);
+    var min = (o && isFinite(o.min)) ? o.min : entry.min;
+    var max = (o && isFinite(o.max)) ? o.max : entry.max;
+    if (min > max) { var t = min; min = max; max = t; }
+    var step = (o && isFinite(o.step) && o.step > 0) ? o.step : entry.step;
+    return { min: min, max: max, step: step };
+  }
+
+  // soft range: typed values outside min/max stretch the range instead of clamping
+  function widenRange(block, entry, v) {
+    var r = effRange(block, entry);
+    if (v >= r.min && v <= r.max) return;
+    var o = rangeOverride(block, entry, true);
+    if (v < r.min) o.min = v;
+    if (v > r.max) o.max = v;
+  }
+
+  /* ---------- range popover (min/max/step, per slider) ---------- */
+
+  var rangePop = null;   // { el, anchor }
+
+  function closeRangePopover() {
+    if (!rangePop) return;
+    if (rangePop.el.parentNode) rangePop.el.parentNode.removeChild(rangePop.el);
+    rangePop = null;
+  }
+
+  function toggleRangePopover(anchor, block, entry, onApply) {
+    if (rangePop && rangePop.anchor === anchor) { closeRangePopover(); return; }
+    closeRangePopover();
+
+    var el = document.createElement('div');
+    el.className = 'prop-cfg-pop';
+
+    var fields = [
+      { f: 'min', label: 'Min' },
+      { f: 'max', label: 'Max' },
+      { f: 'step', label: 'Schritt' }
+    ];
+    var inputs = {};
+
+    function syncInputs() {
+      var r = effRange(block, entry);
+      for (var f in inputs) inputs[f].value = String(r[f]);
+    }
+
+    for (var i = 0; i < fields.length; i++) {
+      (function (fd) {
+        var rowEl = document.createElement('div');
+        rowEl.className = 'cfg-pop-row';
+        var labEl = document.createElement('span');
+        labEl.className = 'cfg-pop-label';
+        labEl.textContent = fd.label;
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'cfg-pop-input';
+        inp.setAttribute('inputmode', 'decimal');
+        inp.setAttribute('autocomplete', 'off');
+        inp.setAttribute('spellcheck', 'false');
+        inp.setAttribute('aria-label', fd.label + ' für ' + entry.label);
+        inputs[fd.f] = inp;
+
+        function commit() {
+          var v = parseTypedNumber(inp.value);
+          if (v == null || (fd.f === 'step' && !(v > 0))) { syncInputs(); return; }
+          rangeOverride(block, entry, true)[fd.f] = v;
+          onApply();
+          syncInputs();
+        }
+        inp.addEventListener('change', commit);
+        inp.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+          else if (e.key === 'Escape') { e.preventDefault(); syncInputs(); inp.blur(); e.stopPropagation(); }
+        });
+
+        rowEl.appendChild(labEl);
+        rowEl.appendChild(inp);
+        el.appendChild(rowEl);
+      })(fields[i]);
+    }
+
+    var reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'cfg-pop-reset';
+    reset.textContent = 'Zurücksetzen';
+    reset.addEventListener('click', function () {
+      delete runtimeRanges[block.id + ':' + entry.key];
+      onApply();
+      syncInputs();
+    });
+    el.appendChild(reset);
+
+    document.body.appendChild(el);
+    syncInputs();
+
+    var a = anchor.getBoundingClientRect();
+    var pw = el.offsetWidth;
+    var ph = el.offsetHeight;
+    var left = clamp(a.right - pw, 8, Math.max(8, window.innerWidth - pw - 8));
+    var top = a.bottom + 6;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, a.top - ph - 6);
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+
+    rangePop = { el: el, anchor: anchor };
+  }
+
   /* ---------- properties panel (schema-driven) ---------- */
 
   function renderProps() {
+    closeRangePopover();
     var body = els.propsBody;
     body.innerHTML = '';
     propControls = [];
@@ -349,24 +493,78 @@
     var lab = document.createElement('span');
     lab.className = 'prop-label';
     lab.textContent = entry.label;
-    var val = document.createElement('span');
-    val.className = 'prop-value';
-    val.textContent = fmtValue(block.params[entry.key], entry);
+
+    var val = document.createElement('input');
+    val.type = 'text';
+    val.className = 'prop-value prop-value-input';
+    val.setAttribute('inputmode', 'decimal');
+    val.setAttribute('autocomplete', 'off');
+    val.setAttribute('spellcheck', 'false');
+    val.setAttribute('aria-label', entry.label + ': Wert');
+    val.value = fmtValueSmart(block.params[entry.key], entry);
+
+    var cfgBtn = document.createElement('button');
+    cfgBtn.type = 'button';
+    cfgBtn.className = 'prop-cfg-btn';
+    cfgBtn.textContent = '⚙︎';
+    cfgBtn.title = 'Bereich einstellen';
+    cfgBtn.setAttribute('aria-label', entry.label + ': Bereich einstellen');
+
     line.appendChild(lab);
     line.appendChild(val);
+    line.appendChild(cfgBtn);
 
     var input = document.createElement('input');
     input.type = 'range';
     input.className = 'prop-range';
-    input.min = entry.min;
-    input.max = entry.max;
-    input.step = entry.step;
-    input.value = block.params[entry.key];
+
+    function syncRangeAttrs() {
+      var r = effRange(block, entry);
+      input.min = r.min;
+      input.max = r.max;
+      input.step = (isFinite(r.step) && r.step > 0) ? r.step : 'any';
+      var v = Number(block.params[entry.key]);
+      input.value = isFinite(v) ? clamp(v, r.min, r.max) : r.min;
+    }
+    syncRangeAttrs();
+
     input.addEventListener('input', function () {
       var v = parseFloat(input.value);
       block.params[entry.key] = v;
-      val.textContent = fmtValue(v, entry);
+      val.value = fmtValueSmart(v, entry);
       touchState();
+    });
+
+    // free-typed values: outside min/max is allowed, range stretches (soft range)
+    function commitTyped() {
+      var v = parseTypedNumber(val.value);
+      if (v == null) {
+        val.value = fmtValueSmart(block.params[entry.key], entry);
+        return;
+      }
+      block.params[entry.key] = v;
+      widenRange(block, entry, v);
+      syncRangeAttrs();
+      val.value = fmtValueSmart(v, entry);
+      touchState();
+    }
+    val.addEventListener('focus', function () { val.select(); });
+    val.addEventListener('blur', commitTyped);
+    val.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        val.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        val.value = fmtValueSmart(block.params[entry.key], entry);
+        val.blur();
+      }
+    });
+
+    cfgBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleRangePopover(cfgBtn, block, entry, syncRangeAttrs);
     });
 
     row.appendChild(line);
@@ -375,8 +573,15 @@
       block: block, entry: entry,
       refresh: function () {
         var v = block.params[entry.key];
+        var n = Number(v);
+        if (isFinite(n)) {
+          if (n < parseFloat(input.min)) input.min = n;
+          if (n > parseFloat(input.max)) input.max = n;
+        }
         input.value = v;
-        val.textContent = fmtValue(v, entry);
+        if (document.activeElement !== val) {
+          val.value = fmtValueSmart(v, entry);
+        }
       }
     });
     return row;
@@ -845,6 +1050,91 @@
     }
   }
 
+  /* ---------- floating side panel (desktop >=900px) ---------- */
+  // drag on the BAUSTEINE header undocks the sidebar into a floating panel;
+  // double-click on the header docks it back. Position is session-only.
+
+  var panelFloating = false;
+
+  function isDesktopLayout() {
+    return window.matchMedia('(min-width: 900px)').matches;
+  }
+
+  function dockPanel() {
+    if (!panelFloating) return;
+    panelFloating = false;
+    els.side.classList.remove('floating');
+    if (els.app) els.app.classList.remove('side-floating');
+    els.side.style.left = '';
+    els.side.style.top = '';
+    els.side.style.height = '';
+  }
+
+  function positionPanel(left, top) {
+    var w = els.side.offsetWidth || 320;
+    var maxL = window.innerWidth - w - 4;
+    var maxT = window.innerHeight - 48;
+    els.side.style.left = clamp(left, 4, Math.max(4, maxL)) + 'px';
+    els.side.style.top = clamp(top, 4, Math.max(4, maxT)) + 'px';
+  }
+
+  function beginFloat(rect) {
+    panelFloating = true;
+    els.side.style.height = Math.min(rect.height, window.innerHeight - 16) + 'px';
+    els.side.classList.add('floating');
+    if (els.app) els.app.classList.add('side-floating');
+    positionPanel(rect.left, rect.top);
+  }
+
+  function initPanelDrag() {
+    var head = els.side ? els.side.querySelector('#oc-stack-section .panel-head') : null;
+    if (!head) return;
+
+    head.addEventListener('dblclick', function (e) {
+      if (e.target.closest && e.target.closest('button')) return;
+      dockPanel();
+    });
+
+    head.addEventListener('pointerdown', function (ev) {
+      if (!ev.isPrimary || !isDesktopLayout()) return;
+      if (ev.target.closest && ev.target.closest('button')) return;
+      ev.preventDefault();
+
+      var startX = ev.clientX;
+      var startY = ev.clientY;
+      var rect = els.side.getBoundingClientRect();
+      var offX = startX - rect.left;
+      var offY = startY - rect.top;
+      var dragging = panelFloating;
+
+      try { head.setPointerCapture(ev.pointerId); } catch (e) { /* older browsers */ }
+
+      function onMove(mv) {
+        if (mv.pointerId !== ev.pointerId) return;
+        if (!dragging && Math.hypot(mv.clientX - startX, mv.clientY - startY) < 4) return;
+        dragging = true;
+        if (!panelFloating) beginFloat(rect);
+        positionPanel(mv.clientX - offX, mv.clientY - offY);
+        mv.preventDefault();
+      }
+      function onEnd(up) {
+        if (up.pointerId !== ev.pointerId) return;
+        head.removeEventListener('pointermove', onMove);
+        head.removeEventListener('pointerup', onEnd);
+        head.removeEventListener('pointercancel', onEnd);
+      }
+      head.addEventListener('pointermove', onMove);
+      head.addEventListener('pointerup', onEnd);
+      head.addEventListener('pointercancel', onEnd);
+    });
+
+    window.addEventListener('resize', function () {
+      if (!panelFloating) return;
+      if (!isDesktopLayout()) { dockPanel(); return; }
+      positionPanel(parseFloat(els.side.style.left) || 4, parseFloat(els.side.style.top) || 4);
+    });
+  }
+
   /* ---------- mobile sheet tabs ---------- */
 
   function setMobileTab(name) {
@@ -864,6 +1154,7 @@
     els = {
       canvas: $('oc-canvas'),
       stage: $('oc-stage'),
+      app: $('oc-app'),
       side: $('oc-side'),
       stackList: $('oc-stack-list'),
       propsBody: $('oc-props-body'),
@@ -906,8 +1197,18 @@
       if (e.target === els.libOverlay) closeLibrary();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeLibrary();
+      if (e.key === 'Escape') { closeLibrary(); closeRangePopover(); }
     });
+
+    // range popover closes on tap/click outside
+    document.addEventListener('pointerdown', function (e) {
+      if (rangePop && !rangePop.el.contains(e.target) && !rangePop.anchor.contains(e.target)) {
+        closeRangePopover();
+      }
+    });
+
+    // floating properties/stack panel (desktop)
+    initPanelDrag();
 
     // tools
     els.toolMove.addEventListener('click', function () { setTool('move'); });
