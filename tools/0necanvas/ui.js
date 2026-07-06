@@ -1,0 +1,1008 @@
+/* 0necanvas ui — window.OneCanvasUI
+ *
+ * Stack panel (drag-reorder, eye, delete), schema-driven properties renderer,
+ * library overlay (3 tabs), tools move/warp with full pointer gestures
+ * (block drag, pan, wheel zoom on cursor, pinch), share/fullscreen,
+ * mobile sheet tabs, default scene, instance-limit pill.
+ * Plan: docs/superpowers/plans/2026-07-06-0necanvas-v1-plan.md section 6.
+ *
+ * Robustness notes:
+ * - Block schemas are built in parallel tasks; param keys of sibling modules
+ *   are resolved via candidate lists (see setParam / setWarpCenter /
+ *   buildDefaultScene) so key drift degrades gracefully instead of breaking.
+ * - OneCanvasState is optional at runtime; every call is guarded.
+ */
+(function () {
+  'use strict';
+
+  var KIND_LABEL = { ding: 'Ding', erzeuger: 'Erzeuger', kraft: 'Kraft' };
+  var CAT_LABEL = { ding: 'Dinge', erzeuger: 'Erzeuger', kraft: 'Kräfte' };
+  var CAT_ORDER = ['ding', 'erzeuger', 'kraft'];
+  var ZOOM_MIN = 0.05;
+  var ZOOM_MAX = 50;
+  var TAP_SLOP_PX = 5;
+
+  var scene = null;
+  var els = {};
+  var tool = 'move';
+  var activeCat = 'ding';
+  var toastEl = null;
+  var toastTimer = 0;
+  var suppressRowClickUntil = 0;
+  var propControls = [];      // live control refs for refreshPropsValues()
+
+  /* ---------- small helpers ---------- */
+
+  function $(id) { return document.getElementById(id); }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function hasKey(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
+  function getBlock(id) {
+    if (!id) return null;
+    for (var i = 0; i < scene.blocks.length; i++) {
+      if (scene.blocks[i].id === id) return scene.blocks[i];
+    }
+    return null;
+  }
+
+  function touchState() {
+    if (window.OneCanvasState && typeof OneCanvasState.touch === 'function') {
+      try { OneCanvasState.touch(); } catch (e) { console.warn('0necanvas ui: state touch failed', e); }
+    }
+  }
+
+  // set the first existing candidate key on block.params
+  function setParam(block, candidates, value) {
+    if (!block) return false;
+    for (var i = 0; i < candidates.length; i++) {
+      if (hasKey(block.params, candidates[i])) {
+        block.params[candidates[i]] = value;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function fmtValue(v, entry) {
+    var decimals = entry.decimals;
+    if (decimals == null) {
+      var step = entry.step;
+      decimals = (step && step < 1) ? (step < 0.1 ? 2 : 1) : 0;
+    }
+    var n = Number(v);
+    var s = isFinite(n) ? n.toFixed(decimals) : String(v);
+    return s + (entry.unit ? ' ' + entry.unit : '');
+  }
+
+  // reconstruct the engine's per-frame view object for hit()/drag() calls
+  function makeView() {
+    var r = els.canvas.getBoundingClientRect();
+    var s = scene.camera.scale;
+    var halfW = r.width / 2 / s;
+    var halfH = r.height / 2 / s;
+    return {
+      w: r.width,
+      h: r.height,
+      dpr: Math.min(window.devicePixelRatio || 1, 2),
+      scale: s,
+      left: scene.camera.x - halfW,
+      right: scene.camera.x + halfW,
+      top: scene.camera.y - halfH,
+      bottom: scene.camera.y + halfH
+    };
+  }
+
+  function canvasPoint(ev) {
+    var r = els.canvas.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top, w: r.width, h: r.height };
+  }
+
+  /* ---------- toast ---------- */
+
+  function toast(msg) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'oc-toast';
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+
+  /* ---------- stack panel ---------- */
+
+  function renderStack() {
+    var list = els.stackList;
+    list.innerHTML = '';
+    // display reversed: top of the stack is the first row
+    for (var i = scene.blocks.length - 1; i >= 0; i--) {
+      list.appendChild(buildStackRow(scene.blocks[i]));
+    }
+  }
+
+  function buildStackRow(block) {
+    var def = scene.defs.get(block.type);
+    var kind = def ? def.kind : 'ding';
+
+    var li = document.createElement('li');
+    li.className = 'stack-row'
+      + (block.id === scene.selectedId ? ' selected' : '')
+      + (block.visible ? '' : ' hidden-layer');
+    li.dataset.id = block.id;
+
+    var handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Ziehen zum Umsortieren';
+    handle.addEventListener('pointerdown', function (ev) {
+      startRowDrag(ev, li, handle);
+    });
+
+    var icon = document.createElement('span');
+    icon.className = 'type-icon ' + kind;
+    icon.textContent = (def && def.icon) || '◆';
+
+    var label = document.createElement('span');
+    label.className = 'row-label';
+    var kindEl = document.createElement('span');
+    kindEl.className = 'row-kind';
+    kindEl.textContent = KIND_LABEL[kind] || kind;
+    var nameEl = document.createElement('span');
+    nameEl.className = 'row-name';
+    nameEl.textContent = block.name;
+    label.appendChild(kindEl);
+    label.appendChild(nameEl);
+
+    var eye = document.createElement('button');
+    eye.className = 'eye-btn' + (block.visible ? '' : ' off');
+    eye.textContent = block.visible ? '◉' : '○';
+    eye.title = block.visible ? 'Ausblenden' : 'Einblenden';
+    eye.setAttribute('aria-label', eye.title);
+    eye.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      block.visible = !block.visible;
+      eye.classList.toggle('off', !block.visible);
+      eye.textContent = block.visible ? '◉' : '○';
+      eye.title = block.visible ? 'Ausblenden' : 'Einblenden';
+      li.classList.toggle('hidden-layer', !block.visible);
+      touchState();
+    });
+
+    var del = document.createElement('button');
+    del.className = 'del-btn';
+    del.textContent = '✕';
+    del.title = 'Löschen';
+    del.setAttribute('aria-label', 'Baustein löschen');
+    del.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      scene.remove(block.id);
+      touchState();
+    });
+
+    li.appendChild(handle);
+    li.appendChild(icon);
+    li.appendChild(label);
+    li.appendChild(eye);
+    li.appendChild(del);
+
+    li.addEventListener('click', function () {
+      if (Date.now() < suppressRowClickUntil) return;
+      scene.select(block.id);
+    });
+    return li;
+  }
+
+  function updateStackSelection() {
+    var rows = els.stackList.children;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].classList.toggle('selected', rows[i].dataset.id === scene.selectedId);
+    }
+  }
+
+  /* ---------- drag-reorder (pointer events, works with touch) ---------- */
+
+  function startRowDrag(ev, row, handle) {
+    if (!ev.isPrimary) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    var draggedId = row.dataset.id;
+    var moved = false;
+    var dropIdx = -1;
+    var startY = ev.clientY;
+
+    try { handle.setPointerCapture(ev.pointerId); } catch (e) { /* older browsers */ }
+
+    function otherRows() {
+      var out = [];
+      var kids = els.stackList.children;
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i].dataset.id !== draggedId) out.push(kids[i]);
+      }
+      return out;
+    }
+
+    function clearMarks(rows) {
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.remove('drop-above', 'drop-below');
+      }
+    }
+
+    function computeDrop(clientY, rows) {
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i].getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) return { idx: i, row: rows[i], above: true };
+        if (clientY < r.bottom) return { idx: i + 1, row: rows[i], above: false };
+      }
+      if (rows.length) return { idx: rows.length, row: rows[rows.length - 1], above: false };
+      return { idx: 0, row: null, above: true };
+    }
+
+    function onMove(mv) {
+      if (mv.pointerId !== ev.pointerId) return;
+      if (!moved && Math.abs(mv.clientY - startY) < 4) return;
+      moved = true;
+      row.classList.add('dragging');
+      var rows = otherRows();
+      clearMarks(rows);
+      var drop = computeDrop(mv.clientY, rows);
+      dropIdx = drop.idx;
+      if (drop.row) {
+        drop.row.classList.add(drop.above ? 'drop-above' : 'drop-below');
+      }
+      mv.preventDefault();
+    }
+
+    function onEnd(up) {
+      if (up.pointerId !== ev.pointerId) return;
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onEnd);
+      handle.removeEventListener('pointercancel', onEnd);
+      row.classList.remove('dragging');
+      clearMarks(otherRows());
+      if (moved) {
+        suppressRowClickUntil = Date.now() + 250;
+        if (dropIdx >= 0) {
+          // display order is reversed: display insert index -> stack index
+          var stackIdx = (scene.blocks.length - 1) - dropIdx;
+          scene.move(draggedId, stackIdx);   // fires stack change -> re-render
+          touchState();
+        } else {
+          renderStack();
+        }
+      }
+    }
+
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onEnd);
+    handle.addEventListener('pointercancel', onEnd);
+  }
+
+  /* ---------- properties panel (schema-driven) ---------- */
+
+  function renderProps() {
+    var body = els.propsBody;
+    body.innerHTML = '';
+    propControls = [];
+
+    var block = getBlock(scene.selectedId);
+    if (els.propsTitle) {
+      els.propsTitle.textContent = block ? block.name : 'Eigenschaften';
+    }
+    if (!block) {
+      var empty = document.createElement('div');
+      empty.className = 'props-empty';
+      empty.textContent = 'Kein Baustein angewählt';
+      body.appendChild(empty);
+      return;
+    }
+
+    var def = scene.defs.get(block.type);
+    var kind = def ? def.kind : 'ding';
+
+    var head = document.createElement('div');
+    head.className = 'props-blockname';
+    var hIcon = document.createElement('span');
+    hIcon.className = 'type-icon ' + kind;
+    hIcon.textContent = (def && def.icon) || '◆';
+    var hName = document.createElement('span');
+    hName.className = 'name';
+    hName.textContent = block.name;
+    var hKind = document.createElement('span');
+    hKind.className = 'kind';
+    hKind.textContent = KIND_LABEL[kind] || kind;
+    head.appendChild(hIcon);
+    head.appendChild(hName);
+    head.appendChild(hKind);
+    body.appendChild(head);
+
+    var schema = (def && def.schema) || [];
+    for (var i = 0; i < schema.length; i++) {
+      var node = buildPropControl(block, schema[i]);
+      if (node) body.appendChild(node);
+    }
+  }
+
+  function buildPropControl(block, entry) {
+    switch (entry.ctrl) {
+      case 'slider': return buildSlider(block, entry);
+      case 'toggle': return buildToggle(block, entry);
+      case 'select': return buildSelect(block, entry);
+      case 'text': return buildText(block, entry);
+      default:
+        console.warn('0necanvas ui: unknown ctrl "' + entry.ctrl + '" for key "' + entry.key + '"');
+        return null;
+    }
+  }
+
+  function buildSlider(block, entry) {
+    var row = document.createElement('div');
+    row.className = 'prop-row';
+    var line = document.createElement('div');
+    line.className = 'prop-label-line';
+    var lab = document.createElement('span');
+    lab.className = 'prop-label';
+    lab.textContent = entry.label;
+    var val = document.createElement('span');
+    val.className = 'prop-value';
+    val.textContent = fmtValue(block.params[entry.key], entry);
+    line.appendChild(lab);
+    line.appendChild(val);
+
+    var input = document.createElement('input');
+    input.type = 'range';
+    input.className = 'prop-range';
+    input.min = entry.min;
+    input.max = entry.max;
+    input.step = entry.step;
+    input.value = block.params[entry.key];
+    input.addEventListener('input', function () {
+      var v = parseFloat(input.value);
+      block.params[entry.key] = v;
+      val.textContent = fmtValue(v, entry);
+      touchState();
+    });
+
+    row.appendChild(line);
+    row.appendChild(input);
+    propControls.push({
+      block: block, entry: entry,
+      refresh: function () {
+        var v = block.params[entry.key];
+        input.value = v;
+        val.textContent = fmtValue(v, entry);
+      }
+    });
+    return row;
+  }
+
+  function buildToggle(block, entry) {
+    var row = document.createElement('div');
+    row.className = 'prop-toggle-row' + (block.params[entry.key] ? ' on' : '');
+    var lab = document.createElement('span');
+    lab.className = 'prop-label';
+    lab.textContent = entry.label;
+    var sw = document.createElement('span');
+    sw.className = 'switch';
+    row.appendChild(lab);
+    row.appendChild(sw);
+    row.addEventListener('click', function () {
+      block.params[entry.key] = !block.params[entry.key];
+      row.classList.toggle('on', !!block.params[entry.key]);
+      touchState();
+    });
+    propControls.push({
+      block: block, entry: entry,
+      refresh: function () { row.classList.toggle('on', !!block.params[entry.key]); }
+    });
+    return row;
+  }
+
+  function buildSelect(block, entry) {
+    var row = document.createElement('div');
+    row.className = 'prop-row';
+    var line = document.createElement('div');
+    line.className = 'prop-label-line';
+    var lab = document.createElement('span');
+    lab.className = 'prop-label';
+    lab.textContent = entry.label;
+    line.appendChild(lab);
+
+    var sel = document.createElement('select');
+    sel.className = 'prop-select';
+    var options = entry.options || [];
+    for (var i = 0; i < options.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = String(options[i].value);
+      opt.textContent = options[i].label;
+      opt.selected = (options[i].value === block.params[entry.key]);
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', function () {
+      // preserve the original option value type (string/number)
+      for (var j = 0; j < options.length; j++) {
+        if (String(options[j].value) === sel.value) {
+          block.params[entry.key] = options[j].value;
+          break;
+        }
+      }
+      touchState();
+    });
+
+    row.appendChild(line);
+    row.appendChild(sel);
+    propControls.push({
+      block: block, entry: entry,
+      refresh: function () { sel.value = String(block.params[entry.key]); }
+    });
+    return row;
+  }
+
+  function buildText(block, entry) {
+    var row = document.createElement('div');
+    row.className = 'prop-row';
+    var line = document.createElement('div');
+    line.className = 'prop-label-line';
+    var lab = document.createElement('span');
+    lab.className = 'prop-label';
+    lab.textContent = entry.label;
+    line.appendChild(lab);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'prop-text';
+    if (entry.maxlen) input.maxLength = entry.maxlen;
+    input.value = block.params[entry.key] == null ? '' : String(block.params[entry.key]);
+    input.addEventListener('input', function () {
+      block.params[entry.key] = input.value;
+      touchState();
+    });
+
+    row.appendChild(line);
+    row.appendChild(input);
+    propControls.push({
+      block: block, entry: entry,
+      refresh: function () {
+        if (document.activeElement === input) return;
+        input.value = block.params[entry.key] == null ? '' : String(block.params[entry.key]);
+      }
+    });
+    return row;
+  }
+
+  // sync visible control values from params (used during canvas drags)
+  function refreshPropsValues() {
+    for (var i = 0; i < propControls.length; i++) {
+      propControls[i].refresh();
+    }
+  }
+
+  /* ---------- library overlay ---------- */
+
+  function libDefs() {
+    var all = OneCanvas.blockDefs();
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].type.charAt(0) === '_') continue; // internal (selftest)
+      out.push(all[i]);
+    }
+    return out;
+  }
+
+  function renderLibTabs() {
+    var tabs = els.libTabs;
+    tabs.innerHTML = '';
+    for (var i = 0; i < CAT_ORDER.length; i++) {
+      (function (cat) {
+        var btn = document.createElement('button');
+        btn.className = 'cat-tab' + (cat === activeCat ? ' active' : '');
+        btn.textContent = CAT_LABEL[cat];
+        btn.dataset.cat = cat;
+        btn.addEventListener('click', function () {
+          activeCat = cat;
+          renderLibTabs();
+          renderLibTiles();
+        });
+        tabs.appendChild(btn);
+      })(CAT_ORDER[i]);
+    }
+  }
+
+  function renderLibTiles() {
+    var grid = els.libGrid;
+    grid.innerHTML = '';
+    var defsList = libDefs();
+    var any = false;
+    for (var i = 0; i < defsList.length; i++) {
+      if (defsList[i].kind !== activeCat) continue;
+      any = true;
+      (function (def) {
+        var tile = document.createElement('button');
+        tile.className = 'tile';
+        var ic = document.createElement('span');
+        ic.className = 't-icon';
+        ic.textContent = def.icon || '◆';
+        var nm = document.createElement('span');
+        nm.className = 't-name';
+        nm.textContent = def.label || def.type;
+        tile.appendChild(ic);
+        tile.appendChild(nm);
+        tile.addEventListener('click', function () {
+          var block = scene.add(def.type);
+          scene.select(block.id);
+          closeLibrary();
+          touchState();
+          els.stackList.scrollTop = 0;
+        });
+        grid.appendChild(tile);
+      })(defsList[i]);
+    }
+    if (!any) {
+      var empty = document.createElement('div');
+      empty.className = 'props-empty';
+      empty.textContent = 'Keine Bausteine in dieser Kategorie';
+      grid.appendChild(empty);
+    }
+  }
+
+  function openLibrary() {
+    renderLibTabs();
+    renderLibTiles();
+    els.libOverlay.classList.add('open');
+  }
+
+  function closeLibrary() {
+    els.libOverlay.classList.remove('open');
+  }
+
+  /* ---------- tools ---------- */
+
+  function setTool(name) {
+    tool = name;
+    els.toolMove.classList.toggle('active', name === 'move');
+    els.toolWarp.classList.toggle('active', name === 'warp');
+    els.canvas.style.cursor = (name === 'warp') ? 'crosshair' : '';
+  }
+
+  /* ---------- warp target resolution ---------- */
+
+  function resolveWarpBlock() {
+    var sel = getBlock(scene.selectedId);
+    if (sel && sel.type === 'verzerren') return sel;
+    for (var i = scene.blocks.length - 1; i >= 0; i--) {
+      if (scene.blocks[i].type === 'verzerren') return scene.blocks[i];
+    }
+    if (scene.defs.has('verzerren')) {
+      return scene.add('verzerren');
+    }
+    console.warn('0necanvas ui: warp tool has no "verzerren" block type available');
+    return null;
+  }
+
+  // set warp center to an absolute world position; key names may drift
+  // between parallel builder tasks, hence the candidate list + drag fallback
+  function setWarpCenter(block, wx, wy, lastW) {
+    var pairs = [
+      ['cx', 'cy'], ['centerX', 'centerY'], ['zentrumX', 'zentrumY'],
+      ['zx', 'zy'], ['x', 'y']
+    ];
+    for (var i = 0; i < pairs.length; i++) {
+      if (hasKey(block.params, pairs[i][0]) && hasKey(block.params, pairs[i][1])) {
+        block.params[pairs[i][0]] = wx;
+        block.params[pairs[i][1]] = wy;
+        return true;
+      }
+    }
+    var def = scene.defs.get(block.type);
+    if (def && typeof def.drag === 'function' && lastW) {
+      def.drag(block, 'center', wx - lastW[0], wy - lastW[1]);
+      return true;
+    }
+    return false;
+  }
+
+  /* ---------- canvas gestures ---------- */
+
+  var pointers = new Map();   // pointerId -> {x, y} canvas-local CSS px
+  var gesture = null;
+  // gesture modes:
+  //  {mode:'drag-block', block, handle, lastW:[wx,wy]}
+  //  {mode:'pan', last:{x,y}, moved:false, emptyTap:true}
+  //  {mode:'warp', block, lastW:[wx,wy]}
+  //  {mode:'pinch', prevDist, prevMid:{x,y}}
+
+  function zoomAt(sx, sy, factor, cssW, cssH) {
+    var cam = scene.camera;
+    var ns = clamp(cam.scale * factor, ZOOM_MIN, ZOOM_MAX);
+    if (ns === cam.scale) return;
+    var wx = (sx - cssW / 2) / cam.scale + cam.x;
+    var wy = (sy - cssH / 2) / cam.scale + cam.y;
+    cam.scale = ns;
+    cam.x = wx - (sx - cssW / 2) / ns;
+    cam.y = wy - (sy - cssH / 2) / ns;
+  }
+
+  function panByScreen(dx, dy) {
+    scene.camera.x -= dx / scene.camera.scale;
+    scene.camera.y -= dy / scene.camera.scale;
+  }
+
+  function hitTest(wx, wy, view) {
+    // top -> bottom over visible blocks that expose hit()
+    for (var i = scene.blocks.length - 1; i >= 0; i--) {
+      var b = scene.blocks[i];
+      if (!b.visible) continue;
+      var def = scene.defs.get(b.type);
+      if (!def || typeof def.hit !== 'function') continue;
+      var handle = null;
+      try {
+        handle = def.hit(b, wx, wy, view);
+      } catch (e) {
+        console.error('0necanvas ui: hit() failed for "' + b.type + '"', e);
+      }
+      if (handle) return { block: b, handle: handle, def: def };
+    }
+    return null;
+  }
+
+  function firstTwoPointers() {
+    var it = pointers.values();
+    var a = it.next().value;
+    var b = it.next().value;
+    return [a, b];
+  }
+
+  function startPinch() {
+    var pts = firstTwoPointers();
+    gesture = {
+      mode: 'pinch',
+      prevDist: Math.max(1, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)),
+      prevMid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+    };
+  }
+
+  function onCanvasDown(ev) {
+    ev.preventDefault();
+    var pt = canvasPoint(ev);
+    pointers.set(ev.pointerId, { x: pt.x, y: pt.y });
+    try { els.canvas.setPointerCapture(ev.pointerId); } catch (e) { /* noop */ }
+
+    if (pointers.size === 2) {
+      startPinch();
+      return;
+    }
+    if (pointers.size > 2) return;
+
+    var world = scene.screenToWorld(pt.x, pt.y);
+
+    if (tool === 'warp') {
+      var wb = resolveWarpBlock();
+      if (!wb) { gesture = { mode: 'pan', last: { x: pt.x, y: pt.y }, moved: false, emptyTap: false }; return; }
+      if (scene.selectedId !== wb.id) scene.select(wb.id);
+      gesture = { mode: 'warp', block: wb, lastW: world.slice() };
+      if (setWarpCenter(wb, world[0], world[1], null)) {
+        touchState();
+        refreshPropsValues();
+      }
+      return;
+    }
+
+    // move tool
+    var hit = hitTest(world[0], world[1], makeView());
+    if (hit) {
+      scene.select(hit.block.id);
+      gesture = { mode: 'drag-block', block: hit.block, handle: hit.handle, def: hit.def, lastW: world.slice() };
+    } else {
+      gesture = { mode: 'pan', last: { x: pt.x, y: pt.y }, moved: false, emptyTap: true };
+    }
+  }
+
+  function onCanvasMove(ev) {
+    if (!pointers.has(ev.pointerId)) return;
+    var pt = canvasPoint(ev);
+    var prev = pointers.get(ev.pointerId);
+    pointers.set(ev.pointerId, { x: pt.x, y: pt.y });
+    if (!gesture) return;
+
+    if (gesture.mode === 'pinch') {
+      if (pointers.size < 2) return;
+      var pts = firstTwoPointers();
+      var dist = Math.max(1, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y));
+      var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      zoomAt(mid.x, mid.y, dist / gesture.prevDist, pt.w, pt.h);
+      panByScreen(mid.x - gesture.prevMid.x, mid.y - gesture.prevMid.y);
+      gesture.prevDist = dist;
+      gesture.prevMid = mid;
+      touchState();
+      return;
+    }
+
+    if (gesture.mode === 'drag-block') {
+      var world = scene.screenToWorld(pt.x, pt.y);
+      var dwx = world[0] - gesture.lastW[0];
+      var dwy = world[1] - gesture.lastW[1];
+      if (dwx || dwy) {
+        if (typeof gesture.def.drag === 'function') {
+          try {
+            gesture.def.drag(gesture.block, gesture.handle, dwx, dwy);
+          } catch (e) {
+            console.error('0necanvas ui: drag() failed for "' + gesture.block.type + '"', e);
+          }
+        }
+        gesture.lastW = world;
+        touchState();
+        refreshPropsValues();
+      }
+      return;
+    }
+
+    if (gesture.mode === 'warp') {
+      var w2 = scene.screenToWorld(pt.x, pt.y);
+      if (setWarpCenter(gesture.block, w2[0], w2[1], gesture.lastW)) {
+        touchState();
+        refreshPropsValues();
+      }
+      gesture.lastW = w2;
+      return;
+    }
+
+    if (gesture.mode === 'pan') {
+      var dx = pt.x - gesture.last.x;
+      var dy = pt.y - gesture.last.y;
+      if (!gesture.moved && Math.hypot(dx, dy) > TAP_SLOP_PX) gesture.moved = true;
+      if (gesture.moved) {
+        panByScreen(dx, dy);
+        touchState();
+      }
+      gesture.last = { x: pt.x, y: pt.y };
+    }
+  }
+
+  function onCanvasUp(ev) {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.delete(ev.pointerId);
+
+    if (gesture && gesture.mode === 'pinch') {
+      if (pointers.size === 1) {
+        var rest = pointers.values().next().value;
+        gesture = { mode: 'pan', last: { x: rest.x, y: rest.y }, moved: true, emptyTap: false };
+      } else if (pointers.size === 0) {
+        gesture = null;
+      }
+      return;
+    }
+
+    if (gesture && gesture.mode === 'pan' && !gesture.moved && gesture.emptyTap) {
+      scene.select(null); // tap on empty canvas deselects
+    }
+    gesture = null;
+  }
+
+  function onCanvasWheel(ev) {
+    ev.preventDefault();
+    var pt = canvasPoint(ev);
+    var dy = ev.deltaY;
+    if (ev.deltaMode === 1) dy *= 33;       // lines -> px
+    else if (ev.deltaMode === 2) dy *= 300; // pages -> px
+    zoomAt(pt.x, pt.y, Math.exp(-dy * 0.0014), pt.w, pt.h);
+    touchState();
+  }
+
+  /* ---------- share / fullscreen ---------- */
+
+  function shareUrl() {
+    if (window.OneCanvasState && typeof OneCanvasState.shareUrl === 'function') {
+      try { return OneCanvasState.shareUrl(); } catch (e) { console.warn('0necanvas ui: shareUrl failed', e); }
+    }
+    return location.href;
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function onShare() {
+    var url = shareUrl();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(
+        function () { toast('Link kopiert'); },
+        function () { toast(legacyCopy(url) ? 'Link kopiert' : 'Kopieren fehlgeschlagen'); }
+      );
+    } else {
+      toast(legacyCopy(url) ? 'Link kopiert' : 'Kopieren fehlgeschlagen');
+    }
+  }
+
+  function onFullscreen() {
+    var doc = document;
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      var exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+      if (exit) exit.call(doc);
+      return;
+    }
+    var stage = els.stage || els.canvas.parentElement;
+    var req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+    if (req) {
+      var p = req.call(stage);
+      if (p && p.catch) p.catch(function () { toast('Vollbild nicht verfügbar'); });
+    } else {
+      toast('Vollbild nicht verfügbar');
+    }
+  }
+
+  /* ---------- mobile sheet tabs ---------- */
+
+  function setMobileTab(name) {
+    if (els.side) els.side.dataset.mtab = name;
+    var btns = els.sheetTabs ? els.sheetTabs.querySelectorAll('[data-mtab-btn]') : [];
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('active', btns[i].dataset.mtabBtn === name);
+    }
+  }
+
+  /* ---------- init ---------- */
+
+  function init(sc) {
+    if (scene) { console.warn('0necanvas ui: init called twice, ignoring'); return; }
+    scene = sc;
+
+    els = {
+      canvas: $('oc-canvas'),
+      stage: $('oc-stage'),
+      side: $('oc-side'),
+      stackList: $('oc-stack-list'),
+      propsBody: $('oc-props-body'),
+      propsTitle: $('oc-props-title'),
+      libOverlay: $('oc-lib-overlay'),
+      libGrid: $('oc-lib-grid'),
+      libTabs: $('oc-lib-tabs'),
+      addBtn: $('oc-add-btn'),
+      toolMove: $('oc-tool-move'),
+      toolWarp: $('oc-tool-warp'),
+      shareBtn: $('oc-share-btn'),
+      fullscreenBtn: $('oc-fullscreen-btn'),
+      sheetTabs: $('oc-sheet-tabs'),
+      limitPill: $('oc-limit-pill')
+    };
+
+    // scene hooks
+    sc.onStackChange(function () {
+      renderStack();
+      // selected block may be gone or its schema-bound controls stale
+      if (!getBlock(sc.selectedId)) {
+        renderProps();
+      }
+    });
+    sc.onSelect(function (id) {
+      updateStackSelection();
+      renderProps();
+      if (id) setMobileTab('props');
+    });
+
+    // stack + props initial paint
+    renderStack();
+    renderProps();
+
+    // library
+    els.addBtn.addEventListener('click', openLibrary);
+    var libClose = $('oc-lib-close');
+    if (libClose) libClose.addEventListener('click', closeLibrary);
+    els.libOverlay.addEventListener('click', function (e) {
+      if (e.target === els.libOverlay) closeLibrary();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeLibrary();
+    });
+
+    // tools
+    els.toolMove.addEventListener('click', function () { setTool('move'); });
+    els.toolWarp.addEventListener('click', function () { setTool('warp'); });
+    setTool('move');
+
+    // canvas gestures
+    els.canvas.addEventListener('pointerdown', onCanvasDown);
+    els.canvas.addEventListener('pointermove', onCanvasMove);
+    els.canvas.addEventListener('pointerup', onCanvasUp);
+    els.canvas.addEventListener('pointercancel', onCanvasUp);
+    els.canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
+
+    // actions
+    els.shareBtn.addEventListener('click', onShare);
+    els.fullscreenBtn.addEventListener('click', onFullscreen);
+
+    // mobile sheet tabs
+    if (els.sheetTabs) {
+      els.sheetTabs.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('[data-mtab-btn]') : null;
+        if (btn) setMobileTab(btn.dataset.mtabBtn);
+      });
+    }
+
+    // instance-limit pill (poll: flag is per-frame, no engine event)
+    if (els.limitPill) {
+      setInterval(function () {
+        els.limitPill.hidden = !sc.instanceLimitHit;
+      }, 500);
+    }
+  }
+
+  /* ---------- default scene ---------- */
+
+  function addIfKnown(sc, type) {
+    if (!sc.defs.has(type)) {
+      console.warn('0necanvas ui: default scene skips unknown block type "' + type + '"');
+      return null;
+    }
+    return sc.add(type);
+  }
+
+  // pick a select option matching a regex (value or label) on any select
+  // entry whose key is in the candidate list
+  function setSelectByMatch(sc, block, keyCandidates, rx) {
+    if (!block) return false;
+    var def = sc.defs.get(block.type);
+    var schema = (def && def.schema) || [];
+    for (var i = 0; i < schema.length; i++) {
+      var entry = schema[i];
+      if (entry.ctrl !== 'select') continue;
+      if (keyCandidates.indexOf(entry.key) < 0) continue;
+      var options = entry.options || [];
+      for (var j = 0; j < options.length; j++) {
+        if (rx.test(String(options[j].value)) || rx.test(String(options[j].label))) {
+          block.params[entry.key] = options[j].value;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function buildDefaultScene(sc) {
+    sc.camera.x = 0;
+    sc.camera.y = 0;
+    sc.camera.scale = 1;
+
+    var gitter = addIfKnown(sc, 'gitter');
+    setParam(gitter, ['brightness', 'helligkeit', 'alpha'], 0.18);
+
+    // symbol sits behind the curve (added first = lower in the stack)
+    var symbol = addIfKnown(sc, 'symbol');
+    setParam(symbol, ['opacity', 'deckkraft', 'alpha'], 0.35);
+    setParam(symbol, ['size', 'groesse'], 220);
+
+    var kurve = addIfKnown(sc, 'kurve');
+    setParam(kurve, ['morph'], 72);
+    setParam(kurve, ['glow', 'gluehen'], 14);
+
+    var spawner = addIfKnown(sc, 'spawner');
+    setParam(spawner, ['rate'], 2);
+
+    var warp = addIfKnown(sc, 'verzerren');
+    setSelectByMatch(sc, warp, ['art', 'mode', 'typ', 'type', 'kind'], /welle|wave/i);
+    setParam(warp, ['staerke', 'strength', 'amount', 'power'], 12);
+    setParam(warp, ['radius'], 700);
+
+    if (kurve) sc.select(kurve.id);
+    touchState();
+  }
+
+  window.OneCanvasUI = {
+    init: init,
+    buildDefaultScene: buildDefaultScene
+  };
+})();

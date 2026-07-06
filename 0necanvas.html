@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>0nefinity — canvas</title>
+  <link rel="stylesheet" href="/tools/0necanvas/0necanvas.css" />
+</head>
+<body>
+  <div id="oc-app">
+
+    <header id="oc-topbar">
+      <div class="wordmark"><b>0nefinity</b><span class="sep">—</span>canvas</div>
+
+      <div class="topbar-tools" id="oc-tools">
+        <button class="tool-btn active" id="oc-tool-move" title="Bewegen" aria-label="Werkzeug Bewegen">
+          <span class="tb-icon">&#10021;</span><span class="tb-label">Bewegen</span>
+        </button>
+        <button class="tool-btn" id="oc-tool-warp" title="Verzerren" aria-label="Werkzeug Verzerren">
+          <span class="tb-icon">&#8776;</span><span class="tb-label">Verzerren</span>
+        </button>
+      </div>
+
+      <div class="topbar-actions">
+        <span id="oc-limit-pill" class="limit-pill" hidden>Instanz-Limit erreicht</span>
+        <button class="icon-btn" id="oc-share-btn" title="Teilen" aria-label="Teilen">&#10697;</button>
+        <button class="icon-btn" id="oc-fullscreen-btn" title="Vollbild" aria-label="Vollbild">&#9974;</button>
+      </div>
+    </header>
+
+    <main id="oc-stage">
+      <canvas id="oc-canvas"></canvas>
+      <div class="stage-hint">0 &#8801; 1 &#8801; &#8734;</div>
+    </main>
+
+    <aside id="oc-side" data-mtab="stack">
+      <div class="mobile-tabs" id="oc-sheet-tabs">
+        <button class="m-tab active" data-mtab-btn="stack">Bausteine</button>
+        <button class="m-tab" data-mtab-btn="props">Eigenschaften</button>
+      </div>
+
+      <section class="panel-section" id="oc-stack-section">
+        <div class="panel-head">
+          <span class="panel-title">Bausteine</span>
+          <button id="oc-add-btn" title="Baustein hinzuf&uuml;gen" aria-label="Baustein hinzuf&uuml;gen">+</button>
+        </div>
+        <ul id="oc-stack-list"></ul>
+      </section>
+
+      <section class="panel-section" id="oc-props-section">
+        <div class="panel-head">
+          <span class="panel-title" id="oc-props-title">Eigenschaften</span>
+        </div>
+        <div id="oc-props-body"></div>
+      </section>
+    </aside>
+
+  </div>
+
+  <div id="oc-lib-overlay" role="dialog" aria-modal="true" aria-label="Baustein hinzuf&uuml;gen">
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <span class="overlay-title">Baustein hinzuf&uuml;gen</span>
+        <button class="icon-btn" id="oc-lib-close" title="Schlie&szlig;en" aria-label="Schlie&szlig;en">&#10005;</button>
+      </div>
+      <div class="cat-tabs" id="oc-lib-tabs"></div>
+      <div class="tile-grid" id="oc-lib-grid"></div>
+    </div>
+  </div>
+
+  <script src="/tools/0necanvas/engine.js"></script>
+  <script src="/tools/0necanvas/blocks-dinge.js"></script>
+  <script src="/tools/0necanvas/blocks-erzeuger.js"></script>
+  <script src="/tools/0necanvas/blocks-kraefte.js"></script>
+  <script src="/tools/0necanvas/state.js"></script>
+  <script src="/tools/0necanvas/ui.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var canvas = document.getElementById('oc-canvas');
+    var sc = OneCanvas.createScene(canvas);
+    // exposed for verification scripts (fps checks, param reads)
+    window.ocScene = sc;
+
+    var q = new URLSearchParams(location.search);
+
+    if (q.get('selftest') === '1') {
+      OneCanvas.registerBlock({
+        type: '_selftest',
+        kind: 'ding',
+        label: 'Selbsttest',
+        icon: '✳',
+        schema: [
+          { key: 'size', ctrl: 'slider', label: 'Größe', min: 10, max: 400, step: 1, value: 120 }
+        ],
+        emit: function (block, t) {
+          var pts = [];
+          var n = 96;
+          for (var i = 0; i <= n; i++) {
+            var a = (i / n) * Math.PI * 2;
+            var r = block.params.size * (1 + 0.12 * Math.sin(t * 2 + a * 3));
+            pts.push(Math.cos(a) * r, Math.sin(a) * r);
+          }
+          return [
+            { k: 'poly', pts: pts, closed: true, w: 1.5, col: 'rgba(255,255,255,0.9)', glow: 12 },
+            { k: 'glyph', ch: '∞', x: 0, y: 0, size: 60, col: 'rgba(168,184,232,0.8)', glow: 8 },
+            { k: 'dot', x: 160, y: 0, r: 4, col: 'rgba(255,255,255,0.7)' }
+          ];
+        }
+      });
+      sc.add('_selftest');
+      console.log('ENGINE OK');
+    }
+
+    // UI init first so stack/select hooks are registered before blocks arrive
+    try {
+      if (window.OneCanvasUI && typeof OneCanvasUI.init === 'function') {
+        OneCanvasUI.init(sc);
+      }
+    } catch (e) { console.warn('0necanvas boot: ui init failed', e); }
+
+    if (q.get('selftest') !== '1') {
+      var loaded = false;
+      try {
+        if (window.OneCanvasState) {
+          OneCanvasState.bind(sc);
+          loaded = OneCanvasState.loadFromUrl(sc);
+        }
+      } catch (e) { console.warn('0necanvas boot: state load failed', e); }
+      if (!loaded) {
+        try {
+          if (window.OneCanvasUI && typeof OneCanvasUI.buildDefaultScene === 'function') {
+            OneCanvasUI.buildDefaultScene(sc);
+          }
+        } catch (e) { console.warn('0necanvas boot: default scene failed', e); }
+      }
+    }
+  })();
+  </script>
+</body>
+</html>
