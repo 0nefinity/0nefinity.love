@@ -682,6 +682,14 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   .tool-btn .tb-label { display: none; }
   /* sliders: 40px-tall touch strip (track stays thin, vertically centered) */
   input[type="range"].prop-range { height: 40px; }
+  /* drag handles need a full-size touch target for reorder */
+  .drag-handle {
+    min-width: 40px;
+    min-height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
   .stage-hint { display: none; }
   .tile-grid { grid-template-columns: repeat(2, 1fr); }
   .overlay-card { max-height: 82dvh; }

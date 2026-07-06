@@ -28,6 +28,14 @@
  *   with bevel joins; polylines are decimated to sub-pixel tolerance.
  * - Instances that are fully transparent or outside the padded view are
  *   skipped.
+ * - Layer cache: emitters whose output is time-invariant (def.timeInvariant,
+ *   boolean or predicate(block)) and whose whole force chain is likewise
+ *   time-invariant are rendered ONCE into an offscreen layer and blitted
+ *   as a single drawImage per frame. This removes the dominant steady-state
+ *   cost (e.g. a full-screen grid stroked per fraktal x kaleidoskop
+ *   instance). Any param/camera/viewport change invalidates the layer;
+ *   continuous changes (drags, slider scrubs) bypass the cache and render
+ *   live until the scene settles.
  */
 (function () {
   'use strict';
@@ -60,6 +68,9 @@
   var FRAME_SLOW_MS = 26;       // shrink above this smoothed frame time
   var FRAME_FAST_MS = 17;       // grow below this (only while capped)
   var FRAME_TARGET_MS = 24;
+  // layer cache for time-invariant emitter/force-chain combinations
+  var LAYER_MAX = 6;            // max cached full-size layers per scene
+  var LAYER_HOT_MS = 300;       // continuous invalidation window -> render live
 
   var defs = new Map();      // type -> def
   var defOrder = [];         // registration order (library listing)
@@ -253,6 +264,17 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
+  // def.timeInvariant: true, or predicate(block) — declares that emit()/
+  // force() output depends only on params (not on t/dt), enabling the
+  // layer cache. Absent/false = always live.
+  function isTimeInvariant(def, block) {
+    var ti = def.timeInvariant;
+    if (typeof ti === 'function') {
+      try { return !!ti(block); } catch (e) { return false; }
+    }
+    return ti === true;
+  }
+
   /* ---------- primitive helpers ---------- */
 
   function clonePrim(p) {
@@ -382,6 +404,7 @@
     var drawnTotal = 0;      // instances consumed in the current frame
     var lastDrawn = 0;       // ... in the previous frame
     var frameEma = 0;        // smoothed frame interval (ms)
+    var layers = new Map();  // block.id -> cached offscreen layer
 
     var sc = {
       blocks: [],                       // bottom -> top
@@ -394,7 +417,15 @@
 
     /* ----- stack management ----- */
 
+    function pruneLayers() {
+      if (!layers.size) return;
+      layers.forEach(function (_, id) {
+        if (indexOfId(id) < 0) layers.delete(id);
+      });
+    }
+
     function fireStack() {
+      pruneLayers();
       for (var i = 0; i < stackCbs.length; i++) {
         try { stackCbs[i](sc); } catch (e) { console.error('OneCanvas onStackChange handler failed', e); }
       }
@@ -1032,6 +1063,87 @@
       return total;
     }
 
+    /* ----- layer cache (time-invariant emitter + force chain) ----- */
+
+    // Renders the block's fully composed result into an offscreen layer
+    // once and blits it per frame while its signature (params, chain,
+    // camera, viewport) stays unchanged. During continuous invalidation
+    // (drag/scrub) it renders live at the frame budget instead, so
+    // interaction stays responsive; the cache rebuilds when input settles.
+    // Returns the instances consumed from the per-frame budget (0 when
+    // served from or rebuilt into the cache — rebuild cost is one-off).
+    function renderCachedBlock(block, def, chain, camM, view, sig, localBudget, dt) {
+      var layer = layers.get(block.id);
+      if (!layer) {
+        layer = { canvas: null, ctx: null, sig: null, valid: false, capHit: false, lastChange: -1e9 };
+        layers.set(block.id, layer);
+      }
+      var now = performance.now();
+      var hot = false;
+      if (layer.sig !== sig) {
+        hot = (now - layer.lastChange) < LAYER_HOT_MS;
+        layer.lastChange = now;
+        layer.sig = sig;
+        layer.valid = false;
+      }
+      var pw = canvasEl.width, ph = canvasEl.height;
+      if (layer.valid && layer.canvas &&
+          layer.canvas.width === pw && layer.canvas.height === ph) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        ctx.drawImage(layer.canvas, 0, 0);
+        if (layer.capHit) capHit = true;
+        return 0;
+      }
+
+      var prims;
+      try {
+        prims = def.emit(block, t, dt, view) || [];
+      } catch (e) {
+        console.error('OneCanvas: emit failed for "' + block.type + '"', e);
+        return 0;
+      }
+      if (!prims.length) {
+        layer.valid = false;
+        return 0;
+      }
+
+      if (hot) {
+        // interaction in progress: skip the cache, draw at the live budget
+        return processBlock(prims, chain, camM, view, localBudget);
+      }
+
+      if (!layer.canvas) {
+        layer.canvas = document.createElement('canvas');
+        layer.ctx = layer.canvas.getContext('2d');
+      }
+      if (layer.canvas.width !== pw) layer.canvas.width = pw;
+      if (layer.canvas.height !== ph) layer.canvas.height = ph;
+      layer.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      layer.ctx.clearRect(0, 0, pw, ph);
+
+      var mainCtx = ctx;
+      var outerCap = capHit;
+      capHit = false;
+      ctx = layer.ctx; // all draw helpers write through the `ctx` closure var
+      try {
+        // full budget: the cost is amortized over every cached frame
+        processBlock(prims, chain, camM, view, INSTANCE_CAP);
+      } finally {
+        ctx = mainCtx;
+      }
+      layer.capHit = capHit;
+      capHit = capHit || outerCap;
+      layer.valid = true;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+      ctx.drawImage(layer.canvas, 0, 0);
+      return 0;
+    }
+
     /* ----- frame ----- */
 
     function render(dt) {
@@ -1064,18 +1176,11 @@
         var def = defs.get(block.type);
         if (!def || def.kind === 'kraft' || typeof def.emit !== 'function') continue;
 
-        var prims;
-        try {
-          prims = def.emit(block, t, dt, view) || [];
-        } catch (e) {
-          console.error('OneCanvas: emit failed for "' + block.type + '"', e);
-          emittersLeft--;
-          continue;
-        }
-        if (!prims.length) { emittersLeft--; continue; }
-
-        // force chain: visible kraft blocks ABOVE this block, nearest first
+        // force chain first (visible kraft blocks ABOVE this block, nearest
+        // first) — needed before emit to decide layer-cache eligibility
         var chain = [];
+        var chainMeta = null; // [type, params, ...] for the cache signature
+        var cacheable = isTimeInvariant(def, block);
         for (var j = i + 1; j < sc.blocks.length; j++) {
           var fb = sc.blocks[j];
           if (!fb.visible) continue;
@@ -1090,6 +1195,13 @@
           }
           if (!spec) continue;
           chain.push(spec);
+          if (cacheable) {
+            if (isTimeInvariant(fdef, fb)) {
+              (chainMeta || (chainMeta = [])).push(fb.type, fb.params);
+            } else {
+              cacheable = false;
+            }
+          }
         }
 
         if (instBudget < 1) {
@@ -1097,7 +1209,25 @@
           break;
         }
         var local = Math.max(1, Math.floor(instBudget / Math.max(1, emittersLeft)));
-        var used = processBlock(prims, chain, camM, view, local);
+        var used = 0;
+        if (cacheable && (layers.has(block.id) || layers.size < LAYER_MAX)) {
+          var sig = JSON.stringify([
+            block.params, chainMeta,
+            sc.camera.x, sc.camera.y, sc.camera.scale,
+            cssW, cssH, dpr
+          ]);
+          used = renderCachedBlock(block, def, chain, camM, view, sig, local, dt);
+        } else {
+          var prims;
+          try {
+            prims = def.emit(block, t, dt, view) || [];
+          } catch (e) {
+            console.error('OneCanvas: emit failed for "' + block.type + '"', e);
+            emittersLeft--;
+            continue;
+          }
+          if (prims.length) used = processBlock(prims, chain, camM, view, local);
+        }
         instBudget -= used;
         drawnTotal += used;
         emittersLeft--;

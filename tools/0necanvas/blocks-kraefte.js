@@ -85,6 +85,9 @@
       { key: 'cy', ctrl: 'slider', label: 'Zentrum Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
 
+    // twist/sog maps depend only on params; welle animates with t
+    timeInvariant: function (block) { return block.params.art !== 'welle'; },
+
     force: function (block, t) {
       var p = block.params;
       var art = p.art;
@@ -181,6 +184,9 @@
       { key: 'cy', ctrl: 'slider', label: 'Zentrum Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
 
+    // instance matrices depend only on params -> layer-cache compatible
+    timeInvariant: true,
+
     force: function (block) {
       var p = block.params;
       var n = Math.max(0, Math.round(num(p.anzahl, 0)));
@@ -253,6 +259,9 @@
       { key: 'spiegeln', ctrl: 'toggle', label: 'Spiegeln', value: true },
       { key: 'offset', ctrl: 'slider', label: 'Winkel-Offset', min: -180, max: 180, step: 1, value: 0, unit: '°' }
     ],
+
+    // instance matrices depend only on params -> layer-cache compatible
+    timeInvariant: true,
 
     force: function (block) {
       var p = block.params;

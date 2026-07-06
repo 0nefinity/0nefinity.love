@@ -72,6 +72,9 @@
       }
     ],
 
+    // emit depends only on params + view -> engine may layer-cache it
+    timeInvariant: true,
+
     emit: function (block, t, dt, view) {
       var p = block.params;
       var a = clamp(p.brightness, 0, 1);
@@ -212,6 +215,9 @@
       { key: 'rot', ctrl: 'slider', label: 'Rotation', min: -180, max: 180, step: 1, value: 0, unit: '°' }
     ],
 
+    // static unless the pulse animation is on
+    timeInvariant: function (block) { return !block.params.pulse; },
+
     emit: function (block, t) {
       var p = block.params;
       var size = clamp(p.size, 1, 5000);
@@ -298,6 +304,9 @@
       { key: 'glow', ctrl: 'slider', label: 'Glühen', min: 0, max: 40, step: 1, value: 8 },
       { key: 'alpha', ctrl: 'slider', label: 'Deckkraft', min: 0, max: 1, step: 0.01, value: 0.9, decimals: 2 }
     ],
+
+    // emit depends only on params -> engine may layer-cache it
+    timeInvariant: true,
 
     emit: function (block) {
       var p = block.params;

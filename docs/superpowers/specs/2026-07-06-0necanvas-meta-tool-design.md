@@ -32,6 +32,16 @@ Von Tim bestätigt („trifft es ziemlich gut"):
 - **Kräfte** — was auf **alles darunter** wirkt (Einstellungsebenen-Prinzip):
   Raum verzerren, Fraktal-Wiederholung, Kaleidoskop/Spiegeln.
 
+**Tims Vereinigung (2026-07-06, nach Build-Start):** Dinge und Erzeuger sind
+wesensgleich — ein Ding ist ein Erzeugnis, das schon da ist (0 ≡ 1 ≡ ∞: leer ≡
+ein Ding ≡ Strom). Weil Dinge reine Geometrie-Emitter sind, ist jedes Ding
+automatisch ein **Stempel**: Der Spawner bekommt (direkt nach V1-Landung, V1.1)
+einen Parameter **„Was wird erzeugt"** — Auswahl über alle registrierten
+Ding-Typen — und emittiert pro Partikel dessen Geometrie (verschoben, skaliert,
+altersverblassend). Damit spawnen Koordinatensysteme wie Sand, Herzen spawnen
+Herzen. Die drei Kategorien bleiben als Bibliotheks-Sichten: Dinge = was sein
+kann, Erzeuger = wie viele/wann, Kräfte = wie der Raum sie behandelt.
+
 Ein Werk = geordneter Stapel von Baustein-Instanzen + Kamera. Serialisierbar
 als JSON → URL (`?s=`), damit jeder Fund wiederauffindbar/teilbar ist.
 
