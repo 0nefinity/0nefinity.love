@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>0nefinity — meta · Mockup</title>
+  <style>
+    :root {
+      --bg-color: #000;
+      --text-color: #fff;
+      --font-family: Verdana, Geneva, Tahoma, sans-serif;
+      --accent: #a8b8e8;
+      --panel-bg: #0a0a0c;
+      --ui-border-soft: color-mix(in srgb, var(--text-color) 8%, transparent);
+      --ui-border: color-mix(in srgb, var(--text-color) 16%, transparent);
+      --ui-border-strong: color-mix(in srgb, var(--text-color) 32%, transparent);
+      --ui-fill-05: color-mix(in srgb, var(--text-color) 5%, transparent);
+      --ui-fill-08: color-mix(in srgb, var(--text-color) 8%, transparent);
+      --ui-fill-12: color-mix(in srgb, var(--text-color) 12%, transparent);
+      --ui-text-40: color-mix(in srgb, var(--text-color) 40%, transparent);
+      --ui-text-55: color-mix(in srgb, var(--text-color) 55%, transparent);
+      --ui-text-70: color-mix(in srgb, var(--text-color) 70%, transparent);
+      --topbar-h: 52px;
+      --side-w: 320px;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: var(--font-family);
+      font-size: 14px;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    #app {
+      display: grid;
+      grid-template-rows: var(--topbar-h) 1fr;
+      grid-template-columns: 1fr var(--side-w);
+      grid-template-areas:
+        "topbar topbar"
+        "stage  side";
+      height: 100dvh;
+      width: 100vw;
+    }
+
+    /* ---------- Topbar ---------- */
+    #topbar {
+      grid-area: topbar;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.1rem 0 1.25rem;
+      border-bottom: 1px solid var(--ui-border-soft);
+      background: var(--bg-color);
+      z-index: 5;
+    }
+
+    .wordmark {
+      font-size: 0.95rem;
+      letter-spacing: 0.24em;
+      color: var(--ui-text-70);
+      user-select: none;
+      white-space: nowrap;
+    }
+    .wordmark b { font-weight: normal; color: var(--text-color); }
+    .wordmark .sep { color: var(--ui-text-40); margin: 0 0.45em; }
+
+    .topbar-actions { display: flex; gap: 0.25rem; }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      color: var(--ui-text-55);
+      font-size: 1.05rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+      line-height: 1;
+    }
+    .icon-btn:hover { color: var(--text-color); background: var(--ui-fill-05); }
+    .icon-btn:active { transform: scale(0.94); }
+
+    /* ---------- Stage / Canvas ---------- */
+    #stage {
+      grid-area: stage;
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      background: var(--bg-color);
+    }
+    #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+    .stage-hint {
+      position: absolute;
+      left: 1.25rem;
+      bottom: 1rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      color: var(--ui-text-40);
+      user-select: none;
+      pointer-events: none;
+    }
+
+    /* ---------- Side panel ---------- */
+    #side {
+      grid-area: side;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-left: 1px solid var(--ui-border-soft);
+      background: var(--panel-bg);
+      z-index: 4;
+    }
+
+    .mobile-tabs { display: none; }
+
+    .panel-section {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #stack-section { flex: 0 1 auto; }
+    #props-section { flex: 1 1 0; border-top: 1px solid var(--ui-border-soft); }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.8rem 1rem 0.55rem 1.1rem;
+      flex: 0 0 auto;
+    }
+    .panel-title {
+      font-size: 0.7rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--ui-text-55);
+      user-select: none;
+    }
+
+    #add-btn {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      border: 1px solid var(--ui-border);
+      border-radius: 999px;
+      color: var(--ui-text-70);
+      font-size: 1.25rem;
+      font-family: inherit;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 0 2px;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    #add-btn:hover { color: var(--text-color); border-color: var(--ui-border-strong); background: var(--ui-fill-05); }
+    #add-btn:active { transform: scale(0.94); }
+
+    #stack {
+      list-style: none;
+      margin: 0;
+      padding: 0 0.6rem 0.7rem;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .stack-row {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-height: 44px;
+      padding: 0 0.35rem 0 0.15rem;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .stack-row + .stack-row { margin-top: 2px; }
+    .stack-row:hover { background: var(--ui-fill-05); }
+    .stack-row.selected {
+      background: var(--ui-fill-08);
+      border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+    }
+
+    .drag-handle {
+      color: var(--ui-text-40);
+      font-size: 0.8rem;
+      letter-spacing: -1px;
+      cursor: grab;
+      padding: 0 0.1rem 0 0.35rem;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .type-icon {
+      flex: 0 0 auto;
+      width: 1.35em;
+      text-align: center;
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+    .type-icon.kraft    { color: var(--accent); }
+    .type-icon.erzeuger { color: color-mix(in srgb, var(--accent) 55%, var(--text-color)); }
+    .type-icon.ding     { color: var(--ui-text-70); }
+
+    .row-label {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      overflow: hidden;
+    }
+    .row-kind {
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ui-text-40);
+      white-space: nowrap;
+    }
+    .row-name {
+      font-size: 0.86rem;
+      color: var(--text-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stack-row.hidden-layer .row-name { color: var(--ui-text-40); }
+    .stack-row.hidden-layer .type-icon { opacity: 0.35; }
+
+    .eye-btn {
+      flex: 0 0 auto;
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      color: var(--ui-text-70);
+      font-size: 0.95rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: color 0.12s ease;
+    }
+    .eye-btn:hover { color: var(--text-color); }
+    .eye-btn.off { color: var(--ui-text-40); }
+
+    /* ---------- Properties ---------- */
+    #props {
+      overflow-y: auto;
+      min-height: 0;
+      padding: 0.15rem 1.1rem 1.2rem;
+    }
+
+    .props-empty {
+      color: var(--ui-text-40);
+      font-size: 0.8rem;
+      padding: 1rem 0;
+      text-align: center;
+    }
+
+    .prop-row { margin: 0.85rem 0 0; }
+
+    .prop-label-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.35rem;
+    }
+    .prop-label { font-size: 0.78rem; color: var(--ui-text-70); }
+    .prop-value {
+      font-size: 0.78rem;
+      color: var(--text-color);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"].prop-range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 26px;
+      background: transparent;
+      margin: 0;
+      cursor: pointer;
+    }
+    input[type="range"].prop-range::-webkit-slider-runnable-track {
+      height: 3px;
+      background: var(--ui-fill-12);
+      border-radius: 2px;
+    }
+    input[type="range"].prop-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -5.5px;
+      border-radius: 50%;
+      background: var(--text-color);
+      transition: transform 0.12s ease;
+    }
+    input[type="range"].prop-range::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    input[type="range"].prop-range::-moz-range-track {
+      height: 3px;
+      background: var(--ui-fill-12);
+      border-radius: 2px;
+    }
+    input[type="range"].prop-range::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: none;
+      border-radius: 50%;
+      background: var(--text-color);
+    }
+
+    .prop-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 40px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .prop-toggle-row .prop-label { pointer-events: none; }
+
+    .switch {
+      position: relative;
+      flex: 0 0 auto;
+      width: 36px;
+      height: 20px;
+      border-radius: 999px;
+      background: var(--ui-fill-12);
+      border: 1px solid var(--ui-border);
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--ui-text-70);
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+    .prop-toggle-row.on .switch {
+      background: color-mix(in srgb, var(--accent) 30%, transparent);
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+    .prop-toggle-row.on .switch::after {
+      transform: translateX(16px);
+      background: var(--text-color);
+    }
+
+    select.prop-select {
+      width: 100%;
+      min-height: 40px;
+      background: var(--ui-fill-05);
+      color: var(--text-color);
+      border: 1px solid var(--ui-border);
+      border-radius: 8px;
+      padding: 0.45rem 0.6rem;
+      font-family: inherit;
+      font-size: 0.82rem;
+      outline: none;
+      cursor: pointer;
+    }
+    select.prop-select:focus { border-color: var(--ui-border-strong); }
+    select.prop-select option { background: var(--panel-bg); color: var(--text-color); }
+
+    .props-blockname {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin: 0.4rem 0 0.2rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 1px solid var(--ui-border-soft);
+    }
+    .props-blockname .type-icon { font-size: 0.85rem; }
+    .props-blockname .name { font-size: 0.92rem; }
+    .props-blockname .kind {
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ui-text-40);
+      margin-left: auto;
+      white-space: nowrap;
+    }
+
+    /* ---------- Add overlay ---------- */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--bg-color) 62%, transparent);
+      backdrop-filter: blur(9px);
+      -webkit-backdrop-filter: blur(9px);
+      padding: 1rem;
+    }
+    #overlay.open { display: flex; }
+
+    .overlay-card {
+      width: min(560px, 100%);
+      max-height: min(76dvh, 620px);
+      display: flex;
+      flex-direction: column;
+      background: var(--panel-bg);
+      border: 1px solid var(--ui-border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+    }
+
+    .overlay-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0.7rem 0.6rem 1.35rem;
+      flex: 0 0 auto;
+    }
+    .overlay-title {
+      font-size: 0.78rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--ui-text-70);
+    }
+
+    .cat-tabs {
+      display: flex;
+      gap: 0.25rem;
+      padding: 0 1.25rem;
+      border-bottom: 1px solid var(--ui-border-soft);
+      flex: 0 0 auto;
+    }
+    .cat-tab {
+      appearance: none;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--ui-text-55);
+      font-family: inherit;
+      font-size: 0.84rem;
+      padding: 0.6rem 0.8rem 0.7rem;
+      min-height: 44px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .cat-tab:hover { color: var(--text-color); }
+    .cat-tab.active {
+      color: var(--text-color);
+      border-bottom-color: var(--accent);
+    }
+
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      padding: 1.1rem 1.25rem 1.35rem;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      min-height: 88px;
+      padding: 0.8rem 0.5rem;
+      background: var(--ui-fill-05);
+      border: 1px solid var(--ui-border-soft);
+      border-radius: 12px;
+      color: var(--text-color);
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+    }
+    .tile:hover {
+      background: var(--ui-fill-08);
+      border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      transform: translateY(-1px);
+    }
+    .tile:active { transform: translateY(0) scale(0.98); }
+    .tile .t-icon { font-size: 1.45rem; line-height: 1; color: var(--ui-text-70); }
+    .tile:hover .t-icon { color: var(--accent); }
+    .tile .t-name { font-size: 0.75rem; color: var(--ui-text-70); text-align: center; line-height: 1.3; }
+    .tile:hover .t-name { color: var(--text-color); }
+
+    /* ---------- Mobile ---------- */
+    @media (max-width: 899px) {
+      #app {
+        grid-template-rows: var(--topbar-h) 1fr auto;
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "topbar"
+          "stage"
+          "side";
+      }
+      #side {
+        position: relative;
+        border-left: none;
+        border-top: 1px solid var(--ui-border);
+        border-radius: 18px 18px 0 0;
+        height: 46dvh;
+        padding-bottom: env(safe-area-inset-bottom, 0);
+      }
+      .mobile-tabs {
+        display: flex;
+        flex: 0 0 auto;
+        padding: 0.45rem 0.9rem 0;
+        gap: 0.3rem;
+        position: relative;
+      }
+      .mobile-tabs::before {
+        content: '';
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 38px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--ui-fill-12);
+      }
+      .m-tab {
+        appearance: none;
+        flex: 1;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--ui-text-55);
+        font-family: inherit;
+        font-size: 0.8rem;
+        letter-spacing: 0.06em;
+        min-height: 44px;
+        padding-top: 10px;
+        cursor: pointer;
+      }
+      .m-tab.active { color: var(--text-color); border-bottom-color: var(--accent); }
+
+      #side[data-mtab="stack"] #props-section { display: none; }
+      #side[data-mtab="props"] #stack-section { display: none; }
+      #props-section { border-top: none; flex: 1 1 auto; }
+      #stack-section { flex: 1 1 auto; }
+
+      /* Doppelte Titel vermeiden: Tabs beschriften schon, Plus wandert in die Tab-Zeile */
+      .panel-title { display: none; }
+      #props-section .panel-head { display: none; }
+      #stack-section .panel-head {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.65rem;
+        padding: 0;
+        z-index: 2;
+      }
+      .mobile-tabs { padding-right: 4rem; }
+
+      .wordmark { letter-spacing: 0.16em; font-size: 0.85rem; }
+      .stage-hint { display: none; }
+      .tile-grid { grid-template-columns: repeat(2, 1fr); }
+      .overlay-card { max-height: 82dvh; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+
+    <header id="topbar">
+      <div class="wordmark"><b>0nefinity</b><span class="sep">—</span>meta</div>
+      <div class="topbar-actions">
+        <button class="icon-btn" title="Speichern (Mockup)" aria-label="Speichern">⤓</button>
+        <button class="icon-btn" title="Teilen (Mockup)" aria-label="Teilen">⧉</button>
+        <button class="icon-btn" title="Vollbild (Mockup)" aria-label="Vollbild">⛶</button>
+      </div>
+    </header>
+
+    <main id="stage">
+      <canvas id="scene"></canvas>
+      <div class="stage-hint">0 ≡ 1 ≡ ∞ · Klick-Dummy, kein echtes Tool</div>
+    </main>
+
+    <aside id="side" data-mtab="stack">
+      <div class="mobile-tabs">
+        <button class="m-tab active" data-mtab-btn="stack">Bausteine</button>
+        <button class="m-tab" data-mtab-btn="props">Eigenschaften</button>
+      </div>
+
+      <section class="panel-section" id="stack-section">
+        <div class="panel-head">
+          <span class="panel-title">Bausteine</span>
+          <button id="add-btn" title="Baustein hinzufügen" aria-label="Baustein hinzufügen">+</button>
+        </div>
+        <ul id="stack"></ul>
+      </section>
+
+      <section class="panel-section" id="props-section">
+        <div class="panel-head">
+          <span class="panel-title">Eigenschaften</span>
+        </div>
+        <div id="props"></div>
+      </section>
+    </aside>
+
+  </div>
+
+  <div id="overlay" role="dialog" aria-modal="true" aria-label="Baustein hinzufügen">
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <span class="overlay-title">Baustein hinzufügen</span>
+        <button class="icon-btn" id="overlay-close" title="Schließen" aria-label="Schließen">✕</button>
+      </div>
+      <div class="cat-tabs" id="cat-tabs"></div>
+      <div class="tile-grid" id="tile-grid"></div>
+    </div>
+  </div>
+
+  <script>
+  'use strict';
+
+  /* =========================================================
+     UI-Klick-Dummy — alles Fake, nur die Szene lebt.
+     ========================================================= */
+
+  const KINDS = {
+    ding:     { label: 'Ding',     icon: '◆' },
+    erzeuger: { label: 'Erzeuger', icon: '✧' },
+    kraft:    { label: 'Kraft',    icon: '✦' },
+  };
+
+  /* Szenen-State (von einigen Reglern wirklich beeinflusst) */
+  const scene = {
+    distort: { on: true,  amp: 9,   freq: 1.0, speed: 1.0 },
+    spawner: { on: true,  rate: 2.2, life: 6,  size: 22 },
+    heart:   { on: true,  size: 78,  morph: 72, width: 1.6, glow: 14 },
+    inf:     { on: true,  size: 46,  alpha: 6 },
+    grid:    { on: true,  spacing: 52, alpha: 10 },
+  };
+
+  /* Regler-Definitionen. wire = greift wirklich in die Szene. */
+  function ctrls(defs) { return defs; }
+  const BLOCK_DEFS = {
+    distort: ctrls([
+      { t: 'slider', l: 'Stärke',        min: 0, max: 30, step: 0.5, get: () => scene.distort.amp,  set: v => scene.distort.amp = v, wire: true },
+      { t: 'slider', l: 'Frequenz',      min: 0.2, max: 3, step: 0.05, get: () => scene.distort.freq, set: v => scene.distort.freq = v, wire: true },
+      { t: 'slider', l: 'Tempo',         min: 0, max: 3, step: 0.05, get: () => scene.distort.speed, set: v => scene.distort.speed = v, wire: true },
+      { t: 'select', l: 'Modus', options: ['Welle', 'Wirbel', 'Linse'], value: 'Welle' },
+      { t: 'toggle', l: 'Nur nach unten wirken', value: true },
+      { t: 'slider', l: 'Kantenschutz', min: 0, max: 100, step: 1, value: 20, unit: '%' },
+    ]),
+    spawner: ctrls([
+      { t: 'slider', l: 'Rate',        min: 0, max: 8, step: 0.1, get: () => scene.spawner.rate, set: v => scene.spawner.rate = v, wire: true, unit: '/s' },
+      { t: 'slider', l: 'Lebensdauer', min: 1, max: 20, step: 0.5, get: () => scene.spawner.life, set: v => scene.spawner.life = v, wire: true, unit: 's' },
+      { t: 'slider', l: 'Größe',       min: 8, max: 64, step: 1, get: () => scene.spawner.size, set: v => scene.spawner.size = v, wire: true, unit: 'px' },
+      { t: 'select', l: 'Symbole', options: ['∞ 0 1', 'nur ∞', 'nur 0 / 1', '0 1 8'], value: '∞ 0 1' },
+      { t: 'toggle', l: 'Entlang der Kurve', value: false },
+      { t: 'slider', l: 'Drift', min: 0, max: 100, step: 1, value: 30, unit: '%' },
+    ]),
+    heart: ctrls([
+      { t: 'slider', l: 'Größe',        min: 20, max: 160, step: 1, get: () => scene.heart.size, set: v => scene.heart.size = v, wire: true },
+      { t: 'slider', l: 'Morph  Kreis ↔ Herz', min: 0, max: 100, step: 1, get: () => scene.heart.morph, set: v => scene.heart.morph = v, wire: true, unit: '%' },
+      { t: 'slider', l: 'Linienstärke', min: 0.5, max: 6, step: 0.1, get: () => scene.heart.width, set: v => scene.heart.width = v, wire: true, unit: 'px' },
+      { t: 'slider', l: 'Glühen',       min: 0, max: 40, step: 1, get: () => scene.heart.glow, set: v => scene.heart.glow = v, wire: true },
+      { t: 'select', l: 'Variante', options: ['Klassisch', 'Kardioide', 'Kreis-Herz'], value: 'Klassisch' },
+      { t: 'toggle', l: 'Füllung', value: false },
+      { t: 'toggle', l: 'Pulsieren', value: true },
+    ]),
+    inf: ctrls([
+      { t: 'slider', l: 'Größe',     min: 10, max: 90, step: 1, get: () => scene.inf.size, set: v => scene.inf.size = v, wire: true, unit: '%' },
+      { t: 'slider', l: 'Deckkraft', min: 0, max: 30, step: 1, get: () => scene.inf.alpha, set: v => scene.inf.alpha = v, wire: true, unit: '%' },
+      { t: 'select', l: 'Zeichen', options: ['∞', '0', '1', '018'], value: '∞' },
+      { t: 'slider', l: 'Rotation', min: -180, max: 180, step: 1, value: 0, unit: '°' },
+      { t: 'toggle', l: 'Atmen', value: true },
+    ]),
+    grid: ctrls([
+      { t: 'slider', l: 'Dichte',     min: 24, max: 120, step: 1, get: () => scene.grid.spacing, set: v => scene.grid.spacing = v, wire: true, unit: 'px' },
+      { t: 'slider', l: 'Helligkeit', min: 0, max: 40, step: 1, get: () => scene.grid.alpha, set: v => scene.grid.alpha = v, wire: true, unit: '%' },
+      { t: 'select', l: 'Stil', options: ['Linien', 'Punkte', 'Kreuze'], value: 'Linien' },
+      { t: 'toggle', l: 'Achsen betonen', value: true },
+      { t: 'slider', l: 'Unterteilung', min: 1, max: 10, step: 1, value: 4 },
+      { t: 'toggle', l: 'Polar', value: false },
+    ]),
+  };
+
+  function genericDefs() {
+    return [
+      { t: 'slider', l: 'Intensität', min: 0, max: 100, step: 1, value: 50, unit: '%' },
+      { t: 'slider', l: 'Tempo',      min: 0, max: 3, step: 0.05, value: 1 },
+      { t: 'slider', l: 'Deckkraft',  min: 0, max: 100, step: 1, value: 80, unit: '%' },
+      { t: 'slider', l: 'Phase',      min: 0, max: 360, step: 1, value: 0, unit: '°' },
+      { t: 'select', l: 'Modus', options: ['Sanft', 'Direkt', 'Chaotisch'], value: 'Sanft' },
+      { t: 'toggle', l: 'Animieren', value: true },
+    ];
+  }
+
+  /* Stapel — oben = zuoberst */
+  let blocks = [
+    { id: 'distort', kind: 'kraft',    icon: '✦', name: 'Raum verzerren',   visible: true, defs: BLOCK_DEFS.distort },
+    { id: 'spawner', kind: 'erzeuger', icon: '✧', name: 'Spawner',          visible: true, defs: BLOCK_DEFS.spawner },
+    { id: 'heart',   kind: 'ding',     icon: '◆', name: 'Herz-Kurve',       visible: true, defs: BLOCK_DEFS.heart },
+    { id: 'inf',     kind: 'ding',     icon: '◆', name: 'Symbol ∞',         visible: true, defs: BLOCK_DEFS.inf },
+    { id: 'grid',    kind: 'ding',     icon: '▦', name: 'Koordinatengitter', visible: true, defs: BLOCK_DEFS.grid },
+  ];
+  let selectedId = 'heart';
+  let uid = 0;
+
+  /* ---------- Stapel rendern ---------- */
+  const stackEl = document.getElementById('stack');
+
+  function renderStack() {
+    stackEl.innerHTML = '';
+    for (const b of blocks) {
+      const li = document.createElement('li');
+      li.className = 'stack-row' + (b.id === selectedId ? ' selected' : '') + (b.visible ? '' : ' hidden-layer');
+      li.dataset.id = b.id;
+
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.textContent = '⠿';
+      handle.title = 'Ziehen (Mockup)';
+
+      const icon = document.createElement('span');
+      icon.className = 'type-icon ' + b.kind;
+      icon.textContent = b.icon;
+
+      const label = document.createElement('span');
+      label.className = 'row-label';
+      const kind = document.createElement('span');
+      kind.className = 'row-kind';
+      kind.textContent = KINDS[b.kind].label;
+      const name = document.createElement('span');
+      name.className = 'row-name';
+      name.textContent = b.name;
+      label.append(kind, name);
+
+      const eye = document.createElement('button');
+      eye.className = 'eye-btn' + (b.visible ? '' : ' off');
+      eye.textContent = b.visible ? '◉' : '○';
+      eye.title = b.visible ? 'Ausblenden' : 'Einblenden';
+      eye.setAttribute('aria-label', eye.title);
+      eye.addEventListener('click', (e) => {
+        e.stopPropagation();
+        b.visible = !b.visible;
+        if (scene[b.id]) scene[b.id].on = b.visible;
+        renderStack();
+      });
+
+      li.append(handle, icon, label, eye);
+      li.addEventListener('click', () => {
+        selectedId = b.id;
+        renderStack();
+        renderProps();
+      });
+      stackEl.appendChild(li);
+    }
+  }
+
+  /* ---------- Eigenschaften rendern ---------- */
+  const propsEl = document.getElementById('props');
+
+  function fmt(v, step) {
+    return (step && step < 1) ? Number(v).toFixed(step < 0.1 ? 2 : 1) : String(Math.round(v));
+  }
+
+  function renderProps() {
+    const b = blocks.find(x => x.id === selectedId);
+    propsEl.innerHTML = '';
+    if (!b) {
+      propsEl.innerHTML = '<div class="props-empty">Kein Baustein angewählt</div>';
+      return;
+    }
+
+    const head = document.createElement('div');
+    head.className = 'props-blockname';
+    head.innerHTML = '<span class="type-icon ' + b.kind + '">' + b.icon + '</span>'
+      + '<span class="name"></span><span class="kind">' + KINDS[b.kind].label + '</span>';
+    head.querySelector('.name').textContent = b.name;
+    propsEl.appendChild(head);
+
+    for (const d of b.defs) {
+      if (d.t === 'slider') {
+        const row = document.createElement('div');
+        row.className = 'prop-row';
+        const line = document.createElement('div');
+        line.className = 'prop-label-line';
+        const lab = document.createElement('span');
+        lab.className = 'prop-label';
+        lab.textContent = d.l;
+        const val = document.createElement('span');
+        val.className = 'prop-value';
+        const cur = d.get ? d.get() : d.value;
+        val.textContent = fmt(cur, d.step) + (d.unit ? ' ' + d.unit : '');
+        line.append(lab, val);
+
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.className = 'prop-range';
+        input.min = d.min; input.max = d.max; input.step = d.step;
+        input.value = cur;
+        input.addEventListener('input', () => {
+          const v = parseFloat(input.value);
+          if (d.set) d.set(v); else d.value = v;
+          val.textContent = fmt(v, d.step) + (d.unit ? ' ' + d.unit : '');
+        });
+        row.append(line, input);
+        propsEl.appendChild(row);
+      } else if (d.t === 'toggle') {
+        const row = document.createElement('div');
+        row.className = 'prop-toggle-row' + (d.value ? ' on' : '');
+        const lab = document.createElement('span');
+        lab.className = 'prop-label';
+        lab.textContent = d.l;
+        const sw = document.createElement('span');
+        sw.className = 'switch';
+        row.append(lab, sw);
+        row.addEventListener('click', () => {
+          d.value = !d.value;
+          row.classList.toggle('on', d.value);
+        });
+        propsEl.appendChild(row);
+      } else if (d.t === 'select') {
+        const row = document.createElement('div');
+        row.className = 'prop-row';
+        const line = document.createElement('div');
+        line.className = 'prop-label-line';
+        const lab = document.createElement('span');
+        lab.className = 'prop-label';
+        lab.textContent = d.l;
+        line.appendChild(lab);
+        const sel = document.createElement('select');
+        sel.className = 'prop-select';
+        for (const o of d.options) {
+          const opt = document.createElement('option');
+          opt.textContent = o;
+          opt.selected = (o === d.value);
+          sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => { d.value = sel.value; });
+        row.append(line, sel);
+        propsEl.appendChild(row);
+      }
+    }
+  }
+
+  /* ---------- Overlay „Baustein hinzufügen" ---------- */
+  const CATALOG = {
+    ding: [
+      { icon: '◆', name: 'Herz-Kurve' },
+      { icon: '▦', name: 'Koordinatengitter' },
+      { icon: '◇', name: 'Kreis / Geometrie' },
+      { icon: '✳', name: 'Symbol / Text' },
+      { icon: '⁘', name: 'Punktwolke' },
+      { icon: '△', name: 'Dreiecks-Form' },
+    ],
+    erzeuger: [
+      { icon: '✧', name: 'Spawner' },
+      { icon: '⬚', name: 'Game of Life' },
+      { icon: '〜', name: 'Wachsende Linien' },
+      { icon: '◐', name: 'Fourier-Zeichner' },
+    ],
+    kraft: [
+      { icon: '✦', name: 'Raum verzerren' },
+      { icon: '❖', name: 'Fraktal-Wiederholung' },
+      { icon: '✥', name: 'Kaleidoskop' },
+      { icon: '◫', name: 'Moiré-Überlagerung' },
+      { icon: '⧉', name: 'Spiegeln' },
+    ],
+  };
+
+  const overlayEl = document.getElementById('overlay');
+  const tabsEl = document.getElementById('cat-tabs');
+  const gridEl = document.getElementById('tile-grid');
+  let activeCat = 'ding';
+
+  function renderTabs() {
+    tabsEl.innerHTML = '';
+    for (const key of ['ding', 'erzeuger', 'kraft']) {
+      const btn = document.createElement('button');
+      btn.className = 'cat-tab' + (key === activeCat ? ' active' : '');
+      btn.textContent = { ding: 'Dinge', erzeuger: 'Erzeuger', kraft: 'Kräfte' }[key];
+      btn.dataset.cat = key;
+      btn.addEventListener('click', () => { activeCat = key; renderTabs(); renderTiles(); });
+      tabsEl.appendChild(btn);
+    }
+  }
+
+  function renderTiles() {
+    gridEl.innerHTML = '';
+    for (const item of CATALOG[activeCat]) {
+      const tile = document.createElement('button');
+      tile.className = 'tile';
+      const ic = document.createElement('span');
+      ic.className = 't-icon';
+      ic.textContent = item.icon;
+      const nm = document.createElement('span');
+      nm.className = 't-name';
+      nm.textContent = item.name;
+      tile.append(ic, nm);
+      tile.addEventListener('click', () => {
+        const id = 'new-' + (++uid);
+        blocks.unshift({
+          id, kind: activeCat, icon: item.icon, name: item.name,
+          visible: true, defs: genericDefs(),
+        });
+        selectedId = id;
+        closeOverlay();
+        renderStack();
+        renderProps();
+        stackEl.scrollTop = 0;
+      });
+      gridEl.appendChild(tile);
+    }
+  }
+
+  function openOverlay()  { overlayEl.classList.add('open'); renderTabs(); renderTiles(); }
+  function closeOverlay() { overlayEl.classList.remove('open'); }
+
+  document.getElementById('add-btn').addEventListener('click', openOverlay);
+  document.getElementById('overlay-close').addEventListener('click', closeOverlay);
+  overlayEl.addEventListener('click', (e) => { if (e.target === overlayEl) closeOverlay(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOverlay(); });
+
+  /* ---------- Mobile-Tabs ---------- */
+  const sideEl = document.getElementById('side');
+  document.querySelectorAll('[data-mtab-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sideEl.dataset.mtab = btn.dataset.mtabBtn;
+      document.querySelectorAll('.m-tab').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  /* =========================================================
+     Fake-Szene — Canvas2D, lebt vor sich hin.
+     ========================================================= */
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(1, r.width);
+    H = Math.max(1, r.height);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  new ResizeObserver(resize).observe(canvas);
+  resize();
+
+  function warp(x, y, t) {
+    if (!scene.distort.on) return [x, y];
+    const a = scene.distort.amp;
+    const f = scene.distort.freq * 0.008;
+    return [
+      x + a * Math.sin(y * f * 2.2 + t * 0.7),
+      y + a * 0.6 * Math.cos(x * f * 2.6 + t * 0.55),
+    ];
+  }
+
+  /* Herz ↔ Kreis Morph */
+  function curvePoint(u, m, s) {
+    const hx = 16 * Math.pow(Math.sin(u), 3);
+    const hy = -(13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u));
+    const cx = 15 * Math.cos(u);
+    const cy = 15 * Math.sin(u);
+    return [
+      ((1 - m) * cx + m * hx) * s / 16,
+      ((1 - m) * cy + m * hy) * s / 16,
+    ];
+  }
+
+  /* Symbole */
+  const symbols = [];
+  const GLYPHS = ['∞', '0', '1'];
+  let spawnAcc = 0;
+
+  function spawnSymbol() {
+    symbols.push({
+      char: GLYPHS[Math.floor(Math.random() * GLYPHS.length)],
+      x: W * (0.18 + Math.random() * 0.64),
+      y: H * (0.15 + Math.random() * 0.7),
+      vx: (Math.random() - 0.5) * 6,
+      vy: -3 - Math.random() * 5,
+      born: perf,
+      life: scene.spawner.life,
+      rot: (Math.random() - 0.5) * 0.6,
+      size: scene.spawner.size * (0.7 + Math.random() * 0.6),
+    });
+    if (symbols.length > 48) symbols.shift();
+  }
+
+  let perf = 0, last = 0;
+
+  function draw(ms) {
+    requestAnimationFrame(draw);
+    const dt = Math.min(0.05, (ms - last) / 1000) || 0.016;
+    last = ms;
+    perf += dt;
+    const t = perf * (scene.distort.speed || 0);
+    const tGlobal = perf;
+
+    ctx.clearRect(0, 0, W, H);
+
+    /* Grund: sehr dunkle Vignette */
+    const cx = W / 2, cy = H / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.72);
+    grad.addColorStop(0, 'rgba(22,22,28,0.55)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    /* Koordinatengitter */
+    if (scene.grid.on && scene.grid.alpha > 0) {
+      const sp = scene.grid.spacing;
+      const al = scene.grid.alpha / 100;
+      ctx.lineWidth = 1;
+      const step = 26;
+      const ox = (cx % sp), oy = (cy % sp);
+      for (let gx = ox - sp; gx <= W + sp; gx += sp) {
+        const axis = Math.abs(gx - cx) < 1;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (axis ? al * 2.4 : al) + ')';
+        ctx.beginPath();
+        for (let y = -step; y <= H + step; y += step) {
+          const [px, py] = warp(gx, y, t);
+          (y === -step) ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      for (let gy = oy - sp; gy <= H + sp; gy += sp) {
+        const axis = Math.abs(gy - cy) < 1;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (axis ? al * 2.4 : al) + ')';
+        ctx.beginPath();
+        for (let x = -step; x <= W + step; x += step) {
+          const [px, py] = warp(x, gy, t);
+          (x === -step) ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+    }
+
+    /* Großes ∞ im Hintergrund */
+    if (scene.inf.on && scene.inf.alpha > 0) {
+      const size = Math.min(W, H) * scene.inf.size / 100;
+      const breathe = 1 + 0.03 * Math.sin(tGlobal * 0.4);
+      const [ix, iy] = warp(cx, cy, t);
+      ctx.save();
+      ctx.font = '100 ' + (size * breathe) + 'px Georgia, "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,' + (scene.inf.alpha / 100) + ')';
+      ctx.fillText('∞', ix, iy + size * 0.02);
+      ctx.restore();
+    }
+
+    /* Herz-Kurve */
+    if (scene.heart.on) {
+      const m = scene.heart.morph / 100;
+      const pulse = 1 + 0.022 * Math.sin(tGlobal * 1.1);
+      const s = scene.heart.size * pulse * Math.min(W, H) / 240;
+      ctx.save();
+      ctx.lineWidth = scene.heart.width;
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.shadowColor = 'rgba(255,255,255,0.55)';
+      ctx.shadowBlur = scene.heart.glow;
+      ctx.beginPath();
+      const N = 220;
+      for (let i = 0; i <= N; i++) {
+        const u = (i / N) * Math.PI * 2;
+        let [x, y] = curvePoint(u, m, s);
+        [x, y] = warp(cx + x, cy + y, t);
+        (i === 0) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* Spawner-Symbole */
+    if (scene.spawner.on && scene.spawner.rate > 0) {
+      spawnAcc += dt * scene.spawner.rate;
+      while (spawnAcc >= 1) { spawnAcc -= 1; spawnSymbol(); }
+    }
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = symbols.length - 1; i >= 0; i--) {
+      const sym = symbols[i];
+      const age = perf - sym.born;
+      if (age > sym.life) { symbols.splice(i, 1); continue; }
+      sym.x += sym.vx * dt;
+      sym.y += sym.vy * dt;
+      const p = age / sym.life;
+      const alpha = 0.55 * Math.sin(Math.PI * Math.min(1, p));
+      const [px, py] = warp(sym.x, sym.y, t);
+      ctx.font = '100 ' + sym.size + 'px Georgia, "Times New Roman", serif';
+      ctx.fillStyle = 'rgba(255,255,255,' + alpha.toFixed(3) + ')';
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(sym.rot * p);
+      ctx.fillText(sym.char, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /* Start */
+  renderStack();
+  renderProps();
+  requestAnimationFrame(draw);
+  </script>
+</body>
+</html>
