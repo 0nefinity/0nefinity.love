@@ -182,17 +182,38 @@
      kurve — parametrische Kurve (Kreis <-> Herz Morph, Welle, Puls)
      ===================================================================== */
 
-  // classic heart formula (mockup-identical), circle blended in linearly;
-  // both normalized by /16 so `size` is roughly the curve radius
-  function curvePoint(u, morph, size) {
-    var sinU = Math.sin(u);
-    var hx = 16 * sinU * sinU * sinU;
-    var hy = -(13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u));
-    var cx = 15 * Math.cos(u);
-    var cy = 15 * Math.sin(u);
+  // ported 1:1 from circleheart.html drawShapePath: the heart is NOT a
+  // heart formula but a deformed circle — top/bottom control points get
+  // pushed down by `def` (px), distributed over the ring by a bend
+  // function. theta in [0,2pi), y down (same as the original canvas).
+  function curveBend(theta, cosT, sinT, mode) {
+    if (mode === 'geometric') {
+      var absCos = Math.abs(cosT);
+      return Math.abs(sinT) - Math.sqrt(absCos * (1 - absCos));
+    }
+    if (mode === 'trueArc') {
+      var thetaNorm = theta / (Math.PI / 2);        // 0..4
+      var quadrant = Math.floor(thetaNorm);
+      var s = thetaNorm - quadrant;                 // 0..1 within quadrant
+      var t = (quadrant % 2 === 0) ? s : (1 - s);   // 0 -> 1 -> 0 -> 1 -> 0
+      return 1 - Math.sqrt(1 - t * t);              // convex circular arc
+    }
+    var t2 = 1 - Math.abs(cosT);
+    if (mode === 'arc') return 1 - Math.sqrt(1 - t2 * t2);
+    if (mode === 'sin2') return t2 * t2;
+    return t2; // 'cos'
+  }
+
+  // morph 100% == deformation of one radius (the original's snap point r):
+  // the notch reaches the center, the tip reaches 2r below it — the
+  // classic circleheart silhouette. Deformation scales linearly with morph.
+  function curvePoint(u, morph, size, mode) {
+    var cosT = Math.cos(u);
+    var sinT = Math.sin(u);
+    var def = morph * size; // defTop == defBottom (original 'both' drag)
     return [
-      ((1 - morph) * cx + morph * hx) * size / 16,
-      ((1 - morph) * cy + morph * hy) * size / 16
+      size * cosT,
+      -size * sinT + def * curveBend(u, cosT, sinT, mode)
     ];
   }
 
@@ -204,6 +225,17 @@
     schema: [
       { key: 'size', ctrl: 'slider', label: 'Größe', min: 10, max: 600, step: 1, value: 160 },
       { key: 'morph', ctrl: 'slider', label: 'Morph Kreis ↔ Herz', min: 0, max: 100, step: 1, value: 72, unit: '%' },
+      {
+        key: 'bend', ctrl: 'select', label: 'Rundung',
+        options: [
+          { value: 'geometric', label: 'Geometrisch' },
+          { value: 'cos', label: 'Cos' },
+          { value: 'arc', label: 'Kreisbogen' },
+          { value: 'sin2', label: 'Sin²' },
+          { value: 'trueArc', label: 'TrueArc' }
+        ],
+        value: 'trueArc'
+      },
       { key: 'freq', ctrl: 'slider', label: 'Wellen-Frequenz', min: 0, max: 40, step: 1, value: 0 },
       { key: 'amp', ctrl: 'slider', label: 'Wellen-Amplitude', min: 0, max: 100, step: 1, value: 0 },
       { key: 'width', ctrl: 'slider', label: 'Linienstärke', min: 0.5, max: 12, step: 0.1, value: 1.6, decimals: 1 },
@@ -224,6 +256,9 @@
       if (p.pulse) size *= 1 + 0.022 * Math.sin(t * 1.1);
 
       var morph = clamp(p.morph, 0, 100) / 100;
+      var bendMode = p.bend;
+      if (bendMode !== 'geometric' && bendMode !== 'cos' &&
+          bendMode !== 'arc' && bendMode !== 'sin2') bendMode = 'trueArc';
       var freq = Math.round(clamp(p.freq, 0, 40)); // integer keeps the loop closed
       var amp = clamp(p.amp, 0, 100);
       var rot = clamp(p.rot, -180, 180) * DEG;
@@ -235,7 +270,7 @@
       var pts = [];
       for (var i = 0; i < N; i++) {
         var u = (i / N) * Math.PI * 2;
-        var pt = curvePoint(u, morph, size);
+        var pt = curvePoint(u, morph, size, bendMode);
         var x = pt[0], y = pt[1];
 
         if (freq > 0 && amp > 0) {
@@ -274,8 +309,10 @@
       var p = block.params;
       var dx = wx - p.x;
       var dy = wy - p.y;
-      // heart peaks at ~1.06*size; add wave amplitude + a zoom-aware slack
-      var r = clamp(p.size, 1, 5000) * 1.15 + clamp(p.amp, 0, 100) + 12 / view.scale;
+      // deformed circle reaches (1+morph)*size below center; add wave
+      // amplitude + a zoom-aware slack
+      var m = clamp(p.morph, 0, 100) / 100;
+      var r = clamp(p.size, 1, 5000) * (1 + m) + clamp(p.amp, 0, 100) + 12 / view.scale;
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
