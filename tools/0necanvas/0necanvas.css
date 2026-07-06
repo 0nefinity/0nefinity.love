@@ -372,16 +372,117 @@ html, body {
 
 .prop-label-line {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 0.3rem;
   margin-bottom: 0.35rem;
 }
 .prop-label { font-size: 0.78rem; color: var(--ui-text-70); }
+.prop-label-line .prop-label { flex: 1 1 auto; min-width: 0; }
 .prop-value {
   font-size: 0.78rem;
   color: var(--text-color);
   font-variant-numeric: tabular-nums;
 }
+
+/* value display doubles as free numeric input (soft range: typing beyond
+   min/max stretches the slider instead of clamping) */
+input.prop-value-input {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 6.5em;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 0.15rem 0 1px;
+  margin: 0;
+  text-align: right;
+  font-family: inherit;
+  outline: none;
+  cursor: text;
+  transition: border-color 0.15s ease;
+}
+input.prop-value-input:hover { border-bottom-color: var(--ui-border); }
+input.prop-value-input:focus {
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.prop-cfg-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--ui-text-40);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.prop-cfg-btn:hover { color: var(--text-color); background: var(--ui-fill-08); }
+
+/* per-slider range popover (min/max/step, session-only) */
+.prop-cfg-pop {
+  position: fixed;
+  z-index: 70;
+  width: 200px;
+  background: var(--panel-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem 0.6rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+}
+.cfg-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.cfg-pop-row + .cfg-pop-row { margin-top: 0.35rem; }
+.cfg-pop-label {
+  flex: 0 0 3.4em;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-55);
+}
+input.cfg-pop-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  background: var(--ui-fill-05);
+  color: var(--text-color);
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  padding: 0.2rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+input.cfg-pop-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.cfg-pop-reset {
+  width: 100%;
+  margin-top: 0.55rem;
+  min-height: 32px;
+  background: transparent;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  color: var(--ui-text-55);
+  font-family: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.cfg-pop-reset:hover { color: var(--text-color); border-color: var(--ui-border-strong); }
 
 input[type="range"].prop-range {
   -webkit-appearance: none;
@@ -605,6 +706,26 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   transform: translateX(-50%) translateY(0);
 }
 
+/* ---------- Floating side panel (desktop, drag on BAUSTEINE header) ---------- */
+@media (min-width: 900px) {
+  #oc-stack-section .panel-head {
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+  #oc-stack-section .panel-head:active { cursor: grabbing; }
+  #oc-side.floating {
+    position: fixed;
+    z-index: 40;
+    width: var(--side-w);
+    border: 1px solid var(--ui-border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+  }
+  #oc-app.side-floating { grid-template-columns: 1fr 0; }
+}
+
 /* ---------- Mobile ---------- */
 @media (max-width: 899px) {
   #oc-app {
@@ -682,6 +803,10 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   .tool-btn .tb-label { display: none; }
   /* sliders: 40px-tall touch strip (track stays thin, vertically centered) */
   input[type="range"].prop-range { height: 40px; }
+  /* value input + range gear need >=40px tap targets */
+  input.prop-value-input { min-height: 40px; padding-top: 0; padding-bottom: 0; }
+  .prop-cfg-btn { width: 40px; height: 40px; }
+  input.cfg-pop-input, .cfg-pop-reset { min-height: 40px; }
   /* drag handles need a full-size touch target for reorder */
   .drag-handle {
     min-width: 40px;
