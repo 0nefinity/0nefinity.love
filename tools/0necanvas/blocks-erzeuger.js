@@ -59,9 +59,10 @@
   /* ---------- template stamping helpers ---------- */
 
   // options for "Was wird erzeugt": classic glyphs + one entry per ding.
-  // Script order (0necanvas.html) loads blocks-dinge.js before this file,
-  // so all ding types are registered here; a static fallback covers the
-  // (unexpected) case of an empty registry so the select never breaks.
+  // WICHTIG: wird als FUNKTIONS-Referenz ins Schema gehängt (nicht beim
+  // Laden ausgewertet) — blocks-muster.js/blocks-leben.js registrieren ihre
+  // Dinge erst NACH diesem Script; die UI wertet options() beim Panel-Aufbau
+  // aus, damit alle 8 Ding-Typen im Menü erscheinen.
   function templateOptions() {
     var opts = [{ value: 'symbols', label: 'Symbole' }];
     var all = (window.OneCanvas && typeof OneCanvas.blockDefs === 'function')
@@ -209,8 +210,9 @@
 
   // clone template prims onto one particle: translate/scale/rotate, fade
   // via _alpha (engine composes it with the prim color's own alpha)
-  function stampParticle(tpl, q, alpha, hairW, out) {
+  function stampParticle(tpl, q, alpha, hairW, out, ox, oy) {
     var s = q.size / tpl.extent;
+    var qx = q.x + ox, qy = q.y + oy;
     var cosR = Math.cos(q.rot), sinR = Math.sin(q.rot);
     for (var i = 0; i < tpl.prims.length; i++) {
       var p = tpl.prims[i];
@@ -224,8 +226,8 @@
         var pts = new Array(n);
         for (var j = 0; j < n; j += 2) {
           var x = src[j] * s, y = src[j + 1] * s;
-          pts[j] = q.x + x * cosR - y * sinR;
-          pts[j + 1] = q.y + x * sinR + y * cosR;
+          pts[j] = qx + x * cosR - y * sinR;
+          pts[j + 1] = qy + x * sinR + y * cosR;
         }
         out.push({
           k: 'poly', pts: pts, closed: !!p.closed, fill: !!p.fill,
@@ -236,8 +238,8 @@
         var gx = p.x * s, gy = p.y * s;
         out.push({
           k: 'glyph', ch: p.ch,
-          x: q.x + gx * cosR - gy * sinR,
-          y: q.y + gx * sinR + gy * cosR,
+          x: qx + gx * cosR - gy * sinR,
+          y: qy + gx * sinR + gy * cosR,
           size: p.size * s, rot: (p.rot || 0) + q.rot,
           col: p.col, glow: glow, _alpha: a
         });
@@ -245,8 +247,8 @@
         var dx = p.x * s, dy = p.y * s;
         out.push({
           k: 'dot',
-          x: q.x + dx * cosR - dy * sinR,
-          y: q.y + dx * sinR + dy * cosR,
+          x: qx + dx * cosR - dy * sinR,
+          y: qy + dx * sinR + dy * cosR,
           r: p.r * s, col: p.col, glow: glow, _alpha: a
         });
       }
@@ -282,15 +284,19 @@
     label: 'Spawner',
     icon: '✧',
     schema: [
-      { key: 'template', ctrl: 'select', label: 'Was wird erzeugt', options: templateOptions(), value: 'symbols' },
-      { key: 'rate', ctrl: 'slider', label: 'Rate', min: 0, max: 60, step: 0.5, value: 4, decimals: 1, unit: '/s' },
+      // options als Funktions-Referenz: UI wertet sie beim Panel-Aufbau aus
+      { key: 'template', ctrl: 'select', label: 'Was wird erzeugt', options: templateOptions, value: 'symbols' },
+      // Defaults so, dass Solo-Hinzufügen nach 2s sichtbar lebendig ist
+      { key: 'rate', ctrl: 'slider', label: 'Rate', min: 0, max: 60, step: 0.5, value: 8, decimals: 1, unit: '/s' },
       { key: 'life', ctrl: 'slider', label: 'Lebensdauer', min: 0.5, max: 20, step: 0.5, value: 6, decimals: 1, unit: 's' },
-      { key: 'sizeMin', ctrl: 'slider', label: 'Größe min', min: 4, max: 200, step: 1, value: 10 },
-      { key: 'sizeMax', ctrl: 'slider', label: 'Größe max', min: 4, max: 200, step: 1, value: 28 },
+      { key: 'sizeMin', ctrl: 'slider', label: 'Größe min', min: 4, max: 200, step: 1, value: 16 },
+      { key: 'sizeMax', ctrl: 'slider', label: 'Größe max', min: 4, max: 200, step: 1, value: 48 },
       { key: 'symbols', ctrl: 'text', label: 'Symbole', value: '∞ 0 1', maxlen: 32 },
       { key: 'drift', ctrl: 'slider', label: 'Drift', min: 0, max: 200, step: 1, value: 18 },
       { key: 'radius', ctrl: 'slider', label: 'Streuradius', min: 0, max: 2000, step: 10, value: 420 },
-      { key: 'glow', ctrl: 'slider', label: 'Glühen', min: 0, max: 40, step: 1, value: 6 }
+      { key: 'glow', ctrl: 'slider', label: 'Glühen', min: 0, max: 40, step: 1, value: 10 },
+      { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
+      { key: 'y', ctrl: 'slider', label: 'Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
     init: function (block) {
       block.state = {
@@ -347,7 +353,10 @@
       }
 
       // emit particles: template geometry stamps or classic glyphs, both
-      // fading with age (glyphs bake alpha into col, stamps use _alpha)
+      // fading with age (glyphs bake alpha into col, stamps use _alpha);
+      // particles live in local coords, x/y offsets them into the world
+      var ox = Number(p.x) || 0;
+      var oy = Number(p.y) || 0;
       var hairW = 0.75 / (view && view.scale > 0 ? view.scale : 1);
       var prims = [];
       for (var j = 0; j < st.particles.length; j++) {
@@ -361,13 +370,13 @@
           // quantize the fade so the engine's style groups merge across
           // particles of similar age (fewer stroke passes per frame)
           var aq = Math.ceil(a * TPL_ALPHA_STEPS) / TPL_ALPHA_STEPS;
-          stampParticle(tpl, q, aq, hairW, prims);
+          stampParticle(tpl, q, aq, hairW, prims, ox, oy);
         } else {
           prims.push({
             k: 'glyph',
             ch: q.ch,
-            x: q.x,
-            y: q.y,
+            x: ox + q.x,
+            y: oy + q.y,
             size: q.size,
             rot: q.rot,
             col: 'rgba(226,231,244,' + a.toFixed(3) + ')',
@@ -377,20 +386,34 @@
       }
       return prims;
     },
-    // no hit/drag: spawner has no position params in V1
+    // Zentrum-Handle (Muster wie strahlen): Streuzentrum verschiebbar
+    hit: function (block, wx, wy, view) {
+      var dx = wx - (Number(block.params.x) || 0);
+      var dy = wy - (Number(block.params.y) || 0);
+      var r = Math.max(40, 24 / view.scale);
+      return (dx * dx + dy * dy <= r * r) ? 'move' : null;
+    },
+    drag: function (block, handle, dwx, dwy) {
+      if (handle !== 'move') return;
+      var p = block.params;
+      p.x = (Number(p.x) || 0) + dwx;
+      p.y = (Number(p.y) || 0) + dwy;
+    },
     overlay: function (block, t, view) {
-      // dashed scatter-radius circle as selection aid
-      var r = Math.max(1, block.params.radius);
+      // dashed scatter-radius circle + center handle as selection aid
+      var p = block.params;
+      var cx = Number(p.x) || 0, cy = Number(p.y) || 0;
+      var r = Math.max(1, Math.abs(Number(p.radius) || 0));
       var pts = [];
       var n = 72;
       for (var i = 0; i <= n; i++) {
         var a = (i / n) * TAU;
-        pts.push(Math.cos(a) * r, Math.sin(a) * r);
+        pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
       }
       var w = 1 / (view.scale > 0 ? view.scale : 1);
       return [
         { k: 'poly', pts: pts, closed: true, w: w, dash: [8 * w, 8 * w], col: 'rgba(168,184,232,0.5)' },
-        { k: 'dot', x: 0, y: 0, r: 2.5 * w, col: 'rgba(168,184,232,0.8)' }
+        { k: 'dot', x: cx, y: cy, r: 3 * w, col: 'rgba(168,184,232,0.8)' }
       ];
     }
   });

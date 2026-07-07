@@ -101,6 +101,20 @@
       }
     },
 
+    // drops ?s= from the address bar and cancels any pending debounced
+    // write (used by the "Neu" reset — the next touch() re-persists)
+    clearUrl: function () {
+      if (timer) { clearTimeout(timer); timer = 0; }
+      try {
+        var params = new URLSearchParams(location.search);
+        params.delete('s');
+        var q = params.toString();
+        history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
+      } catch (e) {
+        console.warn('OneCanvasState: clearUrl failed', e);
+      }
+    },
+
     // current share URL; serializes fresh so pending debounced changes
     // are included even before the timer fires
     shareUrl: function () {

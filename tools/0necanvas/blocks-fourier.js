@@ -33,7 +33,8 @@
   var CYCLE_MIN = 600;
   var CYCLE_MAX = 1400;       // trace sample cap (fps guard)
   var BASE_PERIOD = 10;       // seconds per full drawing at Tempo 1
-  var MAX_CHARS = 12;
+  var MAX_CHARS = 40;         // echtes Budget bleibt MAX_POINTS (DFT-Input)
+  var MAX_CIRCLES = 9999;     // wie das Original; Koeffizientenzahl kappt eh
   var SEED = 42;              // fixed: reproducible 'zufall' order
   var TRAIL_BUCKETS = 6;      // alpha steps of the fading tail
   var CHAIN_COL = 'rgba(255,255,255,0.15)';
@@ -44,6 +45,11 @@
     v = Number(v);
     if (!isFinite(v)) return lo;
     return v < lo ? lo : (v > hi ? hi : v);
+  }
+
+  function num(v, fallback) {
+    v = Number(v);
+    return isFinite(v) ? v : fallback;
   }
 
   /* ---- seeded shuffle (fourieous port, reproducible random order) ---- */
@@ -265,7 +271,7 @@
       else rest.push(coeffs[i]);
     }
     rest.sort(function (a, b) { return b.amp - a.amp; });
-    var nRest = Math.min(rest.length, dc ? maxCircles - 1 : maxCircles);
+    var nRest = Math.min(rest.length, Math.max(0, dc ? maxCircles - 1 : maxCircles));
     var use = rest.slice(0, nRest);
     if (dc) use.unshift(dc);
     return use;
@@ -352,9 +358,11 @@
     }
     if (!st.coeffs) return false;
 
-    var circles = Math.round(clamp(p.circles, 2, 400));
-    var fs = clamp(p.freqScale, -8, 8);
-    var fo = Math.round(clamp(p.freqOffset, -100, 100));
+    // Caps weich: getippte Werte wirken; echte Grenze ist die
+    // Koeffizientenzahl (<= MAX_POINTS), nicht ein Geschmacks-Clamp
+    var circles = Math.round(clamp(p.circles, 0, MAX_CIRCLES));
+    var fs = num(p.freqScale, 1);
+    var fo = Math.round(num(p.freqOffset, 0));
     var sigC = circles + '|' + fs + '|' + fo;
     if (st.sigC !== sigC) {
       st.sigC = sigC;
@@ -389,9 +397,9 @@
     icon: '∮',
     schema: [
       { key: 'text', ctrl: 'text', label: 'Text', value: '0', maxlen: MAX_CHARS },
-      { key: 'circles', ctrl: 'slider', label: 'Kreise', min: 2, max: 300, step: 1, value: 80 },
-      { key: 'tempo', ctrl: 'slider', label: 'Tempo', min: 0.1, max: 8, step: 0.1, value: 1, decimals: 1 },
-      { key: 'trail', ctrl: 'slider', label: 'Nachleuchten', min: 5, max: 100, step: 1, value: 100, unit: '%' },
+      { key: 'circles', ctrl: 'slider', label: 'Kreise', min: 0, max: 300, step: 1, value: 80 },
+      { key: 'tempo', ctrl: 'slider', label: 'Tempo', min: 0, max: 8, step: 0.1, value: 1, decimals: 1 },
+      { key: 'trail', ctrl: 'slider', label: 'Nachleuchten', min: 0, max: 100, step: 1, value: 100, unit: '%' },
       { key: 'showCircles', ctrl: 'toggle', label: 'Kreise zeigen', value: true },
       {
         key: 'sort', ctrl: 'select', label: 'Sortierung',
@@ -406,7 +414,7 @@
       { key: 'freqOffset', ctrl: 'slider', label: 'Frequenz-Versatz', min: -30, max: 30, step: 1, value: 0 },
       { key: 'fontSize', ctrl: 'slider', label: 'Schriftgröße', min: 40, max: 300, step: 2, value: 120 },
       { key: 'size', ctrl: 'slider', label: 'Größe', min: 10, max: 400, step: 1, value: 160, unit: '%' },
-      { key: 'width', ctrl: 'slider', label: 'Linienstärke', min: 0.5, max: 8, step: 0.1, value: 1.6, decimals: 1 },
+      { key: 'width', ctrl: 'slider', label: 'Linienstärke', min: 0, max: 8, step: 0.1, value: 1.6, decimals: 1 },
       { key: 'glow', ctrl: 'slider', label: 'Glühen', min: 0, max: 40, step: 1, value: 12 },
       { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
       { key: 'y', ctrl: 'slider', label: 'Y', min: -2000, max: 2000, step: 1, value: 0 }
@@ -424,17 +432,18 @@
 
       var cyc = st.cycle;
       var cl = cyc.n;
-      var scale = clamp(p.size, 1, 2000) / 100;
-      var ox = clamp(p.x, -2000, 2000);
-      var oy = clamp(p.y, -2000, 2000);
-      var glow = clamp(p.glow, 0, 40);
-      var width = clamp(p.width, 0.5, 12);
+      var scale = num(p.size, 0) / 100; // frei: negativ = gespiegelt
+      var ox = num(p.x, 0);
+      var oy = num(p.y, 0);
+      var glow = Math.max(0, num(p.glow, 0));
+      var width = Math.max(0, num(p.width, 0)); // 0 = unsichtbar
       var hairW = 1 / (view && view.scale > 0 ? view.scale : 1);
 
-      // drawing parameter loops 0..1 (one full cycle = one drawn figure)
-      var tempo = clamp(p.tempo, 0, 20);
-      st.phase = (st.phase + dt * tempo / BASE_PERIOD) % 1;
-      if (st.total < 2) st.total += dt * tempo / BASE_PERIOD;
+      // drawing parameter loops 0..1 (one full cycle = one drawn figure);
+      // Tempo frei: negativ = rückwärts, Wrap bleibt in [0,1)
+      var tempo = num(p.tempo, 0);
+      st.phase = ((st.phase + dt * tempo / BASE_PERIOD) % 1 + 1) % 1;
+      if (st.total < 2) st.total += dt * Math.abs(tempo) / BASE_PERIOD;
 
       var prims = [];
       var i, j;
@@ -449,7 +458,7 @@
       var cx = ox, cy = oy;
       for (i = 0; i < m; i++) {
         var c = order[i];
-        var f = c.freq === 0 ? 0 : manipFreq(c.freq, clamp(p.freqScale, -8, 8), Math.round(clamp(p.freqOffset, -100, 100)));
+        var f = c.freq === 0 ? 0 : manipFreq(c.freq, num(p.freqScale, 1), Math.round(num(p.freqOffset, 0)));
         var ang = f * tt + c.phase;
         cx += c.amp * scale * Math.cos(ang);
         cy += c.amp * scale * Math.sin(ang);
@@ -478,7 +487,7 @@
       }
 
       /* -- trace: window of the precomputed cycle up to the current pen -- */
-      var trail = clamp(p.trail, 5, 100) / 100;
+      var trail = clamp(p.trail, 0, 100) / 100; // Anteil am Zyklus, 0 = keine Spur
       var pos = Math.floor(st.phase * cl) % cl;
       var visN = Math.min(cl, Math.floor(Math.min(st.total, trail) * cl));
       if (visN >= 2) {
@@ -532,32 +541,33 @@
       var p = block.params;
       var st = block.state;
       var maxR = (st && st.geo) ? st.geo.maxR : 120;
-      var r = maxR * clamp(p.size, 1, 2000) / 100 + 20 / view.scale;
-      var dx = wx - p.x, dy = wy - p.y;
+      var r = maxR * Math.abs(num(p.size, 0)) / 100 + 20 / view.scale;
+      var dx = wx - num(p.x, 0), dy = wy - num(p.y, 0);
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = num(block.params.x, 0) + dwx;
+      block.params.y = num(block.params.y, 0) + dwy;
     },
 
     overlay: function (block, t, view) {
       var p = block.params;
       var st = block.state;
       var maxR = (st && st.geo) ? st.geo.maxR : 120;
-      var r = Math.max(1, maxR * clamp(p.size, 1, 2000) / 100);
+      var r = Math.max(1, maxR * Math.abs(num(p.size, 0)) / 100);
       var w = 1 / (view.scale > 0 ? view.scale : 1);
+      var px = num(p.x, 0), py = num(p.y, 0);
       var pts = [];
       var n = 72;
       for (var i = 0; i <= n; i++) {
         var a = (i / n) * TAU;
-        pts.push(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r);
+        pts.push(px + Math.cos(a) * r, py + Math.sin(a) * r);
       }
       return [
         { k: 'poly', pts: pts, closed: true, w: w, dash: [8 * w, 8 * w], col: 'rgba(168,184,232,0.5)' },
-        { k: 'dot', x: p.x, y: p.y, r: 2.5 * w, col: 'rgba(168,184,232,0.8)' }
+        { k: 'dot', x: px, y: py, r: 2.5 * w, col: 'rgba(168,184,232,0.8)' }
       ];
     }
   });

@@ -68,6 +68,14 @@
   var FRAME_SLOW_MS = 26;       // shrink above this smoothed frame time
   var FRAME_FAST_MS = 17;       // grow below this (only while capped)
   var FRAME_TARGET_MS = 24;
+  // point budget (LOD for accumulating emitters): the instance budget
+  // caps the fanout, but a single instance of e.g. strahlen accumulates
+  // thousands of polylines — total path points are the real stroke cost.
+  // Light scenes stay far below POINT_CAP (no quality loss); when frames
+  // run slow and the instance controller has nothing left to shrink, the
+  // point cap shrinks instead and emitted prims are subsampled evenly.
+  var POINT_CAP = 120000;       // ceiling of emitted path points per frame
+  var POINT_MIN = 4000;
   // layer cache for time-invariant emitter/force-chain combinations
   var LAYER_MAX = 6;            // max cached full-size layers per scene
   var LAYER_HOT_MS = 300;       // continuous invalidation window -> render live
@@ -264,6 +272,68 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
+  // schema entry options may be an array OR a function returning one
+  // (lazy evaluation so late-registered block types are selectable)
+  function resolveOptions(entry) {
+    var o = entry && entry.options;
+    if (typeof o === 'function') {
+      try { o = o(); } catch (e) { o = null; }
+    }
+    return Array.isArray(o) ? o : null;
+  }
+
+  // type-checks a loaded param value against its schema entry; anything
+  // that does not fit (NaN, wrong type, unknown select value) falls back
+  // to the schema default. Finite out-of-range numbers stay untouched
+  // (soft ranges are a UI concept, not a load-time clamp).
+  function sanitizeParam(entry, v, dflt) {
+    switch (entry.ctrl) {
+      case 'slider': {
+        var n = Number(v);
+        return isFinite(n) ? n : dflt;
+      }
+      case 'toggle':
+        return !!v;
+      case 'select': {
+        var opts = resolveOptions(entry);
+        if (!opts) return v == null ? dflt : v;
+        for (var i = 0; i < opts.length; i++) {
+          if (opts[i].value === v || String(opts[i].value) === String(v)) {
+            return opts[i].value;
+          }
+        }
+        return dflt;
+      }
+      case 'text': {
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' && isFinite(v)) return String(v);
+        return dflt;
+      }
+      default: {
+        // hidden/unknown: structural check against the default's shape
+        if (Array.isArray(dflt)) {
+          if (!Array.isArray(v)) return deepClone(dflt);
+          var out = [];
+          for (var j = 0; j < v.length; j++) {
+            var nj = Number(v[j]);
+            if (!isFinite(nj)) return deepClone(dflt);
+            out.push(nj);
+          }
+          return out;
+        }
+        if (typeof dflt === 'number') {
+          var nn = Number(v);
+          return isFinite(nn) ? nn : dflt;
+        }
+        if (typeof dflt === 'boolean') return !!v;
+        if (typeof dflt === 'string') {
+          return typeof v === 'string' ? v : dflt;
+        }
+        return v;
+      }
+    }
+  }
+
   // def.timeInvariant: true, or predicate(block) — declares that emit()/
   // force() output depends only on params (not on t/dt), enabling the
   // layer cache. Absent/false = always live.
@@ -323,7 +393,11 @@
     return c;
   }
 
-  // mutates prim in place: all points/anchors through non-affine map
+  // mutates prim in place: all points/anchors through non-affine map.
+  // Glyphs/dots can't be bent point-wise, so the local rotation and
+  // stretch of the map are estimated numerically (map evaluated at the
+  // anchor plus a small offset) and applied to rot/size — a twist now
+  // visibly rotates symbols instead of only relocating their anchor.
   function mapPrim(p, map) {
     if (p.k === 'poly') {
       var pts = p.pts;
@@ -334,9 +408,57 @@
       }
     } else {
       var o = map(p.x, p.y);
+      var eps = p.k === 'glyph'
+        ? Math.max(0.5, (p.size || 10) * 0.05)
+        : Math.max(0.5, (p.r || 1) * 0.5);
+      var off = map(p.x + eps, p.y);
+      var dx = off[0] - o[0], dy = off[1] - o[1];
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (isFinite(len) && len > 1e-9) {
+        var k = len / eps;
+        if (p.k === 'glyph') {
+          p.rot = (p.rot || 0) + Math.atan2(dy, dx);
+          if (isFinite(k) && k > 0) p.size *= k;
+        } else if (isFinite(k) && k > 0) {
+          p.r *= k;
+        }
+      }
       p.x = o[0];
       p.y = o[1];
     }
+  }
+
+  // stroke-cost estimate of a prim in "points" (glyph/dot: flat 4)
+  function primPoints(p) {
+    return (p.k === 'poly' && p.pts) ? (p.pts.length >> 1) : 4;
+  }
+
+  // caps a prim list to a point budget by keeping an evenly spaced subset
+  // (accumulating emitters lose e.g. every n-th ray instead of a whole era).
+  // Returns { prims, pts, capped }.
+  function capPrims(prims, budget) {
+    var total = 0, i;
+    for (i = 0; i < prims.length; i++) total += primPoints(prims[i]);
+    if (total <= budget || prims.length <= 1) {
+      return { prims: prims, pts: total, capped: false };
+    }
+    var ratio = budget / total;
+    var out = [];
+    var kept = 0;
+    var want = 0;
+    for (i = 0; i < prims.length; i++) {
+      want += ratio;
+      if (out.length < want) {
+        out.push(prims[i]);
+        kept += primPoints(prims[i]);
+        if (kept >= budget) break;
+      }
+    }
+    if (!out.length) {
+      out.push(prims[0]);
+      kept = primPoints(prims[0]);
+    }
+    return { prims: out, pts: kept, capped: true };
   }
 
   function normalizeInstances(list) {
@@ -410,6 +532,10 @@
     var dynCooldown = 0;     // frames to wait before the next cap adjustment
     var drawnTotal = 0;      // instances consumed in the current frame
     var lastDrawn = 0;       // ... in the previous frame
+    var dynPointCap = POINT_CAP; // adaptive point budget (accumulating prims)
+    var pointBudget = 0;     // per-frame remaining point budget
+    var pointsTotal = 0;     // points consumed in the current frame
+    var lastPoints = 0;      // ... in the previous frame
     var frameEma = 0;        // smoothed frame interval (ms)
     var layers = new Map();  // block.id -> cached offscreen layer
 
@@ -536,9 +662,14 @@
           state: {}
         };
         if (bd.params && typeof bd.params === 'object') {
+          var entryByKey = {};
+          (def.schema || []).forEach(function (en) { entryByKey[en.key] = en; });
           for (var key in block.params) {
             if (Object.prototype.hasOwnProperty.call(bd.params, key)) {
-              block.params[key] = bd.params[key];
+              var en2 = entryByKey[key];
+              block.params[key] = en2
+                ? sanitizeParam(en2, bd.params[key], block.params[key])
+                : bd.params[key];
             }
           }
         }
@@ -553,6 +684,7 @@
       }
       sc.selectedId = null;
       dynCap = INSTANCE_CAP; // fresh scene: let the LOD controller re-settle
+      dynPointCap = POINT_CAP;
       fireSelect();
       fireStack();
     };
@@ -1079,7 +1211,7 @@
     // interaction stays responsive; the cache rebuilds when input settles.
     // Returns the instances consumed from the per-frame budget (0 when
     // served from or rebuilt into the cache — rebuild cost is one-off).
-    function renderCachedBlock(block, def, chain, camM, view, sig, localBudget, dt) {
+    function renderCachedBlock(block, def, chain, camM, view, sig, localBudget, localPts, dt) {
       var layer = layers.get(block.id);
       if (!layer) {
         layer = { canvas: null, ctx: null, sig: null, valid: false, capHit: false, lastChange: -1e9 };
@@ -1118,7 +1250,11 @@
 
       if (hot) {
         // interaction in progress: skip the cache, draw at the live budget
-        return processBlock(prims, chain, camM, view, localBudget);
+        var cp = capPrims(prims, localPts);
+        if (cp.capped) capHit = true;
+        pointBudget -= cp.pts;
+        pointsTotal += cp.pts;
+        return processBlock(cp.prims, chain, camM, view, localBudget);
       }
 
       if (!layer.canvas) {
@@ -1164,6 +1300,8 @@
       capHit = false;
       instBudget = Math.min(INSTANCE_CAP, dynCap);
       drawnTotal = 0;
+      pointBudget = Math.min(POINT_CAP, dynPointCap);
+      pointsTotal = 0;
 
       var view = computeView();
       var camM = cameraMatrix();
@@ -1216,6 +1354,7 @@
           break;
         }
         var local = Math.max(1, Math.floor(instBudget / Math.max(1, emittersLeft)));
+        var localPts = Math.max(256, Math.floor(Math.max(0, pointBudget) / Math.max(1, emittersLeft)));
         var used = 0;
         if (cacheable && (layers.has(block.id) || layers.size < LAYER_MAX)) {
           var sig = JSON.stringify([
@@ -1223,7 +1362,7 @@
             sc.camera.x, sc.camera.y, sc.camera.scale,
             cssW, cssH, dpr
           ]);
-          used = renderCachedBlock(block, def, chain, camM, view, sig, local, dt);
+          used = renderCachedBlock(block, def, chain, camM, view, sig, local, localPts, dt);
         } else {
           var prims;
           try {
@@ -1233,7 +1372,13 @@
             emittersLeft--;
             continue;
           }
-          if (prims.length) used = processBlock(prims, chain, camM, view, local);
+          if (prims.length) {
+            var cpl = capPrims(prims, localPts);
+            if (cpl.capped) capHit = true;
+            pointBudget -= cpl.pts;
+            pointsTotal += cpl.pts;
+            used = processBlock(cpl.prims, chain, camM, view, local);
+          }
         }
         instBudget -= used;
         drawnTotal += used;
@@ -1299,8 +1444,16 @@
           dynCap = Math.max(DYN_MIN, Math.floor(
             Math.min(dynCap, lastDrawn) * Math.max(0.3, FRAME_TARGET_MS / frameEma)));
           dynCooldown = 12;
-        } else if (frameEma < FRAME_FAST_MS && sc.instanceLimitHit && dynCap < INSTANCE_CAP) {
-          dynCap = Math.min(INSTANCE_CAP, dynCap + Math.max(4, dynCap >> 3));
+        } else if (frameEma > FRAME_SLOW_MS && lastPoints > POINT_MIN && dynPointCap > POINT_MIN) {
+          // instance shrink exhausted/inapplicable: throttle accumulated
+          // per-block prims (total path points) instead
+          dynPointCap = Math.max(POINT_MIN, Math.floor(
+            Math.min(dynPointCap, lastPoints) * Math.max(0.3, FRAME_TARGET_MS / frameEma)));
+          dynCooldown = 12;
+        } else if (frameEma < FRAME_FAST_MS && sc.instanceLimitHit &&
+                   (dynCap < INSTANCE_CAP || dynPointCap < POINT_CAP)) {
+          if (dynCap < INSTANCE_CAP) dynCap = Math.min(INSTANCE_CAP, dynCap + Math.max(4, dynCap >> 3));
+          if (dynPointCap < POINT_CAP) dynPointCap = Math.min(POINT_CAP, dynPointCap + Math.max(256, dynPointCap >> 3));
           dynCooldown = 12;
         }
       }
@@ -1311,6 +1464,7 @@
         console.error('OneCanvas: render frame failed', e);
       }
       lastDrawn = drawnTotal;
+      lastPoints = pointsTotal;
     }
 
     rafId = requestAnimationFrame(frame);

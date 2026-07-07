@@ -21,6 +21,9 @@
 
   var DEG = Math.PI / 180;
   var IDENT = [1, 0, 0, 1, 0, 0];
+  var INSTANCE_BUDGET = 1500; // mirrors engine INSTANCE_CAP (not exported):
+  // Instanzlisten leicht ÜBER dem Budget erzeugen ist ok — die Engine kappt
+  // selbst und zeigt die Limit-Pille; weit darüber wäre nur Alloc-Verschwendung.
 
   /* ---------- helpers ---------- */
 
@@ -92,7 +95,8 @@
       var p = block.params;
       var art = p.art;
       var strength = num(p.staerke, 0) / 100; // -1 .. 1
-      var radius = Math.max(1, num(p.radius, 420));
+      // Radius frei: <=0 => falloff ist überall 0 => Kraft neutral
+      var radius = num(p.radius, 420);
       var cx = num(p.cx, 0);
       var cy = num(p.cy, 0);
 
@@ -148,8 +152,8 @@
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'center') return;
       var p = block.params;
-      p.cx = clamp(num(p.cx, 0) + dwx, -2000, 2000);
-      p.cy = clamp(num(p.cy, 0) + dwy, -2000, 2000);
+      p.cx = num(p.cx, 0) + dwx;
+      p.cy = num(p.cy, 0) + dwy;
     },
 
     overlay: function (block, t, view) {
@@ -157,7 +161,7 @@
       var s = Math.max(1e-6, view.scale);
       var cx = num(p.cx, 0);
       var cy = num(p.cy, 0);
-      var r = Math.max(1, num(p.radius, 420));
+      var r = Math.max(1, Math.abs(num(p.radius, 420)));
       return [
         { k: 'poly', pts: circlePts(cx, cy, r, 96), closed: true,
           w: 1.25 / s, col: 'rgba(168,184,232,0.55)', dash: [7 / s, 7 / s] },
@@ -174,13 +178,15 @@
     type: 'fraktal',
     kind: 'kraft',
     label: 'Fraktal-Wiederholung',
-    icon: '✦', // ✦
+    icon: '❂', // eigenes Icon (war ✦ wie verzerren/kaleidoskop)
     schema: [
       { key: 'anzahl', ctrl: 'slider', label: 'Anzahl', min: 0, max: 60, step: 1, value: 8 },
       { key: 'skalierung', ctrl: 'slider', label: 'Skalierung/Schritt', min: 0.5, max: 1.5, step: 0.01, value: 0.86, decimals: 2 },
       { key: 'rotation', ctrl: 'slider', label: 'Rotation/Schritt', min: -90, max: 90, step: 1, value: 12, unit: '°' },
       { key: 'abfall', ctrl: 'slider', label: 'Deckkraft-Abfall', min: 0, max: 1, step: 0.01, value: 0.35, decimals: 2 },
-      { key: 'cx', ctrl: 'slider', label: 'Zentrum X', min: -2000, max: 2000, step: 1, value: 0 },
+      // Default-Zentrum leicht versetzt: deckungsgleich mit einem
+      // zentrierten Symbol wären alle Kopien unsichtbar gestapelt
+      { key: 'cx', ctrl: 'slider', label: 'Zentrum X', min: -2000, max: 2000, step: 1, value: 60 },
       { key: 'cy', ctrl: 'slider', label: 'Zentrum Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
 
@@ -189,7 +195,9 @@
 
     force: function (block) {
       var p = block.params;
-      var n = Math.max(0, Math.round(num(p.anzahl, 0)));
+      // frei nach oben, aber nie mehr Instanzen bauen als die Engine je
+      // zeichnet (Budget+1 => Engine kappt und zeigt die Limit-Pille)
+      var n = Math.min(INSTANCE_BUDGET + 1, Math.max(0, Math.round(num(p.anzahl, 0))));
       var s = num(p.skalierung, 1);
       var rot = num(p.rotation, 0) * DEG;
       var decay = clamp(num(p.abfall, 0), 0, 1);
@@ -232,8 +240,8 @@
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'center') return;
       var p = block.params;
-      p.cx = clamp(num(p.cx, 0) + dwx, -2000, 2000);
-      p.cy = clamp(num(p.cy, 0) + dwy, -2000, 2000);
+      p.cx = num(p.cx, 0) + dwx;
+      p.cy = num(p.cy, 0) + dwy;
     },
 
     overlay: function (block, t, view) {
@@ -253,11 +261,12 @@
     type: 'kaleidoskop',
     kind: 'kraft',
     label: 'Kaleidoskop',
-    icon: '✦', // ✦
+    icon: '❋', // eigenes Icon (war ✦ wie verzerren/fraktal)
     schema: [
-      { key: 'segmente', ctrl: 'slider', label: 'Segmente', min: 1, max: 24, step: 1, value: 6 },
+      { key: 'segmente', ctrl: 'slider', label: 'Segmente', min: 0, max: 24, step: 1, value: 6 },
       { key: 'spiegeln', ctrl: 'toggle', label: 'Spiegeln', value: true },
-      { key: 'offset', ctrl: 'slider', label: 'Winkel-Offset', min: -180, max: 180, step: 1, value: 0, unit: '°' }
+      { key: 'offset', ctrl: 'slider', label: 'Winkel-Offset', min: -180, max: 180, step: 1, value: 0, unit: '°' },
+      { key: 'deckkraft', ctrl: 'slider', label: 'Deckkraft', min: 0, max: 4, step: 0.05, value: 1, decimals: 2 }
     ],
 
     // instance matrices depend only on params -> layer-cache compatible
@@ -265,25 +274,57 @@
 
     force: function (block) {
       var p = block.params;
-      var n = Math.max(1, Math.round(num(p.segmente, 1)));
+      // 0 Segmente = Identität: leere Instanzliste -> die Engine normalisiert
+      // sie zur Einheitsmatrix, der Inhalt bleibt unverändert sichtbar
+      // (mathematisch ehrlich: 0 Symmetrie-Operationen = keine Veränderung).
+      // Negative Werte: Drehrichtung ist symmetrisch -> Betrag.
+      // Ober-Cap = Instanz-Budget+1: Engine kappt selbst + zeigt die Pille.
+      var n = Math.min(INSTANCE_BUDGET + 1, Math.round(Math.abs(num(p.segmente, 0))));
       var mirror = !!p.spiegeln;
       var offset = num(p.offset, 0) * DEG;
+      var deck = Math.max(0, num(p.deckkraft, 1));
 
       return {
         affine: true,
         instances: function () {
+          if (!n) return []; // 0 = Identität
+          // Weiß-Sättigungs-Schutz: Alpha ~ 1/sqrt(Instanzzahl),
+          // 'Deckkraft' übersteuert (1 = Auto-Normalisierung)
+          var nInst = mirror ? n * 2 : n;
+          var alpha = Math.min(1, deck * 3 / Math.sqrt(nInst));
+          if (alpha <= 0) return [];
           var list = [];
           for (var k = 0; k < n; k++) {
             var a = offset + (k / n) * Math.PI * 2;
             var ca = Math.cos(a), sa = Math.sin(a);
             // R(a)
-            list.push([ca, sa, -sa, ca, 0, 0]);
+            list.push({ m: [ca, sa, -sa, ca, 0, 0], alpha: alpha });
             // R(a) · scale(1,-1): mirror across the segment's base line
-            if (mirror) list.push([ca, sa, sa, -ca, 0, 0]);
+            if (mirror) list.push({ m: [ca, sa, sa, -ca, 0, 0], alpha: alpha });
           }
           return list;
         }
       };
+    },
+
+    // Ursprungs-Andeutung: Zentrum-Punkt + gestrichelte Segmentgrenzen
+    overlay: function (block, t, view) {
+      var p = block.params;
+      var s = Math.max(1e-6, view.scale);
+      var n = Math.min(48, Math.round(Math.abs(num(p.segmente, 0))));
+      var offset = num(p.offset, 0) * DEG;
+      var R = 110 / s; // bildschirm-konstant, dezent
+      var prims = [
+        { k: 'dot', x: 0, y: 0, r: 4.5 / s, col: '#a8b8e8', glow: 8 }
+      ];
+      for (var k = 0; k < n; k++) {
+        var a = offset + (k / n) * Math.PI * 2;
+        prims.push({
+          k: 'poly', pts: [0, 0, Math.cos(a) * R, Math.sin(a) * R],
+          w: 1 / s, dash: [5 / s, 5 / s], col: 'rgba(168,184,232,0.45)'
+        });
+      }
+      return prims;
     }
   });
 })();
