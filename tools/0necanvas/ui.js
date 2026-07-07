@@ -1,10 +1,13 @@
 /* 0necanvas ui — window.OneCanvasUI
  *
- * Stack panel (drag-reorder, eye, delete), schema-driven properties renderer,
+ * Stack panel (drag-reorder, eye, delete), properties panel via
+ * tools/controls.js (Controls.createPanel — the original panel used across
+ * the site: drag, bar mode, steppers with hold-repeat, free value input,
+ * ⋮ min/max/step popup, own select popup, mobile bottom sheet),
  * library overlay (3 tabs), tools move/warp/draw with full pointer gestures
  * (block drag, pan, wheel zoom on cursor, pinch, freehand strokes),
  * share/fullscreen,
- * mobile sheet tabs, default scene, instance-limit pill.
+ * mobile sheet, default scene, instance-limit pill.
  * Plan: docs/superpowers/plans/2026-07-06-0necanvas-v1-plan.md section 6.
  *
  * Robustness notes:
@@ -30,7 +33,6 @@
   var toastEl = null;
   var toastTimer = 0;
   var suppressRowClickUntil = 0;
-  var propControls = [];      // live control refs for refreshPropsValues()
 
   /* ---------- small helpers ---------- */
 
@@ -93,40 +95,6 @@
       }
     }
     return false;
-  }
-
-  function fmtValue(v, entry) {
-    var decimals = entry.decimals;
-    if (decimals == null) {
-      var step = entry.step;
-      decimals = (step && step < 1) ? (step < 0.1 ? 2 : 1) : 0;
-    }
-    var n = Number(v);
-    var s = isFinite(n) ? n.toFixed(decimals) : String(v);
-    return s + (entry.unit ? ' ' + entry.unit : '');
-  }
-
-  // like fmtValue, but keeps typed precision beyond entry.decimals
-  function fmtValueSmart(v, entry) {
-    var n = Number(v);
-    if (!isFinite(n)) return fmtValue(v, entry);
-    var decimals = entry.decimals;
-    if (decimals == null) {
-      var step = entry.step;
-      decimals = (step && step < 1) ? (step < 0.1 ? 2 : 1) : 0;
-    }
-    var s = n.toFixed(decimals);
-    if (parseFloat(s) !== n) s = String(n);
-    return s + (entry.unit ? ' ' + entry.unit : '');
-  }
-
-  // "5 000", "5,5 px", "1e3" -> number; null when nothing numeric was typed
-  function parseTypedNumber(raw) {
-    var s = String(raw).trim().replace(/\s+/g, '').replace(',', '.');
-    var m = s.match(/-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/);
-    if (!m) return null;
-    var n = parseFloat(m[0]);
-    return isFinite(n) ? n : null;
   }
 
   // reconstruct the engine's per-frame view object for hit()/drag() calls;
@@ -414,385 +382,187 @@
     handle.addEventListener('pointercancel', onEnd);
   }
 
-  /* ---------- runtime slider ranges (session-only, never serialized) ---------- */
+  /* ---------- properties panel (tools/controls.js, the site's original) ---------- */
+  // One Controls.createPanel singleton for the whole page (like the other
+  // tools); selecting a block swaps its schema into a panel section via
+  // removeSection/beginSection (cleans params/callbacks — no zombie panels).
+  // Panel position, bar mode and mobile sheet position survive selection
+  // changes that way.
 
-  var runtimeRanges = {};   // 'blockId:key' -> {min, max, step}
+  var propsPanel = null;       // ControlPanel singleton (page lifetime)
+  var propsBlock = null;       // block the panel is currently bound to
+  var propsPanelKeys = [];     // schema keys mirrored into the panel
+  var propsTitleIcon = null;
+  var propsTitleName = null;
 
-  function rangeOverride(block, entry, create) {
-    var k = block.id + ':' + entry.key;
-    if (!runtimeRanges[k] && create) {
-      runtimeRanges[k] = { min: entry.min, max: entry.max, step: entry.step };
+  // controls.js switches to its mobile bottom sheet at this width
+  function isSheetMobile() {
+    return window.innerWidth <= 768;
+  }
+
+  function ensurePropsPanel() {
+    if (propsPanel) return propsPanel;
+    if (!window.Controls || typeof Controls.createPanel !== 'function') {
+      console.warn('0necanvas ui: tools/controls.js fehlt — kein Eigenschaften-Panel');
+      return null;
     }
-    return runtimeRanges[k] || null;
-  }
+    var panel = Controls.createPanel({ id: 'oc-ctrl-panel', position: 'left' });
 
-  function effRange(block, entry) {
-    var o = rangeOverride(block, entry, false);
-    var min = (o && isFinite(o.min)) ? o.min : entry.min;
-    var max = (o && isFinite(o.max)) ? o.max : entry.max;
-    if (min > max) { var t = min; min = max; max = t; }
-    var step = (o && isFinite(o.step) && o.step > 0) ? o.step : entry.step;
-    return { min: min, max: max, step: step };
-  }
-
-  // soft range: typed values outside min/max stretch the range instead of clamping
-  function widenRange(block, entry, v) {
-    var r = effRange(block, entry);
-    if (v >= r.min && v <= r.max) return;
-    var o = rangeOverride(block, entry, true);
-    if (v < r.min) o.min = v;
-    if (v > r.max) o.max = v;
-  }
-
-  /* ---------- range popover (min/max/step, per slider) ---------- */
-
-  var rangePop = null;   // { el, anchor }
-
-  function closeRangePopover() {
-    if (!rangePop) return;
-    if (rangePop.el.parentNode) rangePop.el.parentNode.removeChild(rangePop.el);
-    rangePop = null;
-  }
-
-  function toggleRangePopover(anchor, block, entry, onApply) {
-    if (rangePop && rangePop.anchor === anchor) { closeRangePopover(); return; }
-    closeRangePopover();
-
-    var el = document.createElement('div');
-    el.className = 'prop-cfg-pop';
-
-    var fields = [
-      { f: 'min', label: 'Min' },
-      { f: 'max', label: 'Max' },
-      { f: 'step', label: 'Schritt' }
-    ];
-    var inputs = {};
-
-    function syncInputs() {
-      var r = effRange(block, entry);
-      for (var f in inputs) inputs[f].value = String(r[f]);
+    // header title: type icon + block name (info only; drag handle untouched)
+    if (panel.headerEl) {
+      var title = document.createElement('span');
+      title.className = 'oc-ctrl-title';
+      propsTitleIcon = document.createElement('span');
+      propsTitleIcon.className = 'type-icon ding';
+      propsTitleName = document.createElement('span');
+      propsTitleName.className = 'oc-ctrl-title-name';
+      title.appendChild(propsTitleIcon);
+      title.appendChild(propsTitleName);
+      panel.headerEl.appendChild(title);
     }
 
-    for (var i = 0; i < fields.length; i++) {
-      (function (fd) {
-        var rowEl = document.createElement('div');
-        rowEl.className = 'cfg-pop-row';
-        var labEl = document.createElement('span');
-        labEl.className = 'cfg-pop-label';
-        labEl.textContent = fd.label;
-        var inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'cfg-pop-input';
-        inp.setAttribute('inputmode', 'decimal');
-        inp.setAttribute('autocomplete', 'off');
-        inp.setAttribute('spellcheck', 'false');
-        inp.setAttribute('aria-label', fd.label + ' für ' + entry.label);
-        inputs[fd.f] = inp;
-
-        function commit() {
-          var v = parseTypedNumber(inp.value);
-          if (v == null || (fd.f === 'step' && !(v > 0))) { syncInputs(); return; }
-          rangeOverride(block, entry, true)[fd.f] = v;
-          onApply();
-          syncInputs();
-        }
-        inp.addEventListener('change', commit);
-        inp.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-          else if (e.key === 'Escape') { e.preventDefault(); syncInputs(); inp.blur(); e.stopPropagation(); }
-        });
-
-        rowEl.appendChild(labEl);
-        rowEl.appendChild(inp);
-        el.appendChild(rowEl);
-      })(fields[i]);
-    }
-
-    var reset = document.createElement('button');
-    reset.type = 'button';
-    reset.className = 'cfg-pop-reset';
-    reset.textContent = 'Zurücksetzen';
-    reset.addEventListener('click', function () {
-      delete runtimeRanges[block.id + ':' + entry.key];
-      onApply();
-      syncInputs();
+    panel.addHeaderButton({
+      icon: '⠿',
+      title: 'Bausteine (Auswahl aufheben)',
+      onClick: function () { scene.select(null); }
     });
-    el.appendChild(reset);
+    panel.addResetButton({
+      icon: '↺',
+      title: 'Block auf Standardwerte zurücksetzen',
+      onClick: resetBlockParams
+    });
 
-    document.body.appendChild(el);
-    syncInputs();
-
-    var a = anchor.getBoundingClientRect();
-    var pw = el.offsetWidth;
-    var ph = el.offsetHeight;
-    var left = clamp(a.right - pw, 8, Math.max(8, window.innerWidth - pw - 8));
-    var top = a.bottom + 6;
-    if (top + ph > window.innerHeight - 8) top = Math.max(8, a.top - ph - 6);
-    el.style.left = left + 'px';
-    el.style.top = top + 'px';
-
-    rangePop = { el: el, anchor: anchor };
+    propsPanel = panel;
+    return panel;
   }
 
-  /* ---------- properties panel (schema-driven) ---------- */
-
-  function renderProps() {
-    closeRangePopover();
-    var body = els.propsBody;
-    body.innerHTML = '';
-    propControls = [];
-
-    var block = getBlock(scene.selectedId);
-    if (els.propsTitle) {
-      els.propsTitle.textContent = block ? block.name : 'Eigenschaften';
+  function setPanelShown(shown) {
+    document.body.classList.toggle('oc-props-open', !!shown);
+    if (!propsPanel || !propsPanel.el) return;
+    var wasHidden = propsPanel.el.classList.contains('oc-hidden');
+    propsPanel.el.classList.toggle('oc-hidden', !shown);
+    if (shown && wasHidden) {
+      // panel could not measure itself while hidden — let controls.js re-layout
+      try { window.dispatchEvent(new Event('resize')); } catch (e) { /* noop */ }
     }
-    if (!block) {
-      var empty = document.createElement('div');
-      empty.className = 'props-empty';
-      empty.textContent = 'Kein Baustein angewählt';
-      body.appendChild(empty);
-      return;
+  }
+
+  // detach the current block (drops rows + their callbacks) and hide
+  function unbindPropsPanel() {
+    if (propsPanel && propsBlock) {
+      try { propsPanel.removeSection('props'); } catch (e) { console.warn('0necanvas ui: removeSection failed', e); }
     }
+    propsBlock = null;
+    propsPanelKeys = [];
+    setPanelShown(false);
+  }
+
+  function panelSliderLabel(entry) {
+    return entry.unit ? entry.label + ' (' + entry.unit + ')' : entry.label;
+  }
+
+  function bindPropsPanel(block) {
+    var panel = ensurePropsPanel();
+    if (!panel) return;
+    if (propsBlock) {
+      try { panel.removeSection('props'); } catch (e) { console.warn('0necanvas ui: removeSection failed', e); }
+    }
+    propsBlock = block;
+    propsPanelKeys = [];
 
     var def = scene.defs.get(block.type);
     var kind = def ? def.kind : 'ding';
+    if (propsTitleIcon) {
+      propsTitleIcon.className = 'type-icon ' + kind;
+      propsTitleIcon.textContent = (def && def.icon) || '◆';
+    }
+    if (propsTitleName) propsTitleName.textContent = block.name;
 
-    var head = document.createElement('div');
-    head.className = 'props-blockname';
-    var hIcon = document.createElement('span');
-    hIcon.className = 'type-icon ' + kind;
-    hIcon.textContent = (def && def.icon) || '◆';
-    var hName = document.createElement('span');
-    hName.className = 'name';
-    hName.textContent = block.name;
-    var hKind = document.createElement('span');
-    hKind.className = 'kind';
-    hKind.textContent = KIND_LABEL[kind] || kind;
-    head.appendChild(hIcon);
-    head.appendChild(hName);
-    head.appendChild(hKind);
-    body.appendChild(head);
-
+    panel.beginSection('props');
     var schema = (def && def.schema) || [];
     for (var i = 0; i < schema.length; i++) {
-      var node = buildPropControl(block, schema[i]);
-      if (node) body.appendChild(node);
+      addPanelControl(panel, block, schema[i]);
     }
+    panel.endSection();
   }
 
-  function buildPropControl(block, entry) {
+  function addPanelControl(panel, block, entry) {
+    function apply(v) {
+      block.params[entry.key] = v;
+      touchState();
+    }
     switch (entry.ctrl) {
-      case 'slider': return buildSlider(block, entry);
-      case 'toggle': return buildToggle(block, entry);
-      case 'select': return buildSelect(block, entry);
-      case 'text': return buildText(block, entry);
-      case 'hidden': return null; // serialized param without UI (pfad pts)
+      case 'slider':
+        panel.addSlider(entry.key, {
+          label: panelSliderLabel(entry),
+          min: entry.min,
+          max: entry.max,
+          step: entry.step,
+          value: Number(block.params[entry.key]),
+          decimals: entry.decimals,
+          onChange: apply
+        });
+        propsPanelKeys.push(entry.key);
+        break;
+      case 'toggle':
+        panel.addToggle(entry.key, {
+          label: entry.label,
+          value: !!block.params[entry.key],
+          onChange: function (v) { apply(!!v); }
+        });
+        propsPanelKeys.push(entry.key);
+        break;
+      case 'select':
+        panel.addSelect(entry.key, {
+          label: entry.label,
+          options: entryOptions(entry),
+          value: block.params[entry.key],
+          onChange: apply
+        });
+        propsPanelKeys.push(entry.key);
+        break;
+      case 'text':
+        panel.addInput(entry.key, {
+          label: entry.label,
+          value: block.params[entry.key] == null ? '' : String(block.params[entry.key]),
+          onChange: function (v) { apply(String(v)); }
+        });
+        if (entry.maxlen && panel.bodyEl) {
+          var inp = panel.bodyEl.querySelector('[data-key="' + entry.key + '"] .ctrl-input');
+          if (inp) inp.maxLength = entry.maxlen;
+        }
+        propsPanelKeys.push(entry.key);
+        break;
+      case 'hidden':
+        break; // serialized param without UI (pfad pts)
       default:
         console.warn('0necanvas ui: unknown ctrl "' + entry.ctrl + '" for key "' + entry.key + '"');
-        return null;
     }
   }
 
-  function buildSlider(block, entry) {
-    var row = document.createElement('div');
-    row.className = 'prop-row';
-    var line = document.createElement('div');
-    line.className = 'prop-label-line';
-    var lab = document.createElement('span');
-    lab.className = 'prop-label';
-    lab.textContent = entry.label;
-
-    var val = document.createElement('input');
-    val.type = 'text';
-    val.className = 'prop-value prop-value-input';
-    val.setAttribute('inputmode', 'decimal');
-    val.setAttribute('autocomplete', 'off');
-    val.setAttribute('spellcheck', 'false');
-    val.setAttribute('aria-label', entry.label + ': Wert');
-    val.value = fmtValueSmart(block.params[entry.key], entry);
-
-    var cfgBtn = document.createElement('button');
-    cfgBtn.type = 'button';
-    cfgBtn.className = 'prop-cfg-btn';
-    cfgBtn.textContent = '⚙︎';
-    cfgBtn.title = 'Bereich einstellen';
-    cfgBtn.setAttribute('aria-label', entry.label + ': Bereich einstellen');
-
-    line.appendChild(lab);
-    line.appendChild(val);
-    line.appendChild(cfgBtn);
-
-    var input = document.createElement('input');
-    input.type = 'range';
-    input.className = 'prop-range';
-
-    function syncRangeAttrs() {
-      var r = effRange(block, entry);
-      input.min = r.min;
-      input.max = r.max;
-      input.step = (isFinite(r.step) && r.step > 0) ? r.step : 'any';
-      var v = Number(block.params[entry.key]);
-      input.value = isFinite(v) ? clamp(v, r.min, r.max) : r.min;
+  // reset button: back to the block's schema defaults ('hidden' entries —
+  // drawn pfad points — survive; the stroke itself is not throwaway state)
+  function resetBlockParams() {
+    var block = propsBlock;
+    if (!block || !propsPanel) return;
+    var def = scene.defs.get(block.type);
+    var schema = (def && def.schema) || [];
+    for (var i = 0; i < schema.length; i++) {
+      var entry = schema[i];
+      if (entry.ctrl === 'hidden') continue;
+      if (!hasKey(block.params, entry.key)) continue;
+      block.params[entry.key] = entry.value;
+      propsPanel.set(entry.key, entry.value); // updates UI without onChange
     }
-    syncRangeAttrs();
-
-    input.addEventListener('input', function () {
-      var v = parseFloat(input.value);
-      block.params[entry.key] = v;
-      val.value = fmtValueSmart(v, entry);
-      touchState();
-    });
-
-    // free-typed values: outside min/max is allowed, range stretches (soft range)
-    function commitTyped() {
-      var v = parseTypedNumber(val.value);
-      if (v == null) {
-        val.value = fmtValueSmart(block.params[entry.key], entry);
-        return;
-      }
-      block.params[entry.key] = v;
-      widenRange(block, entry, v);
-      syncRangeAttrs();
-      val.value = fmtValueSmart(v, entry);
-      touchState();
-    }
-    val.addEventListener('focus', function () { val.select(); });
-    val.addEventListener('blur', commitTyped);
-    val.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        val.blur();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        val.value = fmtValueSmart(block.params[entry.key], entry);
-        val.blur();
-      }
-    });
-
-    cfgBtn.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      toggleRangePopover(cfgBtn, block, entry, syncRangeAttrs);
-    });
-
-    row.appendChild(line);
-    row.appendChild(input);
-    propControls.push({
-      block: block, entry: entry,
-      refresh: function () {
-        var v = block.params[entry.key];
-        var n = Number(v);
-        if (isFinite(n)) {
-          if (n < parseFloat(input.min)) input.min = n;
-          if (n > parseFloat(input.max)) input.max = n;
-        }
-        input.value = v;
-        if (document.activeElement !== val) {
-          val.value = fmtValueSmart(v, entry);
-        }
-      }
-    });
-    return row;
+    touchState();
   }
 
-  function buildToggle(block, entry) {
-    var row = document.createElement('div');
-    row.className = 'prop-toggle-row' + (block.params[entry.key] ? ' on' : '');
-    var lab = document.createElement('span');
-    lab.className = 'prop-label';
-    lab.textContent = entry.label;
-    var sw = document.createElement('span');
-    sw.className = 'switch';
-    row.appendChild(lab);
-    row.appendChild(sw);
-    row.addEventListener('click', function () {
-      block.params[entry.key] = !block.params[entry.key];
-      row.classList.toggle('on', !!block.params[entry.key]);
-      touchState();
-    });
-    propControls.push({
-      block: block, entry: entry,
-      refresh: function () { row.classList.toggle('on', !!block.params[entry.key]); }
-    });
-    return row;
-  }
-
-  function buildSelect(block, entry) {
-    var row = document.createElement('div');
-    row.className = 'prop-row';
-    var line = document.createElement('div');
-    line.className = 'prop-label-line';
-    var lab = document.createElement('span');
-    lab.className = 'prop-label';
-    lab.textContent = entry.label;
-    line.appendChild(lab);
-
-    var sel = document.createElement('select');
-    sel.className = 'prop-select';
-    var options = entryOptions(entry);
-    for (var i = 0; i < options.length; i++) {
-      var opt = document.createElement('option');
-      opt.value = String(options[i].value);
-      opt.textContent = options[i].label;
-      opt.selected = (options[i].value === block.params[entry.key]);
-      sel.appendChild(opt);
-    }
-    sel.addEventListener('change', function () {
-      // preserve the original option value type (string/number)
-      for (var j = 0; j < options.length; j++) {
-        if (String(options[j].value) === sel.value) {
-          block.params[entry.key] = options[j].value;
-          break;
-        }
-      }
-      touchState();
-    });
-
-    row.appendChild(line);
-    row.appendChild(sel);
-    propControls.push({
-      block: block, entry: entry,
-      refresh: function () { sel.value = String(block.params[entry.key]); }
-    });
-    return row;
-  }
-
-  function buildText(block, entry) {
-    var row = document.createElement('div');
-    row.className = 'prop-row';
-    var line = document.createElement('div');
-    line.className = 'prop-label-line';
-    var lab = document.createElement('span');
-    lab.className = 'prop-label';
-    lab.textContent = entry.label;
-    line.appendChild(lab);
-
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'prop-text';
-    if (entry.maxlen) input.maxLength = entry.maxlen;
-    input.value = block.params[entry.key] == null ? '' : String(block.params[entry.key]);
-    input.addEventListener('input', function () {
-      block.params[entry.key] = input.value;
-      touchState();
-    });
-
-    row.appendChild(line);
-    row.appendChild(input);
-    propControls.push({
-      block: block, entry: entry,
-      refresh: function () {
-        if (document.activeElement === input) return;
-        input.value = block.params[entry.key] == null ? '' : String(block.params[entry.key]);
-      }
-    });
-    return row;
-  }
-
-  // sync visible control values from params (used during canvas drags)
+  // sync panel UI from params without firing onChange (used during canvas drags)
   function refreshPropsValues() {
-    for (var i = 0; i < propControls.length; i++) {
-      propControls[i].refresh();
+    if (!propsPanel || !propsBlock) return;
+    for (var i = 0; i < propsPanelKeys.length; i++) {
+      var k = propsPanelKeys[i];
+      propsPanel.set(k, propsBlock.params[k]);
     }
   }
 
@@ -1565,10 +1335,10 @@
     });
   }
 
-  /* ---------- mobile sheet tabs ---------- */
+  /* ---------- mobile sheet ---------- */
 
-  // boot-time selects (default scene) must not flip the sheet to
-  // "Eigenschaften" — only USER selections after boot do
+  // boot-time selects (default scene) must not shove the controls.js
+  // bottom sheet over the Bausteine sheet — only USER selections do
   var autoPropsTabArmed = false;
   var sheetCollapsed = false;
   var suppressTabClickUntil = 0;
@@ -1628,8 +1398,6 @@
       app: $('oc-app'),
       side: $('oc-side'),
       stackList: $('oc-stack-list'),
-      propsBody: $('oc-props-body'),
-      propsTitle: $('oc-props-title'),
       libOverlay: $('oc-lib-overlay'),
       libGrid: $('oc-lib-grid'),
       libTabs: $('oc-lib-tabs'),
@@ -1650,26 +1418,31 @@
     // scene hooks
     sc.onStackChange(function () {
       renderStack();
-      // selected block may be gone or its schema-bound controls stale
+      // selected block may be gone (delete without select event, load)
       if (!getBlock(sc.selectedId)) {
-        renderProps();
+        unbindPropsPanel();
       }
     });
     sc.onSelect(function (id) {
       updateStackSelection();
-      renderProps();
-      if (id && autoPropsTabArmed) {
-        setMobileTab('props');
-        setSheetCollapsed(false);
+      var block = getBlock(id);
+      if (!block) { unbindPropsPanel(); return; }
+      if (!autoPropsTabArmed && isSheetMobile()) {
+        // boot select on mobile: Bausteine sheet stays in front; the
+        // controls sheet opens on the first user selection instead
+        unbindPropsPanel();
+        return;
       }
+      if (propsBlock !== block) bindPropsPanel(block);
+      else refreshPropsValues();
+      setPanelShown(true);
     });
     // boot (default scene / URL load) runs synchronously after init —
-    // arm the auto tab switch only afterwards
+    // arm the panel auto-open only afterwards
     setTimeout(function () { autoPropsTabArmed = true; }, 0);
 
-    // stack + props initial paint
+    // stack initial paint
     renderStack();
-    renderProps();
 
     // library
     els.addBtn.addEventListener('click', openLibrary);
@@ -1679,17 +1452,10 @@
       if (e.target === els.libOverlay) closeLibrary();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { closeLibrary(); closeRangePopover(); }
+      if (e.key === 'Escape') closeLibrary();
     });
 
-    // range popover closes on tap/click outside
-    document.addEventListener('pointerdown', function (e) {
-      if (rangePop && !rangePop.el.contains(e.target) && !rangePop.anchor.contains(e.target)) {
-        closeRangePopover();
-      }
-    });
-
-    // floating properties/stack panel (desktop)
+    // floating stack panel (desktop)
     initPanelDrag();
 
     // tools

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>0nefinity — canvas</title>
+  <link rel="stylesheet" href="/tools/0necanvas/controls-theme.css" />
   <link rel="stylesheet" href="/tools/0necanvas/0necanvas.css" />
 </head>
 <body>
@@ -43,7 +44,6 @@
     <aside id="oc-side" data-mtab="stack">
       <div class="mobile-tabs" id="oc-sheet-tabs">
         <button class="m-tab active" data-mtab-btn="stack">Bausteine</button>
-        <button class="m-tab" data-mtab-btn="props">Eigenschaften</button>
       </div>
 
       <section class="panel-section" id="oc-stack-section">
@@ -52,13 +52,6 @@
           <button id="oc-add-btn" title="Baustein hinzuf&uuml;gen" aria-label="Baustein hinzuf&uuml;gen">+</button>
         </div>
         <ul id="oc-stack-list"></ul>
-      </section>
-
-      <section class="panel-section" id="oc-props-section">
-        <div class="panel-head">
-          <span class="panel-title" id="oc-props-title">Eigenschaften</span>
-        </div>
-        <div id="oc-props-body"></div>
       </section>
     </aside>
 
@@ -75,6 +68,8 @@
     </div>
   </div>
 
+  <script src="/tools/tools/decimal.js"></script>
+  <script src="/tools/controls.js"></script>
   <script src="/tools/0necanvas/engine.js"></script>
   <script src="/tools/0necanvas/blocks-dinge.js"></script>
   <script src="/tools/0necanvas/blocks-erzeuger.js"></script>

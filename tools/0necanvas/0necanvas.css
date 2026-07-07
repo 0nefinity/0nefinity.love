@@ -209,8 +209,7 @@ html, body {
   flex-direction: column;
   min-height: 0;
 }
-#oc-stack-section { flex: 0 1 auto; }
-#oc-props-section { flex: 1 1 0; border-top: 1px solid var(--ui-border-soft); }
+#oc-stack-section { flex: 1 1 auto; }
 
 .panel-head {
   display: flex;
@@ -359,13 +358,7 @@ html, body {
 }
 .del-btn:hover { color: var(--text-color); }
 
-/* ---------- Properties ---------- */
-#oc-props-body {
-  overflow-y: auto;
-  min-height: 0;
-  padding: 0.15rem 1.1rem 1.2rem;
-}
-
+/* library "keine Bausteine" hint (class kept from the old props renderer) */
 .props-empty {
   color: var(--ui-text-40);
   font-size: 0.8rem;
@@ -373,241 +366,76 @@ html, body {
   text-align: center;
 }
 
-.props-blockname {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0.4rem 0 0.2rem;
-  padding-bottom: 0.55rem;
-  border-bottom: 1px solid var(--ui-border-soft);
-}
-.props-blockname .type-icon { font-size: 0.85rem; }
-.props-blockname .name { font-size: 0.92rem; }
-.props-blockname .kind {
-  font-size: 0.62rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ui-text-40);
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.prop-row { margin: 0.85rem 0 0; }
-
-.prop-label-line {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-bottom: 0.35rem;
-}
-.prop-label { font-size: 0.78rem; color: var(--ui-text-70); }
-.prop-label-line .prop-label { flex: 1 1 auto; min-width: 0; }
-.prop-value {
-  font-size: 0.78rem;
-  color: var(--text-color);
-  font-variant-numeric: tabular-nums;
+/* ---------- Eigenschaften-Panel (tools/controls.js) ---------- */
+/* Die .ctrl-* Regeln kommen 1:1 aus meta.css (siehe controls-theme.css).
+   0necanvas lädt meta.css bewusst NICHT (globale body/*-Regeln zerschießen
+   das App-Layout), also bekommen die controls-Elemente hier die
+   Original-Variablenwerte aus meta.css :root gescoped. */
+.ctrl-panel,
+.ctrl-select-popup,
+.ctrl-config-popup {
+  --ui-surface: color-mix(in srgb, var(--bg-color, #111) 86%, transparent);
+  --ui-surface-strong: color-mix(in srgb, var(--bg-color, #111) 95%, transparent);
+  --ui-border-soft: color-mix(in srgb, var(--text-color, #fff) 10%, transparent);
+  --ui-border: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
+  --ui-border-strong: color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
+  --ui-border-stronger: color-mix(in srgb, var(--text-color, #fff) 50%, transparent);
+  --ui-fill-05: color-mix(in srgb, var(--text-color, #fff) 5%, transparent);
+  --ui-fill-08: color-mix(in srgb, var(--text-color, #fff) 8%, transparent);
+  --ui-fill-10: color-mix(in srgb, var(--text-color, #fff) 10%, transparent);
+  --ui-fill-12: color-mix(in srgb, var(--text-color, #fff) 12%, transparent);
+  --ui-fill-15: color-mix(in srgb, var(--text-color, #fff) 15%, transparent);
+  --ui-fill-20: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
+  --ui-fill-25: color-mix(in srgb, var(--text-color, #fff) 25%, transparent);
+  --ui-text-30: color-mix(in srgb, var(--text-color, #fff) 30%, transparent);
+  --ui-text-40: color-mix(in srgb, var(--text-color, #fff) 40%, transparent);
+  --ui-text-70: color-mix(in srgb, var(--text-color, #fff) 70%, transparent);
+  --ui-text-80: color-mix(in srgb, var(--text-color, #fff) 80%, transparent);
+  --ui-text-90: color-mix(in srgb, var(--text-color, #fff) 90%, transparent);
+  --visible-viewport-height: 100dvh;
+  --visible-viewport-bottom: 0px;
 }
 
-/* value display doubles as free numeric input (soft range: typing beyond
-   min/max stretches the slider instead of clamping) */
-input.prop-value-input {
-  appearance: none;
-  flex: 0 0 auto;
-  width: 6.5em;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
-  border-radius: 0;
-  padding: 0.15rem 0 1px;
-  margin: 0;
-  text-align: right;
-  font-family: inherit;
-  outline: none;
-  cursor: text;
-  transition: border-color 0.15s ease;
-}
-input.prop-value-input:hover { border-bottom-color: var(--ui-border); }
-input.prop-value-input:focus {
-  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
+/* meta.css sizes the panel in rem against a 16px root; this app's root is
+   14px, which would shrink it to 420px. Pin the original width in px. */
+@media (min-width: 769px) {
+  .ctrl-panel { width: clamp(400px, calc(100vw - 64px), 480px); }
 }
 
-.prop-cfg-btn {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--ui-text-40);
-  font-size: 0.85rem;
-  font-family: inherit;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-.prop-cfg-btn:hover { color: var(--text-color); background: var(--ui-fill-08); }
+/* panel built but not shown (mobile boot: Bausteine first) */
+.ctrl-panel.oc-hidden { display: none !important; }
 
-/* per-slider range popover (min/max/step, session-only) */
-.prop-cfg-pop {
-  position: fixed;
-  z-index: 70;
-  width: 200px;
-  background: var(--panel-bg);
-  border: 1px solid var(--ui-border);
-  border-radius: 12px;
-  padding: 0.6rem 0.7rem 0.6rem;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
-}
-.cfg-pop-row {
+/* header title: type icon + block name (info only, drag handle keeps focus) */
+.oc-ctrl-title {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-}
-.cfg-pop-row + .cfg-pop-row { margin-top: 0.35rem; }
-.cfg-pop-label {
-  flex: 0 0 3.4em;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  color: var(--ui-text-55);
-}
-input.cfg-pop-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 32px;
-  background: var(--ui-fill-05);
-  color: var(--text-color);
-  border: 1px solid var(--ui-border);
-  border-radius: 7px;
-  padding: 0.2rem 0.5rem;
-  font-family: inherit;
-  font-size: 0.78rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  outline: none;
-}
-input.cfg-pop-input:focus {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-}
-.cfg-pop-reset {
-  width: 100%;
-  margin-top: 0.55rem;
-  min-height: 32px;
-  background: transparent;
-  border: 1px solid var(--ui-border);
-  border-radius: 7px;
-  color: var(--ui-text-55);
-  font-family: inherit;
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.cfg-pop-reset:hover { color: var(--text-color); border-color: var(--ui-border-strong); }
-
-input[type="range"].prop-range {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 26px;
-  background: transparent;
-  margin: 0;
-  cursor: pointer;
-}
-input[type="range"].prop-range::-webkit-slider-runnable-track {
-  height: 3px;
-  background: var(--ui-fill-12);
-  border-radius: 2px;
-}
-input[type="range"].prop-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5.5px;
-  border-radius: 50%;
-  background: var(--text-color);
-  transition: transform 0.12s ease;
-}
-input[type="range"].prop-range::-webkit-slider-thumb:hover { transform: scale(1.2); }
-input[type="range"].prop-range::-moz-range-track {
-  height: 3px;
-  background: var(--ui-fill-12);
-  border-radius: 2px;
-}
-input[type="range"].prop-range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: none;
-  border-radius: 50%;
-  background: var(--text-color);
-}
-
-.prop-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 40px;
-  cursor: pointer;
+  gap: 0.45rem;
+  max-width: 34%;
+  overflow: hidden;
+  pointer-events: none;
   user-select: none;
 }
-.prop-toggle-row .prop-label { pointer-events: none; }
-
-.switch {
-  position: relative;
-  flex: 0 0 auto;
-  width: 36px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--ui-fill-12);
-  border: 1px solid var(--ui-border);
-  transition: background 0.15s ease, border-color 0.15s ease;
+.oc-ctrl-title .type-icon { font-size: 0.85rem; }
+.oc-ctrl-title-name {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-text-70);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--ui-text-70);
-  transition: transform 0.15s ease, background 0.15s ease;
-}
-.prop-toggle-row.on .switch {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-.prop-toggle-row.on .switch::after {
-  transform: translateX(16px);
-  background: var(--text-color);
-}
-
-select.prop-select,
-input.prop-text {
-  width: 100%;
-  min-height: 40px;
-  background: var(--ui-fill-05);
-  color: var(--text-color);
-  border: 1px solid var(--ui-border);
-  border-radius: 8px;
-  padding: 0.45rem 0.6rem;
-  font-family: inherit;
-  font-size: 0.82rem;
-  outline: none;
-}
-select.prop-select { cursor: pointer; }
-select.prop-select:focus,
-input.prop-text:focus { border-color: var(--ui-border-strong); }
-select.prop-select option { background: var(--panel-bg); color: var(--text-color); }
+.ctrl-panel.bar-mode .oc-ctrl-title { display: none; }
 
 /* ---------- Library overlay ---------- */
 #oc-lib-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 300; /* above the controls.js panel (z 100) */
   display: none;
   align-items: center;
   justify-content: center;
@@ -721,7 +549,7 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   padding: 0.55rem 1.1rem;
   font-size: 0.8rem;
   letter-spacing: 0.05em;
-  z-index: 60;
+  z-index: 310; /* above library overlay + controls.js panel */
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -834,14 +662,10 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   }
   .m-tab.active { color: var(--text-color); border-bottom-color: var(--accent); }
 
-  #oc-side[data-mtab="stack"] #oc-props-section { display: none; }
-  #oc-side[data-mtab="props"] #oc-stack-section { display: none; }
-  #oc-props-section { border-top: none; flex: 1 1 auto; }
   #oc-stack-section { flex: 1 1 auto; }
 
-  /* avoid double titles: tabs already label the sections, plus moves into tab row */
+  /* avoid double titles: the tab row already labels the sheet, plus moves into it */
   .panel-title { display: none; }
-  #oc-props-section .panel-head { display: none; }
   #oc-stack-section .panel-head {
     position: absolute;
     top: 0.5rem;
@@ -873,12 +697,6 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
     letter-spacing: 0.04em;
     color: inherit;
   }
-  /* sliders: 40px-tall touch strip (track stays thin, vertically centered) */
-  input[type="range"].prop-range { height: 40px; }
-  /* value input + range gear need >=40px tap targets */
-  input.prop-value-input { min-height: 40px; padding-top: 0; padding-bottom: 0; }
-  .prop-cfg-btn { width: 40px; height: 40px; }
-  input.cfg-pop-input, .cfg-pop-reset { min-height: 40px; }
   /* drag handles need a full-size touch target for reorder */
   .drag-handle {
     min-width: 40px;
@@ -891,6 +709,13 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   .tile-grid { grid-template-columns: repeat(2, 1fr); }
   .overlay-card { max-height: 82vh; max-height: 82dvh; }
   .limit-pill { display: none; }
+}
+
+/* controls.js switches to its own bottom sheet at <=768px: while the
+   Eigenschaften-sheet is open, our Bausteine-sheet steps aside (one sheet
+   at a time; the panel's ⠿-button and canvas tap-to-deselect lead back) */
+@media (max-width: 768px) {
+  body.oc-props-open #oc-side { display: none; }
 }
 
 /* very narrow phones: drop the least useful topbar items */
