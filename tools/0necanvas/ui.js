@@ -1,8 +1,9 @@
 /* 0necanvas ui — window.OneCanvasUI
  *
  * Stack panel (drag-reorder, eye, delete), schema-driven properties renderer,
- * library overlay (3 tabs), tools move/warp with full pointer gestures
- * (block drag, pan, wheel zoom on cursor, pinch), share/fullscreen,
+ * library overlay (3 tabs), tools move/warp/draw with full pointer gestures
+ * (block drag, pan, wheel zoom on cursor, pinch, freehand strokes),
+ * share/fullscreen,
  * mobile sheet tabs, default scene, instance-limit pill.
  * Plan: docs/superpowers/plans/2026-07-06-0necanvas-v1-plan.md section 6.
  *
@@ -101,7 +102,8 @@
     return isFinite(n) ? n : null;
   }
 
-  // reconstruct the engine's per-frame view object for hit()/drag() calls
+  // reconstruct the engine's per-frame view object for hit()/drag() calls;
+  // selectedId lets blocks expose extra handles only while selected (pfad)
   function makeView() {
     var r = els.canvas.getBoundingClientRect();
     var s = scene.camera.scale;
@@ -115,7 +117,8 @@
       left: scene.camera.x - halfW,
       right: scene.camera.x + halfW,
       top: scene.camera.y - halfH,
-      bottom: scene.camera.y + halfH
+      bottom: scene.camera.y + halfH,
+      selectedId: scene.selectedId
     };
   }
 
@@ -479,6 +482,7 @@
       case 'toggle': return buildToggle(block, entry);
       case 'select': return buildSelect(block, entry);
       case 'text': return buildText(block, entry);
+      case 'hidden': return null; // serialized param without UI (pfad pts)
       default:
         console.warn('0necanvas ui: unknown ctrl "' + entry.ctrl + '" for key "' + entry.key + '"');
         return null;
@@ -772,7 +776,113 @@
     tool = name;
     els.toolMove.classList.toggle('active', name === 'move');
     els.toolWarp.classList.toggle('active', name === 'warp');
-    els.canvas.style.cursor = (name === 'warp') ? 'crosshair' : '';
+    if (els.toolDraw) els.toolDraw.classList.toggle('active', name === 'draw');
+    els.canvas.style.cursor = (name === 'warp' || name === 'draw') ? 'crosshair' : '';
+  }
+
+  /* ---------- draw tool (freehand -> pfad block) ---------- */
+
+  var DRAW_MIN_STEP_PX = 2.5; // css px between recorded stroke points
+  var DRAW_TOL_PX = 1.5;      // RDP decimation tolerance (css px)
+  var DRAW_MAX_PTS = 200;     // control point cap after decimation
+
+  // Ramer-Douglas-Peucker on a flat [x,y,...] list (iterative, order kept)
+  function rdpDecimate(pts, tol) {
+    var n = pts.length >> 1;
+    if (n <= 2) return pts.slice();
+    var keep = new Uint8Array(n);
+    keep[0] = 1;
+    keep[n - 1] = 1;
+    var tol2 = tol * tol;
+    var stack = [[0, n - 1]];
+    while (stack.length) {
+      var seg = stack.pop();
+      var a = seg[0], b = seg[1];
+      if (b - a < 2) continue;
+      var ax = pts[2 * a], ay = pts[2 * a + 1];
+      var dx = pts[2 * b] - ax, dy = pts[2 * b + 1] - ay;
+      var len2 = dx * dx + dy * dy;
+      var maxD = -1, maxI = -1;
+      for (var i = a + 1; i < b; i++) {
+        var px = pts[2 * i] - ax, py = pts[2 * i + 1] - ay;
+        var d;
+        if (len2 > 1e-12) {
+          var t = (px * dx + py * dy) / len2;
+          if (t < 0) t = 0; else if (t > 1) t = 1;
+          var ex = px - dx * t, ey = py - dy * t;
+          d = ex * ex + ey * ey;
+        } else {
+          d = px * px + py * py;
+        }
+        if (d > maxD) { maxD = d; maxI = i; }
+      }
+      if (maxD > tol2 && maxI > 0) {
+        keep[maxI] = 1;
+        stack.push([a, maxI], [maxI, b]);
+      }
+    }
+    var out = [];
+    for (var k = 0; k < n; k++) {
+      if (keep[k]) out.push(pts[2 * k], pts[2 * k + 1]);
+    }
+    return out;
+  }
+
+  // stroke starts: create the pfad block immediately so the line is live
+  // while drawing (points are world coords, block origin stays at 0/0)
+  function beginDraw(world) {
+    if (!scene.defs.has('pfad')) {
+      console.warn('0necanvas ui: draw tool has no "pfad" block type available');
+      return null;
+    }
+    var block = scene.add('pfad');
+    block.params.x = 0;
+    block.params.y = 0;
+    block.params.rot = 0;
+    block.params.pts = [world[0], world[1]];
+    return block;
+  }
+
+  // pointer up: decimate, round, recenter on the centroid, select
+  function finishDraw(g) {
+    var block = g.block;
+    var raw = block.params.pts;
+    if (!raw || raw.length < 6) { // tap or micro stroke: no path
+      scene.remove(block.id);
+      touchState();
+      return;
+    }
+    var s = Math.max(1e-6, scene.camera.scale);
+    var dec = rdpDecimate(raw, DRAW_TOL_PX / s);
+    var n = dec.length >> 1;
+    if (n > DRAW_MAX_PTS) { // stride resample keeps endpoints
+      var res = [];
+      for (var r = 0; r < DRAW_MAX_PTS - 1; r++) {
+        var idx = Math.floor(r * (n - 1) / (DRAW_MAX_PTS - 1));
+        res.push(dec[2 * idx], dec[2 * idx + 1]);
+      }
+      res.push(dec[2 * n - 2], dec[2 * n - 1]);
+      dec = res;
+      n = dec.length >> 1;
+    }
+    var cx = 0, cy = 0, i;
+    for (i = 0; i < dec.length; i += 2) { cx += dec[i]; cy += dec[i + 1]; }
+    cx = Math.round(cx / n);
+    cy = Math.round(cy / n);
+    for (i = 0; i < dec.length; i += 2) {
+      dec[i] = Math.round((dec[i] - cx) * 10) / 10;
+      dec[i + 1] = Math.round((dec[i + 1] - cy) * 10) / 10;
+    }
+    block.params.pts = dec;
+    block.params.x = cx;
+    block.params.y = cy;
+    scene.select(block.id);
+    touchState();
+  }
+
+  function cancelDraw(g) {
+    if (g && g.block) scene.remove(g.block.id);
+    touchState();
   }
 
   /* ---------- warp target resolution ---------- */
@@ -820,6 +930,7 @@
   //  {mode:'drag-block', block, handle, lastW:[wx,wy]}
   //  {mode:'pan', last:{x,y}, moved:false, emptyTap:true}
   //  {mode:'warp', block, lastW:[wx,wy]}
+  //  {mode:'draw', block}            (freehand stroke -> pfad block)
   //  {mode:'pinch', prevDist, prevMid:{x,y}}
 
   function zoomAt(sx, sy, factor, cssW, cssH) {
@@ -879,12 +990,23 @@
     try { els.canvas.setPointerCapture(ev.pointerId); } catch (e) { /* noop */ }
 
     if (pointers.size === 2) {
+      // a second finger during a stroke means "zoom, not draw":
+      // the half stroke is discarded, pinch takes over
+      if (gesture && gesture.mode === 'draw') cancelDraw(gesture);
       startPinch();
       return;
     }
     if (pointers.size > 2) return;
 
     var world = scene.screenToWorld(pt.x, pt.y);
+
+    if (tool === 'draw') {
+      var db = beginDraw(world);
+      gesture = db
+        ? { mode: 'draw', block: db }
+        : { mode: 'pan', last: { x: pt.x, y: pt.y }, moved: false, emptyTap: false };
+      return;
+    }
 
     if (tool === 'warp') {
       var wb = resolveWarpBlock();
@@ -947,6 +1069,18 @@
       return;
     }
 
+    if (gesture.mode === 'draw') {
+      var dw = scene.screenToWorld(pt.x, pt.y);
+      var rawPts = gesture.block.params.pts;
+      var lx = rawPts[rawPts.length - 2];
+      var ly = rawPts[rawPts.length - 1];
+      var minStep = DRAW_MIN_STEP_PX / Math.max(1e-6, scene.camera.scale);
+      if (Math.hypot(dw[0] - lx, dw[1] - ly) >= minStep) {
+        rawPts.push(dw[0], dw[1]);
+      }
+      return;
+    }
+
     if (gesture.mode === 'warp') {
       var w2 = scene.screenToWorld(pt.x, pt.y);
       if (setWarpCenter(gesture.block, w2[0], w2[1], gesture.lastW)) {
@@ -983,10 +1117,33 @@
       return;
     }
 
+    if (gesture && gesture.mode === 'draw') {
+      finishDraw(gesture);
+      gesture = null;
+      return;
+    }
+
     if (gesture && gesture.mode === 'pan' && !gesture.moved && gesture.emptyTap) {
       scene.select(null); // tap on empty canvas deselects
     }
     gesture = null;
+  }
+
+  // double-click delegates to the block def (pfad: delete control point)
+  function onCanvasDblClick(ev) {
+    ev.preventDefault();
+    if (tool !== 'move') return;
+    var pt = canvasPoint(ev);
+    var world = scene.screenToWorld(pt.x, pt.y);
+    var hit = hitTest(world[0], world[1], makeView());
+    if (!hit || typeof hit.def.doubleClick !== 'function') return;
+    var changed = false;
+    try {
+      changed = !!hit.def.doubleClick(hit.block, hit.handle);
+    } catch (e) {
+      console.error('0necanvas ui: doubleClick() failed for "' + hit.block.type + '"', e);
+    }
+    if (changed) touchState();
   }
 
   function onCanvasWheel(ev) {
@@ -1165,6 +1322,7 @@
       addBtn: $('oc-add-btn'),
       toolMove: $('oc-tool-move'),
       toolWarp: $('oc-tool-warp'),
+      toolDraw: $('oc-tool-draw'),
       shareBtn: $('oc-share-btn'),
       fullscreenBtn: $('oc-fullscreen-btn'),
       sheetTabs: $('oc-sheet-tabs'),
@@ -1213,6 +1371,7 @@
     // tools
     els.toolMove.addEventListener('click', function () { setTool('move'); });
     els.toolWarp.addEventListener('click', function () { setTool('warp'); });
+    if (els.toolDraw) els.toolDraw.addEventListener('click', function () { setTool('draw'); });
     setTool('move');
 
     // canvas gestures
@@ -1220,6 +1379,7 @@
     els.canvas.addEventListener('pointermove', onCanvasMove);
     els.canvas.addEventListener('pointerup', onCanvasUp);
     els.canvas.addEventListener('pointercancel', onCanvasUp);
+    els.canvas.addEventListener('dblclick', onCanvasDblClick);
     els.canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
 
     // actions

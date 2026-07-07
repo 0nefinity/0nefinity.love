@@ -798,6 +798,8 @@ select.prop-select option { background: var(--panel-bg); color: var(--text-color
   .del-btn { opacity: 1; pointer-events: auto; }
 
   .wordmark { letter-spacing: 0.16em; font-size: 0.85rem; }
+  /* three tool buttons: the wordmark suffix has to go or the bar overflows */
+  .wordmark .sep, .wordmark .wm-sub { display: none; }
   /* icon-only tool buttons still need a >=44px square tap target */
   .tool-btn { padding: 0 0.7rem; min-width: 44px; min-height: 44px; justify-content: center; }
   .tool-btn .tb-label { display: none; }
