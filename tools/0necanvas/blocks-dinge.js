@@ -291,13 +291,25 @@
       { key: 'rot', ctrl: 'slider', label: 'Rotation', min: -180, max: 180, step: 1, value: 0, unit: '°' }
     ],
 
-    // static unless the pulse animation is on
-    timeInvariant: function (block) { return !block.params.pulse; },
+    // emit output depends only on params (the pulse lives in anim());
+    // the engine still skips layer caching while anim() returns a matrix
+    timeInvariant: true,
+
+    // Puls = reine per-Frame-Skalierung um (x,y) als innerste Matrix —
+    // die emittierte Geometrie bleibt referenz-stabil, Sprite-Cache und
+    // Achsen-Blits der Engine greifen trotz Pulsieren.
+    anim: function (block, t) {
+      var p = block.params;
+      if (!p.pulse) return null;
+      var q = 1 + 0.022 * Math.sin(t * 1.1);
+      var px = num(p.x, 0);
+      var py = num(p.y, 0);
+      return [q, 0, 0, q, px * (1 - q), py * (1 - q)];
+    },
 
     emit: function (block, t) {
       var p = block.params;
       var size = num(p.size, 0); // frei: negativ = gespiegelt
-      if (p.pulse) size *= 1 + 0.022 * Math.sin(t * 1.1);
 
       var morph = num(p.morph, 0);
       // frei: negativ = invertiertes Herz; oben/unten = Original top/bottom
@@ -309,32 +321,43 @@
       var freq = Math.round(num(p.freq, 0)); // integer keeps the loop closed
       var amp = num(p.amp, 0);
       var rot = num(p.rot, 0) * DEG;
-      var cosR = Math.cos(rot), sinR = Math.sin(rot);
       var px = num(p.x, 0);
       var py = num(p.y, 0);
 
+      // Geometrie wird nur bei Param-Änderung neu gebaut — in ein FRISCHES
+      // Array, denn die Engine erkennt Änderungen über Referenz-Identität
+      // (Sprite-Cache-Signatur). Unverändert -> gleiche Referenz -> Cache.
+      // (Puls-Kompromiss: die Wellen-Amplitude pulsiert mit — ±2.2% via
+      // anim()-Matrix, unsichtbar.)
+      var st = block.state || (block.state = {});
+      var sig = size + '|' + morphTop + '|' + morphBottom + '|' + bendMode +
+        '|' + freq + '|' + amp + '|' + rot + '|' + px + '|' + py;
       var N = 540; // plan: 360-720 points
-      var pts = [];
-      for (var i = 0; i < N; i++) {
-        var u = (i / N) * Math.PI * 2;
-        var pt = curvePoint(u, morphTop, morphBottom, size, bendMode);
-        var x = pt[0], y = pt[1];
+      if (st.curveSig !== sig) {
+        st.curveSig = sig;
+        var base = st.curveBase = new Array(N * 2);
+        var cosR = Math.cos(rot), sinR = Math.sin(rot);
+        for (var i = 0; i < N; i++) {
+          var u = (i / N) * Math.PI * 2;
+          var pt = curvePoint(u, morphTop, morphBottom, size, bendMode);
+          var x = pt[0], y = pt[1];
 
-        if (freq !== 0 && amp !== 0) {
-          // wave = radial sine offset, pushed along the point's own direction
-          var d = Math.hypot(x, y);
-          if (d > 1e-6) {
-            var off = amp * Math.sin(u * freq);
-            x += (x / d) * off;
-            y += (y / d) * off;
+          if (freq !== 0 && amp !== 0) {
+            // wave = radial sine offset, pushed along the point's own direction
+            var d = Math.hypot(x, y);
+            if (d > 1e-6) {
+              var off = amp * Math.sin(u * freq);
+              x += (x / d) * off;
+              y += (y / d) * off;
+            }
           }
-        }
 
-        pts.push(
-          px + x * cosR - y * sinR,
-          py + x * sinR + y * cosR
-        );
+          base[2 * i] = px + x * cosR - y * sinR;
+          base[2 * i + 1] = py + x * sinR + y * cosR;
+        }
       }
+
+      var pts = st.curveBase;
 
       var prims = [];
       if (p.fill) {

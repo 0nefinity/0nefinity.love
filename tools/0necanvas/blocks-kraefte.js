@@ -98,42 +98,54 @@
       var cx = num(p.cx, 0);
       var cy = num(p.cy, 0);
 
+      // map convention (engine mapPrim): map(x, y, out) writes the result
+      // into `out` and returns it — no per-point array allocation in the
+      // hot loop. `out || [x, y]` keeps legacy two-arg callers working.
       var map;
       if (art === 'welle') {
         // radial sine displacement, gently animated over time
         var amp = strength * radius * 0.22;
         var freq = (Math.PI * 2 * 3) / radius; // ~3 wave periods inside the radius
         var phase = t * 1.4;
-        map = function (x, y) {
+        map = function (x, y, out) {
+          if (!out) out = [0, 0];
           var dx = x - cx, dy = y - cy;
           var d = Math.hypot(dx, dy);
           var f = falloff(d, radius, kernel);
-          if (f <= 0 || d < 1e-6) return [x, y];
+          if (f <= 0 || d < 1e-6) { out[0] = x; out[1] = y; return out; }
           var off = Math.sin(d * freq - phase) * amp * f;
           var k = (d + off) / d;
-          return [cx + dx * k, cy + dy * k];
+          out[0] = cx + dx * k;
+          out[1] = cy + dy * k;
+          return out;
         };
       } else if (art === 'sog') {
         // scale toward (or away from) the center
-        map = function (x, y) {
+        map = function (x, y, out) {
+          if (!out) out = [0, 0];
           var dx = x - cx, dy = y - cy;
           var d = Math.hypot(dx, dy);
           var f = falloff(d, radius, kernel);
-          if (f <= 0 || d < 1e-6) return [x, y];
+          if (f <= 0 || d < 1e-6) { out[0] = x; out[1] = y; return out; }
           var k = Math.max(0, 1 - strength * f);
-          return [cx + dx * k, cy + dy * k];
+          out[0] = cx + dx * k;
+          out[1] = cy + dy * k;
+          return out;
         };
       } else {
         // twist: rotation around the center, proportional to falloff
         var maxAngle = strength * Math.PI; // up to ±180° at the center
-        map = function (x, y) {
+        map = function (x, y, out) {
+          if (!out) out = [0, 0];
           var dx = x - cx, dy = y - cy;
           var d = Math.hypot(dx, dy);
           var f = falloff(d, radius, kernel);
-          if (f <= 0) return [x, y];
+          if (f <= 0) { out[0] = x; out[1] = y; return out; }
           var a = maxAngle * f;
           var ca = Math.cos(a), sa = Math.sin(a);
-          return [cx + dx * ca - dy * sa, cy + dx * sa + dy * ca];
+          out[0] = cx + dx * ca - dy * sa;
+          out[1] = cy + dx * sa + dy * ca;
+          return out;
         };
       }
 
@@ -142,8 +154,8 @@
         // normierten Radius wächst (β·π·u²) — mit falloff multipliziert,
         // damit der Raum an der Radiusgrenze stetig bleibt
         var base = map;
-        map = function (x, y) {
-          var o = base(x, y);
+        map = function (x, y, out) {
+          var o = base(x, y, out);
           var dx = o[0] - cx, dy = o[1] - cy;
           var d = Math.hypot(dx, dy);
           var f = falloff(d, radius, kernel);
@@ -151,7 +163,9 @@
           var u = d / radius;
           var a = chirp * Math.PI * u * u * f;
           var ca = Math.cos(a), sa = Math.sin(a);
-          return [cx + dx * ca - dy * sa, cy + dx * sa + dy * ca];
+          o[0] = cx + dx * ca - dy * sa;
+          o[1] = cy + dx * sa + dy * ca;
+          return o;
         };
       }
 

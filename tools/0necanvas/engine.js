@@ -19,9 +19,14 @@
  * near-constant):
  * - The affine tail of a force chain stays symbolic (matrices), geometry
  *   is only materialized when a non-affine map sits ABOVE instance forces.
- * - Glowing path prims are rendered ONCE per frame into an offscreen
- *   sprite (real shadowBlur) and blitted per instance; shadowBlur never
- *   runs per instance.
+ * - Glowing path prims are rendered ONCE into an offscreen sprite (real
+ *   shadowBlur) and blitted per instance; shadowBlur never runs per
+ *   instance. Sprites persist across frames while the emitted geometry
+ *   is reference-stable, and instances whose matrix is rot/flip/uniform-
+ *   scale are blitted axis-aligned from cached per-bucket variants —
+ *   integer blits are ~15x cheaper than transformed ones in software
+ *   rasterization (measured). def.anim(block,t) lets blocks animate via
+ *   an innermost per-frame matrix (kurve pulse) without breaking this.
  * - Glyphs are drawn from a persistent sprite cache (ch/color/glow/size
  *   bucket) — no per-glyph fillText or shadowBlur in the hot loop.
  * - Non-glowing paths are grouped by style into one Path2D and stroked
@@ -398,21 +403,28 @@
   // stretch of the map are estimated numerically (map evaluated at the
   // anchor plus a small offset) and applied to rot/size — a twist now
   // visibly rotates symbols instead of only relocating their anchor.
+  // map convention: map(x, y, out) writes into out ([x, y]) and returns
+  // it — no per-point array allocation in the hot loop. Legacy maps that
+  // ignore `out` and return a fresh pair keep working (return value used).
+  var MAP_OUT_A = [0, 0];
+  var MAP_OUT_B = [0, 0];
+
   function mapPrim(p, map) {
     if (p.k === 'poly') {
       var pts = p.pts;
       for (var i = 0; i < pts.length; i += 2) {
-        var out = map(pts[i], pts[i + 1]);
+        var out = map(pts[i], pts[i + 1], MAP_OUT_A);
         pts[i] = out[0];
         pts[i + 1] = out[1];
       }
     } else {
-      var o = map(p.x, p.y);
+      var o = map(p.x, p.y, MAP_OUT_A);
+      var ox = o[0], oy = o[1]; // copy before the out buffer is reused
       var eps = p.k === 'glyph'
         ? Math.max(0.5, (p.size || 10) * 0.05)
         : Math.max(0.5, (p.r || 1) * 0.5);
-      var off = map(p.x + eps, p.y);
-      var dx = off[0] - o[0], dy = off[1] - o[1];
+      var off = map(p.x + eps, p.y, MAP_OUT_B);
+      var dx = off[0] - ox, dy = off[1] - oy;
       var len = Math.sqrt(dx * dx + dy * dy);
       if (isFinite(len) && len > 1e-9) {
         var k = len / eps;
@@ -423,8 +435,8 @@
           p.r *= k;
         }
       }
-      p.x = o[0];
-      p.y = o[1];
+      p.x = ox;
+      p.y = oy;
     }
   }
 
@@ -551,6 +563,7 @@
     /* ----- stack management ----- */
 
     function pruneLayers() {
+      pruneSprites();
       if (!layers.size) return;
       layers.forEach(function (_, id) {
         if (indexOfId(id) < 0) layers.delete(id);
@@ -848,11 +861,8 @@
                maxY < view.top - pad || minY > view.bottom + pad);
     }
 
-    // render path prims once into the scratch canvas with true shadowBlur
-    function renderSprite(paths, bb, k) {
-      var w = (bb.maxX - bb.minX) * k;
-      var h = (bb.maxY - bb.minY) * k;
-      var g = getScratch(w, h);
+    // render path prims once into `g` (device scale k) with true shadowBlur
+    function renderSprite(paths, bb, k, g) {
       g.setTransform(k, 0, 0, k, -bb.minX * k, -bb.minY * k);
       g.lineJoin = 'round';
       g.lineCap = 'round';
@@ -882,14 +892,336 @@
         }
       }
       g.setLineDash([]);
-      return { w: w, h: h };
+    }
+
+    /* ----- axis-aligned block-sprite blits + persistent sprite cache -----
+     * Same trick as the small-glyph path: a transformed drawImage
+     * rasterizes per-pixel in software (measured ~15-19x slower than an
+     * axis-aligned integer blit). The block sprite gets baked into
+     * per-rotation/flip/scale-bucket variant canvases (ONE transformed
+     * blit each) and instances are then blitted axis-aligned at integer
+     * coords. Buckets are sized so the quantization drift stays below
+     * AA_POS_TOL device px — no visible jumps; exact repeats (kaleidoskop
+     * segments, tapete cells, fraktal depths) share buckets exactly.
+     *
+     * Two tiers:
+     * - Persistent (blocks whose emitted geometry is reference-stable
+     *   across frames, detected via spriteSig): the rendered sprite AND
+     *   its variants live in spriteCache across frames. Steady-state cost
+     *   per frame is pure integer blits; def.anim pulses only re-bake a
+     *   bucket when the shared scale crosses a 0.25% boundary, and the
+     *   variants recur periodically (LRU keeps the working set).
+     * - Ephemeral (geometry changes every frame): variants are built into
+     *   a pooled per-frame cache and only for buckets shared by >=2
+     *   visible instances (a variant bake costs one transformed blit, so
+     *   singletons would gain nothing).
+     * Non-uniform matrices (shear/anisotropic) keep the transformed blit.
+     */
+    var AA_MAX_DIM = 640;                // max variant dimension (device px)
+    var AA_SCALE_LOG = Math.log(1.0025); // ~0.25% scale buckets
+    var AA_POS_TOL = 1.2;                // allowed quantization drift (device px)
+    var AA_POOL_MAX_PX = 12e6;           // per-frame pooled variant pixels
+    var SPRITE_CACHE_MAX_PX = 24e6;      // persistent sprites + variants
+    // persistent bakes are throttled per frame: a bake costs one
+    // transformed blit, so an anim scale sweeping across buckets (kurve
+    // pulse) or an LRU working set larger than the pixel budget must not
+    // degrade into rebaking everything every frame — overflow instances
+    // fall back to the direct transformed blit and heal next frames
+    var AA_BAKES_PER_FRAME = 3;
+    var aaBakeBudget = AA_BAKES_PER_FRAME;
+    var aaPool = [];                     // reusable per-frame variant canvases
+    var aaPoolPx = 0;
+    var aaKey = [];                      // per-instance scratch (bucket key)
+    var aaTheta = [];
+    var aaScale = [];
+    var aaRatio = [];
+    var spriteCache = new Map();         // block.id -> persistent entry
+    var spriteCachePx = 0;
+
+    function pruneSprites() {
+      if (!spriteCache.size) return;
+      spriteCache.forEach(function (entry, id) {
+        if (indexOfId(id) < 0) dropSpriteEntry(id);
+      });
+    }
+
+    function dropSpriteEntry(id) {
+      var entry = spriteCache.get(id);
+      if (!entry) return;
+      spriteCachePx -= entry.px;
+      spriteCache.delete(id);
+    }
+
+    function clearVariants(entry) {
+      entry.variants.forEach(function (v) {
+        if (v) {
+          spriteCachePx -= v.w * v.h;
+          entry.px -= v.w * v.h;
+        }
+      });
+      entry.variants.clear();
+    }
+
+    // signature of the un-decimated path prims: pts/dash by reference,
+    // styles by value, plus the device scale and the (bucketed) max
+    // instance scale that feeds the decimation tolerance. Blocks reuse
+    // their point arrays while geometry is unchanged and allocate fresh
+    // ones when it changes, so reference identity is a truthful signal.
+    function spriteSig(paths, k, msBucket) {
+      var sig = [k, msBucket];
+      for (var i = 0; i < paths.length; i++) {
+        var p = paths[i];
+        if (p.k === 'poly') {
+          sig.push(p.pts, !!p.closed);
+        } else {
+          sig.push(p.x, p.y, p.r);
+        }
+        sig.push(p.col, p.w || 0, p.glow || 0, !!p.fill,
+          p.dash || null, p._alpha == null ? 1 : p._alpha);
+      }
+      return sig;
+    }
+
+    function sigEqual(a, b) {
+      if (!a || !b || a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    // get (or create) the persistent entry with a cleared sw x sh canvas,
+    // ready to be re-rendered; null when the pixel budget is exhausted
+    function getSpriteEntry(cacheKey, sw, sh) {
+      var w = Math.ceil(sw), h = Math.ceil(sh);
+      var entry = spriteCache.get(cacheKey);
+      if (entry) {
+        clearVariants(entry);
+        spriteCachePx -= entry.px;
+        entry.px = 0;
+      }
+      if (spriteCachePx + w * h > SPRITE_CACHE_MAX_PX) {
+        if (entry) spriteCache.delete(cacheKey);
+        return null;
+      }
+      if (!entry) {
+        var c = document.createElement('canvas');
+        entry = {
+          canvas: c, g: c.getContext('2d'), px: 0, variants: new Map(),
+          sig: null, bb: null, sw: 0, sh: 0, k: 1, cullPad: 0
+        };
+        spriteCache.set(cacheKey, entry);
+      }
+      spriteCachePx += w * h;
+      entry.px = w * h;
+      if (entry.canvas.width !== w || entry.canvas.height !== h) {
+        entry.canvas.width = w;
+        entry.canvas.height = h;
+      } else {
+        entry.g.setTransform(1, 0, 0, 1, 0, 0);
+        entry.g.clearRect(0, 0, w, h);
+      }
+      return entry;
+    }
+
+    // draw src rotated by theta (+flip) and scaled by sq, centered in g
+    function drawVariant(g, src, sw, sh, theta, sq, flip, vw, vh) {
+      var ca = Math.cos(theta), sa = Math.sin(theta);
+      g.globalAlpha = 1;
+      // linear part sq * R(theta) * (flip ? diag(1,-1) : I)
+      g.setTransform(
+        sq * ca, sq * sa,
+        flip ? sq * sa : -sq * sa,
+        flip ? -sq * ca : sq * ca,
+        vw / 2, vh / 2
+      );
+      g.drawImage(src, 0, 0, sw, sh, -sw / 2, -sh / 2, sw, sh);
+    }
+
+    function variantW(sw, sh, theta, sq) {
+      return Math.ceil((sw * Math.abs(Math.cos(theta)) +
+        sh * Math.abs(Math.sin(theta))) * sq) + 2;
+    }
+
+    function variantH(sw, sh, theta, sq) {
+      return Math.ceil((sw * Math.abs(Math.sin(theta)) +
+        sh * Math.abs(Math.cos(theta))) * sq) + 2;
+    }
+
+    // persistent variant: own exact-size canvas, LRU-evicted on budget
+    function bakePersistentVariant(entry, theta, sq, flip) {
+      var vw = variantW(entry.sw, entry.sh, theta, sq);
+      var vh = variantH(entry.sw, entry.sh, theta, sq);
+      if (vw > AA_MAX_DIM || vh > AA_MAX_DIM) return null;
+      // evict least-recently-used variants (Map insertion order; hits
+      // re-insert) until the new one fits
+      var it;
+      while (spriteCachePx + vw * vh > SPRITE_CACHE_MAX_PX && entry.variants.size) {
+        it = entry.variants.keys().next().value;
+        var old = entry.variants.get(it);
+        entry.variants.delete(it);
+        if (old) {
+          spriteCachePx -= old.w * old.h;
+          entry.px -= old.w * old.h;
+        }
+      }
+      if (spriteCachePx + vw * vh > SPRITE_CACHE_MAX_PX) return null;
+      var c = document.createElement('canvas');
+      c.width = vw;
+      c.height = vh;
+      drawVariant(c.getContext('2d'), entry.canvas, entry.sw, entry.sh,
+        theta, sq, flip, vw, vh);
+      spriteCachePx += vw * vh;
+      entry.px += vw * vh;
+      return { c: c, w: vw, h: vh };
+    }
+
+    // per-frame variant in a pooled, grow-only canvas
+    function bakePooledVariant(src, sw, sh, theta, sq, flip, poolIdx) {
+      var vw = variantW(sw, sh, theta, sq);
+      var vh = variantH(sw, sh, theta, sq);
+      if (vw > AA_MAX_DIM || vh > AA_MAX_DIM) return null;
+      var slot = aaPool[poolIdx];
+      if (!slot) {
+        if (aaPoolPx + vw * vh > AA_POOL_MAX_PX) return null;
+        var c = document.createElement('canvas');
+        slot = { c: c, g: c.getContext('2d') };
+        aaPool.push(slot);
+      }
+      var grow = Math.max(vw, slot.c.width) * Math.max(vh, slot.c.height) -
+        slot.c.width * slot.c.height;
+      if (grow > 0) {
+        if (aaPoolPx + grow > AA_POOL_MAX_PX) return null;
+        aaPoolPx += grow;
+        if (slot.c.width < vw) slot.c.width = vw;
+        if (slot.c.height < vh) slot.c.height = vh;
+      }
+      slot.g.setTransform(1, 0, 0, 1, 0, 0);
+      slot.g.clearRect(0, 0, vw, vh);
+      drawVariant(slot.g, src, sw, sh, theta, sq, flip, vw, vh);
+      return { c: slot.c, w: vw, h: vh };
+    }
+
+    // blit the sprite in `src` ({canvas, bb, sw, sh, k, cullPad,
+    // variants|null}) for every visible instance; eligible rotation/scale
+    // buckets go axis-aligned, the rest keeps the transformed drawImage.
+    // animScale = uniform scale of the block's per-frame anim matrix:
+    // buckets are keyed on s/animScale so a pulse does NOT sweep the
+    // bucket space (keys stay frozen, zero re-bakes); the continuous
+    // anim factor is applied as a destination-scaled axis blit instead
+    // (still ~2x cheaper than a transformed blit, and perfectly smooth).
+    function blitSpriteInstances(src, instances, camM, view, animScale) {
+      var bb = src.bb, sw = src.sw, sh = src.sh, k = src.k;
+      var cullPad = src.cullPad;
+      var persist = !!src.variants;
+      var aN = animScale > 0 ? animScale : 1;
+      var bcX = (bb.minX + bb.maxX) / 2;
+      var bcY = (bb.minY + bb.maxY) / 2;
+      var counts = persist ? null : new Map();
+      var i, inst, m;
+      for (i = 0; i < instances.length; i++) {
+        aaKey[i] = undefined; // undefined = skipped, null = transformed blit
+        inst = instances[i];
+        if (inst.alpha <= ALPHA_SKIP) continue;
+        if (!instVisible(bb, inst.m, view, cullPad)) continue;
+        aaKey[i] = null;
+        m = inst.m;
+        // device linear map of sprite px == inst.m linear part exactly
+        // (camera scale and dpr cancel against the sprite scale k)
+        var s = Math.hypot(m[0], m[1]);
+        if (!(s > 0)) continue;
+        var det = m[0] * m[3] - m[1] * m[2];
+        // rot+flip+uniform-scale only: second column must be the first
+        // rotated by +-90deg (excludes shears / anisotropic scales)
+        var ex = det < 0 ? m[1] : -m[1];
+        var ey = det < 0 ? -m[0] : m[0];
+        if (Math.abs(m[2] - ex) + Math.abs(m[3] - ey) > 0.01 * s) continue;
+        var sIdx = Math.round(Math.log(s / aN) / AA_SCALE_LOG);
+        var sq = Math.exp(sIdx * AA_SCALE_LOG);
+        var halfDiag = 0.5 * Math.hypot(sw, sh) * sq; // device px
+        var rotSteps = Math.max(8, Math.ceil(Math.PI * 2 * halfDiag / AA_POS_TOL));
+        var rIdx = Math.round(Math.atan2(m[1], m[0]) / (Math.PI * 2) * rotSteps);
+        aaKey[i] = (det < 0 ? 'f' : 'r') + sIdx + ':' + rIdx;
+        aaTheta[i] = rIdx / rotSteps * Math.PI * 2;
+        aaScale[i] = sq;
+        aaRatio[i] = s / sq; // exact dest/variant size ratio (anim + residual)
+        if (counts) counts.set(aaKey[i], (counts.get(aaKey[i]) || 0) + 1);
+      }
+
+      var frameVariants = persist ? src.variants : new Map();
+      var poolIdx = 0;
+      var identSet = false;
+      for (i = 0; i < instances.length; i++) {
+        if (aaKey[i] === undefined) continue;
+        inst = instances[i];
+        var v = null;
+        var key = aaKey[i];
+        if (key && (persist || counts.get(key) >= 2)) {
+          v = frameVariants.get(key);
+          if (v === undefined) {
+            if (persist) {
+              if (aaBakeBudget > 0) {
+                v = bakePersistentVariant(src, aaTheta[i], aaScale[i], key.charAt(0) === 'f');
+                aaBakeBudget--;
+                frameVariants.set(key, v);
+              } else {
+                v = null; // budget exhausted: transformed blit, retry next frame
+              }
+            } else {
+              v = bakePooledVariant(src.canvas, sw, sh, aaTheta[i], aaScale[i],
+                key.charAt(0) === 'f', poolIdx);
+              if (v) poolIdx++;
+              frameVariants.set(key, v);
+            }
+          } else if (v && persist) {
+            // LRU touch: re-insert as most recent
+            frameVariants.delete(key);
+            frameVariants.set(key, v);
+          }
+        }
+        ctx.globalAlpha = Math.min(1, inst.alpha);
+        if (v) {
+          if (!identSet) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            identSet = true;
+          }
+          var cxD = dpr * matApplyX(camM,
+            matApplyX(inst.m, bcX, bcY), matApplyY(inst.m, bcX, bcY));
+          var cyD = dpr * matApplyY(camM,
+            matApplyX(inst.m, bcX, bcY), matApplyY(inst.m, bcX, bcY));
+          var r = aaRatio[i];
+          if (r > 0.9985 && r < 1.0015) {
+            // within quantization tolerance: fast integer 1:1 blit
+            ctx.drawImage(v.c, 0, 0, v.w, v.h,
+              Math.round(cxD - v.w / 2), Math.round(cyD - v.h / 2), v.w, v.h);
+          } else {
+            // anim scale (pulse): destination-scaled axis-aligned blit
+            var dw = v.w * r, dh = v.h * r;
+            ctx.drawImage(v.c, 0, 0, v.w, v.h, cxD - dw / 2, cyD - dh / 2, dw, dh);
+          }
+        } else {
+          // device = dpr*camM o inst.m o (sprite px -> world)
+          var mw = matMul(camM, inst.m);
+          ctx.setTransform(
+            dpr * mw[0] / k, dpr * mw[1] / k,
+            dpr * mw[2] / k, dpr * mw[3] / k,
+            dpr * (mw[0] * bb.minX + mw[2] * bb.minY + mw[4]),
+            dpr * (mw[1] * bb.minX + mw[3] * bb.minY + mw[5])
+          );
+          identSet = false;
+          ctx.drawImage(src.canvas, 0, 0, sw, sh, 0, 0, sw, sh);
+        }
+      }
     }
 
     // Central instanced draw: prims (post-map, world space) x affine
     // instance matrices. Glyphs go through the sprite cache; glowing path
-    // sets are baked to a per-frame block sprite; plain paths are grouped
-    // into shared Path2Ds and stroked per instance.
-    function drawInstanced(prims, instances, camM, view) {
+    // sets are baked to a block sprite (persistent across frames when the
+    // emitted geometry is reference-stable, see spriteSig); plain paths
+    // are grouped into shared Path2Ds and stroked per instance.
+    // cacheKey (block.id) enables the persistent sprite cache; null when
+    // the prims are per-frame clones (materialized force chains).
+    function drawInstanced(prims, instances, camM, view, cacheKey, animScale) {
       var glyphs = null, paths = null, hasGlow = false;
       var i, p;
       for (i = 0; i < prims.length; i++) {
@@ -913,6 +1245,36 @@
       var inst, ii, gi;
 
       if (paths) {
+        var kDev = view.scale * dpr;
+        // decimation tolerance input, bucketed and anim-normalized so
+        // per-frame jitter of the max instance scale (pulse, LOD
+        // truncation) does not invalidate the sprite signature
+        var msBucket = Math.round(Math.log(
+          maxScale / (animScale > 0 ? animScale : 1)) / Math.log(1.05));
+        var sig = null;
+        var entry = null;
+        var served = false;
+        if (cacheKey != null && hasGlow) {
+          sig = spriteSig(paths, kDev, msBucket);
+          entry = spriteCache.get(cacheKey);
+          // cost re-check: a hit must not bypass the blit-cost budget (a
+          // layer rebuild raises the instance count to the full cap) —
+          // the allowance is higher than for fresh sprites because most
+          // hit-blits are cheap axis-aligned variants
+          if (entry && entry.sw * entry.sh * aliveScaleSq > SPRITE_COST_BUDGET * 8) {
+            entry = null;
+          }
+          if (entry && sigEqual(entry.sig, sig)) {
+            // cache hit: skip decimation, bbox and sprite render entirely
+            ctx.shadowBlur = 0;
+            blitSpriteInstances(entry, instances, camM, view, animScale);
+            served = true;
+          }
+        }
+        if (served) {
+          // fall through to the glyph pass below
+        } else {
+
         // decimate dense polylines to sub-pixel tolerance (visually lossless)
         var tol = DECIM_TOL_PX / (view.scale * maxScale * dpr);
         var maxHalfW = 0, maxGlow = 0;
@@ -950,7 +1312,7 @@
         var padW = maxHalfW + (maxGlow * 2 + 2) / (view.scale * dpr);
         bb.minX -= padW; bb.minY -= padW; bb.maxX += padW; bb.maxY += padW;
 
-        var k = view.scale * dpr;
+        var k = kDev;
         var sw = (bb.maxX - bb.minX) * k;
         var sh = (bb.maxY - bb.minY) * k;
         var blitCost = sw * sh * aliveScaleSq;
@@ -961,24 +1323,27 @@
         var cullPad = padW;
 
         if (useSprite) {
-          renderSprite(paths, bb, k);
-          ctx.shadowBlur = 0;
-          for (ii = 0; ii < instances.length; ii++) {
-            inst = instances[ii];
-            if (inst.alpha <= ALPHA_SKIP) continue;
-            if (!instVisible(bb, inst.m, view, cullPad)) continue;
-            // device = dpr*camM o inst.m o (sprite px -> world)
-            var mw = matMul(camM, inst.m);
-            ctx.setTransform(
-              dpr * mw[0] / k, dpr * mw[1] / k,
-              dpr * mw[2] / k, dpr * mw[3] / k,
-              dpr * (mw[0] * bb.minX + mw[2] * bb.minY + mw[4]),
-              dpr * (mw[1] * bb.minX + mw[3] * bb.minY + mw[5])
-            );
-            ctx.globalAlpha = Math.min(1, inst.alpha);
-            ctx.drawImage(scratch, 0, 0, sw, sh, 0, 0, sw, sh);
+          var src = sig ? getSpriteEntry(cacheKey, sw, sh) : null;
+          if (src) {
+            src.sig = sig;
+            src.bb = bb;
+            src.sw = sw;
+            src.sh = sh;
+            src.k = k;
+            src.cullPad = cullPad;
+            renderSprite(paths, bb, k, src.g);
+          } else {
+            // over budget / uncacheable: shared scratch, per-frame variants
+            renderSprite(paths, bb, k, getScratch(sw, sh));
+            src = {
+              canvas: scratch, bb: bb, sw: sw, sh: sh, k: k,
+              cullPad: cullPad, variants: null
+            };
           }
+          ctx.shadowBlur = 0;
+          blitSpriteInstances(src, instances, camM, view, animScale);
         } else {
+          if (entry) dropSpriteEntry(cacheKey); // stale sprite frees memory
           // group by style into shared Path2Ds (one stroke per group/instance)
           var groups = [];
           var gmap = new Map();
@@ -1054,6 +1419,7 @@
             }
           }
         }
+        } // end cache-miss path
       }
 
       if (glyphs) {
@@ -1120,7 +1486,9 @@
     // symbolic as combined matrices; geometry is only materialized when a
     // non-affine map sits above already-collected instances.
     // Returns the number of instances consumed from the budget.
-    function processBlock(prims, chain, camM, view, localBudget) {
+    // cacheKey (block.id) is forwarded to drawInstanced for the sprite
+    // cache — dropped when a non-affine map materialized fresh clones.
+    function processBlock(prims, chain, camM, view, localBudget, cacheKey, animScale) {
       // Pre-collect instance lists and allocate the budget OUTERMOST first,
       // so e.g. a kaleidoscope above a fractal keeps its full symmetry and
       // the fractal loses depth (its faintest copies) instead.
@@ -1198,11 +1566,22 @@
         total = unitCost * combined.length;
       }
       if (!combined.length || !work.length) return total;
-      drawInstanced(work, combined, camM, view);
+      drawInstanced(work, combined, camM, view, owned ? null : cacheKey, animScale);
       return total;
     }
 
     /* ----- layer cache (time-invariant emitter + force chain) ----- */
+
+    // point-instance product cap for layer rebuilds while frames run slow
+    var REBUILD_PI_CAP = 3e5;
+
+    function distressBudget(budget, pts) {
+      if (frameEma > FRAME_SLOW_MS) {
+        return Math.max(DYN_MIN,
+          Math.min(budget, Math.floor(REBUILD_PI_CAP / Math.max(4, pts))));
+      }
+      return budget;
+    }
 
     // Renders the block's fully composed result into an offscreen layer
     // once and blits it per frame while its signature (params, chain,
@@ -1214,7 +1593,7 @@
     function renderCachedBlock(block, def, chain, camM, view, sig, localBudget, localPts, dt) {
       var layer = layers.get(block.id);
       if (!layer) {
-        layer = { canvas: null, ctx: null, sig: null, valid: false, capHit: false, lastChange: -1e9 };
+        layer = { canvas: null, ctx: null, sig: null, valid: false, capHit: false, lastChange: -1e9, budget: INSTANCE_CAP };
         layers.set(block.id, layer);
       }
       var now = performance.now();
@@ -1226,6 +1605,17 @@
         layer.valid = false;
       }
       var pw = canvasEl.width, ph = canvasEl.height;
+      // Rebuild budget (measured): a full-cap rebuild under CPU throttle
+      // can block for seconds (points x instances product, e.g. textpunkte
+      // x tapete x fraktal). While frames run slow, the product is capped
+      // to the ~250ms class; on fast machines the rebuild stays full
+      // quality. Truncated layers (capHit) upgrade progressively once the
+      // adaptive budget has grown well past the budget they were built at.
+      var rebuildBudget = Math.min(INSTANCE_CAP, dynCap);
+      if (layer.valid && layer.capHit &&
+          distressBudget(rebuildBudget, layer.pts || 4) > layer.budget * 1.5) {
+        layer.valid = false;
+      }
       if (layer.valid && layer.canvas &&
           layer.canvas.width === pw && layer.canvas.height === ph) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1254,7 +1644,7 @@
         if (cp.capped) capHit = true;
         pointBudget -= cp.pts;
         pointsTotal += cp.pts;
-        return processBlock(cp.prims, chain, camM, view, localBudget);
+        return processBlock(cp.prims, chain, camM, view, localBudget, block.id);
       }
 
       if (!layer.canvas) {
@@ -1266,17 +1656,22 @@
       layer.ctx.setTransform(1, 0, 0, 1, 0, 0);
       layer.ctx.clearRect(0, 0, pw, ph);
 
+      var rbPts = 0;
+      for (var rp = 0; rp < prims.length; rp++) rbPts += primPoints(prims[rp]);
+      var budget = distressBudget(rebuildBudget, rbPts);
+
       var mainCtx = ctx;
       var outerCap = capHit;
       capHit = false;
       ctx = layer.ctx; // all draw helpers write through the `ctx` closure var
       try {
-        // full budget: the cost is amortized over every cached frame
-        processBlock(prims, chain, camM, view, INSTANCE_CAP);
+        processBlock(prims, chain, camM, view, budget, block.id);
       } finally {
         ctx = mainCtx;
       }
       layer.capHit = capHit;
+      layer.budget = budget;
+      layer.pts = rbPts;
       capHit = capHit || outerCap;
       layer.valid = true;
 
@@ -1298,6 +1693,7 @@
       ctx.shadowBlur = 0;
 
       capHit = false;
+      aaBakeBudget = AA_BAKES_PER_FRAME;
       instBudget = Math.min(INSTANCE_CAP, dynCap);
       drawnTotal = 0;
       pointBudget = Math.min(POINT_CAP, dynPointCap);
@@ -1349,6 +1745,32 @@
           }
         }
 
+        // def.anim(block, t): optional per-frame affine matrix applied as
+        // the innermost transform (e.g. kurve pulse). Keeps emit() output
+        // reference-stable so the sprite cache holds despite animation;
+        // the composed image changes per frame, so no layer caching. The
+        // matrix' uniform scale is forwarded so sprite-variant buckets can
+        // be keyed without it (see blitSpriteInstances).
+        var animM = null;
+        var animScale = 1;
+        if (typeof def.anim === 'function') {
+          try {
+            animM = def.anim(block, t);
+          } catch (e) {
+            console.error('OneCanvas: anim failed for "' + block.type + '"', e);
+            animM = null;
+          }
+          if (animM) {
+            cacheable = false;
+            animScale = matScale(animM) || 1;
+            chain.unshift({
+              instances: (function (m) {
+                return function () { return [{ m: m, alpha: 1 }]; };
+              })(animM)
+            });
+          }
+        }
+
         if (instBudget < 1) {
           capHit = true;
           break;
@@ -1377,7 +1799,7 @@
             if (cpl.capped) capHit = true;
             pointBudget -= cpl.pts;
             pointsTotal += cpl.pts;
-            used = processBlock(cpl.prims, chain, camM, view, local);
+            used = processBlock(cpl.prims, chain, camM, view, local, block.id, animScale);
           }
         }
         instBudget -= used;
