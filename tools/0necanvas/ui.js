@@ -42,6 +42,33 @@
     return Object.prototype.hasOwnProperty.call(obj, key);
   }
 
+  // select entry.options may be an array OR a function returning one —
+  // evaluated lazily at panel build so late-registered types are listed
+  function entryOptions(entry) {
+    var o = entry && entry.options;
+    if (typeof o === 'function') {
+      try { o = o(); } catch (e) {
+        console.warn('0necanvas ui: options() failed for key "' + (entry && entry.key) + '"', e);
+        o = null;
+      }
+    }
+    return Array.isArray(o) ? o : [];
+  }
+
+  // new things/emitters (library tiles AND drawn paths) slot in BELOW the
+  // contiguous force group at the top of the stack, so existing forces act
+  // on them; forces themselves keep landing on top. Expects the block to
+  // be the topmost entry (fresh scene.add).
+  function slotBelowTopForces(block) {
+    var forces = 0;
+    for (var j = scene.blocks.length - 2; j >= 0; j--) {
+      var d2 = scene.defs.get(scene.blocks[j].type);
+      if (d2 && d2.kind === 'kraft') forces++;
+      else break;
+    }
+    if (forces > 0) scene.move(block.id, scene.blocks.length - 1 - forces);
+  }
+
   function getBlock(id) {
     if (!id) return null;
     for (var i = 0; i < scene.blocks.length; i++) {
@@ -129,16 +156,34 @@
 
   /* ---------- toast ---------- */
 
-  function toast(msg) {
+  // toast('msg') or toast('msg', { action: 'Rückgängig', onAction: fn, ms: 5000 })
+  function toast(msg, opts) {
     if (!toastEl) {
       toastEl = document.createElement('div');
       toastEl.className = 'oc-toast';
       document.body.appendChild(toastEl);
     }
-    toastEl.textContent = msg;
+    toastEl.textContent = '';
+    toastEl.appendChild(document.createTextNode(msg));
+    var hasAction = !!(opts && opts.action && typeof opts.onAction === 'function');
+    toastEl.classList.toggle('has-action', hasAction);
+    if (hasAction) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'toast-action';
+      btn.textContent = opts.action;
+      btn.addEventListener('click', function () {
+        clearTimeout(toastTimer);
+        toastEl.classList.remove('show', 'has-action');
+        opts.onAction();
+      });
+      toastEl.appendChild(btn);
+    }
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+    toastTimer = setTimeout(function () {
+      toastEl.classList.remove('show', 'has-action');
+    }, (opts && opts.ms) || 1600);
   }
 
   /* ---------- stack panel ---------- */
@@ -207,8 +252,21 @@
     del.setAttribute('aria-label', 'Baustein löschen');
     del.addEventListener('click', function (ev) {
       ev.stopPropagation();
+      // one-step undo: snapshot before removal, restore via toast action
+      var snap = {
+        type: block.type,
+        name: block.name,
+        visible: !!block.visible,
+        params: JSON.parse(JSON.stringify(block.params)),
+        index: scene.blocks.indexOf(block)
+      };
       scene.remove(block.id);
       touchState();
+      toast('Baustein gelöscht', {
+        action: 'Rückgängig',
+        ms: 5000,
+        onAction: function () { restoreBlock(snap); }
+      });
     });
 
     li.appendChild(handle);
@@ -222,6 +280,25 @@
       scene.select(block.id);
     });
     return li;
+  }
+
+  // rebuild a deleted block from its snapshot (same path sc.load takes:
+  // defaults -> restored params -> init) and put it back at its old index
+  function restoreBlock(snap) {
+    if (!scene.defs.has(snap.type)) return;
+    var nb = scene.add(snap.type);
+    nb.name = snap.name;
+    nb.visible = snap.visible;
+    for (var k in nb.params) {
+      if (hasKey(snap.params, k)) nb.params[k] = snap.params[k];
+    }
+    var def = scene.defs.get(snap.type);
+    if (def && typeof def.init === 'function') {
+      try { def.init(nb); } catch (e) { console.error('0necanvas ui: init() failed on undo for "' + snap.type + '"', e); }
+    }
+    scene.move(nb.id, clamp(snap.index, 0, scene.blocks.length - 1));
+    scene.select(nb.id);
+    touchState();
   }
 
   function updateStackSelection() {
@@ -242,6 +319,8 @@
     var moved = false;
     var dropIdx = -1;
     var startY = ev.clientY;
+    var lastClientY = ev.clientY;
+    var scrollRAF = 0;
 
     try { handle.setPointerCapture(ev.pointerId); } catch (e) { /* older browsers */ }
 
@@ -270,23 +349,48 @@
       return { idx: 0, row: null, above: true };
     }
 
-    function onMove(mv) {
-      if (mv.pointerId !== ev.pointerId) return;
-      if (!moved && Math.abs(mv.clientY - startY) < 4) return;
-      moved = true;
-      row.classList.add('dragging');
+    function markDropAt(clientY) {
       var rows = otherRows();
       clearMarks(rows);
-      var drop = computeDrop(mv.clientY, rows);
+      var drop = computeDrop(clientY, rows);
       dropIdx = drop.idx;
       if (drop.row) {
         drop.row.classList.add(drop.above ? 'drop-above' : 'drop-below');
       }
+    }
+
+    // list auto-scrolls while the pointer sits in the top/bottom edge zone
+    var SCROLL_ZONE_PX = 32;
+    function autoScrollTick() {
+      scrollRAF = 0;
+      var lr = els.stackList.getBoundingClientRect();
+      var v = 0;
+      if (lastClientY < lr.top + SCROLL_ZONE_PX) {
+        v = -Math.ceil((lr.top + SCROLL_ZONE_PX - lastClientY) / 3);
+      } else if (lastClientY > lr.bottom - SCROLL_ZONE_PX) {
+        v = Math.ceil((lastClientY - (lr.bottom - SCROLL_ZONE_PX)) / 3);
+      }
+      if (!v) return;
+      var before = els.stackList.scrollTop;
+      els.stackList.scrollTop = before + v;
+      if (els.stackList.scrollTop !== before) markDropAt(lastClientY);
+      scrollRAF = requestAnimationFrame(autoScrollTick);
+    }
+
+    function onMove(mv) {
+      if (mv.pointerId !== ev.pointerId) return;
+      lastClientY = mv.clientY;
+      if (!moved && Math.abs(mv.clientY - startY) < 4) return;
+      moved = true;
+      row.classList.add('dragging');
+      markDropAt(mv.clientY);
+      if (!scrollRAF) scrollRAF = requestAnimationFrame(autoScrollTick);
       mv.preventDefault();
     }
 
     function onEnd(up) {
       if (up.pointerId !== ev.pointerId) return;
+      if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = 0; }
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onEnd);
       handle.removeEventListener('pointercancel', onEnd);
@@ -625,7 +729,7 @@
 
     var sel = document.createElement('select');
     sel.className = 'prop-select';
-    var options = entry.options || [];
+    var options = entryOptions(entry);
     for (var i = 0; i < options.length; i++) {
       var opt = document.createElement('option');
       opt.value = String(options[i].value);
@@ -744,6 +848,7 @@
         tile.appendChild(nm);
         tile.addEventListener('click', function () {
           var block = scene.add(def.type);
+          if (def.kind !== 'kraft') slotBelowTopForces(block);
           scene.select(block.id);
           closeLibrary();
           touchState();
@@ -853,6 +958,20 @@
       return;
     }
     var s = Math.max(1e-6, scene.camera.scale);
+    // deliberate-tap jitter guard: strokes whose bounding box stays under
+    // 6 css px in both axes leave no invisible junk block behind
+    var bMinX = raw[0], bMaxX = raw[0], bMinY = raw[1], bMaxY = raw[1];
+    for (var bi = 2; bi < raw.length; bi += 2) {
+      if (raw[bi] < bMinX) bMinX = raw[bi];
+      if (raw[bi] > bMaxX) bMaxX = raw[bi];
+      if (raw[bi + 1] < bMinY) bMinY = raw[bi + 1];
+      if (raw[bi + 1] > bMaxY) bMaxY = raw[bi + 1];
+    }
+    if ((bMaxX - bMinX) * s < 6 && (bMaxY - bMinY) * s < 6) {
+      scene.remove(block.id);
+      touchState();
+      return;
+    }
     var dec = rdpDecimate(raw, DRAW_TOL_PX / s);
     var n = dec.length >> 1;
     if (n > DRAW_MAX_PTS) { // stride resample keeps endpoints
@@ -876,6 +995,9 @@
     block.params.pts = dec;
     block.params.x = cx;
     block.params.y = cy;
+    // Tims Kernpunkt: Gezeichnetes muss unter die obersten Kräfte rutschen,
+    // damit "Raum verzerren" & Co. auch auf frische Striche wirken
+    slotBelowTopForces(block);
     scene.select(block.id);
     touchState();
   }
@@ -887,12 +1009,37 @@
 
   /* ---------- warp target resolution ---------- */
 
-  function resolveWarpBlock() {
+  // read a warp block's center (key names may drift, see setWarpCenter)
+  var WARP_CENTER_PAIRS = [
+    ['cx', 'cy'], ['centerX', 'centerY'], ['zentrumX', 'zentrumY'],
+    ['zx', 'zy'], ['x', 'y']
+  ];
+  function warpCenter(block) {
+    for (var i = 0; i < WARP_CENTER_PAIRS.length; i++) {
+      var a = WARP_CENTER_PAIRS[i][0], b = WARP_CENTER_PAIRS[i][1];
+      if (hasKey(block.params, a) && hasKey(block.params, b)) {
+        var x = Number(block.params[a]), y = Number(block.params[b]);
+        return [isFinite(x) ? x : 0, isFinite(y) ? y : 0];
+      }
+    }
+    return null;
+  }
+
+  // selection overrides; otherwise the warp block whose center is closest
+  // to the click position wins (ties: topmost)
+  function resolveWarpBlock(wx, wy) {
     var sel = getBlock(scene.selectedId);
     if (sel && sel.type === 'verzerren') return sel;
+    var best = null, bestD = Infinity;
     for (var i = scene.blocks.length - 1; i >= 0; i--) {
-      if (scene.blocks[i].type === 'verzerren') return scene.blocks[i];
+      var b = scene.blocks[i];
+      if (b.type !== 'verzerren') continue;
+      var c = warpCenter(b);
+      var d = c ? Math.hypot(c[0] - wx, c[1] - wy) : Infinity;
+      if (d < bestD) { bestD = d; best = b; }
+      else if (!best) best = b;
     }
+    if (best) return best;
     if (scene.defs.has('verzerren')) {
       return scene.add('verzerren');
     }
@@ -903,10 +1050,7 @@
   // set warp center to an absolute world position; key names may drift
   // between parallel builder tasks, hence the candidate list + drag fallback
   function setWarpCenter(block, wx, wy, lastW) {
-    var pairs = [
-      ['cx', 'cy'], ['centerX', 'centerY'], ['zentrumX', 'zentrumY'],
-      ['zx', 'zy'], ['x', 'y']
-    ];
+    var pairs = WARP_CENTER_PAIRS;
     for (var i = 0; i < pairs.length; i++) {
       if (hasKey(block.params, pairs[i][0]) && hasKey(block.params, pairs[i][1])) {
         block.params[pairs[i][0]] = wx;
@@ -1009,7 +1153,7 @@
     }
 
     if (tool === 'warp') {
-      var wb = resolveWarpBlock();
+      var wb = resolveWarpBlock(world[0], world[1]);
       if (!wb) { gesture = { mode: 'pan', last: { x: pt.x, y: pt.y }, moved: false, emptyTap: false }; return; }
       if (scene.selectedId !== wb.id) scene.select(wb.id);
       gesture = { mode: 'warp', block: wb, lastW: world.slice() };
@@ -1207,6 +1351,135 @@
     }
   }
 
+  /* ---------- camera rescue: fit view / new scene / off-view pill ---------- */
+
+  function blockAnchor(b) {
+    var p = b.params || {};
+    var x = Number(hasKey(p, 'x') ? p.x : (hasKey(p, 'cx') ? p.cx : 0));
+    var y = Number(hasKey(p, 'y') ? p.y : (hasKey(p, 'cy') ? p.cy : 0));
+    return [isFinite(x) ? x : 0, isFinite(y) ? y : 0];
+  }
+
+  // world-space bounding box of all visible blocks' emitted prims.
+  // The probe view is centered on the blocks' anchors (not the camera),
+  // so viewport-relative emitters (gitter) produce bounds around the
+  // content instead of around a lost camera position.
+  function computeSceneBounds() {
+    var ax = 0, ay = 0, n = 0, i, b;
+    for (i = 0; i < scene.blocks.length; i++) {
+      b = scene.blocks[i];
+      if (!b.visible) continue;
+      var a = blockAnchor(b);
+      ax += a[0]; ay += a[1]; n++;
+    }
+    if (!n) return null;
+    ax /= n; ay /= n;
+
+    var r = els.canvas.getBoundingClientRect();
+    var half = 1200;
+    var probeView = {
+      w: r.width || 800, h: r.height || 600, dpr: 1,
+      scale: (r.width || 800) / (half * 2),
+      left: ax - half, right: ax + half, top: ay - half, bottom: ay + half,
+      selectedId: null
+    };
+
+    var bb = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    var any = false;
+    function grow(x0, y0, x1, y1) {
+      if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
+      any = true;
+      if (x0 < bb.minX) bb.minX = x0;
+      if (y0 < bb.minY) bb.minY = y0;
+      if (x1 > bb.maxX) bb.maxX = x1;
+      if (y1 > bb.maxY) bb.maxY = y1;
+    }
+    for (i = 0; i < scene.blocks.length; i++) {
+      b = scene.blocks[i];
+      if (!b.visible) continue;
+      var def = scene.defs.get(b.type);
+      if (!def || def.kind === 'kraft' || typeof def.emit !== 'function') continue;
+      var prims;
+      try { prims = def.emit(b, 0, 0, probeView) || []; } catch (e) { continue; }
+      for (var pi = 0; pi < prims.length; pi++) {
+        var p = prims[pi];
+        if (p.k === 'poly') {
+          var pts = p.pts || [];
+          for (var k = 0; k + 1 < pts.length; k += 2) {
+            grow(pts[k], pts[k + 1], pts[k], pts[k + 1]);
+          }
+        } else {
+          var hx = p.k === 'glyph' ? (Number(p.size) || 0) * 0.75 : (Number(p.r) || 0);
+          grow(p.x - hx, p.y - hx, p.x + hx, p.y + hx);
+        }
+      }
+    }
+    return any ? bb : null;
+  }
+
+  function fitView() {
+    var bb = computeSceneBounds();
+    if (!bb) { toast('Nichts einzupassen'); return; }
+    var r = els.canvas.getBoundingClientRect();
+    var bw = Math.max(20, bb.maxX - bb.minX);
+    var bh = Math.max(20, bb.maxY - bb.minY);
+    var s = clamp(Math.min((r.width || 800) / bw, (r.height || 600) / bh) * 0.85,
+      ZOOM_MIN, ZOOM_MAX);
+    scene.camera.x = (bb.minX + bb.maxX) / 2;
+    scene.camera.y = (bb.minY + bb.maxY) / 2;
+    scene.camera.scale = s;
+    hideOffviewPill();
+    touchState();
+  }
+
+  function onNewScene() {
+    if (!window.confirm('Szene leeren und mit der Standard-Szene neu starten?')) return;
+    scene.load({ v: 1, blocks: [], camera: { x: 0, y: 0, scale: 1 } });
+    buildDefaultScene(scene);
+    if (window.OneCanvasState && typeof OneCanvasState.clearUrl === 'function') {
+      try { OneCanvasState.clearUrl(); } catch (e) { console.warn('0necanvas ui: clearUrl failed', e); }
+    }
+  }
+
+  // "off view" detection: blocks exist but the canvas is fully blank —
+  // checked via a tiny downscaled readback (cheap at 2s cadence)
+  var probeCanvas = null;
+  var probeCtx = null;
+
+  function hideOffviewPill() {
+    if (els.offviewPill) els.offviewPill.hidden = true;
+  }
+
+  function checkOffview() {
+    if (!els.offviewPill) return;
+    var hasEmitter = false;
+    for (var i = 0; i < scene.blocks.length; i++) {
+      var b = scene.blocks[i];
+      if (!b.visible) continue;
+      var def = scene.defs.get(b.type);
+      if (def && def.kind !== 'kraft' && typeof def.emit === 'function') { hasEmitter = true; break; }
+    }
+    if (!hasEmitter) { hideOffviewPill(); return; }
+    if (!probeCanvas) {
+      probeCanvas = document.createElement('canvas');
+      probeCanvas.width = 64;
+      probeCanvas.height = 36;
+      probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    var lit = false;
+    try {
+      probeCtx.clearRect(0, 0, 64, 36);
+      probeCtx.drawImage(els.canvas, 0, 0, 64, 36);
+      var data = probeCtx.getImageData(0, 0, 64, 36).data;
+      for (var j = 3; j < data.length; j += 4) {
+        if (data[j] > 8) { lit = true; break; }
+      }
+    } catch (e) {
+      lit = true; // readback failed: never nag
+    }
+    els.offviewPill.hidden = lit;
+  }
+
   /* ---------- floating side panel (desktop >=900px) ---------- */
   // drag on the BAUSTEINE header undocks the sidebar into a floating panel;
   // double-click on the header docks it back. Position is session-only.
@@ -1294,12 +1567,53 @@
 
   /* ---------- mobile sheet tabs ---------- */
 
+  // boot-time selects (default scene) must not flip the sheet to
+  // "Eigenschaften" — only USER selections after boot do
+  var autoPropsTabArmed = false;
+  var sheetCollapsed = false;
+  var suppressTabClickUntil = 0;
+
   function setMobileTab(name) {
     if (els.side) els.side.dataset.mtab = name;
     var btns = els.sheetTabs ? els.sheetTabs.querySelectorAll('[data-mtab-btn]') : [];
     for (var i = 0; i < btns.length; i++) {
       btns[i].classList.toggle('active', btns[i].dataset.mtabBtn === name);
     }
+  }
+
+  function setSheetCollapsed(v) {
+    sheetCollapsed = !!v;
+    if (els.side) els.side.classList.toggle('collapsed', sheetCollapsed);
+  }
+
+  // grip drag: pulling the tab row down minimizes the sheet (~72px, only
+  // the tabs stay visible), pulling up restores the 46dvh height
+  function initSheetDrag() {
+    if (!els.sheetTabs) return;
+    els.sheetTabs.addEventListener('pointerdown', function (ev) {
+      if (!ev.isPrimary || isDesktopLayout()) return;
+      var startY = ev.clientY;
+      var done = false;
+      try { els.sheetTabs.setPointerCapture(ev.pointerId); } catch (e) { /* noop */ }
+      function onMove(mv) {
+        if (mv.pointerId !== ev.pointerId || done) return;
+        var dy = mv.clientY - startY;
+        if (Math.abs(dy) > 18) {
+          done = true;
+          setSheetCollapsed(dy > 0);
+          suppressTabClickUntil = Date.now() + 350;
+        }
+      }
+      function onEnd(up) {
+        if (up.pointerId !== ev.pointerId) return;
+        els.sheetTabs.removeEventListener('pointermove', onMove);
+        els.sheetTabs.removeEventListener('pointerup', onEnd);
+        els.sheetTabs.removeEventListener('pointercancel', onEnd);
+      }
+      els.sheetTabs.addEventListener('pointermove', onMove);
+      els.sheetTabs.addEventListener('pointerup', onEnd);
+      els.sheetTabs.addEventListener('pointercancel', onEnd);
+    });
   }
 
   /* ---------- init ---------- */
@@ -1325,8 +1639,12 @@
       toolDraw: $('oc-tool-draw'),
       shareBtn: $('oc-share-btn'),
       fullscreenBtn: $('oc-fullscreen-btn'),
+      fitBtn: $('oc-fit-btn'),
+      newBtn: $('oc-new-btn'),
       sheetTabs: $('oc-sheet-tabs'),
-      limitPill: $('oc-limit-pill')
+      limitPill: $('oc-limit-pill'),
+      heavyPill: $('oc-heavy-pill'),
+      offviewPill: $('oc-offview-pill')
     };
 
     // scene hooks
@@ -1340,8 +1658,14 @@
     sc.onSelect(function (id) {
       updateStackSelection();
       renderProps();
-      if (id) setMobileTab('props');
+      if (id && autoPropsTabArmed) {
+        setMobileTab('props');
+        setSheetCollapsed(false);
+      }
     });
+    // boot (default scene / URL load) runs synchronously after init —
+    // arm the auto tab switch only afterwards
+    setTimeout(function () { autoPropsTabArmed = true; }, 0);
 
     // stack + props initial paint
     renderStack();
@@ -1385,21 +1709,39 @@
     // actions
     els.shareBtn.addEventListener('click', onShare);
     els.fullscreenBtn.addEventListener('click', onFullscreen);
+    if (els.fitBtn) els.fitBtn.addEventListener('click', fitView);
+    if (els.newBtn) els.newBtn.addEventListener('click', onNewScene);
+    if (els.offviewPill) els.offviewPill.addEventListener('click', fitView);
 
-    // mobile sheet tabs
+    // mobile sheet tabs (+ grip drag to minimize/restore)
     if (els.sheetTabs) {
       els.sheetTabs.addEventListener('click', function (e) {
+        if (Date.now() < suppressTabClickUntil) return;
         var btn = e.target.closest ? e.target.closest('[data-mtab-btn]') : null;
-        if (btn) setMobileTab(btn.dataset.mtabBtn);
+        if (btn) {
+          setMobileTab(btn.dataset.mtabBtn);
+          setSheetCollapsed(false);
+        }
       });
+      initSheetDrag();
     }
 
-    // instance-limit pill (poll: flag is per-frame, no engine event)
-    if (els.limitPill) {
-      setInterval(function () {
-        els.limitPill.hidden = !sc.instanceLimitHit;
-      }, 500);
-    }
+    // status pills (poll: flags are per-frame, no engine event).
+    // heavy pill: fps < 10 sustained over ~2s; hides again with hysteresis.
+    // off-view pill: checked at a 2s cadence (tiny canvas readback).
+    var slowPolls = 0;
+    var pollTick = 0;
+    setInterval(function () {
+      if (els.limitPill) els.limitPill.hidden = !sc.instanceLimitHit;
+      if (els.heavyPill) {
+        var f = sc.fps;
+        if (f > 0 && f < 10) slowPolls++;
+        else slowPolls = 0;
+        if (slowPolls >= 4) els.heavyPill.hidden = false;
+        else if (slowPolls === 0 && (!f || f >= 12)) els.heavyPill.hidden = true;
+      }
+      if (++pollTick % 4 === 0) checkOffview();
+    }, 500);
   }
 
   /* ---------- default scene ---------- */
@@ -1422,7 +1764,7 @@
       var entry = schema[i];
       if (entry.ctrl !== 'select') continue;
       if (keyCandidates.indexOf(entry.key) < 0) continue;
-      var options = entry.options || [];
+      var options = entryOptions(entry);
       for (var j = 0; j < options.length; j++) {
         if (rx.test(String(options[j].value)) || rx.test(String(options[j].label))) {
           block.params[entry.key] = options[j].value;

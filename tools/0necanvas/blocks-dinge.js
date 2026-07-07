@@ -25,8 +25,29 @@
     return v < lo ? lo : (v > hi ? hi : v);
   }
 
+  function num(v, fallback) {
+    v = Number(v);
+    return isFinite(v) ? v : fallback;
+  }
+
   function whiteCol(alpha) {
     return 'rgba(255,255,255,' + clamp(alpha, 0, 1).toFixed(3) + ')';
+  }
+
+  // dezentes Selektions-Overlay: gestrichelter Akzent-Kreis + Zentrum-Punkt
+  // (Stil wie pfad/verzerren)
+  function selCircleOverlay(cx, cy, r, view) {
+    var s = Math.max(1e-6, view.scale);
+    r = Math.max(Math.abs(r), 18 / s);
+    var pts = [];
+    for (var i = 0; i <= 64; i++) {
+      var a = (i / 64) * Math.PI * 2;
+      pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    return [
+      { k: 'poly', pts: pts, closed: true, w: 1 / s, dash: [6 / s, 6 / s], col: 'rgba(168,184,232,0.5)' },
+      { k: 'dot', x: cx, y: cy, r: 3 / s, col: 'rgba(168,184,232,0.8)' }
+    ];
   }
 
   // straight line tessellated into n segments (n+1 points)
@@ -91,12 +112,19 @@
       var top = view.top - padY;
       var bottom = view.bottom + padY;
 
+      // Dichte frei (Betrag: eine Anzahl); 0 = kein Gitter, nur Achsen.
+      // Perf schützt NICHT ein Param-Clamp, sondern das View-Budget
+      // (MAX_LINES): zu dichte Gitter werden auf ein Vielfaches des
+      // Abstands vergröbert statt abgeschnitten.
+      var density = Math.abs(num(p.density, 0));
       // world-fixed spacing derived from density (stable while panning)
-      var spacing = 1000 / clamp(p.density, 2, 80);
+      var spacing = density > 0 ? 1000 / density : 0;
       var prims = [];
       var i, k, pts;
 
-      if (p.mode === 'polar') {
+      if (!(spacing > 0)) {
+        // kein Gitter — Achsen unten übernehmen
+      } else if (p.mode === 'polar') {
         // radius range of the padded view rect as seen from the origin
         var nearX = clamp(0, left, right);
         var nearY = clamp(0, top, bottom);
@@ -124,7 +152,8 @@
         }
 
         // radial rays, count follows density; tessellated so warps bend them
-        var rays = Math.max(4, Math.min(90, Math.round(clamp(p.density, 2, 80))));
+        // (Cap = echtes Perf-Budget: jede Ray ist ein eigener Poly)
+        var rays = Math.max(1, Math.min(2 * MAX_LINES, Math.round(density)));
         for (i = 0; i < rays; i++) {
           var ang = (i / rays) * Math.PI * 2;
           var cx = Math.cos(ang), cy = Math.sin(ang);
@@ -175,6 +204,13 @@
       }
 
       return prims;
+    },
+
+    // Ursprungs-Andeutung: eine Gitterzelle als gestrichelter Akzent-Kreis
+    overlay: function (block, t, view) {
+      var density = Math.abs(num(block.params.density, 0));
+      var r = density > 0 ? 1000 / density : 60 / Math.max(1e-6, view.scale);
+      return selCircleOverlay(0, 0, r, view);
     }
   });
 
@@ -232,7 +268,7 @@
           { value: 'cos', label: 'Cos' },
           { value: 'arc', label: 'Kreisbogen' },
           { value: 'sin2', label: 'Sin²' },
-          { value: 'trueArc', label: 'TrueArc' }
+          { value: 'trueArc', label: 'Echter Bogen' }
         ],
         value: 'trueArc'
       },
@@ -252,19 +288,19 @@
 
     emit: function (block, t) {
       var p = block.params;
-      var size = clamp(p.size, 1, 5000);
+      var size = num(p.size, 0); // frei: negativ = gespiegelt
       if (p.pulse) size *= 1 + 0.022 * Math.sin(t * 1.1);
 
-      var morph = clamp(p.morph, 0, 100) / 100;
+      var morph = num(p.morph, 0) / 100; // frei: negativ = invertiertes Herz
       var bendMode = p.bend;
       if (bendMode !== 'geometric' && bendMode !== 'cos' &&
           bendMode !== 'arc' && bendMode !== 'sin2') bendMode = 'trueArc';
-      var freq = Math.round(clamp(p.freq, 0, 40)); // integer keeps the loop closed
-      var amp = clamp(p.amp, 0, 100);
-      var rot = clamp(p.rot, -180, 180) * DEG;
+      var freq = Math.round(num(p.freq, 0)); // integer keeps the loop closed
+      var amp = num(p.amp, 0);
+      var rot = num(p.rot, 0) * DEG;
       var cosR = Math.cos(rot), sinR = Math.sin(rot);
-      var px = clamp(p.x, -2000, 2000);
-      var py = clamp(p.y, -2000, 2000);
+      var px = num(p.x, 0);
+      var py = num(p.y, 0);
 
       var N = 540; // plan: 360-720 points
       var pts = [];
@@ -273,7 +309,7 @@
         var pt = curvePoint(u, morph, size, bendMode);
         var x = pt[0], y = pt[1];
 
-        if (freq > 0 && amp > 0) {
+        if (freq !== 0 && amp !== 0) {
           // wave = radial sine offset, pushed along the point's own direction
           var d = Math.hypot(x, y);
           if (d > 1e-6) {
@@ -298,28 +334,35 @@
       }
       prims.push({
         k: 'poly', pts: pts, closed: true,
-        w: clamp(p.width, 0.5, 12),
+        w: Math.max(0, num(p.width, 0)), // 0 = unsichtbar (Engine skippt w<=0)
         col: 'rgba(255,255,255,0.92)',
-        glow: clamp(p.glow, 0, 40)
+        glow: Math.max(0, num(p.glow, 0))
       });
       return prims;
     },
 
     hit: function (block, wx, wy, view) {
       var p = block.params;
-      var dx = wx - p.x;
-      var dy = wy - p.y;
+      var dx = wx - num(p.x, 0);
+      var dy = wy - num(p.y, 0);
       // deformed circle reaches (1+morph)*size below center; add wave
       // amplitude + a zoom-aware slack
-      var m = clamp(p.morph, 0, 100) / 100;
-      var r = clamp(p.size, 1, 5000) * (1 + m) + clamp(p.amp, 0, 100) + 12 / view.scale;
+      var m = Math.abs(num(p.morph, 0)) / 100;
+      var r = Math.abs(num(p.size, 0)) * (1 + m) + Math.abs(num(p.amp, 0)) + 12 / view.scale;
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = num(block.params.x, 0) + dwx;
+      block.params.y = num(block.params.y, 0) + dwy;
+    },
+
+    overlay: function (block, t, view) {
+      var p = block.params;
+      var m = Math.abs(num(p.morph, 0)) / 100;
+      var r = Math.abs(num(p.size, 0)) * (1 + m) + Math.abs(num(p.amp, 0));
+      return selCircleOverlay(num(p.x, 0), num(p.y, 0), r, view);
     }
   });
 
@@ -349,32 +392,43 @@
       var p = block.params;
       var a = clamp(p.alpha, 0, 1);
       var ch = (p.ch == null) ? '' : String(p.ch);
-      if (a <= 0 || !ch) return [];
+      var size = num(p.size, 0);
+      var rot = num(p.rot, 0) * DEG;
+      // negative Größe = Punktspiegelung (Canvas kann keine negative
+      // Fontgröße): Betrag + 180°-Drehung ist die ehrliche Entsprechung
+      if (size < 0) { size = -size; rot += Math.PI; }
+      if (a <= 0 || !ch || !(size > 0)) return []; // 0 = unsichtbar
       return [{
         k: 'glyph',
         ch: ch.slice(0, 8),
-        x: clamp(p.x, -2000, 2000),
-        y: clamp(p.y, -2000, 2000),
-        size: clamp(p.size, 1, 2000),
-        rot: clamp(p.rot, -180, 180) * DEG,
+        x: num(p.x, 0),
+        y: num(p.y, 0),
+        size: size,
+        rot: rot,
         col: whiteCol(a),
-        glow: clamp(p.glow, 0, 40)
+        glow: Math.max(0, num(p.glow, 0))
       }];
     },
 
     hit: function (block, wx, wy, view) {
       var p = block.params;
-      var dx = wx - p.x;
-      var dy = wy - p.y;
+      var dx = wx - num(p.x, 0);
+      var dy = wy - num(p.y, 0);
       // plan: radius ~ size/2; keep a minimum grab area on high zoom-out
-      var r = Math.max(clamp(p.size, 1, 2000) * 0.5, 24 / view.scale);
+      var r = Math.max(Math.abs(num(p.size, 0)) * 0.5, 24 / view.scale);
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = num(block.params.x, 0) + dwx;
+      block.params.y = num(block.params.y, 0) + dwy;
+    },
+
+    overlay: function (block, t, view) {
+      var p = block.params;
+      return selCircleOverlay(num(p.x, 0), num(p.y, 0),
+        Math.abs(num(p.size, 0)) * 0.6, view);
     }
   });
 
@@ -511,9 +565,9 @@
       }
       prims.push({
         k: 'poly', pts: pts, closed: closed,
-        w: clamp(p.width, 0.5, 12),
+        w: Math.max(0, num(p.width, 0)), // 0 = unsichtbar
         col: 'rgba(255,255,255,0.92)',
-        glow: clamp(p.glow, 0, 40)
+        glow: Math.max(0, num(p.glow, 0))
       });
       return prims;
     },
@@ -555,7 +609,7 @@
       }
 
       // whole-path grab: distance to the control polygon
-      var slack = Math.max(clamp(p.width, 0.5, 12), 14 / s);
+      var slack = Math.max(Math.abs(num(p.width, 0)), 14 / s);
       var segs = p.schliessen ? n : n - 1;
       for (i = 0; i < segs; i++) {
         j = (i + 1) % n;

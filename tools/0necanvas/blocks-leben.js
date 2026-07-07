@@ -190,7 +190,9 @@
       { key: 'death', ctrl: 'slider', label: 'Zufallstod', min: 0, max: 5, step: 0.05, value: 0, decimals: 2, unit: '%' },
       { key: 'symbol', ctrl: 'text', label: 'Zellsymbol (leer = Punkte)', value: '', maxlen: 8 },
       { key: 'cellSize', ctrl: 'slider', label: 'Zellgröße', min: 2, max: 80, step: 1, value: 12 },
-      { key: 'radius', ctrl: 'slider', label: 'Streuradius', min: 0, max: 2000, step: 10, value: 320 }
+      { key: 'radius', ctrl: 'slider', label: 'Streuradius', min: 0, max: 2000, step: 10, value: 320 },
+      { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
+      { key: 'y', ctrl: 'slider', label: 'Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
     init: function (block) {
       var st = block.state = {
@@ -211,7 +213,7 @@
 
       // Sim-Tick entkoppelt vom Render: Schritte/s akkumulieren, pro
       // Frame max GOL_MAX_STEPS ausführen, Rest verwerfen (kein Backlog)
-      var tick = clamp(p.tick, 0, 240);
+      var tick = Math.max(0, Number(p.tick) || 0); // frei, Drossel = GOL_MAX_STEPS
       st.acc += tick * dt;
       var steps = Math.floor(st.acc);
       st.acc -= steps;
@@ -219,6 +221,7 @@
       for (var s = 0; s < steps; s++) golStep(st, p);
 
       var cellSize = Math.max(1, Number(p.cellSize) || 1);
+      var px = Number(p.x) || 0, py = Number(p.y) || 0;
       var sym = String(p.symbol == null ? '' : p.symbol).trim();
       var prims = [];
       if (sym) {
@@ -226,7 +229,7 @@
         st.cells.forEach(function (key) {
           prims.push({
             k: 'glyph', ch: sym,
-            x: golX(key) * cellSize, y: golY(key) * cellSize,
+            x: px + golX(key) * cellSize, y: py + golY(key) * cellSize,
             size: gs, rot: 0, col: INK, glow: 0
           });
         });
@@ -235,15 +238,29 @@
         st.cells.forEach(function (key) {
           prims.push({
             k: 'dot',
-            x: golX(key) * cellSize, y: golY(key) * cellSize,
+            x: px + golX(key) * cellSize, y: py + golY(key) * cellSize,
             r: r, col: INK, glow: 0
           });
         });
       }
       return prims;
     },
+    // Zentrum-Handle (Muster wie strahlen)
+    hit: function (block, wx, wy, view) {
+      var dx = wx - (Number(block.params.x) || 0);
+      var dy = wy - (Number(block.params.y) || 0);
+      var r = Math.max(40, 24 / view.scale);
+      return (dx * dx + dy * dy <= r * r) ? 'move' : null;
+    },
+    drag: function (block, handle, dwx, dwy) {
+      if (handle !== 'move') return;
+      var p = block.params;
+      p.x = (Number(p.x) || 0) + dwx;
+      p.y = (Number(p.y) || 0) + dwy;
+    },
     overlay: function (block, t, view) {
-      return radiusOverlay(block.params.radius, view, 0, 0);
+      var p = block.params;
+      return radiusOverlay(p.radius, view, Number(p.x) || 0, Number(p.y) || 0);
     }
   });
 
@@ -264,7 +281,7 @@
       { key: 'perFrame', ctrl: 'slider', label: 'Linien pro Frame', min: 0, max: 20, step: 0.5, value: 1, decimals: 1 },
       { key: 'stop', ctrl: 'toggle', label: 'Keine neuen', value: false },
       { key: 'reroll', ctrl: 'toggle', label: 'Winkel neu würfeln', value: false },
-      { key: 'width', ctrl: 'slider', label: 'Strichstärke', min: 0.1, max: 12, step: 0.1, value: 1, decimals: 1 },
+      { key: 'width', ctrl: 'slider', label: 'Linienstärke', min: 0.1, max: 12, step: 0.1, value: 1, decimals: 1 },
       { key: 'length', ctrl: 'slider', label: 'Länge', min: 0, max: 4000, step: 10, value: 900 },
       { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
       { key: 'y', ctrl: 'slider', label: 'Y', min: -2000, max: 2000, step: 1, value: 0 }
@@ -297,10 +314,10 @@
       }
 
       var cx = Number(p.x) || 0, cy = Number(p.y) || 0;
-      var len = Math.max(0, Number(p.length) || 0);
-      var w = clamp(p.width, 0.05, 50);
+      var len = Number(p.length) || 0; // frei: negativ = Gegenrichtung
+      var w = Math.max(0, Number(p.width) || 0); // 0 = unsichtbar
       var prims = [];
-      if (!(len > 0)) return prims;
+      if (!len || !(w > 0)) return prims;
       for (var j = 0; j < st.angles.length; j++) {
         var a = st.angles[j];
         var dx = Math.cos(a), dy = Math.sin(a);
@@ -325,8 +342,8 @@
     },
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = (Number(block.params.x) || 0) + dwx;
+      block.params.y = (Number(block.params.y) || 0) + dwy;
     },
     overlay: function (block, t, view) {
       var w = 1 / (view.scale > 0 ? view.scale : 1);
@@ -394,8 +411,10 @@
       var chars = ringChars(p.text);
       var n = chars.length;
       var cx = Number(p.x) || 0, cy = Number(p.y) || 0;
-      var size = clamp(p.size, 0.5, 2000);
-      var radius = Math.max(0, Number(p.radius) || 0);
+      var size = Math.max(0, Number(p.size) || 0); // 0 = unsichtbar klein
+      // Radius frei: negativ invertiert (Punkt liegt am Gegenwinkel) —
+      // cos/sin mit negativem r leisten das von selbst, kein Math.max(1)
+      var radius = Number(p.radius) || 0;
       var extraRot = (Number(p.rotChar) || 0) * DEG;
       var phase = ((Number(p.speed) || 0) * DEG) * t - Math.PI / 2;
 
@@ -407,9 +426,8 @@
         var wind = Number(p.wind) || 0;
         var spacing = Math.max(size * 1.12, 2);
         ang = 0;
-        r = Math.max(radius, 1);
         for (i = 0; i < n; i++) {
-          r = Math.max(1, radius + wind * (ang / TAU));
+          r = radius + wind * (ang / TAU);
           var a = ang + phase;
           gx = cx + Math.cos(a) * r;
           gy = cy + Math.sin(a) * r;
@@ -417,11 +435,12 @@
             k: 'glyph', ch: chars[i], x: gx, y: gy, size: size,
             rot: a + Math.PI / 2 + extraRot, col: INK, glow: 0
           });
-          ang += spacing / r;
+          // Schrittweite über |r| (mit Untergrenze), sonst Endlos-Stau bei r~0
+          ang += spacing / Math.max(1, Math.abs(r));
         }
       } else {
         // Ring: gleichmäßig verteilt (wie die Referenz)
-        r = Math.max(radius, 1);
+        r = radius;
         for (i = 0; i < n; i++) {
           ang = (i / n) * TAU + phase;
           gx = cx + Math.cos(ang) * r;
@@ -438,21 +457,21 @@
       var p = block.params;
       var dx = wx - (Number(p.x) || 0);
       var dy = wy - (Number(p.y) || 0);
-      var outer = Math.max(0, Number(p.radius) || 0);
+      var outer = Math.abs(Number(p.radius) || 0);
       if (p.mode === 'spirale') {
         outer += Math.abs(Number(p.wind) || 0) * 6; // grob: einige Windungen
       }
-      var r = outer + clamp(p.size, 0.5, 2000) + 12 / view.scale;
+      var r = outer + Math.max(0, Number(p.size) || 0) + 12 / view.scale;
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = (Number(block.params.x) || 0) + dwx;
+      block.params.y = (Number(block.params.y) || 0) + dwy;
     },
     overlay: function (block, t, view) {
       var p = block.params;
-      return radiusOverlay(p.radius, view, Number(p.x) || 0, Number(p.y) || 0);
+      return radiusOverlay(Math.abs(Number(p.radius) || 0), view, Number(p.x) || 0, Number(p.y) || 0);
     }
   });
 
@@ -560,20 +579,23 @@
     icon: '⑂',
     schema: [
       { key: 'tokens', ctrl: 'text', label: 'Tokens (Leerzeichen-getrennt)', value: '0 1 ∞', maxlen: 64 },
-      { key: 'spawnChance', ctrl: 'slider', label: 'Wurzel-Chance', min: 0, max: 100, step: 0.5, value: 8, decimals: 1, unit: '%' },
-      { key: 'childChance', ctrl: 'slider', label: 'Kind-Chance', min: 0, max: 100, step: 0.5, value: 14, decimals: 1, unit: '%' },
+      // Defaults so, dass nach ~2s ein sichtbarer Baum steht
+      { key: 'spawnChance', ctrl: 'slider', label: 'Wurzel-Chance', min: 0, max: 100, step: 0.5, value: 16, decimals: 1, unit: '%' },
+      { key: 'childChance', ctrl: 'slider', label: 'Kind-Chance', min: 0, max: 100, step: 0.5, value: 22, decimals: 1, unit: '%' },
       { key: 'deathChance', ctrl: 'slider', label: 'Sterbe-Chance', min: 0, max: 100, step: 0.5, value: 2.5, decimals: 1, unit: '%' },
       { key: 'maxChildren', ctrl: 'slider', label: 'Max Kinder', min: 0, max: 12, step: 1, value: 3 },
       { key: 'spacing', ctrl: 'slider', label: 'Abstand', min: 4, max: 400, step: 1, value: 46 },
-      { key: 'size', ctrl: 'slider', label: 'Zeichengröße', min: 4, max: 120, step: 1, value: 22 },
+      { key: 'size', ctrl: 'slider', label: 'Zeichengröße', min: 4, max: 120, step: 1, value: 26 },
       { key: 'radius', ctrl: 'slider', label: 'Streuradius', min: 0, max: 2000, step: 10, value: 480 },
-      { key: 'edges', ctrl: 'toggle', label: 'Verbindungslinien', value: true }
+      { key: 'edges', ctrl: 'toggle', label: 'Verbindungslinien', value: true },
+      { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
+      { key: 'y', ctrl: 'slider', label: 'Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
     init: function (block) {
       var st = block.state = treeState();
       // sofort lebendig: ein paar Wurzeln + einige Vorab-Schritte
-      for (var i = 0; i < 3; i++) treeSpawnRoot(st, block.params);
-      for (var s = 0; s < 6; s++) treeStep(st, block.params);
+      for (var i = 0; i < 4; i++) treeSpawnRoot(st, block.params);
+      for (var s = 0; s < 8; s++) treeStep(st, block.params);
     },
     emit: function (block, t, dt, view) {
       var p = block.params;
@@ -588,7 +610,8 @@
       // Zeit auch zwischen Schritten weich weiterlaufen lassen (Fade-In)
       var simNow = st.simT + st.acc / TREE_TICK;
 
-      var size = clamp(p.size, 0.5, 2000);
+      var size = Math.max(0, Number(p.size) || 0); // 0 = unsichtbar klein
+      var px = Number(p.x) || 0, py = Number(p.y) || 0;
       var edgeW = 0.7;
       var prims = [];
       var edges = !!p.edges;
@@ -604,22 +627,36 @@
             // Mittelpunkt als Zwischenpunkt, damit warp die Kante biegt
             prims.push({
               k: 'poly',
-              pts: [par.x, par.y,
-                    (par.x + node.x) / 2, (par.y + node.y) / 2,
-                    node.x, node.y],
+              pts: [px + par.x, py + par.y,
+                    px + (par.x + node.x) / 2, py + (par.y + node.y) / 2,
+                    px + node.x, py + node.y],
               closed: false, w: edgeW, col: EDGE_COL, glow: 0, _alpha: a
             });
           }
         }
         prims.push({
-          k: 'glyph', ch: node.ch, x: node.x, y: node.y,
+          k: 'glyph', ch: node.ch, x: px + node.x, y: py + node.y,
           size: size, rot: 0, col: INK, glow: 0, _alpha: a
         });
       });
       return prims;
     },
+    // Zentrum-Handle (Muster wie strahlen)
+    hit: function (block, wx, wy, view) {
+      var dx = wx - (Number(block.params.x) || 0);
+      var dy = wy - (Number(block.params.y) || 0);
+      var r = Math.max(40, 24 / view.scale);
+      return (dx * dx + dy * dy <= r * r) ? 'move' : null;
+    },
+    drag: function (block, handle, dwx, dwy) {
+      if (handle !== 'move') return;
+      var p = block.params;
+      p.x = (Number(p.x) || 0) + dwx;
+      p.y = (Number(p.y) || 0) + dwy;
+    },
     overlay: function (block, t, view) {
-      return radiusOverlay(block.params.radius, view, 0, 0);
+      var p = block.params;
+      return radiusOverlay(p.radius, view, Number(p.x) || 0, Number(p.y) || 0);
     }
   });
 })();

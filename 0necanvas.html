@@ -10,7 +10,7 @@
   <div id="oc-app">
 
     <header id="oc-topbar">
-      <div class="wordmark"><b>0nefinity</b><span class="sep">—</span><span class="wm-sub">canvas</span></div>
+      <div class="wordmark"><b>0<span class="wm-rest">nefinity</span></b><span class="sep">—</span><span class="wm-sub">canvas</span></div>
 
       <div class="topbar-tools" id="oc-tools">
         <button class="tool-btn active" id="oc-tool-move" title="Bewegen" aria-label="Werkzeug Bewegen">
@@ -26,6 +26,9 @@
 
       <div class="topbar-actions">
         <span id="oc-limit-pill" class="limit-pill" hidden>Instanz-Limit erreicht</span>
+        <span id="oc-heavy-pill" class="limit-pill" hidden>Sehr schwere Szene</span>
+        <button class="icon-btn" id="oc-fit-btn" title="Einpassen &mdash; Ansicht auf die Szene zentrieren" aria-label="Einpassen">&#8865;</button>
+        <button class="icon-btn" id="oc-new-btn" title="Neu &mdash; Szene leeren" aria-label="Neue Szene">&#8709;</button>
         <button class="icon-btn" id="oc-share-btn" title="Teilen" aria-label="Teilen">&#10697;</button>
         <button class="icon-btn" id="oc-fullscreen-btn" title="Vollbild" aria-label="Vollbild">&#9974;</button>
       </div>
@@ -34,6 +37,7 @@
     <main id="oc-stage">
       <canvas id="oc-canvas"></canvas>
       <div class="stage-hint">0 &#8801; 1 &#8801; &#8734;</div>
+      <button id="oc-offview-pill" class="stage-pill" hidden>Au&szlig;erhalb der Ansicht &mdash; Einpassen?</button>
     </main>
 
     <aside id="oc-side" data-mtab="stack">

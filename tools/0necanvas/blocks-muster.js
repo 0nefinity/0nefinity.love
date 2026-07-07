@@ -23,6 +23,9 @@
 
   var DEG = Math.PI / 180;
   var LINE_SEGS = 24; // tessellation per line (warp-bendable, like gitter)
+  var INSTANCE_BUDGET = 1500; // mirrors engine INSTANCE_CAP (not exported)
+  var LINIEN_MAX = 2000;      // echtes Perf-Budget: Polys pro linienschar-Frame
+  var SPIRALE_MAX_PTS = 16000; // echtes Perf-Budget: Punkte pro spirale-Frame
 
   function num(v, fallback) {
     v = Number(v);
@@ -45,6 +48,22 @@
     return s - Math.floor(s);
   }
 
+  // dezentes Selektions-Overlay: gestrichelter Akzent-Kreis + Zentrum-Punkt
+  // (Stil wie pfad/verzerren)
+  function selCircleOverlay(cx, cy, r, view) {
+    var s = Math.max(1e-6, view.scale);
+    r = Math.max(Math.abs(r), 18 / s);
+    var pts = [];
+    for (var i = 0; i <= 64; i++) {
+      var a = (i / 64) * Math.PI * 2;
+      pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    return [
+      { k: 'poly', pts: pts, closed: true, w: 1 / s, dash: [6 / s, 6 / s], col: 'rgba(168,184,232,0.5)' },
+      { k: 'dot', x: cx, y: cy, r: 3 / s, col: 'rgba(168,184,232,0.8)' }
+    ];
+  }
+
   /* ================================================================
    * tapete — Kaleidoskop-Tapete (Kraft)
    *
@@ -64,7 +83,8 @@
       { key: 'zeilen', ctrl: 'slider', label: 'Zeilen', min: 0, max: 8, step: 1, value: 2 },
       { key: 'spalten', ctrl: 'slider', label: 'Spalten', min: 0, max: 8, step: 1, value: 2 },
       { key: 'spiegeln', ctrl: 'toggle', label: 'Spiegeln', value: true },
-      { key: 'offset', ctrl: 'slider', label: 'Winkel-Offset', min: -180, max: 180, step: 1, value: 0, unit: '°' }
+      { key: 'offset', ctrl: 'slider', label: 'Winkel-Offset', min: -180, max: 180, step: 1, value: 0, unit: '°' },
+      { key: 'deckkraft', ctrl: 'slider', label: 'Deckkraft', min: 0, max: 4, step: 0.05, value: 1, decimals: 2 }
     ],
 
     // instance matrices depend only on params -> layer-cache compatible
@@ -72,17 +92,46 @@
 
     force: function (block) {
       var p = block.params;
-      var size = Math.max(1, num(p.zellgroesse, 260));
+      var size = num(p.zellgroesse, 260);
       var rows = Math.max(0, Math.round(num(p.zeilen, 0)));
       var cols = Math.max(0, Math.round(num(p.spalten, 0)));
       var mirror = !!p.spiegeln;
       var offset = num(p.offset, 0) * DEG;
+      var deck = Math.max(0, num(p.deckkraft, 1));
       var rowH = size * Math.sqrt(3) / 2; // reference: height = size*sqrt(3)/2
+
+      // K1-Fix: Zellzahl VOR der Schleife deckeln. Benötigte Instanzen =
+      // (2*rows)*(2*cols)*perCell; alles darüber würde nur materialisiert,
+      // um von der Engine sofort weggekappt zu werden (bei zeilen=1e6 waren
+      // das 8 Mio. Zellen -> OOM). Wir reduzieren rows/cols proportional
+      // (die Zellen sind zentrum-sortiert, also fällt nur Peripherie weg)
+      // und erzeugen bewusst EINE Zelle Überhang über dem Engine-Budget,
+      // damit die Engine selbst kappt und die Instanz-Limit-Pille zeigt.
+      var perCell = mirror ? 6 : 3;
+      var maxCells = Math.floor(INSTANCE_BUDGET / perCell) + 1;
+      var needCells = 4 * rows * cols;
+      if (needCells > maxCells) {
+        var f = Math.sqrt(maxCells / needCells);
+        var r2 = Math.max(1, Math.round(rows * f));
+        var c2 = Math.max(1, Math.round(cols * f));
+        // max(1)-Klemmen können eine Achse aufblähen -> gegenrechnen
+        r2 = Math.min(r2, Math.max(1, Math.ceil(maxCells / (4 * c2))));
+        c2 = Math.min(c2, Math.max(1, Math.ceil(maxCells / (4 * r2))));
+        rows = r2;
+        cols = c2;
+      }
 
       return {
         affine: true,
         instances: function () {
-          if (!rows || !cols) return []; // 0 = keine Wiederholung (Identität)
+          if (!rows || !cols) return []; // 0 = Identität (keine Wiederholung)
+
+          // Weiß-Sättigungs-Schutz: pro-Instanz-Alpha ~ 1/sqrt(n), damit
+          // additive Überlagerung vieler Kopien nicht ins Weiße kippt;
+          // 'Deckkraft' übersteuert (1 = Auto-Normalisierung)
+          var nInst = 4 * rows * cols * perCell;
+          var alpha = Math.min(1, deck * 3 / Math.sqrt(Math.max(1, nInst)));
+          if (alpha <= 0) return [];
 
           // cell centers, hex-offset lattice as in the reference:
           // x = c*size + (r odd ? size/2 : 0), y = r*rowH
@@ -106,14 +155,30 @@
               var a = offset + k * (Math.PI * 2 / 3);
               var ca = Math.cos(a), sa = Math.sin(a);
               // T(cx,cy) · R(a)
-              list.push([ca, sa, -sa, ca, cx, cy]);
+              list.push({ m: [ca, sa, -sa, ca, cx, cy], alpha: alpha });
               // T(cx,cy) · scale(-1,1) · R(a)  (reference transform order)
-              if (mirror) list.push([-ca, sa, sa, ca, cx, cy]);
+              if (mirror) list.push({ m: [-ca, sa, sa, ca, cx, cy], alpha: alpha });
             }
           }
           return list;
         }
       };
+    },
+
+    // Zell-Andeutung: gestrichelte Referenzzelle (Breite = Zellgröße,
+    // Höhe = Reihenhöhe) am Ursprung + Zentrum-Punkt
+    overlay: function (block, t, view) {
+      var p = block.params;
+      var s = Math.max(1e-6, view.scale);
+      var size = Math.abs(num(p.zellgroesse, 260));
+      var rowH = size * Math.sqrt(3) / 2;
+      var hw = Math.max(size / 2, 12 / s);
+      var hh = Math.max(rowH / 2, 12 / s);
+      return [
+        { k: 'poly', pts: [-hw, -hh, hw, -hh, hw, hh, -hw, hh], closed: true,
+          w: 1 / s, dash: [6 / s, 6 / s], col: 'rgba(168,184,232,0.5)' },
+        { k: 'dot', x: 0, y: 0, r: 3 / s, col: 'rgba(168,184,232,0.8)' }
+      ];
     }
   });
 
@@ -214,7 +279,7 @@
     icon: '∴', // ∴
     schema: [
       { key: 'text', ctrl: 'text', label: 'Text', value: '0nefinity', maxlen: 60 },
-      { key: 'groesse', ctrl: 'slider', label: 'Schriftgröße', min: 10, max: 600, step: 1, value: 150 },
+      { key: 'groesse', ctrl: 'slider', label: 'Zeichengröße', min: 10, max: 600, step: 1, value: 150 },
       { key: 'dichte', ctrl: 'slider', label: 'Punktdichte', min: 0, max: 1200, step: 1, value: 420 },
       { key: 'symbolch', ctrl: 'text', label: 'Punktsymbol (leer = Punkte)', value: '', maxlen: 2 },
       { key: 'glow', ctrl: 'slider', label: 'Glühen', min: 0, max: 40, step: 1, value: 7 },
@@ -235,17 +300,18 @@
       if (!scan || !scan.pts.length) return [];
 
       var p = block.params;
-      var s = clamp(p.groesse, 1, 4000);
-      var rot = clamp(p.rot, -180, 180) * DEG;
+      var s = num(p.groesse, 0); // frei: negativ = Punktspiegelung
+      var rot = num(p.rot, 0) * DEG;
       var cosR = Math.cos(rot), sinR = Math.sin(rot);
-      var px = clamp(p.x, -2000, 2000);
-      var py = clamp(p.y, -2000, 2000);
-      var glow = clamp(p.glow, 0, 40);
+      var px = num(p.x, 0);
+      var py = num(p.y, 0);
+      var glow = Math.max(0, num(p.glow, 0));
       var col = whiteCol(0.92);
 
       var ch = (p.symbolch == null ? '' : String(p.symbolch)).trim().slice(0, 2);
-      var dotR = Math.max(0.35, s * scan.spacingEm * 0.34);
-      var glyphSize = Math.max(1, s * scan.spacingEm * 1.3);
+      var sAbs = Math.abs(s);
+      var dotR = Math.max(0.35, sAbs * scan.spacingEm * 0.34);
+      var glyphSize = Math.max(1, sAbs * scan.spacingEm * 1.3);
 
       var pts = scan.pts;
       var prims = [];
@@ -265,18 +331,41 @@
     hit: function (block, wx, wy, view) {
       var p = block.params;
       var scan = block.state && block.state.scan;
-      var s = clamp(p.groesse, 1, 4000);
+      var s = Math.abs(num(p.groesse, 0));
       var hw = scan ? scan.halfWEm * s : s;
       var hh = scan ? scan.halfHEm * s : s * 0.5;
       var r = Math.max(Math.hypot(hw, hh), 24 / view.scale);
-      var dx = wx - p.x, dy = wy - p.y;
+      var dx = wx - num(p.x, 0), dy = wy - num(p.y, 0);
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = num(block.params.x, 0) + dwx;
+      block.params.y = num(block.params.y, 0) + dwy;
+    },
+
+    // gestrichelte Bounding-Box um den gescannten Text + Zentrum-Punkt
+    overlay: function (block, t, view) {
+      var p = block.params;
+      var scan = block.state && block.state.scan;
+      var vs = Math.max(1e-6, view.scale);
+      var s = Math.abs(num(p.groesse, 0));
+      var hw = Math.max(scan ? scan.halfWEm * s : s, 14 / vs);
+      var hh = Math.max(scan ? scan.halfHEm * s : s * 0.5, 14 / vs);
+      var rot = num(p.rot, 0) * DEG;
+      var cosR = Math.cos(rot), sinR = Math.sin(rot);
+      var px = num(p.x, 0), py = num(p.y, 0);
+      var loc = [-hw, -hh, hw, -hh, hw, hh, -hw, hh];
+      var pts = [];
+      for (var i = 0; i < loc.length; i += 2) {
+        pts.push(px + loc[i] * cosR - loc[i + 1] * sinR,
+                 py + loc[i] * sinR + loc[i + 1] * cosR);
+      }
+      return [
+        { k: 'poly', pts: pts, closed: true, w: 1 / vs, dash: [6 / vs, 6 / vs], col: 'rgba(168,184,232,0.5)' },
+        { k: 'dot', x: px, y: py, r: 3 / vs, col: 'rgba(168,184,232,0.8)' }
+      ];
     }
   });
 
@@ -311,12 +400,14 @@
       var p = block.params;
       var n = Math.max(0, Math.round(num(p.anzahl, 0)));
       if (!n) return [];
-      var spacing = Math.max(0, num(p.abstand, 0));
-      var ang = clamp(p.winkel, -180, 180) * DEG;
-      var len = clamp(p.laenge, 1, 20000);
-      var w = clamp(p.staerke, 0.1, 12);
-      var px = clamp(p.x, -2000, 2000);
-      var py = clamp(p.y, -2000, 2000);
+      // echtes Perf-Budget (Linien = einzelne Polys); kein Geschmacks-Cap
+      if (n > LINIEN_MAX) n = LINIEN_MAX;
+      var spacing = num(p.abstand, 0);
+      var ang = num(p.winkel, 0) * DEG;
+      var len = num(p.laenge, 0);
+      var w = Math.max(0, num(p.staerke, 0)); // 0 = unsichtbar (Engine skippt w<=0)
+      var px = num(p.x, 0);
+      var py = num(p.y, 0);
 
       var dirX = Math.cos(ang), dirY = Math.sin(ang);
       var perX = -dirY, perY = dirX;
@@ -342,16 +433,40 @@
     hit: function (block, wx, wy, view) {
       var p = block.params;
       var n = Math.max(0, Math.round(num(p.anzahl, 0)));
-      var span = n > 1 ? (n - 1) * Math.max(0, num(p.abstand, 0)) / 2 : 0;
-      var r = Math.hypot(clamp(p.laenge, 1, 20000) / 2, span) + 16 / view.scale;
-      var dx = wx - p.x, dy = wy - p.y;
+      var span = n > 1 ? (n - 1) * Math.abs(num(p.abstand, 0)) / 2 : 0;
+      var r = Math.hypot(Math.abs(num(p.laenge, 0)) / 2, span) + 16 / view.scale;
+      var dx = wx - num(p.x, 0), dy = wy - num(p.y, 0);
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = num(block.params.x, 0) + dwx;
+      block.params.y = num(block.params.y, 0) + dwy;
+    },
+
+    // gestrichelte Bounding-Box entlang der Linienrichtung + Zentrum-Punkt
+    overlay: function (block, t, view) {
+      var p = block.params;
+      var vs = Math.max(1e-6, view.scale);
+      var n = Math.max(0, Math.round(num(p.anzahl, 0)));
+      var span = n > 1 ? (n - 1) * Math.abs(num(p.abstand, 0)) / 2 : 0;
+      var hl = Math.max(Math.abs(num(p.laenge, 0)) / 2, 14 / vs);
+      var hs = Math.max(span, 14 / vs);
+      var ang = num(p.winkel, 0) * DEG;
+      var dirX = Math.cos(ang), dirY = Math.sin(ang);
+      var perX = -dirY, perY = dirX;
+      var px = num(p.x, 0), py = num(p.y, 0);
+      var pts = [
+        px - dirX * hl - perX * hs, py - dirY * hl - perY * hs,
+        px + dirX * hl - perX * hs, py + dirY * hl - perY * hs,
+        px + dirX * hl + perX * hs, py + dirY * hl + perY * hs,
+        px - dirX * hl + perX * hs, py - dirY * hl + perY * hs
+      ];
+      return [
+        { k: 'poly', pts: pts, closed: true, w: 1 / vs, dash: [6 / vs, 6 / vs], col: 'rgba(168,184,232,0.5)' },
+        { k: 'dot', x: px, y: py, r: 3 / vs, col: 'rgba(168,184,232,0.8)' }
+      ];
     }
   });
 
@@ -389,24 +504,25 @@
 
     emit: function (block) {
       var p = block.params;
-      var turns = clamp(p.windungen, 0, 200);
-      var radius = Math.max(0, num(p.radius, 0));
-      var pitch = Math.max(0, num(p.steigung, 0));
-      var depth = clamp(p.tiefe, 0, 1);
-      var ppw = Math.max(4, Math.round(num(p.ppw, 48)));
-      var baseW = clamp(p.staerke, 0.1, 12);
-      var rot = clamp(p.rot, -180, 180) * DEG;
+      var turns = num(p.windungen, 0); // frei: negativ = Gegenrichtung
+      var radius = num(p.radius, 0);   // frei: negativ = gespiegelt
+      var pitch = num(p.steigung, 0);
+      var depth = clamp(p.tiefe, 0, 1); // Mischfaktor, mathematisch 0..1
+      var ppw = Math.max(1, Math.round(Math.abs(num(p.ppw, 48))));
+      var baseW = Math.max(0, num(p.staerke, 0)); // 0 = unsichtbar
+      var rot = num(p.rot, 0) * DEG;
       var cosR = Math.cos(rot), sinR = Math.sin(rot);
-      var px = clamp(p.x, -2000, 2000);
-      var py = clamp(p.y, -2000, 2000);
+      var px = num(p.x, 0);
+      var py = num(p.y, 0);
 
       var U = turns * Math.PI * 2;
-      if (!(U > 0) || (!(radius > 0) && !(pitch > 0))) return [];
+      if (!turns || (!radius && !pitch)) return [];
 
-      var N = Math.max(2, Math.round(turns * ppw));
+      // echtes Perf-Budget: Gesamtpunkte kappen (nicht die Params selbst)
+      var N = Math.max(2, Math.min(SPIRALE_MAX_PTS, Math.round(Math.abs(turns) * ppw)));
       var totalH = turns * pitch;
       // more pitch -> the coil tilts toward side view: rings squash in y
-      var squash = 1 / (1 + pitch / 80);
+      var squash = 1 / (1 + Math.abs(pitch) / 80);
 
       // sample points (world) + depth per point
       var xs = new Array(N + 1), ys = new Array(N + 1), zs = new Array(N + 1);
@@ -443,7 +559,7 @@
         for (i = i0; i <= i1; i++) pts.push(xs[i], ys[i]);
         prims.push({
           k: 'poly', pts: pts,
-          w: Math.max(0.1, baseW * wf),
+          w: Math.max(0, baseW * wf),
           col: whiteCol(a),
           glow: zMid > 0 ? glow : glow * 0.4
         });
@@ -453,17 +569,25 @@
 
     hit: function (block, wx, wy, view) {
       var p = block.params;
-      var radius = Math.max(0, num(p.radius, 0));
-      var halfH = clamp(p.windungen, 0, 200) * Math.max(0, num(p.steigung, 0)) / 2;
+      var radius = Math.abs(num(p.radius, 0));
+      var halfH = Math.abs(num(p.windungen, 0) * num(p.steigung, 0)) / 2;
       var r = Math.max(Math.hypot(radius, halfH + radius), 24 / view.scale);
-      var dx = wx - p.x, dy = wy - p.y;
+      var dx = wx - num(p.x, 0), dy = wy - num(p.y, 0);
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
 
     drag: function (block, handle, dwx, dwy) {
       if (handle !== 'move') return;
-      block.params.x = clamp(block.params.x + dwx, -2000, 2000);
-      block.params.y = clamp(block.params.y + dwy, -2000, 2000);
+      block.params.x = num(block.params.x, 0) + dwx;
+      block.params.y = num(block.params.y, 0) + dwy;
+    },
+
+    overlay: function (block, t, view) {
+      var p = block.params;
+      var radius = Math.abs(num(p.radius, 0));
+      var halfH = Math.abs(num(p.windungen, 0) * num(p.steigung, 0)) / 2;
+      return selCircleOverlay(num(p.x, 0), num(p.y, 0),
+        Math.hypot(radius, halfH + radius), view);
     }
   });
 })();
