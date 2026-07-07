@@ -48,8 +48,14 @@ RewriteRule ^(.+)$ /tools/weird-text-viewer.php?path=$1 [L,QSA,B]
 RewriteCond %{THE_REQUEST} ^GET\ /(.+)\.html(\?.*)?\ HTTP
 RewriteRule ^(.+)\.html$ https://%{HTTP_HOST}/$1 [R=302,L,QSA]
 
+# Trailing-Slash auf Clean-URLs entfernen (sonst Rewrite-Loop -> 500,
+# weil REQUEST_FILENAME auf den existierenden Prefix gekuerzt wird)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.+)/$ https://%{HTTP_HOST}/$1 [R=301,L,QSA]
+
 # Intern auf .html Dateien routen (wenn vorhanden)
 # QSA: Query-String erhalten!
+RewriteCond %{REQUEST_URI} !/$
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.html -f
@@ -57,6 +63,7 @@ RewriteRule ^(.+)$ $1.html [L,QSA]
 
 # Intern auf .md Dateien routen (wenn vorhanden)
 # QSA: Query-String erhalten!
+RewriteCond %{REQUEST_URI} !/$
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.md -f
