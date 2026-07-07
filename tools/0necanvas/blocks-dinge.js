@@ -243,10 +243,14 @@
   // morph 100% == deformation of one radius (the original's snap point r):
   // the notch reaches the center, the tip reaches 2r below it — the
   // classic circleheart silhouette. Deformation scales linearly with morph.
-  function curvePoint(u, morph, size, mode) {
+  // Like the original (deformationTop/deformationBottom): the upper half
+  // of the ring (sinT >= 0) uses morphTop, the lower half morphBottom;
+  // the Morph slider is the 'both' macro, the two Verformung sliders are
+  // additive offsets on top of it (old ?s= scenes stay identical at 0/0).
+  function curvePoint(u, morphTop, morphBottom, size, mode) {
     var cosT = Math.cos(u);
     var sinT = Math.sin(u);
-    var def = morph * size; // defTop == defBottom (original 'both' drag)
+    var def = (sinT >= 0 ? morphTop : morphBottom) * size;
     return [
       size * cosT,
       -size * sinT + def * curveBend(u, cosT, sinT, mode)
@@ -261,6 +265,10 @@
     schema: [
       { key: 'size', ctrl: 'slider', label: 'Größe', min: 10, max: 600, step: 1, value: 160 },
       { key: 'morph', ctrl: 'slider', label: 'Morph Kreis ↔ Herz', min: 0, max: 100, step: 1, value: 72, unit: '%' },
+      // Original deformationTop/Bottom: getrennte Verformung als Offsets
+      // relativ zu Morph (0 = folgt Morph — Beide-gleich-Makro bleibt)
+      { key: 'defOben', ctrl: 'slider', label: 'Verformung oben', min: -200, max: 200, step: 1, value: 0, unit: '%' },
+      { key: 'defUnten', ctrl: 'slider', label: 'Verformung unten', min: -200, max: 200, step: 1, value: 0, unit: '%' },
       {
         key: 'bend', ctrl: 'select', label: 'Rundung',
         options: [
@@ -291,7 +299,10 @@
       var size = num(p.size, 0); // frei: negativ = gespiegelt
       if (p.pulse) size *= 1 + 0.022 * Math.sin(t * 1.1);
 
-      var morph = num(p.morph, 0) / 100; // frei: negativ = invertiertes Herz
+      var morph = num(p.morph, 0);
+      // frei: negativ = invertiertes Herz; oben/unten = Original top/bottom
+      var morphTop = (morph + num(p.defOben, 0)) / 100;
+      var morphBottom = (morph + num(p.defUnten, 0)) / 100;
       var bendMode = p.bend;
       if (bendMode !== 'geometric' && bendMode !== 'cos' &&
           bendMode !== 'arc' && bendMode !== 'sin2') bendMode = 'trueArc';
@@ -306,7 +317,7 @@
       var pts = [];
       for (var i = 0; i < N; i++) {
         var u = (i / N) * Math.PI * 2;
-        var pt = curvePoint(u, morph, size, bendMode);
+        var pt = curvePoint(u, morphTop, morphBottom, size, bendMode);
         var x = pt[0], y = pt[1];
 
         if (freq !== 0 && amp !== 0) {
@@ -347,7 +358,8 @@
       var dy = wy - num(p.y, 0);
       // deformed circle reaches (1+morph)*size below center; add wave
       // amplitude + a zoom-aware slack
-      var m = Math.abs(num(p.morph, 0)) / 100;
+      var mo = num(p.morph, 0);
+      var m = Math.max(Math.abs(mo + num(p.defOben, 0)), Math.abs(mo + num(p.defUnten, 0))) / 100;
       var r = Math.abs(num(p.size, 0)) * (1 + m) + Math.abs(num(p.amp, 0)) + 12 / view.scale;
       return (dx * dx + dy * dy <= r * r) ? 'move' : null;
     },
@@ -360,7 +372,8 @@
 
     overlay: function (block, t, view) {
       var p = block.params;
-      var m = Math.abs(num(p.morph, 0)) / 100;
+      var mo = num(p.morph, 0);
+      var m = Math.max(Math.abs(mo + num(p.defOben, 0)), Math.abs(mo + num(p.defUnten, 0))) / 100;
       var r = Math.abs(num(p.size, 0)) * (1 + m) + Math.abs(num(p.amp, 0));
       return selCircleOverlay(num(p.x, 0), num(p.y, 0), r, view);
     }

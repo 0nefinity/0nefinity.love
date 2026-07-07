@@ -95,6 +95,106 @@
   function golX(key) { return (key % GOL_RANGE) - GOL_OFF; }
   function golY(key) { return Math.floor(key / GOL_RANGE) - GOL_OFF; }
 
+  // Original-Pattern-Bibliothek aus game0f1ife.html (LifeWiki-verifiziert),
+  // 1:1 übernommen — gerendert vom controls.js addPatternPicker
+  var GOL_PATTERNS = [
+    // Still Lifes
+    { id: 'block', name: 'Block', cells: [[0,0],[1,0],[0,1],[1,1]] },
+    { id: 'beehive', name: 'Beehive', cells: [[1,0],[2,0],[0,1],[3,1],[1,2],[2,2]] },
+    { id: 'loaf', name: 'Loaf', cells: [[1,0],[2,0],[0,1],[3,1],[1,2],[3,2],[2,3]] },
+    { id: 'boat', name: 'Boat', cells: [[0,0],[1,0],[0,1],[2,1],[1,2]] },
+    { id: 'tub', name: 'Tub', cells: [[1,0],[0,1],[2,1],[1,2]] },
+    // Oscillators
+    { id: 'blinker', name: 'Blinker', cells: [[0,0],[1,0],[2,0]] },
+    { id: 'toad', name: 'Toad', cells: [[1,0],[2,0],[3,0],[0,1],[1,1],[2,1]] },
+    { id: 'beacon', name: 'Beacon', cells: [[0,0],[1,0],[0,1],[1,1],[2,2],[3,2],[2,3],[3,3]] },
+    { id: 'clock', name: 'Clock', cells: [[2,0],[0,1],[2,1],[1,2],[3,2],[1,3]] },
+    { id: 'pulsar', name: 'Pulsar', cells: [
+      [2,0],[3,0],[4,0],[8,0],[9,0],[10,0],
+      [0,2],[5,2],[7,2],[12,2],
+      [0,3],[5,3],[7,3],[12,3],
+      [0,4],[5,4],[7,4],[12,4],
+      [2,5],[3,5],[4,5],[8,5],[9,5],[10,5],
+      [2,7],[3,7],[4,7],[8,7],[9,7],[10,7],
+      [0,8],[5,8],[7,8],[12,8],
+      [0,9],[5,9],[7,9],[12,9],
+      [0,10],[5,10],[7,10],[12,10],
+      [2,12],[3,12],[4,12],[8,12],[9,12],[10,12]
+    ] },
+    { id: 'pentadecathlon', name: 'Pentadecathlon', cells: [
+      [1,0],[2,0],[3,0],[0,1],[4,1],[0,2],[4,2],[1,3],[2,3],[3,3],
+      [1,6],[2,6],[3,6],[0,7],[4,7],[0,8],[4,8],[1,9],[2,9],[3,9]
+    ] },
+    // Spaceships
+    { id: 'glider', name: 'Glider', cells: [[1,0],[2,1],[0,2],[1,2],[2,2]] },
+    { id: 'lwss', name: 'LWSS', cells: [
+      [1,0],[2,0],[3,0],[4,0],[0,1],[4,1],[4,2],[0,3],[3,3]
+    ] },
+    { id: 'mwss', name: 'MWSS', cells: [
+      [1,0],[2,0],[3,0],[4,0],[5,0],[0,1],[5,1],[5,2],[0,3],[4,3],[2,4]
+    ] },
+    { id: 'hwss', name: 'HWSS', cells: [
+      [1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[0,1],[6,1],[6,2],[0,3],[5,3],[2,4],[3,4]
+    ] },
+    // Methuselahs
+    { id: 'rpentomino', name: 'R-pentomino', cells: [[1,0],[2,0],[0,1],[1,1],[1,2]] },
+    { id: 'acorn', name: 'Acorn', cells: [[1,0],[3,1],[0,2],[1,2],[4,2],[5,2],[6,2]] },
+    { id: 'diehard', name: 'Diehard', cells: [[6,0],[0,1],[1,1],[1,2],[5,2],[6,2],[7,2]] },
+    { id: 'bheptomino', name: 'B-heptomino', cells: [[0,0],[1,0],[2,0],[0,1],[1,1],[2,2],[1,3]] },
+    // Gun (Gosper Glider Gun)
+    { id: 'glidergun', name: 'Glider Gun', cells: [
+      [0,4],[0,5],[1,4],[1,5],
+      [10,4],[10,5],[10,6],[11,3],[11,7],[12,2],[12,8],[13,2],[13,8],
+      [14,5],[15,3],[15,7],[16,4],[16,5],[16,6],[17,5],
+      [20,2],[20,3],[20,4],[21,2],[21,3],[21,4],[22,1],[22,5],
+      [24,0],[24,1],[24,5],[24,6],
+      [34,2],[34,3],[35,2],[35,3]
+    ] },
+    // Puffer 1 (Bill Gosper's puffer train)
+    { id: 'puffer1', name: 'Puffer 1', cells: [
+      [0,0],[0,1],[0,2],[0,3],[0,4],[1,0],[1,4],[2,4],[3,0],[3,3],
+      [5,1],[5,2],[6,1],[6,2],[7,2]
+    ] },
+    // Spaceship flotilla
+    { id: 'flotilla', name: 'Flotilla', cells: [
+      [1,0],[2,0],[3,0],[4,0],[0,1],[4,1],[4,2],[0,3],[3,3],
+      [1,6],[2,6],[3,6],[4,6],[0,7],[4,7],[4,8],[0,9],[3,9]
+    ] }
+  ];
+
+  function golFindPattern(id) {
+    if (!id) return null;
+    for (var i = 0; i < GOL_PATTERNS.length; i++) {
+      if (GOL_PATTERNS[i].id === id) return GOL_PATTERNS[i];
+    }
+    return null;
+  }
+
+  // Pattern zentriert als Start-Population setzen (statt Zufalls-Suppe)
+  function golSeedPattern(st, pattern) {
+    var cells = pattern.cells;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    var i;
+    for (i = 0; i < cells.length; i++) {
+      if (cells[i][0] < minX) minX = cells[i][0];
+      if (cells[i][0] > maxX) maxX = cells[i][0];
+      if (cells[i][1] < minY) minY = cells[i][1];
+      if (cells[i][1] > maxY) maxY = cells[i][1];
+    }
+    var ox = Math.round((minX + maxX) / 2);
+    var oy = Math.round((minY + maxY) / 2);
+    for (i = 0; i < cells.length; i++) {
+      st.cells.add(golKey(cells[i][0] - ox, cells[i][1] - oy));
+    }
+  }
+
+  // Start-Population nach params: gewähltes Pattern oder Zufalls-Suppe
+  function golSeed(st, params) {
+    var pattern = golFindPattern(params.pattern);
+    if (pattern) golSeedPattern(st, pattern);
+    else golSeedSoup(st, params);
+  }
+
   // zufällige Suppe im Streuradius (deterministisch über rng)
   function golSeedSoup(st, params) {
     var cellSize = Math.max(1, Number(params.cellSize) || 1);
@@ -182,6 +282,9 @@
     label: 'Zell-Automat',
     icon: '▚',
     schema: [
+      // Original-Patterns (game0f1ife): Wahl ersetzt die Start-Suppe,
+      // null/'Zeichnen'-Kachel = Zufalls-Suppe im Streuradius
+      { key: 'pattern', ctrl: 'patterns', label: 'Start-Muster', value: null, patterns: GOL_PATTERNS },
       { key: 'tick', ctrl: 'slider', label: 'Schritte pro Sekunde', min: 0, max: 60, step: 0.5, value: 8, decimals: 1, unit: '/s' },
       { key: 'birth', ctrl: 'slider', label: 'Geburt bei Nachbarn', min: 0, max: 8, step: 1, value: 3 },
       { key: 'survMin', ctrl: 'slider', label: 'Überleben min', min: 0, max: 8, step: 1, value: 2 },
@@ -199,16 +302,28 @@
         cells: new Set(),
         rng: { s: GOL_SEED },
         acc: 0,
-        spontAcc: 0
+        spontAcc: 0,
+        patternSig: String(block.params.pattern || '')
       };
-      golSeedSoup(st, block.params); // load(): params sind hier schon gemerged
+      golSeed(st, block.params); // load(): params sind hier schon gemerged
     },
     emit: function (block, t, dt, view) {
       var p = block.params;
       var st = block.state;
       if (!st || !st.cells) {
-        st = block.state = { cells: new Set(), rng: { s: GOL_SEED }, acc: 0, spontAcc: 0 };
-        golSeedSoup(st, p);
+        st = block.state = {
+          cells: new Set(), rng: { s: GOL_SEED }, acc: 0, spontAcc: 0,
+          patternSig: String(p.pattern || '')
+        };
+        golSeed(st, p);
+      }
+
+      // Pattern-Wechsel im Panel: Start-Population live neu setzen
+      var patSig = String(p.pattern || '');
+      if (st.patternSig !== patSig) {
+        st.patternSig = patSig;
+        st.cells = new Set();
+        golSeed(st, p);
       }
 
       // Sim-Tick entkoppelt vom Render: Schritte/s akkumulieren, pro
@@ -363,7 +478,8 @@
      Baustein zeit-invariant => Layer-Cache der Engine greift.
      ===================================================================== */
 
-  // die ersten 200 Nachkommastellen von Pi, hartkodiert (Referenz-Ästhetik)
+  // die ersten 200 Nachkommastellen von Pi als Sofort-Startwert; alles
+  // darüber rechnet ringPiEnsure on demand mit decimal.js nach
   var PI_TEXT = '3.' +
     '14159265358979323846' + '26433832795028841971' +
     '69399375105820974944' + '59230781640628620899' +
@@ -371,13 +487,81 @@
     '09384460955058223172' + '53594081284811174502' +
     '84102701938521105559' + '64462294895493038196';
 
-  var RING_MAX_CHARS = 600;
+  var RING_MAX_CHARS = 2000;
+  var PI_MAX_DIGITS = RING_MAX_CHARS; // echtes Budget: mehr würde eh gekappt
 
-  function ringChars(str) {
+  /* ---- echtes Pi on demand (decimal.js, Machin-Formel, chunked) ----
+   * π = 16·arctan(1/5) − 4·arctan(1/239). Die arctan-Reihen laufen in
+   * ~12ms-Häppchen über setTimeout, damit auch 1000+ Stellen die UI nie
+   * einfrieren. Cache modulweit (Pi ist Pi); während einer laufenden
+   * Berechnung rendert die Ringschrift den bisherigen Stand und ist
+   * zeitvariant (Layer-Cache pausiert, greift nach Fertigstellung neu). */
+
+  var piCache = { digits: 200, text: PI_TEXT };
+  var piPending = false;
+  var piWantDigits = 0;
+
+  function piArctanInv(D, x, nDigits, cb) {
+    var xsqInv = new D(1).div(x * x);
+    var term = new D(1).div(x);
+    var sum = new D(term);
+    var k = 1;
+    var sign = -1;
+    function stepChunk() {
+      var deadline = Date.now() + 12;
+      while (Date.now() < deadline) {
+        term = term.times(xsqInv);
+        var add = term.div(2 * k + 1);
+        sum = sign > 0 ? sum.plus(add) : sum.minus(add);
+        sign = -sign;
+        k++;
+        if (add.e < -(nDigits + 4)) { cb(sum); return; }
+      }
+      setTimeout(stepChunk, 0);
+    }
+    stepChunk();
+  }
+
+  function ringPiEnsure(nDigits) {
+    nDigits = Math.min(PI_MAX_DIGITS, Math.max(1, Math.round(nDigits)));
+    if (piCache.digits >= nDigits) return;
+    piWantDigits = Math.max(piWantDigits, nDigits);
+    if (piPending) return;
+    if (!window.Decimal) {
+      console.warn('0necanvas ringschrift: decimal.js fehlt — Pi bleibt bei ' + piCache.digits + ' Stellen');
+      return;
+    }
+    piPending = true;
+    var want = piWantDigits;
+    var D = window.Decimal.clone({ precision: want + 12 });
+    piArctanInv(D, 5, want, function (a5) {
+      piArctanInv(D, 239, want, function (a239) {
+        try {
+          var pi = a5.times(16).minus(a239.times(4));
+          piCache = { digits: want, text: pi.toFixed(want) };
+        } catch (e) {
+          console.error('0necanvas ringschrift: Pi-Berechnung fehlgeschlagen', e);
+        }
+        piPending = false;
+        if (piWantDigits > piCache.digits) ringPiEnsure(piWantDigits);
+      });
+    });
+  }
+
+  function ringPiText(nDigits) {
+    nDigits = Math.min(PI_MAX_DIGITS, Math.max(1, Math.round(nDigits)));
+    if (piCache.digits < nDigits) {
+      ringPiEnsure(nDigits);
+      return piCache.text; // bisheriger Stand, bis die Berechnung fertig ist
+    }
+    return piCache.text.slice(0, nDigits + 2); // '3.' + n Nachkommastellen
+  }
+
+  function ringChars(str, piDigits) {
     var s = String(str == null ? '' : str);
     // Array.from: Unicode-korrekt (Surrogate-Paare bleiben ganz)
     var arr = Array.from(s.replace(/\s+/g, ''));
-    if (!arr.length) arr = Array.from(PI_TEXT);
+    if (!arr.length) arr = Array.from(ringPiText(piDigits));
     if (arr.length > RING_MAX_CHARS) arr.length = RING_MAX_CHARS;
     return arr;
   }
@@ -388,7 +572,8 @@
     label: 'Ring-Schrift',
     icon: '◌',
     schema: [
-      { key: 'text', ctrl: 'text', label: 'Text / Sequenz', value: PI_TEXT, maxlen: 700 },
+      { key: 'text', ctrl: 'text', label: 'Text (leer = π)', value: '', maxlen: 2100 },
+      { key: 'ziffern', ctrl: 'slider', label: 'π-Ziffern', min: 1, max: 1000, step: 1, value: 200 },
       {
         key: 'mode', ctrl: 'select', label: 'Anordnung',
         options: [
@@ -405,10 +590,24 @@
       { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
       { key: 'y', ctrl: 'slider', label: 'Y', min: -2000, max: 2000, step: 1, value: 0 }
     ],
-    timeInvariant: function (block) { return !Number(block.params.speed); },
+    timeInvariant: function (block) {
+      if (Number(block.params.speed)) return false;
+      // Pi-Bedarf HIER anmelden (läuft vor emit): solange die gewünschten
+      // Ziffern fehlen, live rendern — sonst schreibt der Layer-Cache den
+      // alten Ziffern-Stand unter der neuen Param-Signatur fest
+      var s = String(block.params.text == null ? '' : block.params.text);
+      if (!s.replace(/\s+/g, '').length) {
+        var want = Math.min(PI_MAX_DIGITS, Math.max(1, Math.round(Number(block.params.ziffern) || 200)));
+        if (piCache.digits < want) {
+          ringPiEnsure(want);
+          return false;
+        }
+      }
+      return true;
+    },
     emit: function (block, t) {
       var p = block.params;
-      var chars = ringChars(p.text);
+      var chars = ringChars(p.text, Number(p.ziffern) || 200);
       var n = chars.length;
       var cx = Number(p.x) || 0, cy = Number(p.y) || 0;
       var size = Math.max(0, Number(p.size) || 0); // 0 = unsichtbar klein

@@ -71,7 +71,82 @@
    * Ported from 1kaleidosk0p.html: hex-offset triangle lattice, per
    * cell 3 rotations (0/120/240 deg) and optionally their mirrors
    * (scale(-1,1) before the rotation) — 6 transforms per cell.
+   *
+   * 'Nahtlos': das Original clippt jede Zelle aufs Dreieck (SVG clipPath)
+   * — Engine-Instanzen sind reine Matrizen, Clipping gibt es nicht.
+   * Stattdessen der physikalische Kaleidoskop-Trick: die Ebene wird mit
+   * SPIEGELUNGEN an den drei Dreieckskanten gekachelt (p6m-Gruppe, per
+   * BFS vom Basis-Dreieck aus aufgezählt). Benachbarte Kopien sind dann
+   * exakt die Kanten-Spiegelbilder voneinander: alles, was eine Kante
+   * kreuzt, setzt sich drüben spiegel-stetig fort — nahtloses Parkett
+   * ohne Clip (Inhalt größer als die Zelle überlagert sich symmetrisch,
+   * die Alpha-Normalisierung fängt das ab).
    * ================================================================ */
+
+  // canvas-order matrix product: result applies m2 first, then m1
+  function matMul(m1, m2) {
+    return [
+      m1[0] * m2[0] + m1[2] * m2[1],
+      m1[1] * m2[0] + m1[3] * m2[1],
+      m1[0] * m2[2] + m1[2] * m2[3],
+      m1[1] * m2[2] + m1[3] * m2[3],
+      m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+      m1[1] * m2[4] + m1[3] * m2[5] + m1[5]
+    ];
+  }
+
+  function matApply(m, x, y) {
+    return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  }
+
+  // Spiegelung an der Geraden durch (ax,ay)-(bx,by) als canvas-Matrix
+  function reflectMat(ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var len2 = dx * dx + dy * dy;
+    if (!(len2 > 1e-12)) return [1, 0, 0, 1, 0, 0];
+    var c = (dx * dx - dy * dy) / len2;
+    var s = 2 * dx * dy / len2;
+    return [c, s, s, -c, ax - (c * ax + s * ay), ay - (s * ax - c * ay)];
+  }
+
+  // BFS über das Dreiecks-Parkett: startend beim Basis-Dreieck wird jede
+  // Kante gespiegelt; jede erreichte Dreiecksposition liefert genau eine
+  // Instanzmatrix. BFS = zentrum-nah zuerst (Engine kappt hinten).
+  function seamlessInstances(size, rowH, offset, target, alpha) {
+    var ca = Math.cos(offset), sa = Math.sin(offset);
+    function rotPt(x, y) { return [x * ca - y * sa, x * sa + y * ca]; }
+    var base = [
+      rotPt(0, -rowH / 2),
+      rotPt(size / 2, rowH / 2),
+      rotPt(-size / 2, rowH / 2)
+    ];
+    var IDENT = [1, 0, 0, 1, 0, 0];
+    var seen = new Set();
+    function keyOf(v) {
+      var cx = (v[0][0] + v[1][0] + v[2][0]) / 3;
+      var cy = (v[0][1] + v[1][1] + v[2][1]) / 3;
+      return Math.round(cx * 6 / size) + ':' + Math.round(cy * 6 / size);
+    }
+    var queue = [{ m: IDENT, v: base }];
+    seen.add(keyOf(base));
+    var list = [];
+    var qi = 0;
+    while (qi < queue.length && list.length < target) {
+      var cur = queue[qi++];
+      list.push({ m: cur.m, alpha: alpha });
+      for (var e = 0; e < 3; e++) {
+        var a = cur.v[e], b = cur.v[(e + 1) % 3], c = cur.v[(e + 2) % 3];
+        var R = reflectMat(a[0], a[1], b[0], b[1]);
+        var nc = matApply(R, c[0], c[1]);
+        var nv = [a, b, nc];
+        var k = keyOf(nv);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        queue.push({ m: matMul(R, cur.m), v: nv });
+      }
+    }
+    return list;
+  }
 
   OneCanvas.registerBlock({
     type: 'tapete',
@@ -83,6 +158,8 @@
       { key: 'zeilen', ctrl: 'slider', label: 'Zeilen', min: 0, max: 8, step: 1, value: 2 },
       { key: 'spalten', ctrl: 'slider', label: 'Spalten', min: 0, max: 8, step: 1, value: 2 },
       { key: 'spiegeln', ctrl: 'toggle', label: 'Spiegeln', value: true },
+      // Kanten-Spiegel-Parkett statt Zell-Rotationen (siehe Kommentar oben)
+      { key: 'nahtlos', ctrl: 'toggle', label: 'Nahtlos (Kanten-Spiegel)', value: false },
       { key: 'offset', ctrl: 'slider', label: 'Winkel-Offset', min: -180, max: 180, step: 1, value: 0, unit: '°' },
       { key: 'deckkraft', ctrl: 'slider', label: 'Deckkraft', min: 0, max: 4, step: 0.05, value: 1, decimals: 2 }
     ],
@@ -121,10 +198,22 @@
         cols = c2;
       }
 
+      var seamless = !!p.nahtlos;
+
       return {
         affine: true,
         instances: function () {
           if (!rows || !cols) return []; // 0 = Identität (keine Wiederholung)
+
+          if (seamless) {
+            // Spiegel-Parkett (p6m): Dreieckszahl ~ Fläche des Normal-Modus
+            // (4·rows·cols Zellen ≙ 8·rows·cols Dreiecke), Engine-Budget+1
+            var target = Math.min(INSTANCE_BUDGET + 1, Math.max(1, 8 * rows * cols));
+            var aSeam = Math.min(1, deck * 3 / Math.sqrt(Math.max(1, target)));
+            if (aSeam <= 0) return [];
+            return seamlessInstances(Math.abs(size) || 1, Math.abs(rowH) || 1,
+              offset, target, aSeam);
+          }
 
           // Weiß-Sättigungs-Schutz: pro-Instanz-Alpha ~ 1/sqrt(n), damit
           // additive Überlagerung vieler Kopien nicht ins Weiße kippt;
