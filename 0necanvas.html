@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>0nefinity — canvas</title>
+  <meta name="description" content="0necanvas — Dinge, Erzeuger und Kräfte stapeln und daraus lebendige Bilder bauen. 0 ≡ 1 ≡ ∞" />
+  <meta property="og:title" content="0nefinity — canvas" />
+  <meta property="og:description" content="Dinge, Erzeuger und Kräfte stapeln und daraus lebendige Bilder bauen. 0 ≡ 1 ≡ ∞" />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/png" href="/profilbilder/favicon/index/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/profilbilder/favicon/index/favicon.svg" />
+  <link rel="shortcut icon" href="/profilbilder/favicon/index/favicon.ico" />
+  <link rel="apple-touch-icon" href="/profilbilder/favicon/index/apple-touch-icon.png" />
   <link rel="stylesheet" href="/tools/0necanvas/controls-theme.css" />
   <link rel="stylesheet" href="/tools/0necanvas/0necanvas.css" />
 </head>
@@ -11,7 +19,7 @@
   <div id="oc-app">
 
     <header id="oc-topbar">
-      <div class="wordmark"><b>0<span class="wm-rest">nefinity</span></b><span class="sep">—</span><span class="wm-sub">canvas</span></div>
+      <div class="wordmark"><a href="/" class="wm-home" title="Zur 0nefinity-Startseite"><b>0<span class="wm-rest">nefinity</span></b></a><span class="sep">—</span><span class="wm-sub">canvas</span></div>
 
       <div class="topbar-tools" id="oc-tools">
         <button class="tool-btn active" id="oc-tool-move" title="Bewegen" aria-label="Werkzeug Bewegen">
@@ -30,6 +38,7 @@
         <span id="oc-heavy-pill" class="limit-pill" hidden>Sehr schwere Szene</span>
         <button class="icon-btn" id="oc-fit-btn" title="Einpassen &mdash; Ansicht auf die Szene zentrieren" aria-label="Einpassen">&#8865;</button>
         <button class="icon-btn" id="oc-new-btn" title="Neu &mdash; Szene leeren" aria-label="Neue Szene">&#8709;</button>
+        <button class="icon-btn" id="oc-export-btn" title="Als PNG exportieren" aria-label="Als PNG exportieren">&#10515;</button>
         <button class="icon-btn" id="oc-share-btn" title="Teilen" aria-label="Teilen">&#10697;</button>
         <button class="icon-btn" id="oc-fullscreen-btn" title="Vollbild" aria-label="Vollbild">&#9974;</button>
       </div>
@@ -38,7 +47,16 @@
     <main id="oc-stage">
       <canvas id="oc-canvas"></canvas>
       <div class="stage-hint">0 &#8801; 1 &#8801; &#8734;</div>
+      <div id="oc-empty-hint" class="empty-hint" hidden></div>
       <button id="oc-offview-pill" class="stage-pill" hidden>Au&szlig;erhalb der Ansicht &mdash; Einpassen?</button>
+      <div id="oc-onboarding" class="onboarding-card" hidden>
+        <div class="ob-title">Willkommen im 0necanvas</div>
+        <p><b>Dinge</b> sind sichtbare Formen, <b>Erzeuger</b> lassen laufend Neues entstehen,
+        <b>Kr&auml;fte</b> verwandeln beides. Der Stapel rechts bestimmt die Reihenfolge:
+        <b>Kr&auml;fte wirken auf alles darunter.</b></p>
+        <p>Mit &bdquo;+&ldquo; kommen Bausteine dazu &mdash; einfach ausprobieren, alles ist umkehrbar.</p>
+        <button id="oc-onboarding-ok" type="button">Los geht&rsquo;s</button>
+      </div>
     </main>
 
     <aside id="oc-side" data-mtab="stack">

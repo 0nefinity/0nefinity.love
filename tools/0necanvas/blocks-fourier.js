@@ -9,12 +9,16 @@
  *   with z = x + i*y, k = -N/2 .. N/2. Stored as {freq, amp, phase}.
  * - Reconstruction = chain of rotating pointers: position(t) =
  *   sum_k amp_k * e^(i*(freq'_k * t + phase_k)), t in [0, 2*pi).
- * - Frequency play (the 3 strongest fourieous manipulations): sort mode
- *   (chain draw order: amplitude/frequency/seeded random — the tip path is
- *   order-invariant, the visible circle chain is not), freq scale
+ * - Frequency play (all 6 fourieous manipulations, applied in the
+ *   original's order — invert, absolute, power, scale, offset, modulo):
+ *   sort mode (chain draw order: amplitude/frequency/seeded random — the
+ *   tip path is order-invariant, the visible circle chain is not),
+ *   freq invert (f -> -f), nur-positiv (f -> |f|), freq power
+ *   (f -> sign(f)*|f|^p, non-linear stretch), freq scale
  *   (freq' = freq * scale; non-integer scale breaks curve closure ->
- *   spirograph drift) and freq offset (freq' = freq*scale + offset; global
- *   extra rotation). DC (freq 0) is never manipulated, as in the original.
+ *   spirograph drift), freq offset (global extra rotation) and freq
+ *   modulo (symmetric wrap-around into [-mod/2, mod/2]). DC (freq 0) is
+ *   never manipulated, as in the original.
  *
  * Caching (all in block.state, three levels so slider scrubs stay cheap):
  *   text+fontSize -> contour points + DFT coefficients (heaviest)
@@ -293,15 +297,39 @@
     return sorted;
   }
 
-  // fourieous manipulateFrequency, reduced to the two ported knobs;
-  // DC (freq 0) is handled by the callers and never manipulated
-  function manipFreq(freq, scale, offset) {
-    return freq * scale + offset;
+  // fourieous manipulateFrequency, full pipeline in the original's order;
+  // DC (freq 0) is handled by the callers and never manipulated.
+  // fm = { invert, absolute, power, scale, offset, modulo }
+  function manipFreq(freq, fm) {
+    var f = freq;
+    if (fm.invert) f = -f;
+    if (fm.absolute) f = Math.abs(f);
+    if (fm.power !== 1 && f !== 0) {
+      f = Math.sign(f) * Math.pow(Math.abs(f), fm.power);
+    }
+    f = f * fm.scale + fm.offset;
+    if (fm.modulo > 0) {
+      // symmetrisches Modulo: -mod/2 bis +mod/2 (wie das Original)
+      f = ((f % fm.modulo) + fm.modulo) % fm.modulo;
+      if (f > fm.modulo / 2) f -= fm.modulo;
+    }
+    return f;
+  }
+
+  function freqManip(p) {
+    return {
+      invert: !!p.freqInvert,
+      absolute: !!p.freqAbsolute,
+      power: num(p.freqPower, 1),
+      scale: num(p.freqScale, 1),
+      offset: Math.round(num(p.freqOffset, 0)),
+      modulo: Math.max(0, num(p.freqModulo, 0))
+    };
   }
 
   /* ---- cycle precompute (fourieous precomputeCycle port) ---- */
 
-  function precomputeCycle(use, geo, fScale, fOffset) {
+  function precomputeCycle(use, geo, fm) {
     var N = geo.n;
     var cl = Math.max(CYCLE_MIN, Math.min(CYCLE_MAX, 2 * N));
     var xs = new Float64Array(cl);
@@ -314,7 +342,7 @@
       var x = 0, y = 0;
       for (var j = 0; j < m; j++) {
         var c = use[j];
-        var f = c.freq === 0 ? 0 : manipFreq(c.freq, fScale, fOffset);
+        var f = c.freq === 0 ? 0 : manipFreq(c.freq, fm);
         var ang = f * t + c.phase;
         x += c.amp * Math.cos(ang);
         y += c.amp * Math.sin(ang);
@@ -361,13 +389,13 @@
     // Caps weich: getippte Werte wirken; echte Grenze ist die
     // Koeffizientenzahl (<= MAX_POINTS), nicht ein Geschmacks-Clamp
     var circles = Math.round(clamp(p.circles, 0, MAX_CIRCLES));
-    var fs = num(p.freqScale, 1);
-    var fo = Math.round(num(p.freqOffset, 0));
-    var sigC = circles + '|' + fs + '|' + fo;
+    var fm = freqManip(p);
+    var sigC = circles + '|' + fm.scale + '|' + fm.offset + '|' + fm.power +
+      '|' + fm.modulo + '|' + (fm.invert ? 1 : 0) + (fm.absolute ? 1 : 0);
     if (st.sigC !== sigC) {
       st.sigC = sigC;
       st.use = selectCoeffs(st.coeffs, circles);
-      st.cycle = precomputeCycle(st.use, st.geo, fs, fo);
+      st.cycle = precomputeCycle(st.use, st.geo, fm);
       st.sigS = null;
     }
 
@@ -412,8 +440,12 @@
       },
       { key: 'freqScale', ctrl: 'slider', label: 'Frequenz-Skala', min: -3, max: 3, step: 0.05, value: 1, decimals: 2 },
       { key: 'freqOffset', ctrl: 'slider', label: 'Frequenz-Versatz', min: -30, max: 30, step: 1, value: 0 },
+      { key: 'freqPower', ctrl: 'slider', label: 'Frequenz-Potenz', min: 0, max: 4, step: 0.1, value: 1, decimals: 1 },
+      { key: 'freqModulo', ctrl: 'slider', label: 'Frequenz-Modulo (0 = aus)', min: 0, max: 60, step: 1, value: 0 },
+      { key: 'freqInvert', ctrl: 'toggle', label: 'Frequenzen invertieren', value: false },
+      { key: 'freqAbsolute', ctrl: 'toggle', label: 'Nur positive Frequenzen', value: false },
       { key: 'fontSize', ctrl: 'slider', label: 'Schriftgröße', min: 40, max: 300, step: 2, value: 120 },
-      { key: 'size', ctrl: 'slider', label: 'Größe', min: 10, max: 400, step: 1, value: 160, unit: '%' },
+      { key: 'size', ctrl: 'slider', label: 'Skalierung', min: 10, max: 400, step: 1, value: 160, unit: '%' },
       { key: 'width', ctrl: 'slider', label: 'Linienstärke', min: 0, max: 8, step: 0.1, value: 1.6, decimals: 1 },
       { key: 'glow', ctrl: 'slider', label: 'Glühen', min: 0, max: 40, step: 1, value: 12 },
       { key: 'x', ctrl: 'slider', label: 'X', min: -2000, max: 2000, step: 1, value: 0 },
@@ -456,9 +488,10 @@
       var posY = new Float64Array(m + 1);
       posX[0] = ox; posY[0] = oy;
       var cx = ox, cy = oy;
+      var fmLive = freqManip(p);
       for (i = 0; i < m; i++) {
         var c = order[i];
-        var f = c.freq === 0 ? 0 : manipFreq(c.freq, num(p.freqScale, 1), Math.round(num(p.freqOffset, 0)));
+        var f = c.freq === 0 ? 0 : manipFreq(c.freq, fmLive);
         var ang = f * tt + c.phase;
         cx += c.amp * scale * Math.cos(ang);
         cy += c.amp * scale * Math.sin(ang);

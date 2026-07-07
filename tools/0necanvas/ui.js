@@ -198,6 +198,57 @@
     label.appendChild(kindEl);
     label.appendChild(nameEl);
 
+    // Umbenennen: Doppelklick auf den Namen -> Inline-Edit (Name läuft
+    // schon über serialize/?s=, hier bekommt er nur endlich eine UI)
+    function startRename() {
+      if (nameEl.querySelector('input')) return;
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'rename-input';
+      input.value = block.name;
+      input.maxLength = 48;
+      nameEl.textContent = '';
+      nameEl.appendChild(input);
+      input.focus();
+      input.select();
+      var done = false;
+      function commit(save) {
+        if (done) return;
+        done = true;
+        var v = input.value.trim();
+        if (save && v && v !== block.name) {
+          block.name = v;
+          touchState();
+        }
+        nameEl.textContent = block.name;
+        if (propsBlock === block && propsTitleName) propsTitleName.textContent = block.name;
+      }
+      input.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Enter') commit(true);
+        else if (e.key === 'Escape') commit(false);
+      });
+      input.addEventListener('blur', function () { commit(true); });
+      input.addEventListener('click', function (e) { e.stopPropagation(); });
+      input.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    }
+    nameEl.title = 'Doppelklick zum Umbenennen';
+    nameEl.addEventListener('dblclick', function (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      startRename();
+    });
+
+    var dup = document.createElement('button');
+    dup.className = 'dup-btn';
+    dup.textContent = '⧉';
+    dup.title = 'Duplizieren';
+    dup.setAttribute('aria-label', 'Baustein duplizieren');
+    dup.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      duplicateBlock(block);
+    });
+
     var eye = document.createElement('button');
     eye.className = 'eye-btn' + (block.visible ? '' : ' off');
     eye.textContent = block.visible ? '◉' : '○';
@@ -210,6 +261,7 @@
       eye.textContent = block.visible ? '◉' : '○';
       eye.title = block.visible ? 'Ausblenden' : 'Einblenden';
       li.classList.toggle('hidden-layer', !block.visible);
+      updateEmptyHint();
       touchState();
     });
 
@@ -240,6 +292,7 @@
     li.appendChild(handle);
     li.appendChild(icon);
     li.appendChild(label);
+    li.appendChild(dup);
     li.appendChild(eye);
     li.appendChild(del);
 
@@ -248,6 +301,32 @@
       scene.select(block.id);
     });
     return li;
+  }
+
+  // clone a block incl. params (serialize-Muster: defaults -> kopierte
+  // params -> init) and slot the copy directly above the original
+  function duplicateBlock(block) {
+    if (!scene.defs.has(block.type)) return;
+    var snap;
+    try {
+      snap = JSON.parse(JSON.stringify(block.params));
+    } catch (e) {
+      console.error('0necanvas ui: duplicate serialize failed', e);
+      return;
+    }
+    var nb = scene.add(block.type);
+    nb.visible = !!block.visible;
+    nb.name = block.name + ' (Kopie)';
+    for (var k in nb.params) {
+      if (hasKey(snap, k)) nb.params[k] = snap[k];
+    }
+    var def = scene.defs.get(block.type);
+    if (def && typeof def.init === 'function') {
+      try { def.init(nb); } catch (e) { console.error('0necanvas ui: init() failed on duplicate for "' + block.type + '"', e); }
+    }
+    scene.move(nb.id, scene.blocks.indexOf(block) + 1);
+    scene.select(nb.id);
+    touchState();
   }
 
   // rebuild a deleted block from its snapshot (same path sc.load takes:
@@ -533,6 +612,23 @@
         }
         propsPanelKeys.push(entry.key);
         break;
+      case 'patterns':
+        // controls.js Pattern-Picker (Original-Nutzung: game0f1ife.html);
+        // param trägt die Pattern-id (string) oder null (= keins)
+        if (typeof panel.addPatternPicker !== 'function') {
+          console.warn('0necanvas ui: controls.js ohne addPatternPicker — "' + entry.key + '" übersprungen');
+          break;
+        }
+        panel.addPatternPicker(entry.key, {
+          label: entry.label,
+          patterns: entry.patterns || [],
+          value: typeof block.params[entry.key] === 'string' ? block.params[entry.key] : null,
+          columns: entry.columns || 6,
+          buttonSize: entry.buttonSize || 40,
+          onChange: function (patternId) { apply(patternId || null); }
+        });
+        propsPanelKeys.push(entry.key);
+        break;
       case 'hidden':
         break; // serialized param without UI (pfad pts)
       default:
@@ -547,13 +643,18 @@
     if (!block || !propsPanel) return;
     var def = scene.defs.get(block.type);
     var schema = (def && def.schema) || [];
+    var hasPatterns = false;
     for (var i = 0; i < schema.length; i++) {
       var entry = schema[i];
       if (entry.ctrl === 'hidden') continue;
+      if (entry.ctrl === 'patterns') hasPatterns = true;
       if (!hasKey(block.params, entry.key)) continue;
       block.params[entry.key] = entry.value;
       propsPanel.set(entry.key, entry.value); // updates UI without onChange
     }
+    // panel.set() kennt die Pattern-Buttons nicht — Section neu aufbauen,
+    // damit der aktive Button den zurückgesetzten Wert zeigt
+    if (hasPatterns) bindPropsPanel(block);
     touchState();
   }
 
@@ -1104,6 +1205,53 @@
     }
   }
 
+  // composited PNG: schwarzer Hintergrund + Canvas-Inhalt (das native
+  // Rechtsklick-PNG ist transparent — auf hellem Viewer unsichtbar)
+  function onExport() {
+    var src = els.canvas;
+    if (!src || !src.width || !src.height) { toast('Nichts zu exportieren'); return; }
+    var out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    var g = out.getContext('2d');
+    var bg = '#000';
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim();
+      if (v) bg = v;
+    } catch (e) { /* fallback #000 */ }
+    g.fillStyle = bg;
+    g.fillRect(0, 0, out.width, out.height);
+    g.drawImage(src, 0, 0);
+    function download(blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '0nefinity-canvas.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      toast('PNG exportiert');
+    }
+    if (out.toBlob) {
+      out.toBlob(function (blob) {
+        if (blob) download(blob);
+        else toast('Export fehlgeschlagen');
+      }, 'image/png');
+    } else {
+      try {
+        var dataUrl = out.toDataURL('image/png');
+        var a2 = document.createElement('a');
+        a2.href = dataUrl;
+        a2.download = '0nefinity-canvas.png';
+        a2.click();
+        toast('PNG exportiert');
+      } catch (e) {
+        toast('Export fehlgeschlagen');
+      }
+    }
+  }
+
   function onFullscreen() {
     var doc = document;
     if (doc.fullscreenElement || doc.webkitFullscreenElement) {
@@ -1248,6 +1396,53 @@
       lit = true; // readback failed: never nag
     }
     els.offviewPill.hidden = lit;
+  }
+
+  /* ---------- onboarding (Erstbesuch) + Leerzustands-Hinweise ---------- */
+
+  var HINT_LS_KEY = 'oc-hint-v1';
+
+  function lsGet(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); } catch (e) { /* privacy mode */ }
+  }
+
+  function maybeShowOnboarding() {
+    if (!els.onboarding) return;
+    if (lsGet(HINT_LS_KEY)) return;
+    els.onboarding.hidden = false;
+    var ok = els.onboarding.querySelector('#oc-onboarding-ok');
+    if (ok) {
+      ok.addEventListener('click', function () {
+        lsSet(HINT_LS_KEY, '1');
+        els.onboarding.hidden = true;
+      });
+    }
+  }
+
+  // stiller Leerzustand erklärt sich nicht selbst: leere Szene -> auf das
+  // + zeigen; nur Kräfte im Stapel -> erklären, dass darunter etwas fehlt
+  function updateEmptyHint() {
+    if (!els.emptyHint) return;
+    var emitters = 0, forces = 0;
+    for (var i = 0; i < scene.blocks.length; i++) {
+      var b = scene.blocks[i];
+      if (!b.visible) continue;
+      var def = scene.defs.get(b.type);
+      if (!def) continue;
+      if (def.kind === 'kraft') forces++;
+      else emitters++;
+    }
+    var msg = '';
+    if (!emitters && !forces) {
+      msg = 'Leere Szene — „+" oben rechts fügt Bausteine hinzu';
+    } else if (!emitters && forces) {
+      msg = 'Nur Kräfte im Stapel — Kräfte brauchen etwas darunter (Ding oder Erzeuger)';
+    }
+    els.emptyHint.textContent = msg;
+    els.emptyHint.hidden = !msg;
   }
 
   /* ---------- floating side panel (desktop >=900px) ---------- */
@@ -1406,18 +1601,22 @@
       toolWarp: $('oc-tool-warp'),
       toolDraw: $('oc-tool-draw'),
       shareBtn: $('oc-share-btn'),
+      exportBtn: $('oc-export-btn'),
       fullscreenBtn: $('oc-fullscreen-btn'),
       fitBtn: $('oc-fit-btn'),
       newBtn: $('oc-new-btn'),
       sheetTabs: $('oc-sheet-tabs'),
       limitPill: $('oc-limit-pill'),
       heavyPill: $('oc-heavy-pill'),
-      offviewPill: $('oc-offview-pill')
+      offviewPill: $('oc-offview-pill'),
+      emptyHint: $('oc-empty-hint'),
+      onboarding: $('oc-onboarding')
     };
 
     // scene hooks
     sc.onStackChange(function () {
       renderStack();
+      updateEmptyHint();
       // selected block may be gone (delete without select event, load)
       if (!getBlock(sc.selectedId)) {
         unbindPropsPanel();
@@ -1474,10 +1673,15 @@
 
     // actions
     els.shareBtn.addEventListener('click', onShare);
+    if (els.exportBtn) els.exportBtn.addEventListener('click', onExport);
     els.fullscreenBtn.addEventListener('click', onFullscreen);
     if (els.fitBtn) els.fitBtn.addEventListener('click', fitView);
     if (els.newBtn) els.newBtn.addEventListener('click', onNewScene);
     if (els.offviewPill) els.offviewPill.addEventListener('click', fitView);
+
+    // Erstbesuch-Hinweis + Leerzustands-Hinweis
+    maybeShowOnboarding();
+    updateEmptyHint();
 
     // mobile sheet tabs (+ grip drag to minimize/restore)
     if (els.sheetTabs) {
