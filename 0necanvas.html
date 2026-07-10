@@ -18,73 +18,134 @@
 <body>
   <div id="oc-app">
 
-    <header id="oc-topbar">
-      <div class="wordmark"><a href="/" class="wm-home" title="Zur 0nefinity-Startseite"><b>0<span class="wm-rest">nefinity</span></b></a><span class="sep">—</span><span class="wm-sub">canvas</span></div>
-
-      <div class="topbar-tools" id="oc-tools">
-        <button class="tool-btn active" id="oc-tool-move" title="Bewegen" aria-label="Werkzeug Bewegen">
-          <span class="tb-icon">&#10021;</span><span class="tb-label">Bewegen</span>
-        </button>
-        <button class="tool-btn" id="oc-tool-warp" title="Verzerren" aria-label="Werkzeug Verzerren">
-          <span class="tb-icon">&#8776;</span><span class="tb-label">Verzerren</span>
-        </button>
-        <button class="tool-btn" id="oc-tool-draw" title="Zeichnen" aria-label="Werkzeug Zeichnen">
-          <span class="tb-icon">&#9998;</span><span class="tb-label">Zeichnen</span>
-        </button>
-      </div>
-
-      <div class="topbar-actions">
-        <span id="oc-limit-pill" class="limit-pill" hidden>Instanz-Limit erreicht</span>
-        <span id="oc-heavy-pill" class="limit-pill" hidden>Sehr schwere Szene</span>
-        <button class="icon-btn" id="oc-fit-btn" title="Einpassen &mdash; Ansicht auf die Szene zentrieren" aria-label="Einpassen">&#8865;</button>
-        <button class="icon-btn" id="oc-new-btn" title="Neu &mdash; Szene leeren" aria-label="Neue Szene">&#8709;</button>
-        <button class="icon-btn" id="oc-export-btn" title="Als PNG exportieren" aria-label="Als PNG exportieren">&#10515;</button>
-        <button class="icon-btn" id="oc-share-btn" title="Teilen" aria-label="Teilen">&#10697;</button>
-        <button class="icon-btn" id="oc-fullscreen-btn" title="Vollbild" aria-label="Vollbild">&#9974;</button>
-      </div>
-    </header>
-
+    <!-- Bühne: die Leinwand füllt immer den ganzen Schirm -->
     <main id="oc-stage">
       <canvas id="oc-canvas"></canvas>
-      <div class="stage-hint">0 &#8801; 1 &#8801; &#8734;</div>
+      <div class="stage-hint oc-ui">0 &#8801; 1 &#8801; &#8734;</div>
       <div id="oc-empty-hint" class="empty-hint" hidden></div>
+      <div class="status-pills oc-ui">
+        <span id="oc-limit-pill" class="limit-pill" hidden>Instanz-Limit erreicht</span>
+        <span id="oc-heavy-pill" class="limit-pill" hidden>Sehr schwere Szene</span>
+      </div>
       <button id="oc-offview-pill" class="stage-pill" hidden>Au&szlig;erhalb der Ansicht &mdash; Einpassen?</button>
-      <div id="oc-onboarding" class="onboarding-card" hidden>
-        <div class="ob-title">Willkommen im 0necanvas</div>
-        <p><b>Dinge</b> sind sichtbare Formen, <b>Erzeuger</b> lassen laufend Neues entstehen,
-        <b>Kr&auml;fte</b> verwandeln beides. Der Stapel rechts bestimmt die Reihenfolge:
-        <b>Kr&auml;fte wirken auf alles darunter.</b></p>
-        <p>Mit &bdquo;+&ldquo; kommen Bausteine dazu &mdash; einfach ausprobieren, alles ist umkehrbar.</p>
-        <button id="oc-onboarding-ok" type="button">Los geht&rsquo;s</button>
+      <div id="oc-status" class="oc-ui" aria-label="Status" hidden>
+        <span class="st-m">Zoom <b id="oc-st-zoom">100&nbsp;%</b></span><span class="st-sep">&middot;</span><span class="st-m"><b id="oc-st-fps">&mdash;</b> fps</span><span class="st-sep">&middot;</span><span class="st-m"><b id="oc-st-inst">0</b> Instanzen</span>
       </div>
     </main>
 
-    <aside id="oc-side" data-mtab="stack">
-      <div class="mobile-tabs" id="oc-sheet-tabs">
-        <button class="m-tab active" data-mtab-btn="stack">Bausteine</button>
-      </div>
+    <!-- Fl&uuml;ster-Onboarding: drei verankerte Zeilen, weichen der ersten Interaktion -->
+    <div class="oc-whisper" id="oc-whisper-center" hidden>tippe das Werk an, um es zu formen</div>
+    <div class="oc-whisper" id="oc-whisper-tools" hidden><span class="w-key">bewegen</span> &middot; verzerren &middot; zeichnen &mdash; ziehen wirkt direkt auf der Leinwand</div>
+    <div class="oc-whisper" id="oc-whisper-stack" hidden>der Stapel<br />oben wirkt auf unten <span class="w-key">&#8595;</span></div>
 
-      <section class="panel-section" id="oc-stack-section">
-        <div class="panel-head">
-          <span class="panel-title">Bausteine</span>
+    <!-- Stiller Rand: Wortmarke -->
+    <a id="oc-wordmark" class="oc-ui" href="/" title="Zur 0nefinity-Startseite"><b>0<span class="wm-rest">nefinity</span></b><span class="sep">&mdash;</span><span class="wm-sub">canvas</span></a>
+
+    <!-- Stiller Rand: Aktionen oben rechts -->
+    <div id="oc-corner" class="oc-ui">
+      <button class="icon-btn" id="oc-fit-btn" title="Einpassen &mdash; Ansicht auf die Szene zentrieren" aria-label="Einpassen">&#8865;</button>
+      <button class="icon-btn" id="oc-new-btn" title="Neu &mdash; Szene leeren" aria-label="Neue Szene">&#8709;</button>
+      <button class="icon-btn" id="oc-export-btn" title="Als PNG exportieren" aria-label="Als PNG exportieren">&#10515;</button>
+      <button class="icon-btn" id="oc-share-btn" title="Teilen &mdash; Szene liegt in der URL" aria-label="Teilen">&#10697;</button>
+      <span class="corner-gap"></span>
+      <button class="icon-btn" id="oc-focus-btn" title="Fokus &mdash; nur das Werk (F)" aria-label="Fokus-Modus">&#9680;</button>
+      <button class="icon-btn" id="oc-fullscreen-btn" title="Vollbild" aria-label="Vollbild">&#9974;</button>
+    </div>
+
+    <!-- Stiller Rand: Werkzeug-Kapsel unten mittig -->
+    <div id="oc-capsule" class="oc-ui" role="toolbar" aria-label="Werkzeuge">
+      <button class="tool-btn active" id="oc-tool-move" title="Bewegen" aria-label="Werkzeug Bewegen">
+        <span class="tb-icon">&#10021;</span><span class="tb-label">Bewegen</span>
+      </button>
+      <button class="tool-btn" id="oc-tool-warp" title="Verzerren" aria-label="Werkzeug Verzerren">
+        <span class="tb-icon">&#8776;</span><span class="tb-label">Verzerren</span>
+      </button>
+      <button class="tool-btn" id="oc-tool-draw" title="Zeichnen" aria-label="Werkzeug Zeichnen">
+        <span class="tb-icon">&#9998;</span><span class="tb-label">Zeichnen</span>
+      </button>
+    </div>
+
+    <!-- Der Stapel als Glyphen-Spine am rechten Rand (kollabierter Zustand) -->
+    <div id="oc-spine" class="oc-ui" role="navigation" aria-label="Stapel &ouml;ffnen">
+      <button id="oc-spine-add" title="Baustein hinzuf&uuml;gen" aria-label="Baustein hinzuf&uuml;gen">+</button>
+      <span class="spine-term spine-eye" title="Blick &mdash; hier kommt das Bild an"></span>
+      <div id="oc-spine-list"></div>
+      <span class="spine-term spine-zero" title="0 &mdash; der Ursprung">0</span>
+      <span class="spine-label">Stapel</span>
+    </div>
+
+    <!-- Mobile Pillen -->
+    <button id="oc-stack-pill" class="oc-ui m-pill">Stapel <span class="n" id="oc-stack-n">0</span></button>
+    <button id="oc-add-pill" class="oc-ui m-pill" aria-label="Baustein hinzuf&uuml;gen" title="Baustein hinzuf&uuml;gen">+</button>
+
+    <!-- Der Stapel ausgeklappt: der Strahl von 0 zum Blick -->
+    <aside id="oc-side" aria-label="Stapel &mdash; Bausteine">
+      <button id="oc-sheet-grip" type="button" aria-label="Stapel-Ansicht wechseln &mdash; schmal, halb, voll"><i></i></button>
+      <div id="oc-minibeam" aria-hidden="true"></div>
+      <div class="panel-head">
+        <span class="panel-title">Stapel</span>
+        <span class="panel-head-btns">
           <button id="oc-add-btn" title="Baustein hinzuf&uuml;gen" aria-label="Baustein hinzuf&uuml;gen">+</button>
-        </div>
-        <ul id="oc-stack-list"></ul>
-      </section>
+          <button id="oc-stack-close" title="Stapel einklappen" aria-label="Stapel einklappen">&#10005;</button>
+        </span>
+      </div>
+      <div class="sub-slot">
+        <div class="panel-sub">wirkt von oben nach unten <span class="down">&#8595;</span> &mdash; Kr&auml;fte verwandeln alles darunter</div>
+        <div class="scope-note" id="oc-scope-note">&#9678; Diese Kraft wirkt auf alles unter ihr &mdash; markierte Bausteine liegen in ihrem Feld.</div>
+      </div>
+      <div class="beam-term beam-eye"><span class="bt-mark"></span><span class="bt-label">Blick</span></div>
+      <ul id="oc-stack-list"></ul>
+      <div class="beam-term beam-zero"><span class="bt-mark">0</span><span class="bt-label">Ursprung</span></div>
     </aside>
 
   </div>
 
-  <div id="oc-lib-overlay" role="dialog" aria-modal="true" aria-label="Baustein hinzuf&uuml;gen">
+  <!-- Bibliothek -->
+  <div id="oc-lib-overlay" role="dialog" aria-modal="true" aria-label="Bibliothek &mdash; Baustein hinzuf&uuml;gen">
     <div class="overlay-card">
-      <div class="overlay-head">
-        <span class="overlay-title">Baustein hinzuf&uuml;gen</span>
+      <div class="panel-head">
+        <span class="panel-title">Bibliothek</span>
         <button class="icon-btn" id="oc-lib-close" title="Schlie&szlig;en" aria-label="Schlie&szlig;en">&#10005;</button>
       </div>
-      <div class="cat-tabs" id="oc-lib-tabs"></div>
-      <div class="tile-grid" id="oc-lib-grid"></div>
+      <div class="panel-sub">Drei Familien &mdash; antippen legt den Baustein in den Stapel.</div>
+      <div class="lib-search">
+        <input id="oc-lib-search" type="search" placeholder="Suchen &mdash; Name oder Familie" aria-label="Bibliothek durchsuchen" autocomplete="off" spellcheck="false" />
+      </div>
+      <div id="oc-lib-scroll"></div>
     </div>
   </div>
+
+  <!-- Kontext-Ribbon über dem Regler-Panel (controls.js bleibt unangetastet) -->
+  <div id="oc-ctrl-ribbon" hidden>
+    <button type="button" id="oc-ribbon-back" title="Zur&uuml;ck zum Stapel" aria-label="Zur&uuml;ck zum Stapel">&#8592;</button>
+    <span class="rb-ico" id="oc-ribbon-ico"></span>
+    <span class="rb-name" id="oc-ribbon-name"></span>
+    <span class="rb-meta" id="oc-ribbon-meta"></span>
+  </div>
+
+  <!-- Kommando-Palette (Cmd/Strg+K): Befehle + Bausteine + Familien -->
+  <div id="oc-palette" role="dialog" aria-modal="true" aria-label="Befehle">
+    <div class="pal-card">
+      <input id="oc-pal-input" type="search" placeholder="Befehl oder Baustein &mdash; z. B. Herz, Kraft, Export &hellip;" aria-label="Befehle durchsuchen" autocomplete="off" spellcheck="false" />
+      <ul id="oc-pal-list"></ul>
+      <div id="oc-pal-empty" hidden>Nichts gefunden &mdash; <kbd>&#9166;</kbd> &ouml;ffnet die Bibliothek</div>
+    </div>
+  </div>
+
+  <!-- Kontext am Objekt: Live-H&uuml;llbox + Chip &uuml;ber der Form -->
+  <div id="oc-selframe" hidden aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div id="oc-chip" hidden>
+    <span class="c-ico" id="oc-chip-ico"></span>
+    <span class="c-name" id="oc-chip-name"></span>
+    <span class="c-kind" id="oc-chip-kind"></span>
+    <span class="c-div"></span>
+    <button type="button" class="c-regler" id="oc-chip-regler" title="Regler &ouml;ffnen">Regler</button>
+    <button type="button" id="oc-chip-dup" title="Duplizieren" aria-label="Baustein duplizieren">&#10697;</button>
+    <button type="button" id="oc-chip-del" title="L&ouml;schen" aria-label="Baustein l&ouml;schen">&#10005;</button>
+  </div>
+
+  <!-- Fokus-Modus: atmender R&uuml;ckkehr-Punkt -->
+  <button type="button" id="oc-focus-exit" title="Fokus beenden" aria-label="Fokus beenden"></button>
 
   <script src="/tools/tools/decimal.js"></script>
   <script src="/tools/controls.js"></script>

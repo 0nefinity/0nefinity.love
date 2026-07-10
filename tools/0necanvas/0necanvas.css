@@ -1,4 +1,5 @@
-/* 0necanvas — styles, mockup aesthetic (meta-mockup.html), dark-only */
+/* 0necanvas — Atelier: das Werk ist der Star. Edge-Layer statt Partition,
+   UI dimmt bei Inaktivität weg. Dark-only, eine Akzentfarbe. */
 
 :root {
   --bg-color: #000;
@@ -6,24 +7,31 @@
   --font-family: Verdana, Geneva, Tahoma, sans-serif;
   --accent: #a8b8e8;
   --panel-bg: #0a0a0c;
+  --surface: color-mix(in srgb, #06060a 88%, transparent);
+  --surface-strong: color-mix(in srgb, #050508 94%, transparent);
   --ui-border-soft: color-mix(in srgb, var(--text-color) 8%, transparent);
   --ui-border: color-mix(in srgb, var(--text-color) 16%, transparent);
   --ui-border-strong: color-mix(in srgb, var(--text-color) 32%, transparent);
   --ui-fill-05: color-mix(in srgb, var(--text-color) 5%, transparent);
   --ui-fill-08: color-mix(in srgb, var(--text-color) 8%, transparent);
   --ui-fill-12: color-mix(in srgb, var(--text-color) 12%, transparent);
+  --ui-text-25: color-mix(in srgb, var(--text-color) 25%, transparent);
   --ui-text-40: color-mix(in srgb, var(--text-color) 40%, transparent);
   --ui-text-55: color-mix(in srgb, var(--text-color) 55%, transparent);
   --ui-text-70: color-mix(in srgb, var(--text-color) 70%, transparent);
-  --topbar-h: 52px;
-  --side-w: 320px;
+  --ui-text-90: color-mix(in srgb, var(--text-color) 90%, transparent);
+  --acc-28: color-mix(in srgb, var(--accent) 28%, transparent);
+  --acc-45: color-mix(in srgb, var(--accent) 45%, transparent);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html, body {
   margin: 0;
-  height: 100%;
+  height: 100vh; /* fallback for browsers without dvh */
+  height: 100dvh;
   background: var(--bg-color);
   color: var(--text-color);
   font-family: var(--font-family);
@@ -32,149 +40,14 @@ html, body {
   overscroll-behavior: none;
 }
 
-#oc-app {
-  display: grid;
-  grid-template-rows: var(--topbar-h) 1fr;
-  grid-template-columns: 1fr var(--side-w);
-  grid-template-areas:
-    "topbar topbar"
-    "stage  side";
-  height: 100vh; /* fallback for browsers without dvh */
-  height: 100dvh;
-  width: 100%;   /* 100vw clips under a visible scrollbar */
-}
+/* ---------- Erscheinen & Weichen: Idle-Dim ---------- */
+.oc-ui { transition: opacity 0.7s ease; }
+body.oc-idle .oc-ui { opacity: 0.05; }
 
-/* ---------- Topbar ---------- */
-#oc-topbar {
-  grid-area: topbar;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0 1.1rem 0 1.25rem;
-  border-bottom: 1px solid var(--ui-border-soft);
-  background: var(--bg-color);
-  z-index: 5;
-}
-
-.wordmark {
-  font-size: 0.95rem;
-  letter-spacing: 0.24em;
-  color: var(--ui-text-70);
-  user-select: none;
-  white-space: nowrap;
-}
-.wordmark b { font-weight: normal; color: var(--text-color); }
-.wordmark .sep { color: var(--ui-text-40); margin: 0 0.45em; }
-.wordmark .wm-home {
-  color: inherit;
-  text-decoration: none;
-  border-radius: 6px;
-  transition: opacity 0.15s ease;
-}
-.wordmark .wm-home:hover { opacity: 0.75; }
-
-.topbar-tools {
-  display: flex;
-  gap: 0.3rem;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.tool-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.45em;
-  min-height: 40px;
-  padding: 0 0.85rem;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  color: var(--ui-text-55);
-  font-family: inherit;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  line-height: 1;
-  white-space: nowrap;
-  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-.tool-btn:hover { color: var(--text-color); background: var(--ui-fill-05); }
-.tool-btn:active { transform: scale(0.96); }
-.tool-btn.active {
-  color: var(--text-color);
-  background: var(--ui-fill-08);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-.tool-btn.active .tb-icon { color: var(--accent); }
-.tool-btn .tb-icon { font-size: 1rem; line-height: 1; }
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.icon-btn {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--ui-text-55);
-  font-size: 1.05rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-  line-height: 1;
-}
-.icon-btn:hover { color: var(--text-color); background: var(--ui-fill-05); }
-.icon-btn:active { transform: scale(0.94); }
-
-.limit-pill {
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  color: var(--ui-text-70);
-  background: var(--ui-fill-08);
-  border: 1px solid var(--ui-border);
-  border-radius: 999px;
-  padding: 0.3rem 0.7rem;
-  white-space: nowrap;
-  user-select: none;
-}
-.limit-pill[hidden] { display: none; }
-
-/* stage pill: gentle hint floating over the canvas (off-view rescue) */
-.stage-pill {
-  position: absolute;
-  top: 0.9rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3;
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
-  font-family: inherit;
-  color: var(--ui-text-70);
-  background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
-  border: 1px solid var(--ui-border);
-  border-radius: 999px;
-  padding: 0.45rem 0.95rem;
-  min-height: 40px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.stage-pill:hover { color: var(--text-color); border-color: var(--ui-border-strong); }
-.stage-pill[hidden] { display: none; }
-
-/* ---------- Stage / Canvas ---------- */
+/* ---------- Bühne: full-bleed, keine Partition ---------- */
 #oc-stage {
-  grid-area: stage;
-  position: relative;
-  min-width: 0;
-  min-height: 0;
+  position: fixed;
+  inset: 0;
   background: var(--bg-color);
 }
 #oc-stage:fullscreen { background: var(--bg-color); }
@@ -190,7 +63,7 @@ html, body {
 .stage-hint {
   position: absolute;
   left: 1.25rem;
-  bottom: 1rem;
+  bottom: calc(1rem + var(--safe-b));
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   color: var(--ui-text-40);
@@ -202,7 +75,7 @@ html, body {
 .empty-hint {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: 42%;
   transform: translate(-50%, -50%);
   max-width: min(78%, 30rem);
   text-align: center;
@@ -215,94 +88,379 @@ html, body {
 }
 .empty-hint[hidden] { display: none; }
 
-/* Erstbesuch-Hinweis: schlichte dunkle Karte, unten mittig */
-.onboarding-card {
+/* Status-Pillen oben mittig (dimmen mit) */
+.status-pills {
   position: absolute;
+  top: calc(0.9rem + var(--safe-t));
   left: 50%;
-  bottom: 1.4rem;
   transform: translateX(-50%);
-  z-index: 150; /* über dem controls.js-Panel (z 100) — Erstbesuch-Karte muss lesbar sein */
-  width: min(92%, 26rem);
-  padding: 1rem 1.15rem 0.9rem;
-  background: color-mix(in srgb, var(--panel-bg) 94%, transparent);
-  border: 1px solid var(--ui-border);
-  border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(6px);
+  display: flex;
+  gap: 0.4rem;
+  z-index: 3;
+  pointer-events: none;
 }
-.onboarding-card[hidden] { display: none; }
-.onboarding-card .ob-title {
-  font-size: 0.72rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 0.55rem;
-}
-.onboarding-card p {
-  margin: 0 0 0.6rem;
-  font-size: 0.8rem;
-  line-height: 1.6;
+.limit-pill {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
   color: var(--ui-text-70);
-}
-.onboarding-card p b { color: var(--text-color); font-weight: normal; }
-.onboarding-card button {
-  display: block;
-  margin-left: auto;
-  min-height: 40px;
-  padding: 0 1.1rem;
-  background: var(--ui-fill-08);
+  background: var(--surface);
   border: 1px solid var(--ui-border);
   border-radius: 999px;
-  color: var(--text-color);
-  font-family: inherit;
-  font-size: 0.78rem;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.onboarding-card button:hover {
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  background: var(--ui-fill-12);
-}
-
-/* ---------- Side panel ---------- */
-#oc-side {
-  grid-area: side;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-left: 1px solid var(--ui-border-soft);
-  background: var(--panel-bg);
-  z-index: 4;
-}
-
-.mobile-tabs { display: none; }
-
-.panel-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-#oc-stack-section { flex: 1 1 auto; }
-
-.panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.8rem 1rem 0.55rem 1.1rem;
-  flex: 0 0 auto;
-}
-.panel-title {
-  font-size: 0.7rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ui-text-55);
+  padding: 0.3rem 0.7rem;
+  white-space: nowrap;
   user-select: none;
 }
+.limit-pill[hidden] { display: none; }
 
-#oc-add-btn {
-  width: 40px;
-  height: 40px;
+/* ---------- Status-Chip: Zoom / fps / Instanzen (dimmt mit weg) ---------- */
+#oc-status {
+  position: absolute;
+  right: 14px;
+  bottom: calc(1rem + var(--safe-b));
+  display: flex;
+  align-items: baseline;
+  gap: 0.55em;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--ui-text-25);
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#oc-status[hidden] { display: none; }
+#oc-status b {
+  font-weight: normal;
+  color: var(--ui-text-55);
+  font-variant-numeric: tabular-nums;
+}
+#oc-status .st-sep { color: var(--ui-text-25); }
+
+/* stage pill: gentle hint floating over the canvas (off-view rescue) */
+.stage-pill {
+  position: absolute;
+  top: calc(3.6rem + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  font-family: inherit;
+  color: var(--ui-text-70);
+  background: var(--surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  min-height: 44px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.stage-pill:hover { color: var(--text-color); border-color: var(--ui-border-strong); }
+.stage-pill[hidden] { display: none; }
+
+/* ---------- Flüster-Onboarding: drei verankerte Zeilen ---------- */
+/* Kein Modal, keine Karte — leise Sätze im Raum, die der ersten
+   Interaktion weichen (body.oc-worked). */
+.oc-whisper {
+  position: fixed;
+  z-index: 25;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  line-height: 1.7;
+  color: var(--ui-text-55);
+  text-align: center;
+  user-select: none;
+  pointer-events: none;
+  transition: opacity 0.9s ease;
+}
+.oc-whisper[hidden] { display: none; }
+.oc-whisper .w-key { color: var(--accent); }
+body.oc-worked .oc-whisper { opacity: 0; }
+#oc-whisper-center {
+  left: 50%;
+  top: 24%;
+  transform: translateX(-50%);
+  animation: oc-wfloat 5s ease-in-out infinite;
+}
+#oc-whisper-tools {
+  left: 50%;
+  bottom: calc(84px + var(--safe-b));
+  transform: translateX(-50%);
+}
+#oc-whisper-stack {
+  right: 74px;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: right;
+}
+@keyframes oc-wfloat {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -6px; }
+}
+
+/* ---------- Kontext am Objekt: Live-Hüllbox + Chip ---------- */
+#oc-selframe {
+  position: fixed;
+  z-index: 20;
+  border: 1px solid var(--acc-45);
+  border-radius: 4px;
+  pointer-events: none;
+  box-shadow: 0 0 30px -12px var(--acc-45);
+  transition: opacity 0.7s ease;
+}
+#oc-selframe[hidden] { display: none; }
+#oc-selframe i {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--accent);
+  background: var(--bg-color);
+}
+#oc-selframe i:nth-child(1) { top: -4px; left: -4px; }
+#oc-selframe i:nth-child(2) { top: -4px; right: -4px; }
+#oc-selframe i:nth-child(3) { bottom: -4px; left: -4px; }
+#oc-selframe i:nth-child(4) { bottom: -4px; right: -4px; }
+
+#oc-chip {
+  position: fixed;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px 3px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: opacity 0.7s ease;
+}
+#oc-chip[hidden] { display: none; }
+#oc-chip .c-ico {
+  color: var(--accent);
+  font-size: 0.85rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  margin-right: 0.45em;
+}
+#oc-chip .c-ico svg { width: 16px; height: 16px; display: block; }
+#oc-chip .c-name {
+  font-size: 0.8rem;
+  color: var(--ui-text-90);
+  margin-right: 0.4em;
+  max-width: 9.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#oc-chip .c-kind {
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-text-40);
+  margin-right: 0.5em;
+}
+#oc-chip .c-div {
+  width: 1px;
+  height: 16px;
+  background: var(--ui-border-soft);
+  margin: 0 4px;
+}
+#oc-chip button {
+  min-width: 40px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--ui-text-55);
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 0 8px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+#oc-chip button:hover { color: var(--text-color); background: var(--ui-fill-08); }
+#oc-chip .c-regler { font-size: 0.72rem; letter-spacing: 0.08em; color: var(--ui-text-70); }
+/* Idle: Chip + Hüllbox glimmen nur noch (Werk bleibt der Star) */
+body.oc-idle #oc-chip,
+body.oc-idle #oc-selframe { opacity: 0.1; }
+
+/* ---------- Fokus-Modus: alles weicht, ein atmender Punkt bleibt ---------- */
+body.oc-focus .oc-ui,
+body.oc-focus #oc-side,
+body.oc-focus #oc-chip,
+body.oc-focus #oc-selframe,
+body.oc-focus .oc-whisper {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+#oc-focus-exit {
+  position: fixed;
+  right: 10px;
+  bottom: calc(10px + var(--safe-b));
+  z-index: 80;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+#oc-focus-exit::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--acc-45);
+  animation: oc-fbreathe 3s ease-in-out infinite;
+}
+body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
+@keyframes oc-fbreathe {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 14px 0 var(--acc-28); }
+}
+
+/* ---------- Wortmarke oben links ---------- */
+#oc-wordmark {
+  position: fixed;
+  top: calc(14px + var(--safe-t));
+  left: 18px;
+  z-index: 30;
+  font-size: 0.82rem;
+  letter-spacing: 0.26em;
+  color: var(--ui-text-55);
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  padding: 6px 4px;
+}
+#oc-wordmark b { font-weight: normal; color: var(--text-color); }
+#oc-wordmark .sep { color: var(--ui-text-25); margin: 0 0.4em; }
+#oc-wordmark:hover { color: var(--ui-text-90); }
+
+/* ---------- Stille Aktionen oben rechts ---------- */
+#oc-corner {
+  position: fixed;
+  top: calc(8px + var(--safe-t));
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+#oc-corner .corner-gap {
+  width: 10px;
+  height: 20px;
+  border-left: 1px solid var(--ui-border-soft);
+  margin: 0 4px 0 8px;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  color: var(--ui-text-55);
+  font-size: 1.05rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+  line-height: 1;
+}
+.icon-btn:hover { color: var(--text-color); background: var(--ui-fill-05); }
+.icon-btn:active { transform: scale(0.94); }
+
+/* ---------- Werkzeug-Kapsel unten mittig ---------- */
+#oc-capsule {
+  position: fixed;
+  bottom: calc(16px + var(--safe-b));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 32;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  min-height: 44px;
+  padding: 0 1.05rem;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--ui-text-55);
+  font-family: inherit;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.tool-btn .tb-icon { font-size: 1rem; line-height: 1; }
+.tool-btn:hover { color: var(--ui-text-90); }
+.tool-btn:active { transform: scale(0.97); }
+.tool-btn.active {
+  color: var(--text-color);
+  background: var(--ui-fill-08);
+  box-shadow: inset 0 0 0 1px var(--acc-28), 0 0 18px -6px var(--acc-45);
+}
+.tool-btn.active .tb-icon { color: var(--accent); }
+
+/* ---------- Der Stapel als Glyphen-Spine rechts ---------- */
+/* Crit-Auftrag: deutlich sichtbarer als im Mockup — eigene Fläche,
+   Border, kräftigere Glyphen, Beschriftung. */
+#oc-spine {
+  position: fixed;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  transition: border-color 0.2s ease, background 0.2s ease, opacity 0.7s ease;
+}
+#oc-spine:hover { border-color: var(--ui-border-strong); }
+body.oc-stack-open #oc-spine { opacity: 0; pointer-events: none; }
+
+#oc-spine-add {
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   background: transparent;
@@ -314,36 +472,254 @@ html, body {
   cursor: pointer;
   line-height: 1;
   padding: 0 0 2px;
+  margin-bottom: 6px;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-#oc-add-btn:hover { color: var(--text-color); border-color: var(--ui-border-strong); background: var(--ui-fill-05); }
-#oc-add-btn:active { transform: scale(0.94); }
+#oc-spine-add:hover { color: var(--text-color); border-color: var(--ui-border-strong); background: var(--ui-fill-05); }
+
+#oc-spine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  min-height: 0;
+}
+.spine-term {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 26px;
+  color: var(--ui-text-40);
+  font-size: 0.72rem;
+  user-select: none;
+  pointer-events: none;
+}
+.spine-term svg { width: 16px; height: 16px; }
+.spine-zero { font-family: Georgia, "Times New Roman", serif; }
+
+.vertebra {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  color: var(--ui-text-70);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.vertebra svg { width: 19px; height: 19px; display: block; }
+.vertebra:hover { color: var(--text-color); background: var(--ui-fill-05); }
+.vertebra.kraft { color: color-mix(in srgb, var(--accent) 80%, transparent); }
+.vertebra.erzeuger { color: color-mix(in srgb, var(--accent) 45%, var(--text-color)); }
+.vertebra.selected {
+  color: var(--text-color);
+  background: var(--ui-fill-08);
+  box-shadow: inset 0 0 0 1px var(--acc-28);
+}
+.vertebra.hidden-block { opacity: 0.28; }
+/* Wirkungs-Faden: eine Kraft strahlt nach unten */
+.vertebra.kraft::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 2px);
+  width: 1px;
+  height: 8px;
+  background: linear-gradient(var(--acc-45), transparent);
+  pointer-events: none;
+}
+.vertebra.pulse { animation: oc-vpulse 0.9s ease; }
+@keyframes oc-vpulse {
+  0% { box-shadow: inset 0 0 0 1px var(--accent), 0 0 22px -4px var(--accent); color: var(--text-color); }
+  100% { box-shadow: none; }
+}
+
+/* Kausalität sichtbar: die Kraft-Glyphe pulsiert, solange auf der
+   Leinwand an ihr gezogen wird (Verzerren-Drag) */
+.vertebra.force-live,
+.type-icon.force-live { animation: oc-fpulse 0.8s ease-in-out infinite; }
+#oc-stack-pill.force-live { border-color: var(--acc-45); animation: oc-fpulse 0.8s ease-in-out infinite; }
+@keyframes oc-fpulse {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 6px var(--accent)) brightness(1.6); }
+}
+
+.spine-label {
+  margin-top: 6px;
+  font-size: 0.6rem;
+  letter-spacing: 0.22em;
+  color: var(--ui-text-40);
+  writing-mode: vertical-rl;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ---------- Mobile Pillen (Desktop: aus) ---------- */
+.m-pill { display: none; }
+
+/* ---------- Der Stapel ausgeklappt ---------- */
+/* Sheet-Griff + Mini-Strahl: nur im mobilen Drill-in-Sheet sichtbar */
+#oc-sheet-grip, #oc-minibeam { display: none; }
+
+#oc-side {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%) translateX(14px);
+  z-index: 40;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(78vh, 680px);
+  max-height: min(78dvh, 680px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 16px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  opacity: 0;
+  pointer-events: none;
+  /* visibility nimmt auch Kinder aus dem Hit-Test — .del-btn/.dup-btn
+     setzen pointer-events:auto und wuerden sonst unsichtbar Taps schlucken */
+  visibility: hidden;
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s linear 0.22s;
+}
+body.oc-stack-open #oc-side {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s;
+  transform: translateY(-50%) translateX(0);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.8rem 0.75rem 0.15rem 1.15rem;
+  flex: 0 0 auto;
+}
+.panel-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ui-text-70);
+  user-select: none;
+}
+.panel-head-btns { display: flex; align-items: center; gap: 2px; }
+#oc-add-btn, #oc-stack-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  color: var(--ui-text-40);
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+#oc-add-btn { font-size: 1.25rem; padding-bottom: 2px; color: var(--ui-text-70); }
+#oc-stack-close { font-size: 0.85rem; }
+#oc-add-btn:hover, #oc-stack-close:hover { color: var(--text-color); background: var(--ui-fill-05); }
+
+.panel-sub {
+  padding: 0 1.15rem 0.55rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-40);
+  user-select: none;
+  flex: 0 0 auto;
+}
+.panel-sub .down { color: var(--acc-45); }
+
+/* fester Slot: Untertitel und Erklärzeile wechseln sich ohne Layout-Shift
+   ab (ein Shift zwischen den zwei Klicks bricht Doppelklick-Umbenennen) */
+#oc-side .sub-slot {
+  flex: 0 0 auto;
+  height: 46px;
+  overflow: hidden;
+}
+.scope-note {
+  margin: 0.1rem 0.6rem 0.3rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.66rem;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-color));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 8px;
+  display: none;
+  user-select: none;
+  flex: 0 0 auto;
+}
+#oc-side.kraft-selected .sub-slot .panel-sub { display: none; }
+#oc-side.kraft-selected .scope-note { display: block; }
+
+/* Strahl-Endpunkte: Blick oben, 0 unten */
+.beam-term {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.15rem 1.05rem;
+  flex: 0 0 auto;
+  user-select: none;
+  pointer-events: none;
+}
+.beam-term .bt-mark {
+  width: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--ui-text-40);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+.beam-term .bt-mark svg { width: 16px; height: 16px; }
+.beam-term .bt-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ui-text-25);
+}
+.beam-zero .bt-mark { font-family: Georgia, "Times New Roman", serif; }
 
 #oc-stack-list {
   list-style: none;
   margin: 0;
-  padding: 0 0.6rem 0.7rem;
+  padding: 0 0.55rem;
   overflow-y: auto;
   min-height: 0;
+  flex: 1 1 auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-fill-12) transparent;
 }
 
 .stack-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  min-height: 44px;
-  padding: 0 0.35rem 0 0.15rem;
-  border-radius: 9px;
+  gap: 0.45rem;
+  min-height: 46px;
+  padding: 0 0.25rem 0 0;
+  border-radius: 10px;
   border: 1px solid transparent;
   cursor: pointer;
   user-select: none;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.2s ease;
 }
 .stack-row + .stack-row { margin-top: 2px; }
 .stack-row:hover { background: var(--ui-fill-05); }
 .stack-row.selected {
   background: var(--ui-fill-08);
-  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  border-color: var(--acc-28);
 }
 
 /* drag-reorder states (ui.js) */
@@ -351,12 +727,62 @@ html, body {
 .stack-row.drop-above { border-top-color: var(--accent); box-shadow: 0 -1px 0 var(--accent); }
 .stack-row.drop-below { border-bottom-color: var(--accent); box-shadow: 0 1px 0 var(--accent); }
 
+/* Kraft ausgewählt: Zeilen in ihrem Feld leuchten leise mit */
+.stack-row.in-scope { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.stack-row.in-scope:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.stack-row.in-scope .scope-line { background: var(--acc-45); }
+
+/* ... und eine durchgezogene Scope-Linie führt von der Kraft bis zum
+   letzten Baustein in ihrem Feld (Quelle: Punkt auf halber Zeilenhöhe) */
+.stack-row.in-scope::before,
+.stack-row.scope-src::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  width: 2px;
+  top: -2px;
+  bottom: 0;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--acc-28);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.stack-row.in-scope:last-child::before { bottom: 8px; border-radius: 0 0 2px 2px; }
+.stack-row.scope-src::before { top: 50%; }
+.stack-row.scope-src::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: calc(50% - 4px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--acc-45);
+  pointer-events: none;
+}
+/* die statischen Gutter-Linien treten hinter die gezogene Linie zurück */
+.stack-row.scope-src .scope-line.src { background: transparent; }
+
+/* Scope-Spalte: Linien zeigen "diese Kraft wirkt hier" */
+.scope-gutter {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 13px;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 0 6px 5px;
+}
+.scope-line { width: 2px; border-radius: 2px; background: var(--acc-28); }
+.scope-line.src { background: var(--accent); }
+
 .drag-handle {
   color: var(--ui-text-40);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   letter-spacing: -1px;
   cursor: grab;
-  padding: 0.7rem 0.1rem 0.7rem 0.35rem;
+  padding: 0.8rem 0.1rem 0.8rem 0.2rem;
   line-height: 1;
   flex: 0 0 auto;
   touch-action: none;
@@ -365,13 +791,16 @@ html, body {
 
 .type-icon {
   flex: 0 0 auto;
-  width: 1.35em;
+  width: 24px;
   text-align: center;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   line-height: 1;
+  display: grid;
+  place-items: center;
 }
+.type-icon svg { width: 19px; height: 19px; display: block; }
 .type-icon.kraft    { color: var(--accent); }
-.type-icon.erzeuger { color: color-mix(in srgb, var(--accent) 55%, var(--text-color)); }
+.type-icon.erzeuger { color: color-mix(in srgb, var(--accent) 45%, var(--text-color)); }
 .type-icon.ding     { color: var(--ui-text-70); }
 
 .row-label {
@@ -383,15 +812,16 @@ html, body {
   overflow: hidden;
 }
 .row-kind {
-  font-size: 0.62rem;
-  letter-spacing: 0.16em;
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ui-text-40);
   white-space: nowrap;
 }
+.stack-row.k-kraft .row-kind { color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .row-name {
-  font-size: 0.86rem;
-  color: var(--text-color);
+  font-size: 0.84rem;
+  color: var(--ui-text-90);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -399,16 +829,29 @@ html, body {
 .stack-row.hidden-layer .row-name { color: var(--ui-text-40); }
 .stack-row.hidden-layer .type-icon { opacity: 0.35; }
 
+/* "wirkt ↓ n" an Kraft-Zeilen */
+.row-tag {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  color: var(--acc-45);
+  border: 1px solid var(--acc-28);
+  border-radius: 999px;
+  padding: 2px 7px 3px;
+  white-space: nowrap;
+  user-select: none;
+}
+.stack-row:hover .row-tag { color: color-mix(in srgb, var(--accent) 80%, transparent); }
+
 /* Inline-Umbenennen (Doppelklick auf den Namen) */
 .rename-input {
   width: 100%;
   min-width: 0;
   background: var(--ui-fill-08);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border: 1px solid var(--acc-45);
   border-radius: 6px;
   color: var(--text-color);
   font-family: inherit;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   padding: 2px 6px;
   outline: none;
 }
@@ -417,15 +860,15 @@ html, body {
 .dup-btn,
 .del-btn {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 44px;
   display: grid;
   place-items: center;
   background: transparent;
   border: none;
   border-radius: 8px;
   color: var(--ui-text-70);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-family: inherit;
   cursor: pointer;
   line-height: 1;
@@ -436,7 +879,7 @@ html, body {
 
 .dup-btn,
 .del-btn {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--ui-text-40);
   opacity: 0;
   pointer-events: none;
@@ -451,11 +894,11 @@ html, body {
 .dup-btn:hover,
 .del-btn:hover { color: var(--text-color); }
 
-/* library "keine Bausteine" hint (class kept from the old props renderer) */
+/* library "keine Bausteine" hint */
 .props-empty {
   color: var(--ui-text-40);
   font-size: 0.8rem;
-  padding: 1rem 0;
+  padding: 1.4rem 0;
   text-align: center;
 }
 
@@ -493,12 +936,20 @@ html, body {
    14px, which would shrink it to 420px. Pin the original width in px. */
 @media (min-width: 769px) {
   .ctrl-panel { width: clamp(400px, calc(100vw - 64px), 480px); }
+  /* Regie unten links, freigestellt — Reposition von außen, Innenleben tabu */
+  .ctrl-panel.position-left {
+    left: 16px;
+    bottom: calc(16px + var(--safe-b));
+    border-radius: 0 0 14px 14px;
+  }
 }
 
-/* panel built but not shown (mobile boot: Bausteine first) */
+/* panel built but not shown (boot: stille Bühne zuerst) */
 .ctrl-panel.oc-hidden { display: none !important; }
 
-/* header title: type icon + block name (info only, drag handle keeps focus) */
+/* header title: type icon + block name — seit dem Kontext-Ribbon redundant,
+   bleibt im DOM (Screenreader/Fallback), visuell übernimmt das Ribbon */
+.ctrl-panel .oc-ctrl-title { display: none; }
 .oc-ctrl-title {
   position: absolute;
   left: 0.9rem;
@@ -512,7 +963,8 @@ html, body {
   pointer-events: none;
   user-select: none;
 }
-.oc-ctrl-title .type-icon { font-size: 0.85rem; }
+.oc-ctrl-title .type-icon { font-size: 0.85rem; width: auto; }
+.oc-ctrl-title .type-icon svg { width: 15px; height: 15px; }
 .oc-ctrl-title-name {
   font-size: 0.7rem;
   letter-spacing: 0.14em;
@@ -524,134 +976,354 @@ html, body {
 }
 .ctrl-panel.bar-mode .oc-ctrl-title { display: none; }
 
-/* ---------- Library overlay ---------- */
+/* ---------- Kontext-Ribbon: klebt über dem controls.js-Panel ---------- */
+#oc-ctrl-ribbon {
+  position: fixed;
+  z-index: 101; /* eine Ebene über dem Panel (z 100) */
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.95rem;
+  border: 1px solid var(--ui-border-soft);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+#oc-ctrl-ribbon[hidden] { display: none; }
+#oc-ctrl-ribbon .rb-ico { color: var(--accent); font-size: 0.95rem; line-height: 1; display: grid; place-items: center; }
+#oc-ctrl-ribbon .rb-ico svg { width: 17px; height: 17px; display: block; }
+#oc-ctrl-ribbon .rb-name { font-size: 0.85rem; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; }
+#oc-ctrl-ribbon .rb-meta {
+  font-size: 0.64rem;
+  color: var(--ui-text-40);
+  letter-spacing: 0.04em;
+  margin-left: auto;
+  text-align: right;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#oc-ctrl-ribbon .rb-meta .down { color: var(--acc-45); }
+/* Zurück-Pfeil (nur Mobil): aus dem Regler-Sheet zurück zum Stapel */
+#oc-ribbon-back {
+  display: none;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  /* Tap-Target 44px, optische Ribbon-Hoehe unveraendert (44-20 = 40-16) */
+  margin: -10px 0 -10px -12px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: var(--ui-text-70);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto; /* Ribbon selbst ist pointer-events: none */
+}
+#oc-ribbon-back:active { background: var(--ui-fill-08); }
+
+/* ---------- Bibliothek ---------- */
 #oc-lib-overlay {
   position: fixed;
   inset: 0;
   z-index: 300; /* above the controls.js panel (z 100) */
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--bg-color) 62%, transparent);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
-  padding: 1rem;
+  display: block;
+  background: color-mix(in srgb, var(--bg-color) 45%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden; /* nimmt Suchfeld/Kacheln aus Tab-Reihenfolge + Hit-Test */
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
 }
-#oc-lib-overlay.open { display: flex; }
+#oc-lib-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.25s ease, visibility 0s;
+}
 
 .overlay-card {
-  width: min(560px, 100%);
-  max-height: min(76vh, 620px); /* fallback for browsers without dvh */
-  max-height: min(76dvh, 620px);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
   display: flex;
   flex-direction: column;
-  background: var(--panel-bg);
-  border: 1px solid var(--ui-border);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+  background: var(--surface-strong);
+  border-left: 1px solid var(--ui-border-soft);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  transform: translateX(102%);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.3, 1);
 }
+#oc-lib-overlay.open .overlay-card { transform: translateX(0); }
+.overlay-card .panel-head { padding: 1rem 0.75rem 0.15rem 1.35rem; }
+.overlay-card .panel-sub { padding: 0 1.35rem 0.7rem; }
 
-.overlay-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 0.7rem 0.6rem 1.35rem;
+.lib-search {
+  padding: 0 1.15rem 0.75rem;
   flex: 0 0 auto;
 }
-.overlay-title {
-  font-size: 0.78rem;
-  letter-spacing: 0.22em;
+#oc-lib-search {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: var(--ui-fill-05);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+#oc-lib-search::placeholder { color: var(--ui-text-40); }
+#oc-lib-search:focus { border-color: var(--acc-45); background: var(--ui-fill-08); }
+
+#oc-lib-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 1.15rem 1.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-fill-12) transparent;
+}
+
+.fam { margin-bottom: 1.3rem; }
+.fam.fam-empty { display: none; }
+.fam-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0.2rem;
+  position: sticky;
+  top: 0;
+  background: linear-gradient(color-mix(in srgb, #050508 96%, transparent) 70%, transparent);
+  z-index: 2;
+  user-select: none;
+}
+.fam-name {
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--ui-text-70);
 }
+.fam.kraefte .fam-name { color: var(--accent); }
+.fam-desc { font-size: 0.66rem; color: var(--ui-text-40); letter-spacing: 0.02em; }
 
-.cat-tabs {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0 1.25rem;
-  border-bottom: 1px solid var(--ui-border-soft);
-  flex: 0 0 auto;
-}
-.cat-tab {
-  appearance: none;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--ui-text-55);
-  font-family: inherit;
-  font-size: 0.84rem;
-  padding: 0.6rem 0.8rem 0.7rem;
-  min-height: 44px;
-  cursor: pointer;
-  letter-spacing: 0.04em;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.cat-tab:hover { color: var(--text-color); }
-.cat-tab.active {
-  color: var(--text-color);
-  border-bottom-color: var(--accent);
-}
-
-.tile-grid {
+.tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.6rem;
-  padding: 1.1rem 1.25rem 1.35rem;
-  overflow-y: auto;
-  min-height: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
-
 .tile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  min-height: 88px;
-  padding: 0.8rem 0.5rem;
-  background: var(--ui-fill-05);
+  gap: 0.5rem;
+  padding: 0.9rem 0.5rem 0.75rem;
   border: 1px solid var(--ui-border-soft);
-  border-radius: 12px;
-  color: var(--text-color);
+  border-radius: 13px;
+  background: var(--ui-fill-05);
+  color: var(--ui-text-70);
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  user-select: none;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 .tile:hover {
+  border-color: var(--acc-28);
   background: var(--ui-fill-08);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  transform: translateY(-1px);
+  color: var(--text-color);
 }
-.tile:active { transform: translateY(0) scale(0.98); }
-.tile .t-icon { font-size: 1.45rem; line-height: 1; color: var(--ui-text-70); }
+.tile:active { transform: scale(0.97); }
+.tile.tile-hit-none { display: none; }
+.tile .t-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  font-size: 1.45rem;
+  line-height: 1;
+  color: var(--ui-text-55);
+  transition: color 0.15s ease;
+}
+.tile .t-icon svg { width: 36px; height: 36px; display: block; }
 .tile:hover .t-icon { color: var(--accent); }
-.tile .t-name { font-size: 0.75rem; color: var(--ui-text-70); text-align: center; line-height: 1.3; }
-.tile:hover .t-name { color: var(--text-color); }
+.fam.kraefte .tile .t-icon { color: color-mix(in srgb, var(--accent) 60%, var(--ui-text-55)); }
+.tile .t-name { font-size: 0.74rem; letter-spacing: 0.03em; text-align: center; line-height: 1.3; }
+.tile .t-sub {
+  font-size: 0.6rem;
+  color: var(--ui-text-40);
+  text-align: center;
+  line-height: 1.35;
+  min-height: 2em;
+}
 
-/* ---------- Toast (share feedback) ---------- */
+/* ---------- Kommando-Palette (Cmd/Strg+K) ---------- */
+#oc-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 400; /* über Bibliothek (300) */
+  background: color-mix(in srgb, var(--bg-color) 45%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.18s ease, visibility 0s linear 0.18s;
+}
+#oc-palette.open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.18s ease, visibility 0s;
+}
+.pal-card {
+  position: absolute;
+  left: 50%;
+  top: 14vh;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(62vh, 560px);
+  max-height: min(62dvh, 560px);
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 16px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+#oc-pal-input {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: var(--ui-fill-05);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  outline: none;
+}
+#oc-pal-input::placeholder { color: var(--ui-text-40); }
+#oc-pal-input:focus { border-color: var(--acc-45); background: var(--ui-fill-08); }
+#oc-pal-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 2px;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-fill-12) transparent;
+}
+.pal-group {
+  font-size: 0.6rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ui-text-40);
+  padding: 12px 12px 4px;
+  user-select: none;
+}
+.pal-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 2px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  user-select: none;
+}
+.pal-item .p-ico {
+  flex: 0 0 auto;
+  width: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--ui-text-55);
+  font-size: 0.92rem;
+  line-height: 1;
+}
+.pal-item .p-ico svg { width: 17px; height: 17px; display: block; }
+.pal-item .p-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--ui-text-90);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pal-item .p-label small {
+  color: var(--ui-text-40);
+  margin-left: 8px;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+}
+.pal-item kbd,
+#oc-pal-empty kbd {
+  font-family: inherit;
+  font-size: 0.62rem;
+  color: var(--ui-text-40);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 4px;
+  padding: 1px 6px 2px;
+  white-space: nowrap;
+}
+.pal-item.act { background: var(--ui-fill-08); }
+.pal-item.act .p-ico { color: var(--accent); }
+.pal-item.act kbd { color: var(--ui-text-70); }
+#oc-pal-empty {
+  padding: 1.1rem 1rem 1.2rem;
+  text-align: center;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-40);
+  user-select: none;
+}
+#oc-pal-empty[hidden] { display: none; }
+
+/* ---------- Toast ---------- */
 .oc-toast {
   position: fixed;
   left: 50%;
-  bottom: 2rem;
+  bottom: calc(88px + var(--safe-b));
   transform: translateX(-50%) translateY(8px);
-  background: var(--panel-bg);
-  color: var(--text-color);
-  border: 1px solid var(--ui-border);
+  background: var(--surface-strong);
+  color: var(--ui-text-90);
+  border: 1px solid var(--ui-border-soft);
   border-radius: 999px;
   padding: 0.55rem 1.1rem;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   letter-spacing: 0.05em;
   z-index: 310; /* above library overlay + controls.js panel */
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  max-width: calc(100vw - 32px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .oc-toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
-/* toast with an inline action (undo) needs to stay clickable */
 .oc-toast.has-action {
   pointer-events: auto;
   display: flex;
@@ -663,156 +1335,280 @@ html, body {
   border: none;
   color: var(--accent);
   font-family: inherit;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
   cursor: pointer;
   padding: 0.35rem 0.15rem;
   margin: -0.35rem -0.15rem;
-  min-height: 40px;
+  min-height: 44px;
   line-height: 1;
   white-space: nowrap;
 }
 .toast-action:hover { color: var(--text-color); }
 
-/* ---------- Floating side panel (desktop, drag on BAUSTEINE header) ---------- */
-@media (min-width: 900px) {
-  #oc-stack-section .panel-head {
-    cursor: grab;
-    user-select: none;
-    touch-action: none;
-  }
-  #oc-stack-section .panel-head:active { cursor: grabbing; }
-  #oc-side.floating {
-    position: fixed;
-    z-index: 40;
-    width: var(--side-w);
-    border: 1px solid var(--ui-border);
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
-  }
-  #oc-app.side-floating { grid-template-columns: 1fr 0; }
-}
-
 /* ---------- Mobile ---------- */
-@media (max-width: 899px) {
-  #oc-app {
-    grid-template-rows: var(--topbar-h) 1fr auto;
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "topbar"
-      "stage"
-      "side";
-  }
-  #oc-side {
-    position: relative;
-    border-left: none;
-    border-top: 1px solid var(--ui-border);
-    border-radius: 18px 18px 0 0;
-    height: 46vh; /* fallback for browsers without dvh */
-    height: 46dvh;
-    padding-bottom: env(safe-area-inset-bottom, 0);
-    transition: height 0.18s ease;
-  }
-  /* grip drag on the tab row minimized the sheet: only tabs remain */
-  #oc-side.collapsed {
-    height: calc(64px + env(safe-area-inset-bottom, 0px));
-    overflow: hidden;
-  }
-  #oc-side.collapsed .panel-section { display: none; }
-  .mobile-tabs {
-    display: flex;
-    flex: 0 0 auto;
-    padding: 0.45rem 0.9rem 0;
-    gap: 0.3rem;
-    position: relative;
-    touch-action: none; /* grip drag (minimize/restore) needs the gesture */
-  }
-  .mobile-tabs::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 38px;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--ui-fill-12);
-  }
-  .m-tab {
-    appearance: none;
-    flex: 1;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--ui-text-55);
-    font-family: inherit;
-    font-size: 0.8rem;
-    letter-spacing: 0.06em;
-    min-height: 44px;
-    padding-top: 10px;
-    cursor: pointer;
-  }
-  .m-tab.active { color: var(--text-color); border-bottom-color: var(--accent); }
+@media (max-width: 768px) {
+  #oc-spine { display: none; }
+  #oc-status { display: none; } /* Ecken gehoeren den Pillen */
+  #oc-wordmark { font-size: 0.72rem; letter-spacing: 0.2em; }
+  /* Aktionen oben rechts bleiben alle erreichbar, nur enger */
+  #oc-corner { gap: 0; right: 6px; }
+  #oc-corner .corner-gap { display: none; }
+  .icon-btn { width: 44px; height: 44px; }
 
-  #oc-stack-section { flex: 1 1 auto; }
-
-  /* avoid double titles: the tab row already labels the sheet, plus moves into it */
-  .panel-title { display: none; }
-  #oc-stack-section .panel-head {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.65rem;
-    padding: 0;
-    z-index: 2;
-  }
-  .mobile-tabs { padding-right: 4rem; }
-
-  .del-btn, .dup-btn { opacity: 1; pointer-events: auto; }
-
-  #oc-topbar { padding: 0 0.5rem 0 0.7rem; gap: 0.35rem; }
-  .topbar-actions { gap: 0.1rem; }
-  .wordmark { letter-spacing: 0.16em; font-size: 0.85rem; }
-  /* five topbar buttons: only the "0" of the wordmark fits */
-  .wordmark .sep, .wordmark .wm-sub, .wordmark .wm-rest { display: none; }
-  /* tools keep a short label under the icon (icons alone are cryptic) */
+  /* Kapsel: Icon über Label */
+  #oc-capsule { bottom: calc(14px + var(--safe-b)); }
   .tool-btn {
     flex-direction: column;
     gap: 2px;
-    padding: 2px 0.4rem 0;
-    min-width: 48px;
-    min-height: 44px;
     justify-content: center;
+    min-height: 48px;
+    padding: 0 0.75rem;
   }
-  .tool-btn .tb-icon { font-size: 0.95rem; }
-  .tool-btn .tb-label {
-    font-size: 0.52rem;
-    letter-spacing: 0.04em;
-    color: inherit;
+  .tool-btn .tb-icon { font-size: 1.05rem; }
+  .tool-btn .tb-label { font-size: 0.58rem; letter-spacing: 0.04em; }
+
+  /* Pillen links (Stapel) und rechts (+) */
+  #oc-stack-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    position: fixed;
+    left: 12px;
+    bottom: calc(16px + var(--safe-b));
+    z-index: 32;
+    min-height: 48px;
+    padding: 0 1rem;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    color: var(--ui-text-70);
+    background: var(--surface);
+    border: 1px solid var(--ui-border-soft);
+    border-radius: 999px;
+    font-family: inherit;
+    cursor: pointer;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
-  /* drag handles need a full-size touch target for reorder */
-  .drag-handle {
-    min-width: 40px;
-    min-height: 44px;
+  #oc-stack-pill .n { color: var(--accent); }
+  #oc-add-pill {
     display: grid;
     place-items: center;
-    padding: 0;
+    position: fixed;
+    right: 12px;
+    bottom: calc(16px + var(--safe-b));
+    z-index: 32;
+    width: 48px;
+    height: 48px;
+    font-size: 1.25rem;
+    padding-bottom: 2px;
+    color: var(--ui-text-90);
+    background: var(--surface);
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    font-family: inherit;
+    cursor: pointer;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
+
+  /* Stapel als Drill-in-Sheet: Peek (Mini-Strahl) / Halb / Voll.
+     Die Hoehe lebt in --oc-sheet-h, damit die Pillen-Zeile immer
+     direkt ueber dem Sheet bleibt (nie ueberdeckt). */
+  body {
+    --oc-sheet-h: 46vh;
+    --oc-sheet-h: 46dvh;
+  }
+  body.oc-sheet-peek { --oc-sheet-h: calc(96px + var(--safe-b)); }
+  body.oc-sheet-full {
+    --oc-sheet-h: 80vh;
+    --oc-sheet-h: 80dvh;
+  }
+  #oc-side {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100vw;
+    height: var(--oc-sheet-h);
+    max-height: none;
+    border-radius: 18px 18px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    transform: translateY(14px);
+    padding-bottom: var(--safe-b);
+    transition: opacity 0.22s ease, transform 0.22s ease, height 0.25s ease,
+      visibility 0s linear 0.22s;
+  }
+  body.oc-stack-open #oc-side {
+    transform: translateY(0);
+    transition: opacity 0.22s ease, transform 0.22s ease, height 0.25s ease,
+      visibility 0s;
+  }
+  #oc-sheet-grip {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 100%;
+    height: 44px; /* Tap-Target; Margin gleicht die 4px optisch aus */
+    margin-bottom: -12px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  #oc-sheet-grip i {
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--ui-text-25);
+    transition: background 0.15s ease;
+  }
+  #oc-sheet-grip:active i { background: var(--ui-text-55); }
+  #oc-side .panel-head { padding-top: 0.15rem; }
+
+  /* Peek: nur Griff + Mini-Strahl (Blick — Glieder — 0) */
+  body.oc-sheet-peek #oc-side .panel-head,
+  body.oc-sheet-peek #oc-side .sub-slot,
+  body.oc-sheet-peek #oc-side .beam-term,
+  body.oc-sheet-peek #oc-stack-list { display: none; }
+  body.oc-sheet-peek #oc-minibeam { display: flex; }
+  #oc-minibeam {
+    align-items: center;
+    gap: 9px;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 6px 1.25rem 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #oc-minibeam .mb-line {
+    flex: 1 1 8px;
+    min-width: 8px;
+    height: 1px;
+    background: var(--ui-border);
+  }
+  #oc-minibeam .mb-eye {
+    flex: 0 0 auto;
+    color: var(--ui-text-40);
+    display: grid;
+    place-items: center;
+  }
+  #oc-minibeam .mb-eye svg { width: 15px; height: 15px; }
+  #oc-minibeam .mb-zero {
+    flex: 0 0 auto;
+    color: var(--ui-text-40);
+    font-size: 0.85rem;
+    line-height: 1;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  #oc-minibeam .mb-dot {
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ui-text-70);
+  }
+  #oc-minibeam .mb-dot.erzeuger {
+    background: transparent;
+    border: 1.3px solid var(--ui-text-70);
+  }
+  #oc-minibeam .mb-dot.kraft {
+    width: 13px;
+    height: 13px;
+    background: transparent;
+    border: 1.3px solid var(--acc-45);
+  }
+  #oc-minibeam .mb-dot.hid { opacity: 0.3; }
+  #oc-minibeam .mb-dot.sel {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--acc-45);
+  }
+
+  /* Pillen-Zeile + Kapsel ruecken ueber das offene Sheet (nie ueberdeckt) */
+  #oc-stack-pill, #oc-add-pill { transition: bottom 0.25s ease, opacity 0.3s ease; }
+  #oc-capsule { transition: bottom 0.25s ease, opacity 0.7s ease; }
+  body.oc-stack-open #oc-stack-pill,
+  body.oc-stack-open #oc-add-pill {
+    bottom: calc(12px + var(--oc-sheet-h));
+  }
+  body.oc-stack-open #oc-capsule {
+    bottom: calc(12px + var(--oc-sheet-h));
+  }
+
+  /* Bibliothek als Bottom-Sheet */
+  .overlay-card {
+    top: auto;
+    width: 100vw;
+    max-height: 76vh;
+    max-height: 76dvh;
+    height: auto;
+    border-left: none;
+    border-top: 1px solid var(--ui-border-soft);
+    border-radius: 18px 18px 0 0;
+    transform: translateY(103%);
+    padding-bottom: var(--safe-b);
+  }
+  #oc-lib-overlay.open .overlay-card { transform: translateY(0); }
+  .overlay-card::before {
+    content: '';
+    display: block;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--ui-text-25);
+    margin: 10px auto 0;
+  }
+
+  /* Aktions-Buttons in Zeilen immer sichtbar (kein Hover auf Touch)
+     + volle 44px Tap-Breite (Desktop bleibt kompakt bei 38px) */
+  .del-btn, .dup-btn { opacity: 1; pointer-events: auto; }
+  .eye-btn, .dup-btn, .del-btn { width: 44px; }
+
   .stage-hint { display: none; }
-  .tile-grid { grid-template-columns: repeat(2, 1fr); }
-  .overlay-card { max-height: 82vh; max-height: 82dvh; }
-  .limit-pill { display: none; }
+  .status-pills { top: calc(3.4rem + var(--safe-t)); }
+  .stage-pill { top: calc(6rem + var(--safe-t)); }
+
+  /* Flüstern: auf kleinen Schirmen nur die zentrale Zeile */
+  #oc-whisper-center { top: 18%; width: 86vw; }
+  #oc-whisper-tools, #oc-whisper-stack { display: none; }
+
+  /* Fokus-Punkt über der Home-Bar */
+  #oc-focus-exit { bottom: calc(14px + var(--safe-b)); }
 }
 
 /* controls.js switches to its own bottom sheet at <=768px: while the
-   Eigenschaften-sheet is open, our Bausteine-sheet steps aside (one sheet
-   at a time; the panel's ⠿-button and canvas tap-to-deselect lead back) */
+   Regler-sheet is open, Stapel-Sheet und Kapsel weichen — die Pillen-Zeile
+   aber bleibt erreichbar und rueckt ueber das Sheet (--oc-ctrl-lift wird
+   im Ribbon-rAF gemessen); der Zurueck-Pfeil im Ribbon fuehrt zum Stapel */
 @media (max-width: 768px) {
   body.oc-props-open #oc-side { display: none; }
+  body.oc-props-open #oc-capsule { opacity: 0; pointer-events: none; }
+  body.oc-props-open #oc-stack-pill,
+  body.oc-props-open #oc-add-pill {
+    z-index: 111; /* ueber dem Regler-Panel (z 100) */
+    bottom: calc(12px + var(--oc-ctrl-lift, 0px));
+  }
+  #oc-ribbon-back { display: grid; }
+  #oc-ctrl-ribbon { border-radius: 14px 14px 0 0; }
 }
 
-/* very narrow phones: drop the least useful topbar items */
-@media (max-width: 374px) {
-  .wordmark { display: none; }
+/* narrow phones: wordmark + corner must never collide (focus button
+   widened the corner row) — drop suffix + least useful corner item */
+@media (max-width: 480px) {
+  #oc-wordmark .sep, #oc-wordmark .wm-sub { display: none; }
   #oc-fullscreen-btn { display: none; }
+}
+@media (max-width: 374px) {
+  #oc-wordmark .wm-rest { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oc-ui, #oc-side, .overlay-card, .vertebra, .oc-toast,
+  .oc-whisper, #oc-chip, #oc-selframe, #oc-focus-exit::before,
+  .type-icon, #oc-stack-pill, #oc-add-pill, #oc-capsule,
+  #oc-palette, .pal-card { transition: none !important; animation: none !important; }
 }
