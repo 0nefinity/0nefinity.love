@@ -728,6 +728,51 @@
     return window.innerWidth <= 768;
   }
 
+  /* ---------- --visible-viewport-* live halten ----------
+   * Original-Mechanik aus meta.js (dort haelt sie das globale UI aktuell;
+   * 0necanvas laedt meta.js nicht): controls.js liest
+   * --visible-viewport-bottom fuers Mobile-Bottom-Offset, controls-theme.css
+   * nutzt --visible-viewport-height fuer die Sheet-max-height — beide
+   * muessen bei eingeblendeter Tastatur/geschrumpftem visualViewport
+   * mitlaufen statt statisch gepinnt zu sein. Code 1:1 aus meta.js. */
+  function syncVisibleViewport() {
+    var root = document.documentElement;
+    var visualViewport = window.visualViewport;
+    var layoutWidth = Math.max(root.clientWidth || 0, window.innerWidth || 0, 1);
+    var layoutHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1);
+    var width = Math.max(1, (visualViewport && visualViewport.width) || layoutWidth);
+    var height = Math.max(1, (visualViewport && visualViewport.height) || window.innerHeight || layoutHeight);
+    var top = Math.max(0, (visualViewport && visualViewport.offsetTop) || 0);
+    var left = Math.max(0, (visualViewport && visualViewport.offsetLeft) || 0);
+    var bottom = Math.max(0, layoutHeight - (top + height));
+
+    root.style.setProperty('--visible-viewport-width', Math.round(width) + 'px');
+    root.style.setProperty('--visible-viewport-height', Math.round(height) + 'px');
+    root.style.setProperty('--visible-viewport-top', Math.round(top) + 'px');
+    root.style.setProperty('--visible-viewport-left', Math.round(left) + 'px');
+    root.style.setProperty('--visible-viewport-bottom', Math.round(bottom) + 'px');
+  }
+
+  var visibleViewportFrame = 0;
+  function scheduleVisibleViewportSync() {
+    if (visibleViewportFrame) return;
+    visibleViewportFrame = requestAnimationFrame(function () {
+      visibleViewportFrame = 0;
+      syncVisibleViewport();
+    });
+  }
+
+  function initVisibleViewportSync() {
+    scheduleVisibleViewportSync();
+    window.addEventListener('load', scheduleVisibleViewportSync);
+    window.addEventListener('resize', scheduleVisibleViewportSync);
+    window.addEventListener('orientationchange', scheduleVisibleViewportSync);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', scheduleVisibleViewportSync);
+      window.visualViewport.addEventListener('scroll', scheduleVisibleViewportSync);
+    }
+  }
+
   function ensurePropsPanel() {
     if (propsPanel) return propsPanel;
     if (!window.Controls || typeof Controls.createPanel !== 'function') {
@@ -764,25 +809,15 @@
     return panel;
   }
 
-  // controls.js misst sein Mobil-Sheet beim allerersten createPanel mit
-  // noch leerer Section (nur der Header existiert) und merkt sich "Header
-  // sichtbar" als Offen-Zustand — das Regler-Sheet bliebe ein 44px-Balken.
-  // Reposition von außen (Innenleben unangetastet): nach dem Zeigen einmal
-  // auf Drittel-Höhe stellen; setPosition merkt sich die Höhe, danach
-  // gelten wieder die Nutzer-Positionen.
-  function ensureSheetOpenHeight() {
-    if (!propsPanel || !propsPanel.el || !isSheetMobile()) return;
-    var apply = propsPanel._applyMobileSheetPosition;
-    if (typeof apply !== 'function') return;
-    var full = propsPanel.el.offsetHeight || 0;
-    if (!full) return;
-    var want = clamp(Math.round(window.innerHeight / 3), 120, full);
-    var visible = Math.max(0, window.innerHeight - propsPanel.el.getBoundingClientRect().top);
-    if (visible >= want - 8) return; // offen genug — Nutzer-Position respektieren
-    try {
-      apply.call(propsPanel, Math.max(0, full - want), true);
-    } catch (e) { /* alter Zustand bleibt, nur weniger bequem */ }
-  }
+  // Mobil-Sheet-Initialzustand wie das Original (circleheart): beim ersten
+  // Erscheinen zeigt sich NUR der Peek-Balken, der Nutzer öffnet selbst per
+  // Tap auf den Griff. controls.js' initPosition merkt sich dabei die
+  // Drittel-Höhe als Offen-Höhe (Tap-Ziel), landet aber je nach Content-
+  // Höhe offen statt auf Peek — deshalb einmalig nachstellen: im selben
+  // Frame NACH initPosition (dessen rAF ist beim ersten Zeigen schon
+  // eingereiht, unserer kommt danach — kein offener Frame wird gemalt) auf
+  // maxY setzen; rememberOpen:false lässt das Drittel-Tap-Ziel unangetastet.
+  var sheetPeekedOnce = false;
 
   function setPanelShown(shown) {
     document.body.classList.toggle('oc-props-open', !!shown);
@@ -793,7 +828,18 @@
         // panel could not measure itself while hidden — let controls.js re-layout
         try { window.dispatchEvent(new Event('resize')); } catch (e) { /* noop */ }
       }
-      if (shown) setTimeout(ensureSheetOpenHeight, 60);
+      if (shown && !sheetPeekedOnce && isSheetMobile() &&
+          typeof propsPanel._applyMobileSheetPosition === 'function') {
+        sheetPeekedOnce = true;
+        requestAnimationFrame(function () {
+          if (!propsPanel || !propsPanel.el || !isSheetMobile()) return;
+          if (propsPanel.el.classList.contains('oc-hidden')) return;
+          try {
+            // y weit jenseits maxY — controls.js klemmt auf den Peek-Balken
+            propsPanel._applyMobileSheetPosition(1e9, false, { rememberOpen: false, signalLayout: true });
+          } catch (e) { /* controls.js' Refresh entscheidet dann selbst */ }
+        });
+      }
     }
     updateRibbon();
   }
@@ -835,7 +881,7 @@
     if (!isSheetMobile()) return;
     var lift = 0;
     if (rect) {
-      var ribbonH = (els.ribbon && els.ribbon.offsetHeight) || 34;
+      var ribbonH = ((els.ribbon && els.ribbon.offsetHeight) || 34) + 6; // +6 = Schwebe-Abstand der Pille
       lift = clamp(Math.round(window.innerHeight - rect.top + ribbonH), 0,
         Math.round(window.innerHeight * 0.72));
     }
@@ -854,9 +900,13 @@
     }
     els.ribbon.style.opacity = '1';
     var h = els.ribbon.offsetHeight || 34;
-    els.ribbon.style.left = rect.left + 'px';
-    els.ribbon.style.top = (rect.top - h) + 'px';
-    els.ribbon.style.width = rect.width + 'px';
+    // Pille schwebt frei ueber dem Panel (das Panel traegt sein
+    // Original-Chrome aus meta.css — die Addition dockt nur an)
+    var gap = 6;
+    var inset = isSheetMobile() ? 10 : 0;
+    els.ribbon.style.left = (rect.left + inset) + 'px';
+    els.ribbon.style.top = (rect.top - h - gap) + 'px';
+    els.ribbon.style.width = Math.max(0, rect.width - inset * 2) + 'px';
     setCtrlLift(rect);
   }
 
@@ -1019,6 +1069,42 @@
       addPanelControl(panel, block, schema[i]);
     }
     panel.endSection();
+
+    // Original-Lebenszyklus baut das Panel pro Seite neu — der Body startet
+    // immer bei scrollTop 0. Beim Singleton-Section-Swap explizit
+    // zuruecksetzen, sonst bleibt die Scroll-Position des alten Blocks stehen
+    // und die erste Zeile des neuen Blocks ist oben angeschnitten.
+    if (panel.bodyEl) panel.bodyEl.scrollTop = 0;
+
+    // Singleton-Section-Swap bei offenem Mobil-Sheet: die sichtbare Hoehe
+    // des Nutzers beibehalten und synchron auf den NEUEN Inhalt rebasen
+    // (setPosition mit animate=false => controls.js misst die Body-Hoehe
+    // sofort korrekt). Ohne das klassifiziert controls.js die stale
+    // Sheet-Position (y vom alten, groesseren Inhalt) als "mostly closed"
+    // und schnappt fuer einen Frame auf Peek; der Body bliebe bis zur
+    // naechsten Interaktion auf ~2px abgeschnitten.
+    if (isSheetMobile() &&
+        document.body.classList.contains('oc-props-open') &&
+        panel.el && !panel.el.classList.contains('oc-hidden') &&
+        typeof panel._applyMobileSheetPosition === 'function') {
+      try {
+        var visibleOld = Math.max(0, window.innerHeight - panel.el.getBoundingClientRect().top);
+        var naturalH = 0;
+        if (panel.bodyEl) {
+          // natuerliche Hoehe des NEUEN Inhalts messen: bei height:0 liefert
+          // scrollHeight die reine Contenthoehe (inline '' wuerde die
+          // CSS-calc-Hoehe greifen lassen, 'auto' den Flex-Stretch auf die
+          // alte Panelhoehe); setPosition setzt gleich wieder px-Werte
+          panel.bodyEl.style.height = '0px';
+          panel.bodyEl.style.maxHeight = 'none';
+          naturalH = panel.bodyEl.scrollHeight || 0;
+        }
+        var headerH = (panel.headerEl && panel.headerEl.offsetHeight) || 56;
+        var fullNew = Math.max(headerH, Math.min(headerH + naturalH, window.innerHeight));
+        var yNew = Math.max(0, fullNew - Math.min(visibleOld, fullNew));
+        panel._applyMobileSheetPosition(yNew, false);
+      } catch (e) { /* controls.js' ResizeObserver-Refresh greift als Fallback */ }
+    }
   }
 
   function addPanelControl(panel, block, entry) {
@@ -2303,6 +2389,8 @@
     if (scene) { console.warn('0necanvas ui: init called twice, ignoring'); return; }
     scene = sc;
 
+    initVisibleViewportSync();
+
     els = {
       canvas: $('oc-canvas'),
       stage: $('oc-stage'),
@@ -2423,6 +2511,22 @@
         return;
       }
       if (e.key === 'Escape') {
+        // Escape aus der Regler-UI wirkt nur lokal (controls.js: Popup zu +
+        // Trigger fokussieren, Config-Wert-Revert, Wert-Feld behalten) — die
+        // globale Kette wuerde sonst den Block deselektieren und das Panel
+        // mitten in der Eingabe schliessen. Erkennung dreistufig:
+        // defaultPrevented = controls.js-Popup-Handler hat schon lokal
+        // behandelt (er raeumt Popup+Optionen vor unserem Bubble-Handler weg,
+        // target/DOM-Checks griffen dann zu spaet); closest = Fokus in
+        // Regler-UI ohne lokalen Handler (z.B. Wert-Feld); offenes Popup im
+        // DOM = Popup offen, Fokus woanders (Original laesst es offen).
+        var escFrom = e.target;
+        if (e.defaultPrevented ||
+            (escFrom && escFrom.closest &&
+             escFrom.closest('.ctrl-panel, .ctrl-select-popup, .ctrl-config-popup')) ||
+            document.querySelector('.ctrl-select-popup.open, .ctrl-config-popup.open')) {
+          return;
+        }
         // definierte Reihenfolge: Palette -> Fokus -> Bibliothek -> Stapel -> Auswahl
         if (paletteOpenState()) closePalette();
         else if (inFocus()) exitFocus();

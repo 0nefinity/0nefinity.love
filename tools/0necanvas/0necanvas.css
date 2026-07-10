@@ -2,9 +2,19 @@
    UI dimmt bei Inaktivität weg. Dark-only, eine Akzentfarbe. */
 
 :root {
+  /* Root-Font-Kontext wie meta.css :root (16px, mobil 14px): die rem-Masse
+     des controls.js-Panels (controls-theme.css) rechnen dagegen. Die App
+     selbst ist in px gesetzt (14px-Basis) und bleibt davon unberuehrt. */
+  font-size: 16px;
   --bg-color: #000;
   --text-color: #fff;
   --font-family: Verdana, Geneva, Tahoma, sans-serif;
+  /* Defaults wie meta.css :root — ui.js haelt sie live (visualViewport) */
+  --visible-viewport-width: 100vw;
+  --visible-viewport-height: 100dvh;
+  --visible-viewport-top: 0px;
+  --visible-viewport-left: 0px;
+  --visible-viewport-bottom: 0px;
   --accent: #a8b8e8;
   --panel-bg: #0a0a0c;
   --surface: color-mix(in srgb, #06060a 88%, transparent);
@@ -28,6 +38,13 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* meta.css: @media (max-width: 480px) { :root { font-size: 14px; } } */
+@media (max-width: 480px) {
+  :root {
+    font-size: 14px;
+  }
+}
+
 html, body {
   margin: 0;
   height: 100vh; /* fallback for browsers without dvh */
@@ -35,9 +52,15 @@ html, body {
   background: var(--bg-color);
   color: var(--text-color);
   font-family: var(--font-family);
-  font-size: 14px;
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* App-Basisschrift bleibt 14px (Design-Basis der App). Die controls.js-
+   Popups (.ctrl-select-popup/.ctrl-config-popup) setzen sich wie im
+   Original auf 1rem (siehe controls-theme.css BASE). */
+body {
+  font-size: 14px;
 }
 
 /* ---------- Erscheinen & Weichen: Idle-Dim ---------- */
@@ -62,9 +85,9 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 
 .stage-hint {
   position: absolute;
-  left: 1.25rem;
-  bottom: calc(1rem + var(--safe-b));
-  font-size: 0.72rem;
+  left: 17.5px;
+  bottom: calc(14px + var(--safe-b));
+  font-size: 10.08px;
   letter-spacing: 0.12em;
   color: var(--ui-text-40);
   user-select: none;
@@ -77,9 +100,9 @@ body.oc-idle .oc-ui { opacity: 0.05; }
   left: 50%;
   top: 42%;
   transform: translate(-50%, -50%);
-  max-width: min(78%, 30rem);
+  max-width: min(78%, 420px);
   text-align: center;
-  font-size: 0.82rem;
+  font-size: 11.48px;
   letter-spacing: 0.05em;
   line-height: 1.65;
   color: var(--ui-text-40);
@@ -91,22 +114,22 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 /* Status-Pillen oben mittig (dimmen mit) */
 .status-pills {
   position: absolute;
-  top: calc(0.9rem + var(--safe-t));
+  top: calc(12.6px + var(--safe-t));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 0.4rem;
+  gap: 5.6px;
   z-index: 3;
   pointer-events: none;
 }
 .limit-pill {
-  font-size: 0.68rem;
+  font-size: 9.52px;
   letter-spacing: 0.08em;
   color: var(--ui-text-70);
   background: var(--surface);
   border: 1px solid var(--ui-border);
   border-radius: 999px;
-  padding: 0.3rem 0.7rem;
+  padding: 4.2px 9.8px;
   white-space: nowrap;
   user-select: none;
 }
@@ -116,11 +139,11 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 #oc-status {
   position: absolute;
   right: 14px;
-  bottom: calc(1rem + var(--safe-b));
+  bottom: calc(14px + var(--safe-b));
   display: flex;
   align-items: baseline;
   gap: 0.55em;
-  font-size: 0.68rem;
+  font-size: 9.52px;
   letter-spacing: 0.06em;
   color: var(--ui-text-25);
   user-select: none;
@@ -138,18 +161,18 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 /* stage pill: gentle hint floating over the canvas (off-view rescue) */
 .stage-pill {
   position: absolute;
-  top: calc(3.6rem + var(--safe-t));
+  top: calc(50.4px + var(--safe-t));
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
-  font-size: 0.72rem;
+  font-size: 10.08px;
   letter-spacing: 0.06em;
   font-family: inherit;
   color: var(--ui-text-70);
   background: var(--surface);
   border: 1px solid var(--ui-border);
   border-radius: 999px;
-  padding: 0.45rem 0.95rem;
+  padding: 6.3px 13.3px;
   min-height: 44px;
   white-space: nowrap;
   cursor: pointer;
@@ -166,7 +189,7 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 .oc-whisper {
   position: fixed;
   z-index: 25;
-  font-size: 0.7rem;
+  font-size: 9.8px;
   letter-spacing: 0.14em;
   line-height: 1.7;
   color: var(--ui-text-55);
@@ -242,7 +265,7 @@ body.oc-worked .oc-whisper { opacity: 0; }
 #oc-chip[hidden] { display: none; }
 #oc-chip .c-ico {
   color: var(--accent);
-  font-size: 0.85rem;
+  font-size: 11.9px;
   line-height: 1;
   display: grid;
   place-items: center;
@@ -250,7 +273,7 @@ body.oc-worked .oc-whisper { opacity: 0; }
 }
 #oc-chip .c-ico svg { width: 16px; height: 16px; display: block; }
 #oc-chip .c-name {
-  font-size: 0.8rem;
+  font-size: 11.2px;
   color: var(--ui-text-90);
   margin-right: 0.4em;
   max-width: 9.5em;
@@ -258,7 +281,7 @@ body.oc-worked .oc-whisper { opacity: 0; }
   text-overflow: ellipsis;
 }
 #oc-chip .c-kind {
-  font-size: 0.6rem;
+  font-size: 8.4px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ui-text-40);
@@ -280,14 +303,14 @@ body.oc-worked .oc-whisper { opacity: 0; }
   border-radius: 999px;
   color: var(--ui-text-55);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 11.48px;
   padding: 0 8px;
   cursor: pointer;
   line-height: 1;
   transition: color 0.15s ease, background 0.15s ease;
 }
 #oc-chip button:hover { color: var(--text-color); background: var(--ui-fill-08); }
-#oc-chip .c-regler { font-size: 0.72rem; letter-spacing: 0.08em; color: var(--ui-text-70); }
+#oc-chip .c-regler { font-size: 10.08px; letter-spacing: 0.08em; color: var(--ui-text-70); }
 /* Idle: Chip + Hüllbox glimmen nur noch (Werk bleibt der Star) */
 body.oc-idle #oc-chip,
 body.oc-idle #oc-selframe { opacity: 0.1; }
@@ -338,7 +361,7 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
   top: calc(14px + var(--safe-t));
   left: 18px;
   z-index: 30;
-  font-size: 0.82rem;
+  font-size: 11.48px;
   letter-spacing: 0.26em;
   color: var(--ui-text-55);
   text-decoration: none;
@@ -376,7 +399,7 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
   border: none;
   border-radius: 9px;
   color: var(--ui-text-55);
-  font-size: 1.05rem;
+  font-size: 14.7px;
   font-family: inherit;
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
@@ -407,13 +430,13 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
   align-items: center;
   gap: 0.5em;
   min-height: 44px;
-  padding: 0 1.05rem;
+  padding: 0 14.7px;
   background: transparent;
   border: none;
   border-radius: 999px;
   color: var(--ui-text-55);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 11.48px;
   letter-spacing: 0.06em;
   cursor: pointer;
   line-height: 1;
@@ -421,7 +444,7 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
   user-select: none;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.tool-btn .tb-icon { font-size: 1rem; line-height: 1; }
+.tool-btn .tb-icon { font-size: 14px; line-height: 1; }
 .tool-btn:hover { color: var(--ui-text-90); }
 .tool-btn:active { transform: scale(0.97); }
 .tool-btn.active {
@@ -467,7 +490,7 @@ body.oc-stack-open #oc-spine { opacity: 0; pointer-events: none; }
   border: 1px solid var(--ui-border);
   border-radius: 999px;
   color: var(--ui-text-70);
-  font-size: 1.25rem;
+  font-size: 17.5px;
   font-family: inherit;
   cursor: pointer;
   line-height: 1;
@@ -490,7 +513,7 @@ body.oc-stack-open #oc-spine { opacity: 0; pointer-events: none; }
   width: 44px;
   height: 26px;
   color: var(--ui-text-40);
-  font-size: 0.72rem;
+  font-size: 10.08px;
   user-select: none;
   pointer-events: none;
 }
@@ -508,7 +531,7 @@ body.oc-stack-open #oc-spine { opacity: 0; pointer-events: none; }
   border-radius: 9px;
   color: var(--ui-text-70);
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 11.9px;
   cursor: pointer;
   line-height: 1;
   transition: color 0.15s ease, background 0.15s ease;
@@ -552,7 +575,7 @@ body.oc-stack-open #oc-spine { opacity: 0; pointer-events: none; }
 
 .spine-label {
   margin-top: 6px;
-  font-size: 0.6rem;
+  font-size: 8.4px;
   letter-spacing: 0.22em;
   color: var(--ui-text-40);
   writing-mode: vertical-rl;
@@ -602,12 +625,12 @@ body.oc-stack-open #oc-side {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.8rem 0.75rem 0.15rem 1.15rem;
+  gap: 8.4px;
+  padding: 11.2px 10.5px 2.1px 16.1px;
   flex: 0 0 auto;
 }
 .panel-title {
-  font-size: 0.7rem;
+  font-size: 9.8px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--ui-text-70);
@@ -628,13 +651,13 @@ body.oc-stack-open #oc-side {
   line-height: 1;
   transition: color 0.15s ease, background 0.15s ease;
 }
-#oc-add-btn { font-size: 1.25rem; padding-bottom: 2px; color: var(--ui-text-70); }
-#oc-stack-close { font-size: 0.85rem; }
+#oc-add-btn { font-size: 17.5px; padding-bottom: 2px; color: var(--ui-text-70); }
+#oc-stack-close { font-size: 11.9px; }
 #oc-add-btn:hover, #oc-stack-close:hover { color: var(--text-color); background: var(--ui-fill-05); }
 
 .panel-sub {
-  padding: 0 1.15rem 0.55rem;
-  font-size: 0.68rem;
+  padding: 0 16.1px 7.7px;
+  font-size: 9.52px;
   letter-spacing: 0.04em;
   color: var(--ui-text-40);
   user-select: none;
@@ -650,9 +673,9 @@ body.oc-stack-open #oc-side {
   overflow: hidden;
 }
 .scope-note {
-  margin: 0.1rem 0.6rem 0.3rem;
-  padding: 0.4rem 0.55rem;
-  font-size: 0.66rem;
+  margin: 1.4px 8.4px 4.2px;
+  padding: 5.6px 7.7px;
+  font-size: 9.24px;
   line-height: 1.5;
   color: color-mix(in srgb, var(--accent) 70%, var(--text-color));
   background: color-mix(in srgb, var(--accent) 7%, transparent);
@@ -668,8 +691,8 @@ body.oc-stack-open #oc-side {
 .beam-term {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.15rem 1.05rem;
+  gap: 7.7px;
+  padding: 2.1px 14.7px;
   flex: 0 0 auto;
   user-select: none;
   pointer-events: none;
@@ -679,12 +702,12 @@ body.oc-stack-open #oc-side {
   display: grid;
   place-items: center;
   color: var(--ui-text-40);
-  font-size: 0.78rem;
+  font-size: 10.92px;
   line-height: 1;
 }
 .beam-term .bt-mark svg { width: 16px; height: 16px; }
 .beam-term .bt-label {
-  font-size: 0.6rem;
+  font-size: 8.4px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--ui-text-25);
@@ -694,7 +717,7 @@ body.oc-stack-open #oc-side {
 #oc-stack-list {
   list-style: none;
   margin: 0;
-  padding: 0 0.55rem;
+  padding: 0 7.7px;
   overflow-y: auto;
   min-height: 0;
   flex: 1 1 auto;
@@ -706,9 +729,9 @@ body.oc-stack-open #oc-side {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 6.3px;
   min-height: 46px;
-  padding: 0 0.25rem 0 0;
+  padding: 0 3.5px 0 0;
   border-radius: 10px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -779,10 +802,10 @@ body.oc-stack-open #oc-side {
 
 .drag-handle {
   color: var(--ui-text-40);
-  font-size: 0.78rem;
+  font-size: 10.92px;
   letter-spacing: -1px;
   cursor: grab;
-  padding: 0.8rem 0.1rem 0.8rem 0.2rem;
+  padding: 11.2px 1.4px 11.2px 2.8px;
   line-height: 1;
   flex: 0 0 auto;
   touch-action: none;
@@ -793,7 +816,7 @@ body.oc-stack-open #oc-side {
   flex: 0 0 auto;
   width: 24px;
   text-align: center;
-  font-size: 0.92rem;
+  font-size: 12.88px;
   line-height: 1;
   display: grid;
   place-items: center;
@@ -812,7 +835,7 @@ body.oc-stack-open #oc-side {
   overflow: hidden;
 }
 .row-kind {
-  font-size: 0.58rem;
+  font-size: 8.12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ui-text-40);
@@ -820,7 +843,7 @@ body.oc-stack-open #oc-side {
 }
 .stack-row.k-kraft .row-kind { color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .row-name {
-  font-size: 0.84rem;
+  font-size: 11.76px;
   color: var(--ui-text-90);
   white-space: nowrap;
   overflow: hidden;
@@ -832,7 +855,7 @@ body.oc-stack-open #oc-side {
 /* "wirkt ↓ n" an Kraft-Zeilen */
 .row-tag {
   flex: 0 0 auto;
-  font-size: 0.6rem;
+  font-size: 8.4px;
   color: var(--acc-45);
   border: 1px solid var(--acc-28);
   border-radius: 999px;
@@ -851,7 +874,7 @@ body.oc-stack-open #oc-side {
   border-radius: 6px;
   color: var(--text-color);
   font-family: inherit;
-  font-size: 0.84rem;
+  font-size: 11.76px;
   padding: 2px 6px;
   outline: none;
 }
@@ -868,7 +891,7 @@ body.oc-stack-open #oc-side {
   border: none;
   border-radius: 8px;
   color: var(--ui-text-70);
-  font-size: 0.92rem;
+  font-size: 12.88px;
   font-family: inherit;
   cursor: pointer;
   line-height: 1;
@@ -879,7 +902,7 @@ body.oc-stack-open #oc-side {
 
 .dup-btn,
 .del-btn {
-  font-size: 0.82rem;
+  font-size: 11.48px;
   color: var(--ui-text-40);
   opacity: 0;
   pointer-events: none;
@@ -897,8 +920,8 @@ body.oc-stack-open #oc-side {
 /* library "keine Bausteine" hint */
 .props-empty {
   color: var(--ui-text-40);
-  font-size: 0.8rem;
-  padding: 1.4rem 0;
+  font-size: 11.2px;
+  padding: 19.6px 0;
   text-align: center;
 }
 
@@ -928,20 +951,6 @@ body.oc-stack-open #oc-side {
   --ui-text-70: color-mix(in srgb, var(--text-color, #fff) 70%, transparent);
   --ui-text-80: color-mix(in srgb, var(--text-color, #fff) 80%, transparent);
   --ui-text-90: color-mix(in srgb, var(--text-color, #fff) 90%, transparent);
-  --visible-viewport-height: 100dvh;
-  --visible-viewport-bottom: 0px;
-}
-
-/* meta.css sizes the panel in rem against a 16px root; this app's root is
-   14px, which would shrink it to 420px. Pin the original width in px. */
-@media (min-width: 769px) {
-  .ctrl-panel { width: clamp(400px, calc(100vw - 64px), 480px); }
-  /* Regie unten links, freigestellt — Reposition von außen, Innenleben tabu */
-  .ctrl-panel.position-left {
-    left: 16px;
-    bottom: calc(16px + var(--safe-b));
-    border-radius: 0 0 14px 14px;
-  }
 }
 
 /* panel built but not shown (boot: stille Bühne zuerst) */
@@ -952,21 +961,21 @@ body.oc-stack-open #oc-side {
 .ctrl-panel .oc-ctrl-title { display: none; }
 .oc-ctrl-title {
   position: absolute;
-  left: 0.9rem;
+  left: 12.6px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 6.3px;
   max-width: 34%;
   overflow: hidden;
   pointer-events: none;
   user-select: none;
 }
-.oc-ctrl-title .type-icon { font-size: 0.85rem; width: auto; }
+.oc-ctrl-title .type-icon { font-size: 11.9px; width: auto; }
 .oc-ctrl-title .type-icon svg { width: 15px; height: 15px; }
 .oc-ctrl-title-name {
-  font-size: 0.7rem;
+  font-size: 9.8px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ui-text-70);
@@ -976,17 +985,19 @@ body.oc-stack-open #oc-side {
 }
 .ctrl-panel.bar-mode .oc-ctrl-title { display: none; }
 
-/* ---------- Kontext-Ribbon: klebt über dem controls.js-Panel ---------- */
+/* ---------- Kontext-Ribbon: schwebt als Pille über dem controls.js-Panel.
+   Das Panel selbst traegt das Original-Chrome aus meta.css (Ecke unten
+   links, eigene Rundung) — das Ribbon ist die bewusste Addition und
+   dockt als freigestellte Zeile knapp darueber an (ui.js positioniert). */
 #oc-ctrl-ribbon {
   position: fixed;
   z-index: 101; /* eine Ebene über dem Panel (z 100) */
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.5rem 0.95rem;
+  gap: 7.7px;
+  padding: 7px 13.3px;
   border: 1px solid var(--ui-border-soft);
-  border-bottom: none;
-  border-radius: 14px 14px 0 0;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -996,11 +1007,11 @@ body.oc-stack-open #oc-side {
   overflow: hidden;
 }
 #oc-ctrl-ribbon[hidden] { display: none; }
-#oc-ctrl-ribbon .rb-ico { color: var(--accent); font-size: 0.95rem; line-height: 1; display: grid; place-items: center; }
+#oc-ctrl-ribbon .rb-ico { color: var(--accent); font-size: 13.3px; line-height: 1; display: grid; place-items: center; }
 #oc-ctrl-ribbon .rb-ico svg { width: 17px; height: 17px; display: block; }
-#oc-ctrl-ribbon .rb-name { font-size: 0.85rem; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; }
+#oc-ctrl-ribbon .rb-name { font-size: 11.9px; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; }
 #oc-ctrl-ribbon .rb-meta {
-  font-size: 0.64rem;
+  font-size: 8.96px;
   color: var(--ui-text-40);
   letter-spacing: 0.04em;
   margin-left: auto;
@@ -1024,7 +1035,7 @@ body.oc-stack-open #oc-side {
   border-radius: 10px;
   color: var(--ui-text-70);
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
   pointer-events: auto; /* Ribbon selbst ist pointer-events: none */
@@ -1066,23 +1077,23 @@ body.oc-stack-open #oc-side {
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.3, 1);
 }
 #oc-lib-overlay.open .overlay-card { transform: translateX(0); }
-.overlay-card .panel-head { padding: 1rem 0.75rem 0.15rem 1.35rem; }
-.overlay-card .panel-sub { padding: 0 1.35rem 0.7rem; }
+.overlay-card .panel-head { padding: 14px 10.5px 2.1px 18.9px; }
+.overlay-card .panel-sub { padding: 0 18.9px 9.8px; }
 
 .lib-search {
-  padding: 0 1.15rem 0.75rem;
+  padding: 0 16.1px 10.5px;
   flex: 0 0 auto;
 }
 #oc-lib-search {
   width: 100%;
   min-height: 44px;
-  padding: 0 0.9rem;
+  padding: 0 12.6px;
   background: var(--ui-fill-05);
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   color: var(--text-color);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 11.48px;
   letter-spacing: 0.03em;
   outline: none;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -1094,18 +1105,18 @@ body.oc-stack-open #oc-side {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 1.15rem 1.4rem;
+  padding: 0 16.1px 19.6px;
   scrollbar-width: thin;
   scrollbar-color: var(--ui-fill-12) transparent;
 }
 
-.fam { margin-bottom: 1.3rem; }
+.fam { margin-bottom: 18.2px; }
 .fam.fam-empty { display: none; }
 .fam-head {
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.55rem 0.2rem;
+  gap: 8.4px;
+  padding: 7.7px 2.8px;
   position: sticky;
   top: 0;
   background: linear-gradient(color-mix(in srgb, #050508 96%, transparent) 70%, transparent);
@@ -1113,13 +1124,13 @@ body.oc-stack-open #oc-side {
   user-select: none;
 }
 .fam-name {
-  font-size: 0.7rem;
+  font-size: 9.8px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--ui-text-70);
 }
 .fam.kraefte .fam-name { color: var(--accent); }
-.fam-desc { font-size: 0.66rem; color: var(--ui-text-40); letter-spacing: 0.02em; }
+.fam-desc { font-size: 9.24px; color: var(--ui-text-40); letter-spacing: 0.02em; }
 
 .tiles {
   display: grid;
@@ -1130,8 +1141,8 @@ body.oc-stack-open #oc-side {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.9rem 0.5rem 0.75rem;
+  gap: 7px;
+  padding: 12.6px 7px 10.5px;
   border: 1px solid var(--ui-border-soft);
   border-radius: 13px;
   background: var(--ui-fill-05);
@@ -1153,7 +1164,7 @@ body.oc-stack-open #oc-side {
   height: 38px;
   display: grid;
   place-items: center;
-  font-size: 1.45rem;
+  font-size: 20.3px;
   line-height: 1;
   color: var(--ui-text-55);
   transition: color 0.15s ease;
@@ -1161,9 +1172,9 @@ body.oc-stack-open #oc-side {
 .tile .t-icon svg { width: 36px; height: 36px; display: block; }
 .tile:hover .t-icon { color: var(--accent); }
 .fam.kraefte .tile .t-icon { color: color-mix(in srgb, var(--accent) 60%, var(--ui-text-55)); }
-.tile .t-name { font-size: 0.74rem; letter-spacing: 0.03em; text-align: center; line-height: 1.3; }
+.tile .t-name { font-size: 10.36px; letter-spacing: 0.03em; text-align: center; line-height: 1.3; }
 .tile .t-sub {
-  font-size: 0.6rem;
+  font-size: 8.4px;
   color: var(--ui-text-40);
   text-align: center;
   line-height: 1.35;
@@ -1209,13 +1220,13 @@ body.oc-stack-open #oc-side {
 #oc-pal-input {
   flex: 0 0 auto;
   min-height: 44px;
-  padding: 0 0.9rem;
+  padding: 0 12.6px;
   background: var(--ui-fill-05);
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   color: var(--text-color);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 11.48px;
   letter-spacing: 0.03em;
   outline: none;
 }
@@ -1231,7 +1242,7 @@ body.oc-stack-open #oc-side {
   scrollbar-color: var(--ui-fill-12) transparent;
 }
 .pal-group {
-  font-size: 0.6rem;
+  font-size: 8.4px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--ui-text-40);
@@ -1254,14 +1265,14 @@ body.oc-stack-open #oc-side {
   display: grid;
   place-items: center;
   color: var(--ui-text-55);
-  font-size: 0.92rem;
+  font-size: 12.88px;
   line-height: 1;
 }
 .pal-item .p-ico svg { width: 17px; height: 17px; display: block; }
 .pal-item .p-label {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 0.8rem;
+  font-size: 11.2px;
   color: var(--ui-text-90);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1270,13 +1281,13 @@ body.oc-stack-open #oc-side {
 .pal-item .p-label small {
   color: var(--ui-text-40);
   margin-left: 8px;
-  font-size: 0.66rem;
+  font-size: 9.24px;
   letter-spacing: 0.02em;
 }
 .pal-item kbd,
 #oc-pal-empty kbd {
   font-family: inherit;
-  font-size: 0.62rem;
+  font-size: 8.68px;
   color: var(--ui-text-40);
   border: 1px solid var(--ui-border-soft);
   border-radius: 4px;
@@ -1287,9 +1298,9 @@ body.oc-stack-open #oc-side {
 .pal-item.act .p-ico { color: var(--accent); }
 .pal-item.act kbd { color: var(--ui-text-70); }
 #oc-pal-empty {
-  padding: 1.1rem 1rem 1.2rem;
+  padding: 15.4px 14px 16.8px;
   text-align: center;
-  font-size: 0.76rem;
+  font-size: 10.64px;
   letter-spacing: 0.04em;
   color: var(--ui-text-40);
   user-select: none;
@@ -1306,8 +1317,8 @@ body.oc-stack-open #oc-side {
   color: var(--ui-text-90);
   border: 1px solid var(--ui-border-soft);
   border-radius: 999px;
-  padding: 0.55rem 1.1rem;
-  font-size: 0.78rem;
+  padding: 7.7px 15.4px;
+  font-size: 10.92px;
   letter-spacing: 0.05em;
   z-index: 310; /* above library overlay + controls.js panel */
   opacity: 0;
@@ -1328,18 +1339,18 @@ body.oc-stack-open #oc-side {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 10.5px;
 }
 .toast-action {
   background: transparent;
   border: none;
   color: var(--accent);
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 10.92px;
   letter-spacing: 0.06em;
   cursor: pointer;
-  padding: 0.35rem 0.15rem;
-  margin: -0.35rem -0.15rem;
+  padding: 4.9px 2.1px;
+  margin: -4.9px -2.1px;
   min-height: 44px;
   line-height: 1;
   white-space: nowrap;
@@ -1350,7 +1361,7 @@ body.oc-stack-open #oc-side {
 @media (max-width: 768px) {
   #oc-spine { display: none; }
   #oc-status { display: none; } /* Ecken gehoeren den Pillen */
-  #oc-wordmark { font-size: 0.72rem; letter-spacing: 0.2em; }
+  #oc-wordmark { font-size: 10.08px; letter-spacing: 0.2em; }
   /* Aktionen oben rechts bleiben alle erreichbar, nur enger */
   #oc-corner { gap: 0; right: 6px; }
   #oc-corner .corner-gap { display: none; }
@@ -1363,10 +1374,10 @@ body.oc-stack-open #oc-side {
     gap: 2px;
     justify-content: center;
     min-height: 48px;
-    padding: 0 0.75rem;
+    padding: 0 10.5px;
   }
-  .tool-btn .tb-icon { font-size: 1.05rem; }
-  .tool-btn .tb-label { font-size: 0.58rem; letter-spacing: 0.04em; }
+  .tool-btn .tb-icon { font-size: 14.7px; }
+  .tool-btn .tb-label { font-size: 8.12px; letter-spacing: 0.04em; }
 
   /* Pillen links (Stapel) und rechts (+) */
   #oc-stack-pill {
@@ -1378,8 +1389,8 @@ body.oc-stack-open #oc-side {
     bottom: calc(16px + var(--safe-b));
     z-index: 32;
     min-height: 48px;
-    padding: 0 1rem;
-    font-size: 0.74rem;
+    padding: 0 14px;
+    font-size: 10.36px;
     letter-spacing: 0.08em;
     color: var(--ui-text-70);
     background: var(--surface);
@@ -1400,7 +1411,7 @@ body.oc-stack-open #oc-side {
     z-index: 32;
     width: 48px;
     height: 48px;
-    font-size: 1.25rem;
+    font-size: 17.5px;
     padding-bottom: 2px;
     color: var(--ui-text-90);
     background: var(--surface);
@@ -1466,7 +1477,7 @@ body.oc-stack-open #oc-side {
     transition: background 0.15s ease;
   }
   #oc-sheet-grip:active i { background: var(--ui-text-55); }
-  #oc-side .panel-head { padding-top: 0.15rem; }
+  #oc-side .panel-head { padding-top: 2.1px; }
 
   /* Peek: nur Griff + Mini-Strahl (Blick — Glieder — 0) */
   body.oc-sheet-peek #oc-side .panel-head,
@@ -1479,7 +1490,7 @@ body.oc-stack-open #oc-side {
     gap: 9px;
     flex: 1 1 auto;
     min-height: 0;
-    padding: 6px 1.25rem 8px;
+    padding: 6px 17.5px 8px;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -1499,7 +1510,7 @@ body.oc-stack-open #oc-side {
   #oc-minibeam .mb-zero {
     flex: 0 0 auto;
     color: var(--ui-text-40);
-    font-size: 0.85rem;
+    font-size: 11.9px;
     line-height: 1;
     font-family: Georgia, "Times New Roman", serif;
   }
@@ -1569,8 +1580,8 @@ body.oc-stack-open #oc-side {
   .eye-btn, .dup-btn, .del-btn { width: 44px; }
 
   .stage-hint { display: none; }
-  .status-pills { top: calc(3.4rem + var(--safe-t)); }
-  .stage-pill { top: calc(6rem + var(--safe-t)); }
+  .status-pills { top: calc(47.6px + var(--safe-t)); }
+  .stage-pill { top: calc(84px + var(--safe-t)); }
 
   /* Flüstern: auf kleinen Schirmen nur die zentrale Zeile */
   #oc-whisper-center { top: 18%; width: 86vw; }
@@ -1593,7 +1604,6 @@ body.oc-stack-open #oc-side {
     bottom: calc(12px + var(--oc-ctrl-lift, 0px));
   }
   #oc-ribbon-back { display: grid; }
-  #oc-ctrl-ribbon { border-radius: 14px 14px 0 0; }
 }
 
 /* narrow phones: wordmark + corner must never collide (focus button
