@@ -1411,11 +1411,15 @@
             max-width: 100%;
             width: 100%;
             min-width: 100%;
-            border-radius: 20px 20px 0 0;
+            /* Das Sheet ist EINE durchgehende Flaeche: das Kontext-Ribbon
+               sitzt buendig obendrauf (traegt die Rundung), darunter darf
+               keine Leinwand zwischen Griff und Reglern durchscheinen. */
+            border-radius: 0;
+            border-top: 1px solid var(--ui-border-soft);
             padding: 0;
-            background: transparent;
-            backdrop-filter: none;
-            -webkit-backdrop-filter: none;
+            background: var(--ui-surface-strong);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             max-height: var(--visible-viewport-height, 100dvh);
             box-sizing: border-box;
             overflow: hidden;
@@ -1477,11 +1481,13 @@
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             padding: 0.5rem 1rem 1.5rem;
-            background: var(--ui-surface);
-            border-top: 1px solid var(--ui-border-soft);
-            border-radius: 20px 20px 0 0;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            /* Flaeche liefert das Panel selbst — Body bleibt durchsichtig,
+               sonst stapeln sich zwei Milchglas-Schichten */
+            background: transparent;
+            border-top: none;
+            border-radius: 0;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
             width: 100%;
             min-width: 0;
             box-sizing: border-box;

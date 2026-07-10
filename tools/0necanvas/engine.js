@@ -718,6 +718,49 @@
         (wy - sc.camera.y) * s + cssH / 2
       ];
     };
+    // minimal hook for the UI layer (Hüllbox/Chip): world-space bbox of a
+    // block's own emitted geometry. Force chain deliberately excluded —
+    // matches hit() and the selection overlay, both untransformed. dt=0
+    // so a second emit per frame never advances block state twice.
+    sc.blockBounds = function (id) {
+      var idx = indexOfId(id);
+      if (idx < 0) return null;
+      var block = sc.blocks[idx];
+      var def = defs.get(block.type);
+      if (!def || typeof def.emit !== 'function') return null;
+      var prims;
+      try {
+        prims = def.emit(block, t, 0, computeView()) || [];
+      } catch (e) {
+        return null;
+      }
+      var bb = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+      var any = false;
+      function grow(x0, y0, x1, y1) {
+        if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
+        any = true;
+        if (x0 < bb.minX) bb.minX = x0;
+        if (y0 < bb.minY) bb.minY = y0;
+        if (x1 > bb.maxX) bb.maxX = x1;
+        if (y1 > bb.maxY) bb.maxY = y1;
+      }
+      for (var i = 0; i < prims.length; i++) {
+        var p = prims[i];
+        if (p.k === 'poly') {
+          var pts = p.pts || [];
+          for (var k = 0; k + 1 < pts.length; k += 2) {
+            grow(pts[k], pts[k + 1], pts[k], pts[k + 1]);
+          }
+        } else if (p.k === 'glyph') {
+          var hg = (Number(p.size) || 0) * 0.75;
+          grow(p.x - hg, p.y - hg, p.x + hg, p.y + hg);
+        } else {
+          var hr = Number(p.r) || 0;
+          grow(p.x - hr, p.y - hr, p.x + hr, p.y + hr);
+        }
+      }
+      return any ? bb : null;
+    };
     sc.destroy = function () {
       cancelAnimationFrame(rafId);
       if (ro) ro.disconnect();
@@ -1887,6 +1930,8 @@
       }
       lastDrawn = drawnTotal;
       lastPoints = pointsTotal;
+      // minimal hook for the UI status chip: instances drawn last frame
+      sc.instancesDrawn = lastDrawn;
     }
 
     rafId = requestAnimationFrame(frame);

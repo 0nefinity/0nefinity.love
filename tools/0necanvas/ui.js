@@ -22,17 +22,94 @@
   var KIND_LABEL = { ding: 'Ding', erzeuger: 'Erzeuger', kraft: 'Kraft' };
   var CAT_LABEL = { ding: 'Dinge', erzeuger: 'Erzeuger', kraft: 'Kräfte' };
   var CAT_ORDER = ['ding', 'erzeuger', 'kraft'];
+  var CAT_DESC = {
+    ding: 'sichtbare Formen',
+    erzeuger: 'lassen laufend Neues entstehen',
+    kraft: 'verwandeln alles darunter'
+  };
   var ZOOM_MIN = 0.05;
   var ZOOM_MAX = 50;
   var TAP_SLOP_PX = 5;
+  var IDLE_MS = 3500;
+
+  /* ---------- Icon-Grammatik (Strahl-Semantik) ----------
+   * Eine Sprache: 1.4er-Strich, geometrisch.
+   * Dinge = massiv, Erzeuger = ausstrahlend, Kräfte = Linsenring.
+   * Rein visuelle Zuordnung per type — blocks-*.js bleiben unangetastet,
+   * unbekannte Typen fallen auf def.icon (Textglyphe) zurück. */
+  function svgIcon(inner) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + inner + '</svg>';
+  }
+  function spiralPathD(cx, cy, rmax, turns) {
+    var p = 'M' + cx + ' ' + cy;
+    var n = 64;
+    for (var i = 1; i <= n; i++) {
+      var f = i / n;
+      var a = f * turns * Math.PI * 2;
+      var r = f * rmax;
+      p += ' L' + (cx + Math.cos(a) * r).toFixed(2) + ' ' + (cy + Math.sin(a) * r).toFixed(2);
+    }
+    return p;
+  }
+  var ICON_LENS = '<circle cx="12" cy="12" r="9.3" opacity="0.5"/>';
+  var TYPE_ICONS = {
+    gitter: svgIcon('<path d="M4.5 9h15M4.5 15h15M9 4.5v15M15 4.5v15"/>'),
+    kurve: svgIcon('<path d="M12 19.4C6.3 14.8 4.7 11 6.5 8.4c1.6-2.3 4.3-1.9 5.5.7 1.2-2.6 3.9-3 5.5-.7 1.8 2.6.2 6.4-5.5 11z"/>'),
+    symbol: svgIcon('<path d="M12 12c-1.5-2.1-2.9-3.2-4.5-3.2a3.2 3.2 0 1 0 0 6.4c1.6 0 3-1.1 4.5-3.2 1.5 2.1 2.9 3.2 4.5 3.2a3.2 3.2 0 1 0 0-6.4c-1.6 0-3 1.1-4.5 3.2z"/>'),
+    pfad: svgIcon('<path d="M4 17C7 7.5 10 19 13.5 11.5 15.4 7.4 18 9.2 20 6.6"/>'),
+    textpunkte: svgIcon('<g fill="currentColor" stroke="none"><circle cx="5.5" cy="7" r="1.15"/><circle cx="9.8" cy="7" r="1.15"/><circle cx="14.2" cy="7" r="1.15"/><circle cx="18.5" cy="7" r="1.15"/><circle cx="12" cy="11" r="1.15"/><circle cx="12" cy="15" r="1.15"/><circle cx="12" cy="19" r="1.15"/></g>'),
+    linienschar: svgIcon('<path d="M4 20l16-4.5M4 16l16-6.5M4 11.5L20 5M4 7l10-2.6"/>'),
+    spirale: svgIcon('<path d="' + spiralPathD(12, 12, 8.6, 2.6) + '"/>'),
+    ringschrift: svgIcon('<circle cx="12" cy="12" r="7.6" stroke-dasharray="2.3 3.1"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/>'),
+    spawner: svgIcon('<circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M12 6.5V4M12 20v-2.5M6.5 12H4M20 12h-2.5M8.1 8.1L6.4 6.4M15.9 8.1l1.7-1.7M8.1 15.9l-1.7 1.7M15.9 15.9l1.7 1.7"/>'),
+    zellautomat: svgIcon('<rect x="4.5" y="4.5" width="6.4" height="6.4" rx="1"/><rect x="13.1" y="13.1" width="6.4" height="6.4" rx="1"/><rect x="13.1" y="4.5" width="6.4" height="6.4" rx="1" fill="currentColor" stroke="none" opacity="0.9"/><rect x="4.5" y="13.1" width="6.4" height="6.4" rx="1" stroke-dasharray="2 2.2" opacity="0.55"/>'),
+    strahlen: svgIcon('<circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none"/><path d="M7 17L18.5 5.5M7.6 18.3L20 12.5M6 16.2L13.5 4.5"/>'),
+    textbaum: svgIcon('<path d="M12 20.5v-6.2M12 14.3c0-3.1-3.1-3-3.1-6.1M12 14.3c0-3.1 3.1-3 3.1-6.1M8.9 8.2c0-2.2-1.6-2.2-1.6-4.4M8.9 8.2c0-2.2 1.6-2.2 1.6-4.4M15.1 8.2c0-2.2-1.6-2.2-1.6-4.4M15.1 8.2c0-2.2 1.6-2.2 1.6-4.4"/>'),
+    fourier: svgIcon('<circle cx="10" cy="13.4" r="6.1"/><circle cx="14.9" cy="9.8" r="3"/><circle cx="17.5" cy="8.2" r="1.15" fill="currentColor" stroke="none"/><path d="M17.5 8.2c2.1 2.5 1.7 6.2-.4 8.9" stroke-dasharray="2 2.4" opacity="0.7"/>'),
+    verzerren: svgIcon(ICON_LENS + '<path d="M7.6 8.4c2.2 1.5 6.6 1.5 8.8 0M7.6 12c2.2-1.5 6.6-1.5 8.8 0M7.6 15.6c2.2 1.5 6.6 1.5 8.8 0"/>'),
+    fraktal: svgIcon(ICON_LENS + '<path d="M12 6.8l4.5 7.8h-9z"/><path d="M12 10.4l2.2 3.8H9.8z" opacity="0.6"/>'),
+    kaleidoskop: svgIcon(ICON_LENS + '<path d="M12 3.6v16.8M4.7 7.8l14.6 8.4M19.3 7.8L4.7 16.2" opacity="0.85"/>'),
+    tapete: svgIcon(ICON_LENS + '<g fill="currentColor" stroke="none"><circle cx="9.2" cy="9.2" r="1.2"/><circle cx="14.8" cy="9.2" r="1.2"/><circle cx="9.2" cy="14.8" r="1.2"/><circle cx="14.8" cy="14.8" r="1.2"/></g>')
+  };
+  var ICON_EYE = svgIcon('<path d="M3.5 12S6.8 6.9 12 6.9 20.5 12 20.5 12 17.2 17.1 12 17.1 3.5 12 3.5 12z"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>');
+
+  /* Flüstersätze — Bibliotheks-Copy je Baustein-Typ */
+  var TYPE_WHISPER = {
+    gitter: 'Raum, der sich zeigt.',
+    kurve: 'Vom Kreis zum Herzen — dieselbe Linie.',
+    symbol: 'Ein Zeichen: 0, 1 oder ∞.',
+    pfad: 'Deine Hand, festgehalten.',
+    textpunkte: 'Worte, in Punkte zerlegt.',
+    linienschar: 'Viele Geraden, eine Hüllkurve.',
+    spirale: 'Der Weg nach innen ist der Weg nach außen.',
+    ringschrift: 'Schrift ohne Anfang und Ende.',
+    spawner: 'Aus einem Punkt: viele.',
+    zellautomat: 'Zellen: 0 wird 1 wird 0.',
+    strahlen: 'Licht verlässt den Ursprung.',
+    textbaum: 'Ein Wort verzweigt sich.',
+    fourier: 'Kreise auf Kreisen zeichnen alles.',
+    verzerren: 'Der Raum gibt nach.',
+    fraktal: 'Das Ganze im Teil.',
+    kaleidoskop: 'Eins wird viele, symmetrisch.',
+    tapete: 'Ein Motiv, unendlich fortgesetzt.'
+  };
+
+  // SVG-Icon (Grammatik) oder Fallback auf die def.icon-Textglyphe
+  function setTypeIcon(el, def) {
+    var svg = def && TYPE_ICONS[def.type];
+    if (svg) el.innerHTML = svg;
+    else el.textContent = (def && def.icon) || '◆';
+  }
 
   var scene = null;
   var els = {};
   var tool = 'move';
-  var activeCat = 'ding';
   var toastEl = null;
   var toastTimer = 0;
   var suppressRowClickUntil = 0;
+  // Auswahl kam von einem Canvas-Tap (nicht Stapel/Bibliothek): dann zeigt
+  // nur der Chip am Objekt — das Regler-Panel öffnet erst auf Wunsch
+  var selectViaCanvas = false;
 
   /* ---------- small helpers ---------- */
 
@@ -154,26 +231,168 @@
     }, (opts && opts.ms) || 1600);
   }
 
-  /* ---------- stack panel ---------- */
+  /* ---------- stack panel (Strahl: Blick oben, 0 unten) ---------- */
+
+  function blockKind(block) {
+    var def = scene.defs.get(block.type);
+    return def ? def.kind : 'ding';
+  }
+
+  // how many visible forces lie ABOVE block index i (array is bottom-up:
+  // above = larger index); they all act on block i
+  function forcesAbove(i) {
+    var n = 0;
+    for (var j = i + 1; j < scene.blocks.length; j++) {
+      var b = scene.blocks[j];
+      if (b.visible && blockKind(b) === 'kraft') n++;
+    }
+    return n;
+  }
 
   function renderStack() {
     var list = els.stackList;
     list.innerHTML = '';
     // display reversed: top of the stack is the first row
     for (var i = scene.blocks.length - 1; i >= 0; i--) {
-      list.appendChild(buildStackRow(scene.blocks[i]));
+      list.appendChild(buildStackRow(scene.blocks[i], i));
+    }
+    renderSpine();
+    renderMiniBeam();
+    updateScopeMarks();
+    if (els.stackN) els.stackN.textContent = scene.blocks.length;
+    updateRibbon(); // Position "n von m" / Feld-Zeile ändern sich mit dem Stapel
+    updateHullOverlay(); // Chip-Inhalt/Sichtbarkeit hängt am Stapel
+  }
+
+  // kollabierter Stapel: Glyphen-Spine am rechten Rand
+  function renderSpine() {
+    if (!els.spineList) return;
+    els.spineList.innerHTML = '';
+    for (var i = scene.blocks.length - 1; i >= 0; i--) {
+      (function (block) {
+        var def = scene.defs.get(block.type);
+        var kind = def ? def.kind : 'ding';
+        var v = document.createElement('button');
+        v.type = 'button';
+        v.className = 'vertebra ' + kind
+          + (block.id === scene.selectedId ? ' selected' : '')
+          + (block.visible ? '' : ' hidden-block');
+        setTypeIcon(v, def);
+        v.title = (KIND_LABEL[kind] || kind) + ' — ' + block.name;
+        v.setAttribute('aria-label', v.title);
+        v.dataset.id = block.id;
+        v.addEventListener('click', function (e) {
+          e.stopPropagation();
+          openStackPanel();
+          scene.select(block.id);
+        });
+        els.spineList.appendChild(v);
+      })(scene.blocks[i]);
     }
   }
 
-  function buildStackRow(block) {
+  function pulseSpine(id) {
+    if (!els.spineList) return;
+    var v = els.spineList.querySelector('[data-id="' + id + '"]');
+    if (!v) return;
+    v.classList.add('pulse');
+    setTimeout(function () { v.classList.remove('pulse'); }, 950);
+  }
+
+  // Mini-Strahl im Sheet-Griff (mobiler Peek-Zustand): Blick — Glieder — 0
+  function renderMiniBeam() {
+    if (!els.minibeam) return;
+    var mb = els.minibeam;
+    mb.innerHTML = '';
+    function line() {
+      var l = document.createElement('span');
+      l.className = 'mb-line';
+      mb.appendChild(l);
+    }
+    var eye = document.createElement('span');
+    eye.className = 'mb-eye';
+    eye.innerHTML = ICON_EYE;
+    mb.appendChild(eye);
+    line();
+    for (var i = scene.blocks.length - 1; i >= 0; i--) {
+      var b = scene.blocks[i];
+      var dot = document.createElement('i');
+      dot.className = 'mb-dot ' + blockKind(b)
+        + (b.id === scene.selectedId ? ' sel' : '')
+        + (b.visible ? '' : ' hid');
+      mb.appendChild(dot);
+      line();
+    }
+    var zero = document.createElement('span');
+    zero.className = 'mb-zero';
+    zero.textContent = '0';
+    mb.appendChild(zero);
+  }
+
+  // Verzerren-Drag: die Kraft-Glyphe in Spine, Stapel-Zeile und Mobil-Pille
+  // pulsiert, solange gezogen wird — Ursache und Wirkung bleiben verbunden
+  function setForceLive(id, on) {
+    var sel = '[data-id="' + id + '"]';
+    if (els.spineList) {
+      var v = els.spineList.querySelector(sel);
+      if (v) v.classList.toggle('force-live', on);
+    }
+    if (els.stackList) {
+      var row = els.stackList.querySelector(sel);
+      if (row) {
+        var ic = row.querySelector('.type-icon');
+        if (ic) ic.classList.toggle('force-live', on);
+      }
+    }
+    if (els.stackPill) {
+      els.stackPill.classList.toggle('force-live', on && !stackPanelOpen());
+    }
+  }
+
+  // Kraft ausgewählt: Zeilen in ihrem Feld markieren + Erklärzeile zeigen
+  function updateScopeMarks() {
+    if (!els.side) return;
+    var selIdx = -1;
+    for (var i = 0; i < scene.blocks.length; i++) {
+      if (scene.blocks[i].id === scene.selectedId) { selIdx = i; break; }
+    }
+    var isKraft = selIdx >= 0 && blockKind(scene.blocks[selIdx]) === 'kraft'
+      && scene.blocks[selIdx].visible; // unsichtbare Kraft wirkt nicht
+    els.side.classList.toggle('kraft-selected', isKraft && selIdx > 0);
+    var rows = els.stackList.children;
+    for (var r = 0; r < rows.length; r++) {
+      var rowIdx = (scene.blocks.length - 1) - r; // display order is reversed
+      rows[r].classList.toggle('in-scope', isKraft && rowIdx < selIdx);
+      // Quelle der Scope-Linie: die ausgewählte Kraft selbst
+      rows[r].classList.toggle('scope-src', isKraft && selIdx > 0 && rowIdx === selIdx);
+    }
+  }
+
+  function buildStackRow(block, index) {
     var def = scene.defs.get(block.type);
     var kind = def ? def.kind : 'ding';
 
     var li = document.createElement('li');
-    li.className = 'stack-row'
+    li.className = 'stack-row k-' + kind
       + (block.id === scene.selectedId ? ' selected' : '')
       + (block.visible ? '' : ' hidden-layer');
     li.dataset.id = block.id;
+
+    // Scope-Spalte: eine Linie je Kraft, die auf diese Zeile wirkt
+    var gutter = document.createElement('span');
+    gutter.className = 'scope-gutter';
+    var depth = Math.min(3, forcesAbove(index));
+    for (var g = 0; g < depth; g++) {
+      var ln = document.createElement('span');
+      ln.className = 'scope-line';
+      gutter.appendChild(ln);
+    }
+    if (kind === 'kraft' && block.visible) {
+      var src = document.createElement('span');
+      src.className = 'scope-line src';
+      gutter.appendChild(src);
+    }
+    li.appendChild(gutter);
 
     var handle = document.createElement('span');
     handle.className = 'drag-handle';
@@ -185,7 +404,7 @@
 
     var icon = document.createElement('span');
     icon.className = 'type-icon ' + kind;
-    icon.textContent = (def && def.icon) || '◆';
+    setTypeIcon(icon, def);
 
     var label = document.createElement('span');
     label.className = 'row-label';
@@ -222,6 +441,8 @@
         }
         nameEl.textContent = block.name;
         if (propsBlock === block && propsTitleName) propsTitleName.textContent = block.name;
+        updateRibbon();
+        updateHullOverlay();
       }
       input.addEventListener('keydown', function (e) {
         e.stopPropagation();
@@ -256,13 +477,7 @@
     eye.setAttribute('aria-label', eye.title);
     eye.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      block.visible = !block.visible;
-      eye.classList.toggle('off', !block.visible);
-      eye.textContent = block.visible ? '◉' : '○';
-      eye.title = block.visible ? 'Ausblenden' : 'Einblenden';
-      li.classList.toggle('hidden-layer', !block.visible);
-      updateEmptyHint();
-      touchState();
+      toggleBlockVisible(block);
     });
 
     var del = document.createElement('button');
@@ -272,26 +487,23 @@
     del.setAttribute('aria-label', 'Baustein löschen');
     del.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      // one-step undo: snapshot before removal, restore via toast action
-      var snap = {
-        type: block.type,
-        name: block.name,
-        visible: !!block.visible,
-        params: JSON.parse(JSON.stringify(block.params)),
-        index: scene.blocks.indexOf(block)
-      };
-      scene.remove(block.id);
-      touchState();
-      toast('Baustein gelöscht', {
-        action: 'Rückgängig',
-        ms: 5000,
-        onAction: function () { restoreBlock(snap); }
-      });
+      removeBlockWithUndo(block);
     });
 
     li.appendChild(handle);
     li.appendChild(icon);
     li.appendChild(label);
+
+    // "wirkt ↓ n" — eine Kraft strahlt auf alles darunter
+    // (nur solange sie sichtbar ist: die Engine überspringt unsichtbare)
+    if (kind === 'kraft' && block.visible && index > 0) {
+      var tag = document.createElement('span');
+      tag.className = 'row-tag';
+      tag.title = 'Diese Kraft wirkt auf alle Bausteine darunter';
+      tag.textContent = 'wirkt ↓ ' + index;
+      li.appendChild(tag);
+    }
+
     li.appendChild(dup);
     li.appendChild(eye);
     li.appendChild(del);
@@ -301,6 +513,35 @@
       scene.select(block.id);
     });
     return li;
+  }
+
+  // one-step undo: snapshot before removal, restore via toast action
+  // (Stapel-Zeile UND Chip am Objekt teilen sich diesen Pfad)
+  function removeBlockWithUndo(block) {
+    var snap = {
+      type: block.type,
+      name: block.name,
+      visible: !!block.visible,
+      params: JSON.parse(JSON.stringify(block.params)),
+      index: scene.blocks.indexOf(block)
+    };
+    scene.remove(block.id);
+    touchState();
+    toast('Baustein gelöscht', {
+      action: 'Rückgängig',
+      ms: 5000,
+      onAction: function () { restoreBlock(snap); }
+    });
+  }
+
+  // Auge-Knopf, Shortcut H und Palette teilen sich diesen Pfad: der
+  // Re-Render hält Stapel, Spine, Ribbon und Scope-Marken konsistent —
+  // die Engine überspringt unsichtbare Kräfte, die UI muss folgen
+  function toggleBlockVisible(block) {
+    block.visible = !block.visible;
+    renderStack();
+    updateEmptyHint();
+    touchState();
   }
 
   // clone a block incl. params (serialize-Muster: defaults -> kopierte
@@ -353,6 +594,14 @@
     for (var i = 0; i < rows.length; i++) {
       rows[i].classList.toggle('selected', rows[i].dataset.id === scene.selectedId);
     }
+    if (els.spineList) {
+      var verts = els.spineList.children;
+      for (var v = 0; v < verts.length; v++) {
+        verts[v].classList.toggle('selected', verts[v].dataset.id === scene.selectedId);
+      }
+    }
+    renderMiniBeam();
+    updateScopeMarks();
   }
 
   /* ---------- drag-reorder (pointer events, works with touch) ---------- */
@@ -515,15 +764,222 @@
     return panel;
   }
 
+  // controls.js misst sein Mobil-Sheet beim allerersten createPanel mit
+  // noch leerer Section (nur der Header existiert) und merkt sich "Header
+  // sichtbar" als Offen-Zustand — das Regler-Sheet bliebe ein 44px-Balken.
+  // Reposition von außen (Innenleben unangetastet): nach dem Zeigen einmal
+  // auf Drittel-Höhe stellen; setPosition merkt sich die Höhe, danach
+  // gelten wieder die Nutzer-Positionen.
+  function ensureSheetOpenHeight() {
+    if (!propsPanel || !propsPanel.el || !isSheetMobile()) return;
+    var apply = propsPanel._applyMobileSheetPosition;
+    if (typeof apply !== 'function') return;
+    var full = propsPanel.el.offsetHeight || 0;
+    if (!full) return;
+    var want = clamp(Math.round(window.innerHeight / 3), 120, full);
+    var visible = Math.max(0, window.innerHeight - propsPanel.el.getBoundingClientRect().top);
+    if (visible >= want - 8) return; // offen genug — Nutzer-Position respektieren
+    try {
+      apply.call(propsPanel, Math.max(0, full - want), true);
+    } catch (e) { /* alter Zustand bleibt, nur weniger bequem */ }
+  }
+
   function setPanelShown(shown) {
     document.body.classList.toggle('oc-props-open', !!shown);
-    if (!propsPanel || !propsPanel.el) return;
-    var wasHidden = propsPanel.el.classList.contains('oc-hidden');
-    propsPanel.el.classList.toggle('oc-hidden', !shown);
-    if (shown && wasHidden) {
-      // panel could not measure itself while hidden — let controls.js re-layout
-      try { window.dispatchEvent(new Event('resize')); } catch (e) { /* noop */ }
+    if (propsPanel && propsPanel.el) {
+      var wasHidden = propsPanel.el.classList.contains('oc-hidden');
+      propsPanel.el.classList.toggle('oc-hidden', !shown);
+      if (shown && wasHidden) {
+        // panel could not measure itself while hidden — let controls.js re-layout
+        try { window.dispatchEvent(new Event('resize')); } catch (e) { /* noop */ }
+      }
+      if (shown) setTimeout(ensureSheetOpenHeight, 60);
     }
+    updateRibbon();
+  }
+
+  /* ---------- Kontext-Ribbon über dem Regler-Panel ---------- */
+  // „Kurve — Ding · 3 von 5 · im Feld von: Raum verzerren". Liest nur:
+  // controls.js bleibt unangetastet, das Ribbon folgt dem Panel-Rechteck
+  // per rAF (Panel ist frei verschiebbar).
+
+  var ribbonRaf = 0;
+
+  function ribbonMetaText(block) {
+    var idx = -1;
+    for (var i = 0; i < scene.blocks.length; i++) {
+      if (scene.blocks[i].id === block.id) { idx = i; break; }
+    }
+    var kind = blockKind(block);
+    var parts = [KIND_LABEL[kind] || kind];
+    if (idx >= 0) parts.push((idx + 1) + ' von ' + scene.blocks.length);
+    if (kind === 'kraft') {
+      // eine ausgeblendete Kraft wirkt nicht (Engine überspringt sie)
+      if (idx > 0 && block.visible) parts.push('wirkt ↓ ' + idx);
+    } else if (idx >= 0) {
+      var names = [];
+      for (var j = idx + 1; j < scene.blocks.length; j++) {
+        var b = scene.blocks[j];
+        if (b.visible && blockKind(b) === 'kraft') names.push(b.name);
+      }
+      if (names.length === 1) parts.push('im Feld von: ' + names[0]);
+      else if (names.length > 1) parts.push('im Feld von: ' + names[0] + ' +' + (names.length - 1));
+    }
+    return parts.join(' · ');
+  }
+
+  // Mobil rueckt die Pillen-Zeile ueber das Regler-Sheet: --oc-ctrl-lift =
+  // sichtbare Sheet-Hoehe + Ribbon (sitzt oben drauf), geklemmt, damit die
+  // Pillen nie vom Schirm rutschen oder den Zurueck-Pfeil verdecken
+  function setCtrlLift(rect) {
+    if (!isSheetMobile()) return;
+    var lift = 0;
+    if (rect) {
+      var ribbonH = (els.ribbon && els.ribbon.offsetHeight) || 34;
+      lift = clamp(Math.round(window.innerHeight - rect.top + ribbonH), 0,
+        Math.round(window.innerHeight * 0.72));
+    }
+    document.body.style.setProperty('--oc-ctrl-lift', lift + 'px');
+  }
+
+  function positionRibbon() {
+    var el = propsPanel && propsPanel.el;
+    if (!el) return;
+    var covered = el.classList.contains('oc-hidden') || el.classList.contains('bar-mode');
+    var rect = covered ? null : el.getBoundingClientRect();
+    if (!rect || rect.width < 60 || rect.height < 40) {
+      els.ribbon.style.opacity = '0';
+      setCtrlLift(null);
+      return;
+    }
+    els.ribbon.style.opacity = '1';
+    var h = els.ribbon.offsetHeight || 34;
+    els.ribbon.style.left = rect.left + 'px';
+    els.ribbon.style.top = (rect.top - h) + 'px';
+    els.ribbon.style.width = rect.width + 'px';
+    setCtrlLift(rect);
+  }
+
+  function ribbonLoop() {
+    positionRibbon();
+    ribbonRaf = requestAnimationFrame(ribbonLoop);
+  }
+
+  function updateRibbon() {
+    if (!els.ribbon) return;
+    var show = !!propsBlock && document.body.classList.contains('oc-props-open');
+    if (!show) {
+      els.ribbon.hidden = true;
+      if (ribbonRaf) { cancelAnimationFrame(ribbonRaf); ribbonRaf = 0; }
+      document.body.style.setProperty('--oc-ctrl-lift', '0px');
+      return;
+    }
+    var def = scene.defs.get(propsBlock.type);
+    setTypeIcon(els.ribbonIco, def);
+    els.ribbonName.textContent = propsBlock.name;
+    els.ribbonMeta.textContent = ribbonMetaText(propsBlock);
+    els.ribbon.hidden = false;
+    positionRibbon();
+    if (!ribbonRaf) ribbonRaf = requestAnimationFrame(ribbonLoop);
+  }
+
+  /* ---------- Kontext am Objekt: Live-Hüllbox + Chip ---------- */
+  // Werk antippen -> Hüllbox um die emittierte Geometrie + Chip darüber
+  // (Name, Gattung, Regler, Duplizieren, Löschen). Die Kraft-Kette bleibt
+  // bewusst außen vor — wie hit() und das Auswahl-Overlay der Engine.
+  // Bounds über den minimalen Engine-Hook scene.blockBounds; die
+  // Welt->Schirm-Projektion läuft jeden Frame (klebt bei Pan/Zoom/Drag),
+  // die Bounds selbst werden alle 150ms erneuert (emit kann teuer sein).
+
+  var hullRaf = 0;
+  var hullBB = null;
+  var hullBBFor = null;
+  var hullBBAt = 0;
+  var HULL_PAD_PX = 12;
+  var HULL_BB_MS = 150;
+
+  function hullEligible() {
+    if (!autoPropsTabArmed) return null; // Boot-Select: stille Bühne zuerst
+    var b = getBlock(scene.selectedId);
+    if (!b || !b.visible) return null;
+    if (blockKind(b) === 'kraft') return null; // Kräfte haben keine eigene Form
+    return b;
+  }
+
+  function hideHull() {
+    if (els.selframe) els.selframe.hidden = true;
+    if (els.chip) els.chip.hidden = true;
+    hullBB = null;
+    hullBBFor = null;
+    if (hullRaf) { cancelAnimationFrame(hullRaf); hullRaf = 0; }
+  }
+
+  function updateChipContent(block) {
+    if (!els.chip) return;
+    var def = scene.defs.get(block.type);
+    setTypeIcon(els.chipIco, def);
+    els.chipName.textContent = block.name;
+    els.chipKind.textContent = KIND_LABEL[blockKind(block)] || '';
+  }
+
+  function hullFrame() {
+    hullRaf = 0;
+    var b = hullEligible();
+    if (!b) { hideHull(); return; }
+    var now = performance.now();
+    if (hullBBFor !== b.id || now - hullBBAt > HULL_BB_MS) {
+      hullBB = (typeof scene.blockBounds === 'function') ? scene.blockBounds(b.id) : null;
+      hullBBFor = b.id;
+      hullBBAt = now;
+    }
+    var r = els.canvas.getBoundingClientRect();
+    var cx, topY;
+    if (hullBB) {
+      var p0 = scene.worldToScreen(hullBB.minX, hullBB.minY);
+      var p1 = scene.worldToScreen(hullBB.maxX, hullBB.maxY);
+      var x = r.left + Math.min(p0[0], p1[0]) - HULL_PAD_PX;
+      var y = r.top + Math.min(p0[1], p1[1]) - HULL_PAD_PX;
+      var w = Math.abs(p1[0] - p0[0]) + HULL_PAD_PX * 2;
+      var h = Math.abs(p1[1] - p0[1]) + HULL_PAD_PX * 2;
+      els.selframe.style.left = x + 'px';
+      els.selframe.style.top = y + 'px';
+      els.selframe.style.width = w + 'px';
+      els.selframe.style.height = h + 'px';
+      els.selframe.hidden = false;
+      cx = x + w / 2;
+      topY = y;
+    } else {
+      // emit lieferte (noch) nichts: Chip am Block-Anker, ohne Rahmen
+      els.selframe.hidden = true;
+      var a = blockAnchor(b);
+      var p = scene.worldToScreen(a[0], a[1]);
+      cx = r.left + p[0];
+      topY = r.top + p[1];
+    }
+    els.chip.hidden = false;
+    var ch = els.chip.offsetHeight || 50;
+    var cw = els.chip.offsetWidth || 220;
+    cx = clamp(cx, cw / 2 + 8, window.innerWidth - cw / 2 - 8);
+    // nie über die Aktionsleiste oben rutschen (füllt die Form den Schirm,
+    // würde der Chip sonst die Ecken-Buttons verdecken)
+    var minTop = 8;
+    if (els.corner) {
+      var cr = els.corner.getBoundingClientRect();
+      if (cr.bottom > minTop) minTop = cr.bottom + 6;
+    }
+    var ct = clamp(topY - ch - 10, minTop, window.innerHeight - ch - 8);
+    els.chip.style.left = cx + 'px';
+    els.chip.style.top = ct + 'px';
+    hullRaf = requestAnimationFrame(hullFrame);
+  }
+
+  function updateHullOverlay() {
+    if (!els.chip || !els.selframe) return;
+    var b = hullEligible();
+    if (!b) { hideHull(); return; }
+    updateChipContent(b);
+    hullBBAt = 0; // Bounds sofort neu holen (Selektion/Stapel geändert)
+    if (!hullRaf) hullRaf = requestAnimationFrame(hullFrame);
   }
 
   // detach the current block (drops rows + their callbacks) and hide
@@ -553,7 +1009,7 @@
     var kind = def ? def.kind : 'ding';
     if (propsTitleIcon) {
       propsTitleIcon.className = 'type-icon ' + kind;
-      propsTitleIcon.textContent = (def && def.icon) || '◆';
+      setTypeIcon(propsTitleIcon, def);
     }
     if (propsTitleName) propsTitleName.textContent = block.name;
 
@@ -679,71 +1135,326 @@
     return out;
   }
 
-  function renderLibTabs() {
-    var tabs = els.libTabs;
-    tabs.innerHTML = '';
-    for (var i = 0; i < CAT_ORDER.length; i++) {
-      (function (cat) {
-        var btn = document.createElement('button');
-        btn.className = 'cat-tab' + (cat === activeCat ? ' active' : '');
-        btn.textContent = CAT_LABEL[cat];
-        btn.dataset.cat = cat;
-        btn.addEventListener('click', function () {
-          activeCat = cat;
-          renderLibTabs();
-          renderLibTiles();
-        });
-        tabs.appendChild(btn);
-      })(CAT_ORDER[i]);
+  // drei Familien untereinander, jede Kachel: SVG-Miniatur + Name + Flüstersatz
+  function renderLibrary() {
+    var wrap = els.libScroll;
+    wrap.innerHTML = '';
+    var defsList = libDefs();
+    for (var c = 0; c < CAT_ORDER.length; c++) {
+      var cat = CAT_ORDER[c];
+      var sec = document.createElement('div');
+      sec.className = 'fam' + (cat === 'kraft' ? ' kraefte' : '');
+      sec.dataset.cat = cat;
+      var head = document.createElement('div');
+      head.className = 'fam-head';
+      var nm = document.createElement('span');
+      nm.className = 'fam-name';
+      nm.textContent = CAT_LABEL[cat];
+      var ds = document.createElement('span');
+      ds.className = 'fam-desc';
+      ds.textContent = CAT_DESC[cat] || '';
+      head.appendChild(nm);
+      head.appendChild(ds);
+      sec.appendChild(head);
+      var grid = document.createElement('div');
+      grid.className = 'tiles';
+      for (var i = 0; i < defsList.length; i++) {
+        if (defsList[i].kind !== cat) continue;
+        grid.appendChild(buildLibTile(defsList[i]));
+      }
+      sec.appendChild(grid);
+      wrap.appendChild(sec);
     }
+    var empty = document.createElement('div');
+    empty.className = 'props-empty';
+    empty.id = 'oc-lib-empty';
+    empty.textContent = 'Nichts gefunden';
+    empty.hidden = true;
+    wrap.appendChild(empty);
+    applyLibFilter();
   }
 
-  function renderLibTiles() {
-    var grid = els.libGrid;
-    grid.innerHTML = '';
-    var defsList = libDefs();
-    var any = false;
-    for (var i = 0; i < defsList.length; i++) {
-      if (defsList[i].kind !== activeCat) continue;
-      any = true;
-      (function (def) {
-        var tile = document.createElement('button');
-        tile.className = 'tile';
-        var ic = document.createElement('span');
-        ic.className = 't-icon';
-        ic.textContent = def.icon || '◆';
-        var nm = document.createElement('span');
-        nm.className = 't-name';
-        nm.textContent = def.label || def.type;
-        tile.appendChild(ic);
-        tile.appendChild(nm);
-        tile.addEventListener('click', function () {
-          var block = scene.add(def.type);
-          if (def.kind !== 'kraft') slotBelowTopForces(block);
-          scene.select(block.id);
-          closeLibrary();
-          touchState();
-          els.stackList.scrollTop = 0;
-        });
-        grid.appendChild(tile);
-      })(defsList[i]);
+  function buildLibTile(def) {
+    var tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'tile';
+    var whisper = TYPE_WHISPER[def.type] || '';
+    tile.dataset.search = ((def.label || def.type) + ' ' + def.type + ' '
+      + (CAT_LABEL[def.kind] || '') + ' ' + (KIND_LABEL[def.kind] || '') + ' '
+      + whisper).toLowerCase();
+    var ic = document.createElement('span');
+    ic.className = 't-icon';
+    setTypeIcon(ic, def);
+    var nm = document.createElement('span');
+    nm.className = 't-name';
+    nm.textContent = def.label || def.type;
+    var sub = document.createElement('span');
+    sub.className = 't-sub';
+    sub.textContent = whisper;
+    tile.appendChild(ic);
+    tile.appendChild(nm);
+    tile.appendChild(sub);
+    tile.addEventListener('click', function () {
+      spawnBlock(def);
+      closeLibrary();
+    });
+    return tile;
+  }
+
+  // gemeinsamer Einfüge-Pfad für Bibliotheks-Kachel und Kommando-Palette:
+  // Neues landet unter den obersten Kräften, Kräfte selbst oben
+  function spawnBlock(def) {
+    var block = scene.add(def.type);
+    if (def.kind !== 'kraft') slotBelowTopForces(block);
+    scene.select(block.id);
+    touchState();
+    els.stackList.scrollTop = 0;
+    pulseSpine(block.id);
+    toast(def.kind === 'kraft'
+      ? (block.name + ' liegt oben — wirkt auf alles darunter')
+      : (block.name + ' liegt im Stapel — unter den Kräften'));
+    return block;
+  }
+
+  function applyLibFilter() {
+    if (!els.libScroll) return;
+    var q = (els.libSearch && els.libSearch.value || '').trim().toLowerCase();
+    var fams = els.libScroll.querySelectorAll('.fam');
+    var total = 0;
+    for (var f = 0; f < fams.length; f++) {
+      var tiles = fams[f].querySelectorAll('.tile');
+      var visible = 0;
+      for (var t = 0; t < tiles.length; t++) {
+        var hit = !q || tiles[t].dataset.search.indexOf(q) >= 0;
+        tiles[t].classList.toggle('tile-hit-none', !hit);
+        if (hit) visible++;
+      }
+      fams[f].classList.toggle('fam-empty', visible === 0);
+      total += visible;
     }
-    if (!any) {
-      var empty = document.createElement('div');
-      empty.className = 'props-empty';
-      empty.textContent = 'Keine Bausteine in dieser Kategorie';
-      grid.appendChild(empty);
-    }
+    var empty = $('oc-lib-empty');
+    if (empty) empty.hidden = total > 0;
   }
 
   function openLibrary() {
-    renderLibTabs();
-    renderLibTiles();
+    renderLibrary();
     els.libOverlay.classList.add('open');
+    if (els.libSearch) {
+      els.libSearch.value = '';
+      applyLibFilter();
+      if (isDesktopLayout()) els.libSearch.focus();
+    }
+    wake();
   }
 
   function closeLibrary() {
     els.libOverlay.classList.remove('open');
+    // Fokus sofort freigeben — bis die visibility-Transition greift, würde
+    // das unsichtbare Suchfeld sonst Shortcuts schlucken (Typing-Guard)
+    if (els.libSearch) els.libSearch.blur();
+    wake();
+  }
+
+  /* ---------- Kommando-Palette (Cmd/Strg+K) ---------- */
+  // Eine Suche über Befehle, Baustein-Typen und Familien; Pfeiltasten +
+  // Enter. Empty-State: Enter öffnet die Bibliothek.
+
+  var palItems = [];  // sichtbare Einträge, flach in Listen-Reihenfolge
+  var palIdx = 0;
+  var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || '');
+  var MOD_KBD = IS_MAC ? '⌘' : 'Strg+';
+
+  function paletteOpenState() {
+    return !!(els.palette && els.palette.classList.contains('open'));
+  }
+
+  function paletteCommands() {
+    var cmds = [
+      { ico: '+', label: 'Baustein hinzufügen', sub: 'Bibliothek öffnen', kbd: 'A',
+        extra: 'bibliothek neu', run: openLibrary },
+      { ico: '✥', label: 'Werkzeug: Bewegen', kbd: 'V', extra: 'verschieben schwenken',
+        run: function () { setTool('move'); } },
+      { ico: '≈', label: 'Werkzeug: Verzerren', kbd: 'W', extra: 'warp ziehen kraft',
+        run: function () { setTool('warp'); } },
+      { ico: '✎', label: 'Werkzeug: Zeichnen', kbd: 'Z', extra: 'stift freihand pfad',
+        run: function () { setTool('draw'); } },
+      { ico: '⊡', label: 'Ansicht einpassen', sub: 'Kamera auf die Szene zentrieren',
+        extra: 'fit zoom kamera', run: fitView },
+      { ico: '◐', label: inFocus() ? 'Fokus beenden' : 'Fokus-Modus',
+        sub: 'nur das Werk', kbd: 'F', extra: 'ruhe rand ausblenden', run: toggleFocus },
+      { ico: '⤓', label: 'Als PNG exportieren', extra: 'bild speichern download export',
+        run: onExport },
+      { ico: '⧉', label: 'Teilen', sub: 'Link zur Szene kopieren', extra: 'share url',
+        run: onShare },
+      { ico: '∅', label: 'Neue Szene', sub: 'alles leeren', extra: 'reset leer',
+        run: onNewScene },
+      { ico: '⛶', label: 'Vollbild', extra: 'fullscreen', run: onFullscreen },
+      { ico: '⠿', label: stackPanelOpen() ? 'Stapel schließen' : 'Stapel öffnen',
+        extra: 'strahl liste bausteine', run: toggleStackPanel }
+    ];
+    var sel = getBlock(scene.selectedId);
+    if (sel) {
+      cmds.push({ ico: '⧉', label: 'Auswahl duplizieren', sub: sel.name,
+        kbd: MOD_KBD + 'D', extra: 'kopie', run: function () { duplicateBlock(sel); } });
+      cmds.push({ ico: sel.visible ? '◉' : '○',
+        label: sel.visible ? 'Auswahl ausblenden' : 'Auswahl einblenden', sub: sel.name,
+        kbd: 'H', extra: 'sichtbar verstecken auge',
+        run: function () { toggleBlockVisible(sel); } });
+      cmds.push({ ico: '✕', label: 'Auswahl löschen', sub: sel.name, kbd: 'Entf',
+        extra: 'entfernen', run: function () { removeBlockWithUndo(sel); } });
+    }
+    for (var c = 0; c < CAT_ORDER.length; c++) {
+      (function (cat) {
+        cmds.push({
+          ico: '›', label: 'Familie: ' + CAT_LABEL[cat], sub: CAT_DESC[cat] || '',
+          extra: 'familie kategorie bibliothek ' + (KIND_LABEL[cat] || ''),
+          run: function () {
+            openLibrary();
+            if (els.libSearch) {
+              els.libSearch.value = CAT_LABEL[cat];
+              applyLibFilter();
+            }
+          }
+        });
+      })(CAT_ORDER[c]);
+    }
+    for (var i = 0; i < cmds.length; i++) {
+      cmds[i].search = (cmds[i].label + ' ' + (cmds[i].sub || '') + ' '
+        + (cmds[i].extra || '')).toLowerCase();
+    }
+    return cmds;
+  }
+
+  function paletteBlockItems() {
+    var defsList = libDefs();
+    var out = [];
+    for (var i = 0; i < defsList.length; i++) {
+      (function (def) {
+        var whisper = TYPE_WHISPER[def.type] || '';
+        var kind = KIND_LABEL[def.kind] || '';
+        out.push({
+          def: def,
+          label: def.label || def.type,
+          sub: kind + (whisper ? ' — ' + whisper : ''),
+          search: ((def.label || def.type) + ' ' + def.type + ' '
+            + (CAT_LABEL[def.kind] || '') + ' ' + kind + ' ' + whisper).toLowerCase(),
+          run: function () { spawnBlock(def); }
+        });
+      })(defsList[i]);
+    }
+    return out;
+  }
+
+  function buildPalRow(item, idx) {
+    var li = document.createElement('li');
+    li.className = 'pal-item';
+    li.dataset.idx = idx;
+    var ico = document.createElement('span');
+    ico.className = 'p-ico';
+    if (item.def) setTypeIcon(ico, item.def);
+    else ico.textContent = item.ico || '◆';
+    var label = document.createElement('span');
+    label.className = 'p-label';
+    label.appendChild(document.createTextNode(item.label));
+    if (item.sub) {
+      var sm = document.createElement('small');
+      sm.textContent = item.sub;
+      label.appendChild(sm);
+    }
+    li.appendChild(ico);
+    li.appendChild(label);
+    if (item.kbd) {
+      var kbd = document.createElement('kbd');
+      kbd.textContent = item.kbd;
+      li.appendChild(kbd);
+    }
+    li.addEventListener('click', function () { runPalItem(idx); });
+    // pointermove statt pointerenter: ein ruhender Zeiger stiehlt der
+    // Tastatur-Auswahl nicht das Highlight, wenn die Liste neu rendert
+    li.addEventListener('pointermove', function () {
+      if (palIdx !== idx) { palIdx = idx; markPalActive(false); }
+    });
+    return li;
+  }
+
+  function renderPalette(q) {
+    if (!els.palList) return;
+    q = (q || '').trim().toLowerCase();
+    els.palList.innerHTML = '';
+    palItems = [];
+    var groups = [
+      { name: 'Befehle', items: paletteCommands() },
+      { name: 'Bausteine', items: paletteBlockItems() }
+    ];
+    for (var g = 0; g < groups.length; g++) {
+      var hits = [];
+      for (var i = 0; i < groups[g].items.length; i++) {
+        if (!q || groups[g].items[i].search.indexOf(q) >= 0) hits.push(groups[g].items[i]);
+      }
+      if (!hits.length) continue;
+      var head = document.createElement('li');
+      head.className = 'pal-group';
+      head.textContent = groups[g].name;
+      els.palList.appendChild(head);
+      for (var h = 0; h < hits.length; h++) {
+        els.palList.appendChild(buildPalRow(hits[h], palItems.length));
+        palItems.push(hits[h]);
+      }
+    }
+    if (palIdx >= palItems.length) palIdx = Math.max(0, palItems.length - 1);
+    markPalActive();
+    if (els.palEmpty) els.palEmpty.hidden = palItems.length > 0;
+  }
+
+  function markPalActive(scroll) {
+    if (!els.palList) return;
+    var rows = els.palList.querySelectorAll('.pal-item');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].classList.toggle('act', Number(rows[i].dataset.idx) === palIdx);
+    }
+    if (scroll !== false) {
+      var act = els.palList.querySelector('.pal-item.act');
+      if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function runPalItem(idx) {
+    var item = palItems[idx];
+    if (!item) return;
+    closePalette();
+    try { item.run(); } catch (e) {
+      console.error('0necanvas ui: palette command failed', e);
+    }
+  }
+
+  function openPalette() {
+    if (!els.palette) return;
+    palIdx = 0;
+    if (els.palInput) els.palInput.value = '';
+    renderPalette('');
+    els.palette.classList.add('open');
+    if (els.palInput) els.palInput.focus();
+    wake();
+  }
+
+  function closePalette() {
+    if (!els.palette) return;
+    els.palette.classList.remove('open');
+    if (els.palInput) els.palInput.blur();
+    wake();
+  }
+
+  /* ---------- Status-Chip: Zoom / fps / Instanzen ---------- */
+  // fps kommt aus der rAF-Messung der Engine (sc.fps, EMA), die Instanzen
+  // aus dem Frame-Zähler (sc.instancesDrawn). Zoom aktualisiert live bei
+  // Rad/Pinch (zoomAt), der Rest im 500ms-Statuspoll.
+
+  function updateStatusChip() {
+    if (!els.status) return;
+    if (els.stZoom) els.stZoom.textContent = Math.round(scene.camera.scale * 100) + ' %';
+    var f = scene.fps;
+    if (els.stFps) els.stFps.textContent = f ? String(Math.round(f)) : '—';
+    if (els.stInst) els.stInst.textContent = String(scene.instancesDrawn || 0);
   }
 
   /* ---------- tools ---------- */
@@ -869,6 +1580,7 @@
     // Tims Kernpunkt: Gezeichnetes muss unter die obersten Kräfte rutschen,
     // damit "Raum verzerren" & Co. auch auf frische Striche wirken
     slotBelowTopForces(block);
+    selectViaCanvas = true; // frischer Strich: Chip zeigt, Panel bleibt zu
     scene.select(block.id);
     touchState();
   }
@@ -957,6 +1669,7 @@
     cam.scale = ns;
     cam.x = wx - (sx - cssW / 2) / ns;
     cam.y = wy - (sy - cssH / 2) / ns;
+    updateStatusChip(); // Zoom % lebt live, nicht erst im 500ms-Poll
   }
 
   function panByScreen(dx, dy) {
@@ -1008,6 +1721,7 @@
       // a second finger during a stroke means "zoom, not draw":
       // the half stroke is discarded, pinch takes over
       if (gesture && gesture.mode === 'draw') cancelDraw(gesture);
+      if (gesture && gesture.mode === 'warp') setForceLive(gesture.block.id, false);
       startPinch();
       return;
     }
@@ -1028,6 +1742,7 @@
       if (!wb) { gesture = { mode: 'pan', last: { x: pt.x, y: pt.y }, moved: false, emptyTap: false }; return; }
       if (scene.selectedId !== wb.id) scene.select(wb.id);
       gesture = { mode: 'warp', block: wb, lastW: world.slice() };
+      setForceLive(wb.id, true); // Kausalität: die Kraft-Glyphe pulsiert mit
       if (setWarpCenter(wb, world[0], world[1], null)) {
         touchState();
         refreshPropsValues();
@@ -1038,6 +1753,7 @@
     // move tool
     var hit = hitTest(world[0], world[1], makeView());
     if (hit) {
+      selectViaCanvas = true;
       scene.select(hit.block.id);
       gesture = { mode: 'drag-block', block: hit.block, handle: hit.handle, def: hit.def, lastW: world.slice() };
     } else {
@@ -1134,6 +1850,12 @@
 
     if (gesture && gesture.mode === 'draw') {
       finishDraw(gesture);
+      gesture = null;
+      return;
+    }
+
+    if (gesture && gesture.mode === 'warp') {
+      setForceLive(gesture.block.id, false);
       gesture = null;
       return;
     }
@@ -1347,6 +2069,7 @@
     scene.camera.y = (bb.minY + bb.maxY) / 2;
     scene.camera.scale = s;
     hideOffviewPill();
+    updateStatusChip();
     touchState();
   }
 
@@ -1398,9 +2121,12 @@
     els.offviewPill.hidden = lit;
   }
 
-  /* ---------- onboarding (Erstbesuch) + Leerzustands-Hinweise ---------- */
+  /* ---------- Flüster-Onboarding + Leerzustands-Hinweise ---------- */
+  // Kein Modal mehr: drei verankerte Flüsterzeilen (Mitte, Werkzeuge,
+  // Stapel), die der ersten Interaktion weichen und nie wiederkommen.
 
   var HINT_LS_KEY = 'oc-hint-v1';
+  var whisperDone = false;
 
   function lsGet(key) {
     try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -1409,17 +2135,50 @@
     try { localStorage.setItem(key, val); } catch (e) { /* privacy mode */ }
   }
 
-  function maybeShowOnboarding() {
-    if (!els.onboarding) return;
-    if (lsGet(HINT_LS_KEY)) return;
-    els.onboarding.hidden = false;
-    var ok = els.onboarding.querySelector('#oc-onboarding-ok');
-    if (ok) {
-      ok.addEventListener('click', function () {
-        lsSet(HINT_LS_KEY, '1');
-        els.onboarding.hidden = true;
-      });
+  function markWorked() {
+    if (whisperDone) return;
+    whisperDone = true;
+    lsSet(HINT_LS_KEY, '1');
+    document.body.classList.add('oc-worked'); // CSS blendet die Zeilen aus
+  }
+
+  function initWhispers() {
+    if (lsGet(HINT_LS_KEY)) { whisperDone = true; return; }
+    var ws = [els.whisperCenter, els.whisperTools, els.whisperStack];
+    for (var i = 0; i < ws.length; i++) {
+      if (ws[i]) ws[i].hidden = false;
     }
+    // Erstinteraktion: der erste Tap oder Tastendruck irgendwo
+    window.addEventListener('pointerdown', markWorked, { capture: true, once: true });
+    window.addEventListener('keydown', markWorked, { capture: true, once: true });
+  }
+
+  /* ---------- Fokus-Modus: nur das Werk ---------- */
+  // Taste F oder der Halbmond oben rechts: aller Rand weicht, ein atmender
+  // Punkt unten rechts führt zurück (auch F/Escape beenden).
+
+  function inFocus() {
+    return document.body.classList.contains('oc-focus');
+  }
+
+  function enterFocus() {
+    if (inFocus()) return;
+    document.body.classList.add('oc-focus');
+    scene.select(null); // schließt Chip + Regler-Panel
+    closeStackPanel();
+    closeLibrary();
+    toast('Fokus — nur das Werk. Der Punkt unten rechts führt zurück.', { ms: 2600 });
+  }
+
+  function exitFocus() {
+    if (!inFocus()) return;
+    document.body.classList.remove('oc-focus');
+    wake();
+  }
+
+  function toggleFocus() {
+    if (inFocus()) exitFocus();
+    else enterFocus();
   }
 
   // stiller Leerzustand erklärt sich nicht selbst: leere Szene -> auf das
@@ -1437,7 +2196,7 @@
     }
     var msg = '';
     if (!emitters && !forces) {
-      msg = 'Leere Szene — „+" oben rechts fügt Bausteine hinzu';
+      msg = 'Leere Szene — „+" am rechten Rand fügt Bausteine hinzu';
     } else if (!emitters && forces) {
       msg = 'Nur Kräfte im Stapel — Kräfte brauchen etwas darunter (Ding oder Erzeuger)';
     }
@@ -1445,141 +2204,98 @@
     els.emptyHint.hidden = !msg;
   }
 
-  /* ---------- floating side panel (desktop >=900px) ---------- */
-  // drag on the BAUSTEINE header undocks the sidebar into a floating panel;
-  // double-click on the header docks it back. Position is session-only.
-
-  var panelFloating = false;
+  /* ---------- Stapel auf/zu (Glyphen-Spine <-> Panel) ---------- */
 
   function isDesktopLayout() {
     return window.matchMedia('(min-width: 900px)').matches;
   }
 
-  function dockPanel() {
-    if (!panelFloating) return;
-    panelFloating = false;
-    els.side.classList.remove('floating');
-    if (els.app) els.app.classList.remove('side-floating');
-    els.side.style.left = '';
-    els.side.style.top = '';
-    els.side.style.height = '';
+  function stackPanelOpen() {
+    return document.body.classList.contains('oc-stack-open');
   }
 
-  function positionPanel(left, top) {
-    var w = els.side.offsetWidth || 320;
-    var maxL = window.innerWidth - w - 4;
-    var maxT = window.innerHeight - 48;
-    els.side.style.left = clamp(left, 4, Math.max(4, maxL)) + 'px';
-    els.side.style.top = clamp(top, 4, Math.max(4, maxT)) + 'px';
+  // Mobiles Drill-in-Sheet: Peek (Mini-Strahl im Griff) / Halb / Voll.
+  // Desktop ignoriert die Klassen (CSS lebt in der 768px-Query).
+  var sheetState = 'half';
+
+  function setSheetState(st) {
+    sheetState = st;
+    document.body.classList.toggle('oc-sheet-peek', st === 'peek');
+    document.body.classList.toggle('oc-sheet-full', st === 'full');
+    wake();
   }
 
-  function beginFloat(rect) {
-    panelFloating = true;
-    els.side.style.height = Math.min(rect.height, window.innerHeight - 16) + 'px';
-    els.side.classList.add('floating');
-    if (els.app) els.app.classList.add('side-floating');
-    positionPanel(rect.left, rect.top);
+  function cycleSheetState() {
+    setSheetState(sheetState === 'peek' ? 'half' : (sheetState === 'half' ? 'full' : 'peek'));
   }
 
-  function initPanelDrag() {
-    var head = els.side ? els.side.querySelector('#oc-stack-section .panel-head') : null;
-    if (!head) return;
-
-    head.addEventListener('dblclick', function (e) {
-      if (e.target.closest && e.target.closest('button')) return;
-      dockPanel();
-    });
-
-    head.addEventListener('pointerdown', function (ev) {
-      if (!ev.isPrimary || !isDesktopLayout()) return;
-      if (ev.target.closest && ev.target.closest('button')) return;
-      ev.preventDefault();
-
-      var startX = ev.clientX;
-      var startY = ev.clientY;
-      var rect = els.side.getBoundingClientRect();
-      var offX = startX - rect.left;
-      var offY = startY - rect.top;
-      var dragging = panelFloating;
-
-      try { head.setPointerCapture(ev.pointerId); } catch (e) { /* older browsers */ }
-
-      function onMove(mv) {
-        if (mv.pointerId !== ev.pointerId) return;
-        if (!dragging && Math.hypot(mv.clientX - startX, mv.clientY - startY) < 4) return;
-        dragging = true;
-        if (!panelFloating) beginFloat(rect);
-        positionPanel(mv.clientX - offX, mv.clientY - offY);
-        mv.preventDefault();
-      }
-      function onEnd(up) {
-        if (up.pointerId !== ev.pointerId) return;
-        head.removeEventListener('pointermove', onMove);
-        head.removeEventListener('pointerup', onEnd);
-        head.removeEventListener('pointercancel', onEnd);
-      }
-      head.addEventListener('pointermove', onMove);
-      head.addEventListener('pointerup', onEnd);
-      head.addEventListener('pointercancel', onEnd);
-    });
-
-    window.addEventListener('resize', function () {
-      if (!panelFloating) return;
-      if (!isDesktopLayout()) { dockPanel(); return; }
-      positionPanel(parseFloat(els.side.style.left) || 4, parseFloat(els.side.style.top) || 4);
-    });
+  function openStackPanel() {
+    // explizit geöffnet (Pille, Spine, Zurück-Pfeil): mindestens Halb —
+    // in den Peek-Streifen führt nur der Griff oder ein Canvas-Tap
+    if (!stackPanelOpen() && sheetState === 'peek') setSheetState('half');
+    document.body.classList.add('oc-stack-open');
+    wake();
   }
 
-  /* ---------- mobile sheet ---------- */
+  function closeStackPanel() {
+    document.body.classList.remove('oc-stack-open');
+    wake();
+  }
 
-  // boot-time selects (default scene) must not shove the controls.js
-  // bottom sheet over the Bausteine sheet — only USER selections do
+  function toggleStackPanel() {
+    if (stackPanelOpen()) closeStackPanel();
+    else openStackPanel();
+  }
+
+  /* ---------- Idle-Dim: der Rand weicht dem Werk ---------- */
+  // 3,5 s ohne Eingabe -> body.oc-idle (Edge-Layer auf Opacity 0.05,
+  // siehe 0necanvas.css). Kein Dim solange ein Panel offen ist (Stapel,
+  // Bibliothek, Regler) oder ein Zeiger gedrückt bleibt (Slider-Drag).
+
+  var idleTimer = 0;
+  var lastWakeArm = 0;
+  var pointerHeld = false;
+
+  function uiBusy() {
+    return pointerHeld
+      || stackPanelOpen()
+      || document.body.classList.contains('oc-props-open')
+      || paletteOpenState()
+      || (els.libOverlay && els.libOverlay.classList.contains('open'));
+  }
+
+  function armIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      if (uiBusy()) { armIdle(); return; }
+      document.body.classList.add('oc-idle');
+    }, IDLE_MS);
+  }
+
+  function wake() {
+    document.body.classList.remove('oc-idle');
+    // pointermove feuert im Sekundentakt hundertfach — Timer nur alle
+    // 200ms neu spannen (dim ~3,5s nach der letzten Bewegung, gut genug)
+    var now = Date.now();
+    if (now - lastWakeArm < 200) return;
+    lastWakeArm = now;
+    armIdle();
+  }
+
+  function initIdleDim() {
+    window.addEventListener('pointermove', wake, { passive: true });
+    window.addEventListener('pointerdown', function () { pointerHeld = true; wake(); }, true);
+    window.addEventListener('pointerup', function () { pointerHeld = false; wake(); }, true);
+    window.addEventListener('pointercancel', function () { pointerHeld = false; wake(); }, true);
+    window.addEventListener('blur', function () { pointerHeld = false; });
+    window.addEventListener('keydown', wake, true);
+    window.addEventListener('wheel', wake, { passive: true, capture: true });
+    armIdle();
+  }
+
+  // Boot-Selects (Default-Szene / ?s=-Load) öffnen das Regler-Panel NICHT —
+  // stille Bühne zuerst; erst die erste Nutzer-Auswahl holt die Regler
   var autoPropsTabArmed = false;
-  var sheetCollapsed = false;
-  var suppressTabClickUntil = 0;
-
-  function setMobileTab(name) {
-    if (els.side) els.side.dataset.mtab = name;
-    var btns = els.sheetTabs ? els.sheetTabs.querySelectorAll('[data-mtab-btn]') : [];
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].classList.toggle('active', btns[i].dataset.mtabBtn === name);
-    }
-  }
-
-  function setSheetCollapsed(v) {
-    sheetCollapsed = !!v;
-    if (els.side) els.side.classList.toggle('collapsed', sheetCollapsed);
-  }
-
-  // grip drag: pulling the tab row down minimizes the sheet (~72px, only
-  // the tabs stay visible), pulling up restores the 46dvh height
-  function initSheetDrag() {
-    if (!els.sheetTabs) return;
-    els.sheetTabs.addEventListener('pointerdown', function (ev) {
-      if (!ev.isPrimary || isDesktopLayout()) return;
-      var startY = ev.clientY;
-      var done = false;
-      try { els.sheetTabs.setPointerCapture(ev.pointerId); } catch (e) { /* noop */ }
-      function onMove(mv) {
-        if (mv.pointerId !== ev.pointerId || done) return;
-        var dy = mv.clientY - startY;
-        if (Math.abs(dy) > 18) {
-          done = true;
-          setSheetCollapsed(dy > 0);
-          suppressTabClickUntil = Date.now() + 350;
-        }
-      }
-      function onEnd(up) {
-        if (up.pointerId !== ev.pointerId) return;
-        els.sheetTabs.removeEventListener('pointermove', onMove);
-        els.sheetTabs.removeEventListener('pointerup', onEnd);
-        els.sheetTabs.removeEventListener('pointercancel', onEnd);
-      }
-      els.sheetTabs.addEventListener('pointermove', onMove);
-      els.sheetTabs.addEventListener('pointerup', onEnd);
-      els.sheetTabs.addEventListener('pointercancel', onEnd);
-    });
-  }
 
   /* ---------- init ---------- */
 
@@ -1593,9 +2309,16 @@
       app: $('oc-app'),
       side: $('oc-side'),
       stackList: $('oc-stack-list'),
+      stackN: $('oc-stack-n'),
+      stackPill: $('oc-stack-pill'),
+      addPill: $('oc-add-pill'),
+      stackClose: $('oc-stack-close'),
+      spine: $('oc-spine'),
+      spineAdd: $('oc-spine-add'),
+      spineList: $('oc-spine-list'),
       libOverlay: $('oc-lib-overlay'),
-      libGrid: $('oc-lib-grid'),
-      libTabs: $('oc-lib-tabs'),
+      libScroll: $('oc-lib-scroll'),
+      libSearch: $('oc-lib-search'),
       addBtn: $('oc-add-btn'),
       toolMove: $('oc-tool-move'),
       toolWarp: $('oc-tool-warp'),
@@ -1605,12 +2328,39 @@
       fullscreenBtn: $('oc-fullscreen-btn'),
       fitBtn: $('oc-fit-btn'),
       newBtn: $('oc-new-btn'),
-      sheetTabs: $('oc-sheet-tabs'),
       limitPill: $('oc-limit-pill'),
       heavyPill: $('oc-heavy-pill'),
       offviewPill: $('oc-offview-pill'),
       emptyHint: $('oc-empty-hint'),
-      onboarding: $('oc-onboarding')
+      ribbon: $('oc-ctrl-ribbon'),
+      ribbonIco: $('oc-ribbon-ico'),
+      ribbonName: $('oc-ribbon-name'),
+      ribbonMeta: $('oc-ribbon-meta'),
+      corner: $('oc-corner'),
+      selframe: $('oc-selframe'),
+      chip: $('oc-chip'),
+      chipIco: $('oc-chip-ico'),
+      chipName: $('oc-chip-name'),
+      chipKind: $('oc-chip-kind'),
+      chipRegler: $('oc-chip-regler'),
+      chipDup: $('oc-chip-dup'),
+      chipDel: $('oc-chip-del'),
+      focusBtn: $('oc-focus-btn'),
+      focusExit: $('oc-focus-exit'),
+      whisperCenter: $('oc-whisper-center'),
+      whisperTools: $('oc-whisper-tools'),
+      whisperStack: $('oc-whisper-stack'),
+      status: $('oc-status'),
+      stZoom: $('oc-st-zoom'),
+      stFps: $('oc-st-fps'),
+      stInst: $('oc-st-inst'),
+      palette: $('oc-palette'),
+      palInput: $('oc-pal-input'),
+      palList: $('oc-pal-list'),
+      palEmpty: $('oc-pal-empty'),
+      sheetGrip: $('oc-sheet-grip'),
+      minibeam: $('oc-minibeam'),
+      ribbonBack: $('oc-ribbon-back')
     };
 
     // scene hooks
@@ -1624,17 +2374,28 @@
     });
     sc.onSelect(function (id) {
       updateStackSelection();
+      var viaCanvas = selectViaCanvas;
+      selectViaCanvas = false;
       var block = getBlock(id);
-      if (!block) { unbindPropsPanel(); return; }
-      if (!autoPropsTabArmed && isSheetMobile()) {
-        // boot select on mobile: Bausteine sheet stays in front; the
-        // controls sheet opens on the first user selection instead
+      if (!block) { unbindPropsPanel(); updateHullOverlay(); return; }
+      if (!autoPropsTabArmed) {
+        // Boot-Select (Default-Szene / ?s=): stille Bühne zuerst — das
+        // Regler-Panel öffnet erst auf die erste Nutzer-Auswahl
         unbindPropsPanel();
         return;
       }
-      if (propsBlock !== block) bindPropsPanel(block);
-      else refreshPropsValues();
-      setPanelShown(true);
+      // Kontext am Objekt: ein Canvas-Tap auf ein Werk zeigt nur Hüllbox +
+      // Chip — das Regler-Panel folgt erst über den Chip ("Regler") oder
+      // bleibt offen, wenn es schon offen war. Kräfte (Verzerren-Werkzeug)
+      // haben keinen Chip und öffnen das Panel wie bisher.
+      var panelShown = document.body.classList.contains('oc-props-open');
+      var quiet = viaCanvas && !panelShown && blockKind(block) !== 'kraft';
+      if (!quiet) {
+        if (propsBlock !== block) bindPropsPanel(block);
+        else refreshPropsValues();
+        setPanelShown(true);
+      }
+      updateHullOverlay();
     });
     // boot (default scene / URL load) runs synchronously after init —
     // arm the panel auto-open only afterwards
@@ -1650,12 +2411,136 @@
     els.libOverlay.addEventListener('click', function (e) {
       if (e.target === els.libOverlay) closeLibrary();
     });
+    if (els.libSearch) els.libSearch.addEventListener('input', applyLibFilter);
+
+    // Tastatur: Cmd/Strg+K (Palette), Escape-Kette, V/W/Z/F/A/H,
+    // Cmd/Strg+D (Duplizieren), Entf/Backspace (Löschen mit Undo-Toast)
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeLibrary();
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && String(e.key).toLowerCase() === 'k') {
+        e.preventDefault(); // auch aus Eingabefeldern heraus
+        if (paletteOpenState()) closePalette();
+        else openPalette();
+        return;
+      }
+      if (e.key === 'Escape') {
+        // definierte Reihenfolge: Palette -> Fokus -> Bibliothek -> Stapel -> Auswahl
+        if (paletteOpenState()) closePalette();
+        else if (inFocus()) exitFocus();
+        else if (els.libOverlay.classList.contains('open')) closeLibrary();
+        else if (stackPanelOpen()) closeStackPanel();
+        else if (scene.selectedId) scene.select(null);
+        return;
+      }
+      var t = e.target;
+      if (t && t.closest && t.closest('input, textarea, select, [contenteditable]')) return;
+      var k = String(e.key).toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && k === 'd') {
+        var dupB = getBlock(scene.selectedId);
+        if (dupB) {
+          e.preventDefault();
+          duplicateBlock(dupB);
+        }
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (k === 'v') setTool('move');
+      else if (k === 'w') setTool('warp');
+      else if (k === 'z') setTool('draw');
+      else if (k === 'f') { e.preventDefault(); toggleFocus(); }
+      else if (k === 'a') { e.preventDefault(); openLibrary(); }
+      else if (k === 'h') {
+        var hidB = getBlock(scene.selectedId);
+        if (hidB) toggleBlockVisible(hidB);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        var delB = getBlock(scene.selectedId);
+        if (delB) {
+          e.preventDefault();
+          removeBlockWithUndo(delB);
+        }
+      }
     });
 
-    // floating stack panel (desktop)
-    initPanelDrag();
+    // Kommando-Palette: Suche, Pfeiltasten, Enter (Empty-State -> Bibliothek)
+    if (els.palInput) {
+      els.palInput.addEventListener('input', function () {
+        palIdx = 0;
+        renderPalette(els.palInput.value);
+      });
+      els.palInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!palItems.length) return;
+          palIdx = clamp(palIdx + (e.key === 'ArrowDown' ? 1 : -1), 0, palItems.length - 1);
+          markPalActive();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (palItems.length) runPalItem(palIdx);
+          else { closePalette(); openLibrary(); }
+        }
+      });
+    }
+    if (els.palette) {
+      els.palette.addEventListener('click', function (e) {
+        if (e.target === els.palette) closePalette();
+      });
+    }
+
+    // Stapel auf/zu: Spine (Desktop), Pillen (Mobil), Schließen-Knopf
+    if (els.spine) {
+      els.spine.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('#oc-spine-add')) return;
+        openStackPanel();
+      });
+    }
+    if (els.spineAdd) {
+      els.spineAdd.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openLibrary();
+      });
+    }
+    if (els.stackClose) els.stackClose.addEventListener('click', closeStackPanel);
+    if (els.stackPill) {
+      els.stackPill.addEventListener('click', function () {
+        // Regler-Sheet offen: die Stapel-Pille bringt den Stapel nach vorn
+        // (Pillen-Zeile bleibt IMMER erreichbar, kein Zwischenschritt)
+        if (isSheetMobile() && document.body.classList.contains('oc-props-open')) {
+          setPanelShown(false);
+          openStackPanel();
+          return;
+        }
+        toggleStackPanel();
+      });
+    }
+    if (els.addPill) els.addPill.addEventListener('click', openLibrary);
+    // Mobil: Tipp auf die Leinwand faltet das Sheet auf den Peek-Streifen
+    // zusammen (Mini-Strahl bleibt als Anker sichtbar)
+    els.canvas.addEventListener('pointerdown', function () {
+      if (isSheetMobile() && stackPanelOpen() && sheetState !== 'peek') setSheetState('peek');
+    });
+    // Drill-in-Sheet: Griff wechselt schmal/halb/voll, der Mini-Strahl
+    // klappt auf, der Zurück-Pfeil im Ribbon führt vom Regler zum Stapel
+    if (els.sheetGrip) {
+      els.sheetGrip.addEventListener('click', function (e) {
+        e.stopPropagation();
+        cycleSheetState();
+      });
+    }
+    if (els.minibeam) {
+      els.minibeam.addEventListener('click', function () { setSheetState('half'); });
+    }
+    if (els.ribbonBack) {
+      els.ribbonBack.addEventListener('click', function () {
+        setPanelShown(false);
+        openStackPanel();
+      });
+    }
+
+    // Strahl-Endpunkte: das Auge als stiller Endpunkt oben
+    var eyeMarks = document.querySelectorAll('#oc-spine .spine-eye, #oc-side .beam-eye .bt-mark');
+    for (var ei = 0; ei < eyeMarks.length; ei++) eyeMarks[ei].innerHTML = ICON_EYE;
+
+    // Stiller Rand: UI dimmt bei Inaktivität weg
+    initIdleDim();
 
     // tools
     els.toolMove.addEventListener('click', function () { setTool('move'); });
@@ -1679,21 +2564,41 @@
     if (els.newBtn) els.newBtn.addEventListener('click', onNewScene);
     if (els.offviewPill) els.offviewPill.addEventListener('click', fitView);
 
-    // Erstbesuch-Hinweis + Leerzustands-Hinweis
-    maybeShowOnboarding();
+    // Kontext am Objekt: Chip-Aktionen
+    if (els.chipRegler) {
+      els.chipRegler.addEventListener('click', function () {
+        var b = getBlock(scene.selectedId);
+        if (!b) return;
+        if (propsBlock !== b) bindPropsPanel(b);
+        setPanelShown(true);
+        wake();
+      });
+    }
+    if (els.chipDup) {
+      els.chipDup.addEventListener('click', function () {
+        var b = getBlock(scene.selectedId);
+        if (b) duplicateBlock(b);
+      });
+    }
+    if (els.chipDel) {
+      els.chipDel.addEventListener('click', function () {
+        var b = getBlock(scene.selectedId);
+        if (b) removeBlockWithUndo(b);
+      });
+    }
+
+    // Fokus-Modus: Halbmond oben rechts, atmender Punkt führt zurück
+    if (els.focusBtn) els.focusBtn.addEventListener('click', toggleFocus);
+    if (els.focusExit) els.focusExit.addEventListener('click', exitFocus);
+
+    // Flüster-Onboarding + Leerzustands-Hinweis
+    initWhispers();
     updateEmptyHint();
 
-    // mobile sheet tabs (+ grip drag to minimize/restore)
-    if (els.sheetTabs) {
-      els.sheetTabs.addEventListener('click', function (e) {
-        if (Date.now() < suppressTabClickUntil) return;
-        var btn = e.target.closest ? e.target.closest('[data-mtab-btn]') : null;
-        if (btn) {
-          setMobileTab(btn.dataset.mtabBtn);
-          setSheetCollapsed(false);
-        }
-      });
-      initSheetDrag();
+    // Status-Chip unten rechts (Desktop): erste Werte, dann 500ms-Poll
+    if (els.status) {
+      els.status.hidden = false;
+      updateStatusChip();
     }
 
     // status pills (poll: flags are per-frame, no engine event).
@@ -1702,6 +2607,7 @@
     var slowPolls = 0;
     var pollTick = 0;
     setInterval(function () {
+      updateStatusChip();
       if (els.limitPill) els.limitPill.hidden = !sc.instanceLimitHit;
       if (els.heavyPill) {
         var f = sc.fps;
