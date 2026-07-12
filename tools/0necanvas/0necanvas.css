@@ -1,76 +1,53 @@
-/* 0necanvas — Atelier: das Werk ist der Star. Edge-Layer statt Partition,
-   UI dimmt bei Inaktivität weg. Dark-only, eine Akzentfarbe. */
+/* 0necanvas — Atelier: das Werk ist der Star, das Original-Controls-Panel
+   traegt die gesamte UI (Stapel, Werkzeuge, Regler, Aktionen, Status).
+   Dark-only, eine Akzentfarbe.
+
+   Lebt als normale 0nefinity-Seite UNTER meta.css (Includes laden meta.css,
+   controls.js, meta.js). Farben/Borders/Fills kommen aus den meta.css-
+   :root-Variablen; hier stehen nur App-eigene Zusaetze. Das Panel selbst
+   bekommt seinen Look ausschliesslich aus meta.css — hier werden nur die
+   eingefuellten Stapel-Zeilen und der Werkzeug-Aktivzustand gestylt. */
 
 :root {
-  /* Root-Font-Kontext wie meta.css :root (16px, mobil 14px): die rem-Masse
-     des controls.js-Panels (controls-theme.css) rechnen dagegen. Die App
-     selbst ist in px gesetzt (14px-Basis) und bleibt davon unberuehrt. */
-  font-size: 16px;
-  --bg-color: #000;
-  --text-color: #fff;
-  --font-family: Verdana, Geneva, Tahoma, sans-serif;
-  /* Defaults wie meta.css :root — ui.js haelt sie live (visualViewport) */
-  --visible-viewport-width: 100vw;
-  --visible-viewport-height: 100dvh;
-  --visible-viewport-top: 0px;
-  --visible-viewport-left: 0px;
-  --visible-viewport-bottom: 0px;
   --accent: #a8b8e8;
-  --panel-bg: #0a0a0c;
   --surface: color-mix(in srgb, #06060a 88%, transparent);
   --surface-strong: color-mix(in srgb, #050508 94%, transparent);
-  --ui-border-soft: color-mix(in srgb, var(--text-color) 8%, transparent);
-  --ui-border: color-mix(in srgb, var(--text-color) 16%, transparent);
-  --ui-border-strong: color-mix(in srgb, var(--text-color) 32%, transparent);
-  --ui-fill-05: color-mix(in srgb, var(--text-color) 5%, transparent);
-  --ui-fill-08: color-mix(in srgb, var(--text-color) 8%, transparent);
-  --ui-fill-12: color-mix(in srgb, var(--text-color) 12%, transparent);
   --ui-text-25: color-mix(in srgb, var(--text-color) 25%, transparent);
-  --ui-text-40: color-mix(in srgb, var(--text-color) 40%, transparent);
   --ui-text-55: color-mix(in srgb, var(--text-color) 55%, transparent);
-  --ui-text-70: color-mix(in srgb, var(--text-color) 70%, transparent);
-  --ui-text-90: color-mix(in srgb, var(--text-color) 90%, transparent);
   --acc-28: color-mix(in srgb, var(--accent) 28%, transparent);
   --acc-45: color-mix(in srgb, var(--accent) 45%, transparent);
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-/* meta.css: @media (max-width: 480px) { :root { font-size: 14px; } } */
-@media (max-width: 480px) {
-  :root {
-    font-size: 14px;
-  }
+/* ---------- Einordnung unter die meta.css-Globals ----------
+   meta.css setzt * { white-space: pre-wrap } und auf body Zentrierung,
+   text-shadow und 1rem-Schrift. Die App-Wurzeln nehmen ihre Teilbaeume
+   davon aus — mit :where() ohne Spezifitaet, damit jede gezielte Regel
+   (z. B. white-space: nowrap) weiterhin gewinnt. Das Panel von
+   controls.js haengt direkt am body und bleibt unberuehrt (meta.css). */
+:where(#oc-app, #oc-lib-overlay, #oc-palette, #oc-focus-exit, .oc-toast),
+:where(#oc-app, #oc-lib-overlay, #oc-palette, #oc-focus-exit, .oc-toast) * {
+  white-space: normal;
+}
+#oc-app, #oc-lib-overlay, #oc-palette, .oc-toast {
+  text-align: left;
+  text-shadow: none;
+  font-size: 14px;   /* Design-Basis der App; das Panel rechnet in rem */
+  line-height: normal;
 }
 
-html, body {
-  margin: 0;
-  height: 100vh; /* fallback for browsers without dvh */
-  height: 100dvh;
-  background: var(--bg-color);
-  color: var(--text-color);
-  font-family: var(--font-family);
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
-/* App-Basisschrift bleibt 14px (Design-Basis der App). Die controls.js-
-   Popups (.ctrl-select-popup/.ctrl-config-popup) setzen sich wie im
-   Original auf 1rem (siehe controls-theme.css BASE). */
-body {
-  font-size: 14px;
-}
-
-/* ---------- Erscheinen & Weichen: Idle-Dim ---------- */
+/* ---------- Erscheinen & Weichen: Idle-Dim ----------
+   Nur der stille Rand (Wortmarke, Statuspillen) dimmt — das Panel NIE. */
 .oc-ui { transition: opacity 0.7s ease; }
 body.oc-idle .oc-ui { opacity: 0.05; }
 
-/* ---------- Bühne: full-bleed, keine Partition ---------- */
+/* ---------- Bühne: full-bleed via ._018-canvas (meta.css) ----------
+   Position/Hoehe/Overflow uebernimmt die globale ._018-canvas-Mechanik
+   (inkl. --controls-mobile-occlusion und Body-Fixierung). Sie setzt
+   font-size/line-height auf 0 — Stage-Kinder mit Text tragen deshalb
+   beides explizit. */
 #oc-stage {
-  position: fixed;
-  inset: 0;
   background: var(--bg-color);
 }
 #oc-stage:fullscreen { background: var(--bg-color); }
@@ -81,17 +58,6 @@ body.oc-idle .oc-ui { opacity: 0.05; }
   height: 100%;
   display: block;
   touch-action: none;
-}
-
-.stage-hint {
-  position: absolute;
-  left: 17.5px;
-  bottom: calc(14px + var(--safe-b));
-  font-size: 10.08px;
-  letter-spacing: 0.12em;
-  color: var(--ui-text-40);
-  user-select: none;
-  pointer-events: none;
 }
 
 /* Leerzustand: dezenter Hinweis mittig über der Bühne */
@@ -124,6 +90,7 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 }
 .limit-pill {
   font-size: 9.52px;
+  line-height: 1.4;
   letter-spacing: 0.08em;
   color: var(--ui-text-70);
   background: var(--surface);
@@ -135,29 +102,6 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 }
 .limit-pill[hidden] { display: none; }
 
-/* ---------- Status-Chip: Zoom / fps / Instanzen (dimmt mit weg) ---------- */
-#oc-status {
-  position: absolute;
-  right: 14px;
-  bottom: calc(14px + var(--safe-b));
-  display: flex;
-  align-items: baseline;
-  gap: 0.55em;
-  font-size: 9.52px;
-  letter-spacing: 0.06em;
-  color: var(--ui-text-25);
-  user-select: none;
-  pointer-events: none;
-  white-space: nowrap;
-}
-#oc-status[hidden] { display: none; }
-#oc-status b {
-  font-weight: normal;
-  color: var(--ui-text-55);
-  font-variant-numeric: tabular-nums;
-}
-#oc-status .st-sep { color: var(--ui-text-25); }
-
 /* stage pill: gentle hint floating over the canvas (off-view rescue) */
 .stage-pill {
   position: absolute;
@@ -166,6 +110,7 @@ body.oc-idle .oc-ui { opacity: 0.05; }
   transform: translateX(-50%);
   z-index: 3;
   font-size: 10.08px;
+  line-height: 1.4;
   letter-spacing: 0.06em;
   font-family: inherit;
   color: var(--ui-text-70);
@@ -183,9 +128,9 @@ body.oc-idle .oc-ui { opacity: 0.05; }
 .stage-pill:hover { color: var(--text-color); border-color: var(--ui-border-strong); }
 .stage-pill[hidden] { display: none; }
 
-/* ---------- Flüster-Onboarding: drei verankerte Zeilen ---------- */
-/* Kein Modal, keine Karte — leise Sätze im Raum, die der ersten
-   Interaktion weichen (body.oc-worked). */
+/* ---------- Flüster-Onboarding: eine Erstbesuchs-Zeile ---------- */
+/* Kein Modal, keine Karte — ein leiser Satz im Raum, der der ersten
+   Interaktion weicht (body.oc-worked). */
 .oc-whisper {
   position: fixed;
   z-index: 25;
@@ -199,7 +144,6 @@ body.oc-idle .oc-ui { opacity: 0.05; }
   transition: opacity 0.9s ease;
 }
 .oc-whisper[hidden] { display: none; }
-.oc-whisper .w-key { color: var(--accent); }
 body.oc-worked .oc-whisper { opacity: 0; }
 #oc-whisper-center {
   left: 50%;
@@ -207,120 +151,17 @@ body.oc-worked .oc-whisper { opacity: 0; }
   transform: translateX(-50%);
   animation: oc-wfloat 5s ease-in-out infinite;
 }
-#oc-whisper-tools {
-  left: 50%;
-  bottom: calc(84px + var(--safe-b));
-  transform: translateX(-50%);
-}
-#oc-whisper-stack {
-  right: 74px;
-  top: 50%;
-  transform: translateY(-50%);
-  text-align: right;
-}
 @keyframes oc-wfloat {
   0%, 100% { margin-top: 0; }
   50% { margin-top: -6px; }
 }
 
-/* ---------- Kontext am Objekt: Live-Hüllbox + Chip ---------- */
-#oc-selframe {
-  position: fixed;
-  z-index: 20;
-  border: 1px solid var(--acc-45);
-  border-radius: 4px;
-  pointer-events: none;
-  box-shadow: 0 0 30px -12px var(--acc-45);
-  transition: opacity 0.7s ease;
-}
-#oc-selframe[hidden] { display: none; }
-#oc-selframe i {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border: 1px solid var(--accent);
-  background: var(--bg-color);
-}
-#oc-selframe i:nth-child(1) { top: -4px; left: -4px; }
-#oc-selframe i:nth-child(2) { top: -4px; right: -4px; }
-#oc-selframe i:nth-child(3) { bottom: -4px; left: -4px; }
-#oc-selframe i:nth-child(4) { bottom: -4px; right: -4px; }
-
-#oc-chip {
-  position: fixed;
-  z-index: 35;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px 4px 3px 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 999px;
-  background: var(--surface-strong);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  white-space: nowrap;
-  transform: translateX(-50%);
-  transition: opacity 0.7s ease;
-}
-#oc-chip[hidden] { display: none; }
-#oc-chip .c-ico {
-  color: var(--accent);
-  font-size: 11.9px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  margin-right: 0.45em;
-}
-#oc-chip .c-ico svg { width: 16px; height: 16px; display: block; }
-#oc-chip .c-name {
-  font-size: 11.2px;
-  color: var(--ui-text-90);
-  margin-right: 0.4em;
-  max-width: 9.5em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#oc-chip .c-kind {
-  font-size: 8.4px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ui-text-40);
-  margin-right: 0.5em;
-}
-#oc-chip .c-div {
-  width: 1px;
-  height: 16px;
-  background: var(--ui-border-soft);
-  margin: 0 4px;
-}
-#oc-chip button {
-  min-width: 40px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  color: var(--ui-text-55);
-  font-family: inherit;
-  font-size: 11.48px;
-  padding: 0 8px;
-  cursor: pointer;
-  line-height: 1;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-#oc-chip button:hover { color: var(--text-color); background: var(--ui-fill-08); }
-#oc-chip .c-regler { font-size: 10.08px; letter-spacing: 0.08em; color: var(--ui-text-70); }
-/* Idle: Chip + Hüllbox glimmen nur noch (Werk bleibt der Star) */
-body.oc-idle #oc-chip,
-body.oc-idle #oc-selframe { opacity: 0.1; }
-
 /* ---------- Fokus-Modus: alles weicht, ein atmender Punkt bleibt ---------- */
 body.oc-focus .oc-ui,
-body.oc-focus #oc-side,
-body.oc-focus #oc-chip,
-body.oc-focus #oc-selframe,
-body.oc-focus .oc-whisper {
+body.oc-focus .oc-whisper,
+body.oc-focus .empty-hint,
+body.oc-focus .stage-pill,
+body.oc-focus .ctrl-panel {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -355,11 +196,16 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
   50% { box-shadow: 0 0 14px 0 var(--acc-28); }
 }
 
-/* ---------- Wortmarke oben links ---------- */
+/* ---------- Wortmarke oben links ----------
+   Rueckt rechts neben den globalen Back-Button (meta.css: 4.375rem breit,
+   hi-res mobil 5.5rem) und zentriert sich auf dessen Hoehe. */
 #oc-wordmark {
   position: fixed;
-  top: calc(14px + var(--safe-t));
-  left: 18px;
+  top: var(--visible-viewport-top);
+  left: 4.375rem;
+  height: 4.375rem;
+  display: inline-flex;
+  align-items: center;
   z-index: 30;
   font-size: 11.48px;
   letter-spacing: 0.26em;
@@ -367,29 +213,126 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
   text-decoration: none;
   user-select: none;
   white-space: nowrap;
-  padding: 6px 4px;
+  padding: 0 4px;
 }
 #oc-wordmark b { font-weight: normal; color: var(--text-color); }
 #oc-wordmark .sep { color: var(--ui-text-25); margin: 0 0.4em; }
 #oc-wordmark:hover { color: var(--ui-text-90); }
 
-/* ---------- Stille Aktionen oben rechts ---------- */
-#oc-corner {
-  position: fixed;
-  top: calc(8px + var(--safe-t));
-  right: 12px;
-  z-index: 30;
+/* ---------- Panel-Fuellung: Stapel-Zeilen in Section "Bausteine" ----------
+   Das Panel-Chrome kommt komplett aus meta.css — hier nur die eigenen
+   Zeilen (optisch wie ctrl-rows) und der Werkzeug-Aktivzustand. */
+#oc-ctrl-panel .oc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 0.5rem;
+  text-align: left; /* meta.css zentriert body-weit */
+}
+#oc-ctrl-panel .oc-stack-empty {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-40);
+  padding: 6px 4px;
+  user-select: none;
+}
+#oc-ctrl-panel .oc-row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  min-height: 36px;
+  padding: 1px 4px 1px 2px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
 }
-#oc-corner .corner-gap {
-  width: 10px;
-  height: 20px;
-  border-left: 1px solid var(--ui-border-soft);
-  margin: 0 4px 0 8px;
+#oc-ctrl-panel .oc-row:hover { background: var(--ui-fill-05); }
+#oc-ctrl-panel .oc-row.selected {
+  border-color: var(--acc-28);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+/* drag-reorder states (ui.js) */
+#oc-ctrl-panel .oc-row.dragging { opacity: 0.45; }
+#oc-ctrl-panel .oc-row.drop-above { box-shadow: 0 -1px 0 var(--accent); }
+#oc-ctrl-panel .oc-row.drop-below { box-shadow: 0 1px 0 var(--accent); }
+
+#oc-ctrl-panel .oc-row-handle {
+  flex: 0 0 auto;
+  color: var(--ui-text-40);
+  font-size: 10.92px;
+  letter-spacing: -1px;
+  cursor: grab;
+  padding: 11.2px 1.4px 11.2px 2.8px;
+  line-height: 1;
+  touch-action: none;
+}
+#oc-ctrl-panel .oc-row-handle:active { cursor: grabbing; }
+
+.type-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  text-align: center;
+  font-size: 12.88px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+.type-icon svg { width: 19px; height: 19px; display: block; }
+.type-icon.kraft    { color: var(--accent); }
+.type-icon.erzeuger { color: color-mix(in srgb, var(--accent) 45%, var(--text-color)); }
+.type-icon.ding     { color: var(--ui-text-70); }
+
+#oc-ctrl-panel .oc-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.76px;
+  color: var(--ui-text-90);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#oc-ctrl-panel .oc-row.hidden-layer .oc-row-name { color: var(--ui-text-40); }
+#oc-ctrl-panel .oc-row.hidden-layer .type-icon { opacity: 0.35; }
+
+#oc-ctrl-panel .oc-row-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--ui-text-70);
+  font-size: 12.88px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.12s ease;
+}
+#oc-ctrl-panel .oc-row-btn:hover { color: var(--text-color); background: var(--ui-fill-05); }
+#oc-ctrl-panel .oc-row-btn.eye.off { color: var(--ui-text-40); }
+#oc-ctrl-panel .oc-row-btn.del { font-size: 11.48px; color: var(--ui-text-40); }
+#oc-ctrl-panel .oc-row-btn.del:hover { color: var(--text-color); }
+
+/* Kausalität sichtbar: die Kraft-Glyphe pulsiert, solange auf der
+   Leinwand am Verzerren-Zentrum gezogen wird */
+.type-icon.force-live { animation: oc-fpulse 0.8s ease-in-out infinite; }
+@keyframes oc-fpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
+/* Werkzeug-Gruppe: aktives Werkzeug markieren (controls.js kennt keinen
+   Aktivzustand fuer ButtonGroups — einzige App-Zutat am Panel-Inhalt) */
+#oc-ctrl-panel [data-key="tool"] .ctrl-button.active {
+  border-color: var(--acc-45);
+  color: var(--text-color);
+  background: var(--ui-fill-08);
+}
+
+/* ---------- Bibliothek ---------- */
 .icon-btn {
   width: 44px;
   height: 44px;
@@ -408,219 +351,6 @@ body.oc-focus #oc-focus-exit { opacity: 1; pointer-events: auto; }
 .icon-btn:hover { color: var(--text-color); background: var(--ui-fill-05); }
 .icon-btn:active { transform: scale(0.94); }
 
-/* ---------- Werkzeug-Kapsel unten mittig ---------- */
-#oc-capsule {
-  position: fixed;
-  bottom: calc(16px + var(--safe-b));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 32;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--ui-border-soft);
-  border-radius: 999px;
-  background: var(--surface);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-.tool-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  min-height: 44px;
-  padding: 0 14.7px;
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  color: var(--ui-text-55);
-  font-family: inherit;
-  font-size: 11.48px;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  line-height: 1;
-  white-space: nowrap;
-  user-select: none;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-.tool-btn .tb-icon { font-size: 14px; line-height: 1; }
-.tool-btn:hover { color: var(--ui-text-90); }
-.tool-btn:active { transform: scale(0.97); }
-.tool-btn.active {
-  color: var(--text-color);
-  background: var(--ui-fill-08);
-  box-shadow: inset 0 0 0 1px var(--acc-28), 0 0 18px -6px var(--acc-45);
-}
-.tool-btn.active .tb-icon { color: var(--accent); }
-
-/* ---------- Der Stapel als Glyphen-Spine rechts ---------- */
-/* Crit-Auftrag: deutlich sichtbarer als im Mockup — eigene Fläche,
-   Border, kräftigere Glyphen, Beschriftung. */
-#oc-spine {
-  position: fixed;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 31;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 10px 5px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--ui-border);
-  background: var(--surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  cursor: pointer;
-  max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
-  transition: border-color 0.2s ease, background 0.2s ease, opacity 0.7s ease;
-}
-#oc-spine:hover { border-color: var(--ui-border-strong); }
-body.oc-stack-open #oc-spine { opacity: 0; pointer-events: none; }
-
-#oc-spine-add {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 1px solid var(--ui-border);
-  border-radius: 999px;
-  color: var(--ui-text-70);
-  font-size: 17.5px;
-  font-family: inherit;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0 0 2px;
-  margin-bottom: 6px;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-#oc-spine-add:hover { color: var(--text-color); border-color: var(--ui-border-strong); background: var(--ui-fill-05); }
-
-#oc-spine-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
-  min-height: 0;
-}
-.spine-term {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 26px;
-  color: var(--ui-text-40);
-  font-size: 10.08px;
-  user-select: none;
-  pointer-events: none;
-}
-.spine-term svg { width: 16px; height: 16px; }
-.spine-zero { font-family: Georgia, "Times New Roman", serif; }
-
-.vertebra {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 9px;
-  color: var(--ui-text-70);
-  font-family: inherit;
-  font-size: 11.9px;
-  cursor: pointer;
-  line-height: 1;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-.vertebra svg { width: 19px; height: 19px; display: block; }
-.vertebra:hover { color: var(--text-color); background: var(--ui-fill-05); }
-.vertebra.kraft { color: color-mix(in srgb, var(--accent) 80%, transparent); }
-.vertebra.erzeuger { color: color-mix(in srgb, var(--accent) 45%, var(--text-color)); }
-.vertebra.selected {
-  color: var(--text-color);
-  background: var(--ui-fill-08);
-  box-shadow: inset 0 0 0 1px var(--acc-28);
-}
-.vertebra.hidden-block { opacity: 0.28; }
-/* Wirkungs-Faden: eine Kraft strahlt nach unten */
-.vertebra.kraft::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: calc(100% - 2px);
-  width: 1px;
-  height: 8px;
-  background: linear-gradient(var(--acc-45), transparent);
-  pointer-events: none;
-}
-.vertebra.pulse { animation: oc-vpulse 0.9s ease; }
-@keyframes oc-vpulse {
-  0% { box-shadow: inset 0 0 0 1px var(--accent), 0 0 22px -4px var(--accent); color: var(--text-color); }
-  100% { box-shadow: none; }
-}
-
-/* Kausalität sichtbar: die Kraft-Glyphe pulsiert, solange auf der
-   Leinwand an ihr gezogen wird (Verzerren-Drag) */
-.vertebra.force-live,
-.type-icon.force-live { animation: oc-fpulse 0.8s ease-in-out infinite; }
-#oc-stack-pill.force-live { border-color: var(--acc-45); animation: oc-fpulse 0.8s ease-in-out infinite; }
-@keyframes oc-fpulse {
-  0%, 100% { filter: none; }
-  50% { filter: drop-shadow(0 0 6px var(--accent)) brightness(1.6); }
-}
-
-.spine-label {
-  margin-top: 6px;
-  font-size: 8.4px;
-  letter-spacing: 0.22em;
-  color: var(--ui-text-40);
-  writing-mode: vertical-rl;
-  user-select: none;
-  pointer-events: none;
-}
-
-/* ---------- Mobile Pillen (Desktop: aus) ---------- */
-.m-pill { display: none; }
-
-/* ---------- Der Stapel ausgeklappt ---------- */
-/* Sheet-Griff + Mini-Strahl: nur im mobilen Drill-in-Sheet sichtbar */
-#oc-sheet-grip, #oc-minibeam { display: none; }
-
-#oc-side {
-  position: fixed;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%) translateX(14px);
-  z-index: 40;
-  width: min(340px, calc(100vw - 24px));
-  max-height: min(78vh, 680px);
-  max-height: min(78dvh, 680px);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--ui-border-soft);
-  border-radius: 16px;
-  background: var(--surface-strong);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  opacity: 0;
-  pointer-events: none;
-  /* visibility nimmt auch Kinder aus dem Hit-Test — .del-btn/.dup-btn
-     setzen pointer-events:auto und wuerden sonst unsichtbar Taps schlucken */
-  visibility: hidden;
-  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s linear 0.22s;
-}
-body.oc-stack-open #oc-side {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
-  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s;
-  transform: translateY(-50%) translateX(0);
-}
-
 .panel-head {
   display: flex;
   align-items: center;
@@ -636,25 +366,6 @@ body.oc-stack-open #oc-side {
   color: var(--ui-text-70);
   user-select: none;
 }
-.panel-head-btns { display: flex; align-items: center; gap: 2px; }
-#oc-add-btn, #oc-stack-close {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 9px;
-  color: var(--ui-text-40);
-  font-family: inherit;
-  cursor: pointer;
-  line-height: 1;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-#oc-add-btn { font-size: 17.5px; padding-bottom: 2px; color: var(--ui-text-70); }
-#oc-stack-close { font-size: 11.9px; }
-#oc-add-btn:hover, #oc-stack-close:hover { color: var(--text-color); background: var(--ui-fill-05); }
-
 .panel-sub {
   padding: 0 16.1px 7.7px;
   font-size: 9.52px;
@@ -663,386 +374,7 @@ body.oc-stack-open #oc-side {
   user-select: none;
   flex: 0 0 auto;
 }
-.panel-sub .down { color: var(--acc-45); }
 
-/* fester Slot: Untertitel und Erklärzeile wechseln sich ohne Layout-Shift
-   ab (ein Shift zwischen den zwei Klicks bricht Doppelklick-Umbenennen) */
-#oc-side .sub-slot {
-  flex: 0 0 auto;
-  height: 46px;
-  overflow: hidden;
-}
-.scope-note {
-  margin: 1.4px 8.4px 4.2px;
-  padding: 5.6px 7.7px;
-  font-size: 9.24px;
-  line-height: 1.5;
-  color: color-mix(in srgb, var(--accent) 70%, var(--text-color));
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  border-radius: 8px;
-  display: none;
-  user-select: none;
-  flex: 0 0 auto;
-}
-#oc-side.kraft-selected .sub-slot .panel-sub { display: none; }
-#oc-side.kraft-selected .scope-note { display: block; }
-
-/* Strahl-Endpunkte: Blick oben, 0 unten */
-.beam-term {
-  display: flex;
-  align-items: center;
-  gap: 7.7px;
-  padding: 2.1px 14.7px;
-  flex: 0 0 auto;
-  user-select: none;
-  pointer-events: none;
-}
-.beam-term .bt-mark {
-  width: 20px;
-  display: grid;
-  place-items: center;
-  color: var(--ui-text-40);
-  font-size: 10.92px;
-  line-height: 1;
-}
-.beam-term .bt-mark svg { width: 16px; height: 16px; }
-.beam-term .bt-label {
-  font-size: 8.4px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ui-text-25);
-}
-.beam-zero .bt-mark { font-family: Georgia, "Times New Roman", serif; }
-
-#oc-stack-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 7.7px;
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1 1 auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--ui-fill-12) transparent;
-}
-
-.stack-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6.3px;
-  min-height: 46px;
-  padding: 0 3.5px 0 0;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.2s ease;
-}
-.stack-row + .stack-row { margin-top: 2px; }
-.stack-row:hover { background: var(--ui-fill-05); }
-.stack-row.selected {
-  background: var(--ui-fill-08);
-  border-color: var(--acc-28);
-}
-
-/* drag-reorder states (ui.js) */
-.stack-row.dragging { opacity: 0.45; }
-.stack-row.drop-above { border-top-color: var(--accent); box-shadow: 0 -1px 0 var(--accent); }
-.stack-row.drop-below { border-bottom-color: var(--accent); box-shadow: 0 1px 0 var(--accent); }
-
-/* Kraft ausgewählt: Zeilen in ihrem Feld leuchten leise mit */
-.stack-row.in-scope { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.stack-row.in-scope:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
-.stack-row.in-scope .scope-line { background: var(--acc-45); }
-
-/* ... und eine durchgezogene Scope-Linie führt von der Kraft bis zum
-   letzten Baustein in ihrem Feld (Quelle: Punkt auf halber Zeilenhöhe) */
-.stack-row.in-scope::before,
-.stack-row.scope-src::before {
-  content: '';
-  position: absolute;
-  left: 10px;
-  width: 2px;
-  top: -2px;
-  bottom: 0;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--acc-28);
-  border-radius: 2px;
-  pointer-events: none;
-}
-.stack-row.in-scope:last-child::before { bottom: 8px; border-radius: 0 0 2px 2px; }
-.stack-row.scope-src::before { top: 50%; }
-.stack-row.scope-src::after {
-  content: '';
-  position: absolute;
-  left: 7px;
-  top: calc(50% - 4px);
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--acc-45);
-  pointer-events: none;
-}
-/* die statischen Gutter-Linien treten hinter die gezogene Linie zurück */
-.stack-row.scope-src .scope-line.src { background: transparent; }
-
-/* Scope-Spalte: Linien zeigen "diese Kraft wirkt hier" */
-.scope-gutter {
-  flex: 0 0 auto;
-  align-self: stretch;
-  width: 13px;
-  display: flex;
-  justify-content: center;
-  gap: 2px;
-  padding: 6px 0 6px 5px;
-}
-.scope-line { width: 2px; border-radius: 2px; background: var(--acc-28); }
-.scope-line.src { background: var(--accent); }
-
-.drag-handle {
-  color: var(--ui-text-40);
-  font-size: 10.92px;
-  letter-spacing: -1px;
-  cursor: grab;
-  padding: 11.2px 1.4px 11.2px 2.8px;
-  line-height: 1;
-  flex: 0 0 auto;
-  touch-action: none;
-}
-.drag-handle:active { cursor: grabbing; }
-
-.type-icon {
-  flex: 0 0 auto;
-  width: 24px;
-  text-align: center;
-  font-size: 12.88px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-}
-.type-icon svg { width: 19px; height: 19px; display: block; }
-.type-icon.kraft    { color: var(--accent); }
-.type-icon.erzeuger { color: color-mix(in srgb, var(--accent) 45%, var(--text-color)); }
-.type-icon.ding     { color: var(--ui-text-70); }
-
-.row-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow: hidden;
-}
-.row-kind {
-  font-size: 8.12px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ui-text-40);
-  white-space: nowrap;
-}
-.stack-row.k-kraft .row-kind { color: color-mix(in srgb, var(--accent) 60%, transparent); }
-.row-name {
-  font-size: 11.76px;
-  color: var(--ui-text-90);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.stack-row.hidden-layer .row-name { color: var(--ui-text-40); }
-.stack-row.hidden-layer .type-icon { opacity: 0.35; }
-
-/* "wirkt ↓ n" an Kraft-Zeilen */
-.row-tag {
-  flex: 0 0 auto;
-  font-size: 8.4px;
-  color: var(--acc-45);
-  border: 1px solid var(--acc-28);
-  border-radius: 999px;
-  padding: 2px 7px 3px;
-  white-space: nowrap;
-  user-select: none;
-}
-.stack-row:hover .row-tag { color: color-mix(in srgb, var(--accent) 80%, transparent); }
-
-/* Inline-Umbenennen (Doppelklick auf den Namen) */
-.rename-input {
-  width: 100%;
-  min-width: 0;
-  background: var(--ui-fill-08);
-  border: 1px solid var(--acc-45);
-  border-radius: 6px;
-  color: var(--text-color);
-  font-family: inherit;
-  font-size: 11.76px;
-  padding: 2px 6px;
-  outline: none;
-}
-
-.eye-btn,
-.dup-btn,
-.del-btn {
-  flex: 0 0 auto;
-  width: 38px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--ui-text-70);
-  font-size: 12.88px;
-  font-family: inherit;
-  cursor: pointer;
-  line-height: 1;
-  transition: color 0.12s ease, opacity 0.12s ease;
-}
-.eye-btn:hover { color: var(--text-color); }
-.eye-btn.off { color: var(--ui-text-40); }
-
-.dup-btn,
-.del-btn {
-  font-size: 11.48px;
-  color: var(--ui-text-40);
-  opacity: 0;
-  pointer-events: none;
-}
-.stack-row:hover .dup-btn,
-.stack-row.selected .dup-btn,
-.stack-row:hover .del-btn,
-.stack-row.selected .del-btn {
-  opacity: 1;
-  pointer-events: auto;
-}
-.dup-btn:hover,
-.del-btn:hover { color: var(--text-color); }
-
-/* library "keine Bausteine" hint */
-.props-empty {
-  color: var(--ui-text-40);
-  font-size: 11.2px;
-  padding: 19.6px 0;
-  text-align: center;
-}
-
-/* ---------- Eigenschaften-Panel (tools/controls.js) ---------- */
-/* Die .ctrl-* Regeln kommen 1:1 aus meta.css (siehe controls-theme.css).
-   0necanvas lädt meta.css bewusst NICHT (globale body/*-Regeln zerschießen
-   das App-Layout), also bekommen die controls-Elemente hier die
-   Original-Variablenwerte aus meta.css :root gescoped. */
-.ctrl-panel,
-.ctrl-select-popup,
-.ctrl-config-popup {
-  --ui-surface: color-mix(in srgb, var(--bg-color, #111) 86%, transparent);
-  --ui-surface-strong: color-mix(in srgb, var(--bg-color, #111) 95%, transparent);
-  --ui-border-soft: color-mix(in srgb, var(--text-color, #fff) 10%, transparent);
-  --ui-border: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-  --ui-border-strong: color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
-  --ui-border-stronger: color-mix(in srgb, var(--text-color, #fff) 50%, transparent);
-  --ui-fill-05: color-mix(in srgb, var(--text-color, #fff) 5%, transparent);
-  --ui-fill-08: color-mix(in srgb, var(--text-color, #fff) 8%, transparent);
-  --ui-fill-10: color-mix(in srgb, var(--text-color, #fff) 10%, transparent);
-  --ui-fill-12: color-mix(in srgb, var(--text-color, #fff) 12%, transparent);
-  --ui-fill-15: color-mix(in srgb, var(--text-color, #fff) 15%, transparent);
-  --ui-fill-20: color-mix(in srgb, var(--text-color, #fff) 20%, transparent);
-  --ui-fill-25: color-mix(in srgb, var(--text-color, #fff) 25%, transparent);
-  --ui-text-30: color-mix(in srgb, var(--text-color, #fff) 30%, transparent);
-  --ui-text-40: color-mix(in srgb, var(--text-color, #fff) 40%, transparent);
-  --ui-text-70: color-mix(in srgb, var(--text-color, #fff) 70%, transparent);
-  --ui-text-80: color-mix(in srgb, var(--text-color, #fff) 80%, transparent);
-  --ui-text-90: color-mix(in srgb, var(--text-color, #fff) 90%, transparent);
-}
-
-/* panel built but not shown (boot: stille Bühne zuerst) */
-.ctrl-panel.oc-hidden { display: none !important; }
-
-/* header title: type icon + block name — seit dem Kontext-Ribbon redundant,
-   bleibt im DOM (Screenreader/Fallback), visuell übernimmt das Ribbon */
-.ctrl-panel .oc-ctrl-title { display: none; }
-.oc-ctrl-title {
-  position: absolute;
-  left: 12.6px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 6.3px;
-  max-width: 34%;
-  overflow: hidden;
-  pointer-events: none;
-  user-select: none;
-}
-.oc-ctrl-title .type-icon { font-size: 11.9px; width: auto; }
-.oc-ctrl-title .type-icon svg { width: 15px; height: 15px; }
-.oc-ctrl-title-name {
-  font-size: 9.8px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ui-text-70);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ctrl-panel.bar-mode .oc-ctrl-title { display: none; }
-
-/* ---------- Kontext-Ribbon: schwebt als Pille über dem controls.js-Panel.
-   Das Panel selbst traegt das Original-Chrome aus meta.css (Ecke unten
-   links, eigene Rundung) — das Ribbon ist die bewusste Addition und
-   dockt als freigestellte Zeile knapp darueber an (ui.js positioniert). */
-#oc-ctrl-ribbon {
-  position: fixed;
-  z-index: 101; /* eine Ebene über dem Panel (z 100) */
-  display: flex;
-  align-items: center;
-  gap: 7.7px;
-  padding: 7px 13.3px;
-  border: 1px solid var(--ui-border-soft);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  user-select: none;
-  pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-}
-#oc-ctrl-ribbon[hidden] { display: none; }
-#oc-ctrl-ribbon .rb-ico { color: var(--accent); font-size: 13.3px; line-height: 1; display: grid; place-items: center; }
-#oc-ctrl-ribbon .rb-ico svg { width: 17px; height: 17px; display: block; }
-#oc-ctrl-ribbon .rb-name { font-size: 11.9px; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; }
-#oc-ctrl-ribbon .rb-meta {
-  font-size: 8.96px;
-  color: var(--ui-text-40);
-  letter-spacing: 0.04em;
-  margin-left: auto;
-  text-align: right;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#oc-ctrl-ribbon .rb-meta .down { color: var(--acc-45); }
-/* Zurück-Pfeil (nur Mobil): aus dem Regler-Sheet zurück zum Stapel */
-#oc-ribbon-back {
-  display: none;
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  /* Tap-Target 44px, optische Ribbon-Hoehe unveraendert (44-20 = 40-16) */
-  margin: -10px 0 -10px -12px;
-  background: transparent;
-  border: none;
-  border-radius: 10px;
-  color: var(--ui-text-70);
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  pointer-events: auto; /* Ribbon selbst ist pointer-events: none */
-}
-#oc-ribbon-back:active { background: var(--ui-fill-08); }
-
-/* ---------- Bibliothek ---------- */
 #oc-lib-overlay {
   position: fixed;
   inset: 0;
@@ -1179,6 +511,14 @@ body.oc-stack-open #oc-side {
   text-align: center;
   line-height: 1.35;
   min-height: 2em;
+}
+
+/* library "nichts gefunden" hint */
+.props-empty {
+  color: var(--ui-text-40);
+  font-size: 11.2px;
+  padding: 19.6px 0;
+  text-align: center;
 }
 
 /* ---------- Kommando-Palette (Cmd/Strg+K) ---------- */
@@ -1359,195 +699,12 @@ body.oc-stack-open #oc-side {
 
 /* ---------- Mobile ---------- */
 @media (max-width: 768px) {
-  #oc-spine { display: none; }
-  #oc-status { display: none; } /* Ecken gehoeren den Pillen */
   #oc-wordmark { font-size: 10.08px; letter-spacing: 0.2em; }
-  /* Aktionen oben rechts bleiben alle erreichbar, nur enger */
-  #oc-corner { gap: 0; right: 6px; }
-  #oc-corner .corner-gap { display: none; }
-  .icon-btn { width: 44px; height: 44px; }
 
-  /* Kapsel: Icon über Label */
-  #oc-capsule { bottom: calc(14px + var(--safe-b)); }
-  .tool-btn {
-    flex-direction: column;
-    gap: 2px;
-    justify-content: center;
-    min-height: 48px;
-    padding: 0 10.5px;
-  }
-  .tool-btn .tb-icon { font-size: 14.7px; }
-  .tool-btn .tb-label { font-size: 8.12px; letter-spacing: 0.04em; }
-
-  /* Pillen links (Stapel) und rechts (+) */
-  #oc-stack-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    position: fixed;
-    left: 12px;
-    bottom: calc(16px + var(--safe-b));
-    z-index: 32;
-    min-height: 48px;
-    padding: 0 14px;
-    font-size: 10.36px;
-    letter-spacing: 0.08em;
-    color: var(--ui-text-70);
-    background: var(--surface);
-    border: 1px solid var(--ui-border-soft);
-    border-radius: 999px;
-    font-family: inherit;
-    cursor: pointer;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  #oc-stack-pill .n { color: var(--accent); }
-  #oc-add-pill {
-    display: grid;
-    place-items: center;
-    position: fixed;
-    right: 12px;
-    bottom: calc(16px + var(--safe-b));
-    z-index: 32;
-    width: 48px;
-    height: 48px;
-    font-size: 17.5px;
-    padding-bottom: 2px;
-    color: var(--ui-text-90);
-    background: var(--surface);
-    border: 1px solid var(--ui-border);
-    border-radius: 999px;
-    font-family: inherit;
-    cursor: pointer;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-
-  /* Stapel als Drill-in-Sheet: Peek (Mini-Strahl) / Halb / Voll.
-     Die Hoehe lebt in --oc-sheet-h, damit die Pillen-Zeile immer
-     direkt ueber dem Sheet bleibt (nie ueberdeckt). */
-  body {
-    --oc-sheet-h: 46vh;
-    --oc-sheet-h: 46dvh;
-  }
-  body.oc-sheet-peek { --oc-sheet-h: calc(96px + var(--safe-b)); }
-  body.oc-sheet-full {
-    --oc-sheet-h: 80vh;
-    --oc-sheet-h: 80dvh;
-  }
-  #oc-side {
-    top: auto;
-    right: 0;
-    left: 0;
-    bottom: 0;
-    width: 100vw;
-    height: var(--oc-sheet-h);
-    max-height: none;
-    border-radius: 18px 18px 0 0;
-    border-left: none;
-    border-right: none;
-    border-bottom: none;
-    transform: translateY(14px);
-    padding-bottom: var(--safe-b);
-    transition: opacity 0.22s ease, transform 0.22s ease, height 0.25s ease,
-      visibility 0s linear 0.22s;
-  }
-  body.oc-stack-open #oc-side {
-    transform: translateY(0);
-    transition: opacity 0.22s ease, transform 0.22s ease, height 0.25s ease,
-      visibility 0s;
-  }
-  #oc-sheet-grip {
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    width: 100%;
-    height: 44px; /* Tap-Target; Margin gleicht die 4px optisch aus */
-    margin-bottom: -12px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-  }
-  #oc-sheet-grip i {
-    width: 44px;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--ui-text-25);
-    transition: background 0.15s ease;
-  }
-  #oc-sheet-grip:active i { background: var(--ui-text-55); }
-  #oc-side .panel-head { padding-top: 2.1px; }
-
-  /* Peek: nur Griff + Mini-Strahl (Blick — Glieder — 0) */
-  body.oc-sheet-peek #oc-side .panel-head,
-  body.oc-sheet-peek #oc-side .sub-slot,
-  body.oc-sheet-peek #oc-side .beam-term,
-  body.oc-sheet-peek #oc-stack-list { display: none; }
-  body.oc-sheet-peek #oc-minibeam { display: flex; }
-  #oc-minibeam {
-    align-items: center;
-    gap: 9px;
-    flex: 1 1 auto;
-    min-height: 0;
-    padding: 6px 17.5px 8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  #oc-minibeam .mb-line {
-    flex: 1 1 8px;
-    min-width: 8px;
-    height: 1px;
-    background: var(--ui-border);
-  }
-  #oc-minibeam .mb-eye {
-    flex: 0 0 auto;
-    color: var(--ui-text-40);
-    display: grid;
-    place-items: center;
-  }
-  #oc-minibeam .mb-eye svg { width: 15px; height: 15px; }
-  #oc-minibeam .mb-zero {
-    flex: 0 0 auto;
-    color: var(--ui-text-40);
-    font-size: 11.9px;
-    line-height: 1;
-    font-family: Georgia, "Times New Roman", serif;
-  }
-  #oc-minibeam .mb-dot {
-    flex: 0 0 auto;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--ui-text-70);
-  }
-  #oc-minibeam .mb-dot.erzeuger {
-    background: transparent;
-    border: 1.3px solid var(--ui-text-70);
-  }
-  #oc-minibeam .mb-dot.kraft {
-    width: 13px;
-    height: 13px;
-    background: transparent;
-    border: 1.3px solid var(--acc-45);
-  }
-  #oc-minibeam .mb-dot.hid { opacity: 0.3; }
-  #oc-minibeam .mb-dot.sel {
-    background: var(--accent);
-    border-color: var(--accent);
-    box-shadow: 0 0 8px var(--acc-45);
-  }
-
-  /* Pillen-Zeile + Kapsel ruecken ueber das offene Sheet (nie ueberdeckt) */
-  #oc-stack-pill, #oc-add-pill { transition: bottom 0.25s ease, opacity 0.3s ease; }
-  #oc-capsule { transition: bottom 0.25s ease, opacity 0.7s ease; }
-  body.oc-stack-open #oc-stack-pill,
-  body.oc-stack-open #oc-add-pill {
-    bottom: calc(12px + var(--oc-sheet-h));
-  }
-  body.oc-stack-open #oc-capsule {
-    bottom: calc(12px + var(--oc-sheet-h));
-  }
+  /* Panel-Zeilen: volle Tap-Ziele (kein Hover auf Touch) */
+  #oc-ctrl-panel .oc-row { min-height: 44px; }
+  #oc-ctrl-panel .oc-row-btn { width: 40px; height: 40px; }
+  #oc-ctrl-panel .oc-row-handle { padding: 14px 4px; }
 
   /* Bibliothek als Bottom-Sheet */
   .overlay-card {
@@ -1574,51 +731,28 @@ body.oc-stack-open #oc-side {
     margin: 10px auto 0;
   }
 
-  /* Aktions-Buttons in Zeilen immer sichtbar (kein Hover auf Touch)
-     + volle 44px Tap-Breite (Desktop bleibt kompakt bei 38px) */
-  .del-btn, .dup-btn { opacity: 1; pointer-events: auto; }
-  .eye-btn, .dup-btn, .del-btn { width: 44px; }
-
-  .stage-hint { display: none; }
-  .status-pills { top: calc(47.6px + var(--safe-t)); }
-  .stage-pill { top: calc(84px + var(--safe-t)); }
-
-  /* Flüstern: auf kleinen Schirmen nur die zentrale Zeile */
+  /* Flüstern etwas höher, volle Breite */
   #oc-whisper-center { top: 18%; width: 86vw; }
-  #oc-whisper-tools, #oc-whisper-stack { display: none; }
 
   /* Fokus-Punkt über der Home-Bar */
   #oc-focus-exit { bottom: calc(14px + var(--safe-b)); }
 }
 
-/* controls.js switches to its own bottom sheet at <=768px: while the
-   Regler-sheet is open, Stapel-Sheet und Kapsel weichen — die Pillen-Zeile
-   aber bleibt erreichbar und rueckt ueber das Sheet (--oc-ctrl-lift wird
-   im Ribbon-rAF gemessen); der Zurueck-Pfeil im Ribbon fuehrt zum Stapel */
-@media (max-width: 768px) {
-  body.oc-props-open #oc-side { display: none; }
-  body.oc-props-open #oc-capsule { opacity: 0; pointer-events: none; }
-  body.oc-props-open #oc-stack-pill,
-  body.oc-props-open #oc-add-pill {
-    z-index: 111; /* ueber dem Regler-Panel (z 100) */
-    bottom: calc(12px + var(--oc-ctrl-lift, 0px));
-  }
-  #oc-ribbon-back { display: grid; }
+/* hi-res mobil: globales Chrome ist 5.5rem hoch (meta.css) */
+@media (max-width: 768px) and (min-resolution: 2dppx) {
+  #oc-wordmark { left: 5.5rem; height: 5.5rem; }
 }
 
-/* narrow phones: wordmark + corner must never collide (focus button
-   widened the corner row) — drop suffix + least useful corner item */
+/* narrow phones: Wortmarke bleibt neben dem globalen Back-Button kompakt */
 @media (max-width: 480px) {
   #oc-wordmark .sep, #oc-wordmark .wm-sub { display: none; }
-  #oc-fullscreen-btn { display: none; }
 }
 @media (max-width: 374px) {
   #oc-wordmark .wm-rest { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .oc-ui, #oc-side, .overlay-card, .vertebra, .oc-toast,
-  .oc-whisper, #oc-chip, #oc-selframe, #oc-focus-exit::before,
-  .type-icon, #oc-stack-pill, #oc-add-pill, #oc-capsule,
+  .oc-ui, .overlay-card, .oc-toast, .oc-whisper,
+  #oc-focus-exit::before, .type-icon,
   #oc-palette, .pal-card { transition: none !important; animation: none !important; }
 }
