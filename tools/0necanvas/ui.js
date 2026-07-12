@@ -1,20 +1,24 @@
 /* 0necanvas ui — window.OneCanvasUI
  *
- * Stack panel (drag-reorder, eye, delete), properties panel via
- * tools/controls.js (Controls.createPanel — the original panel used across
- * the site: drag, bar mode, steppers with hold-repeat, free value input,
- * ⋮ min/max/step popup, own select popup, mobile bottom sheet),
- * library overlay (3 tabs), tools move/warp/draw with full pointer gestures
- * (block drag, pan, wheel zoom on cursor, pinch, freehand strokes),
- * share/fullscreen,
- * mobile sheet, default scene, instance-limit pill.
- * Plan: docs/superpowers/plans/2026-07-06-0necanvas-v1-plan.md section 6.
+ * Eine normale 0nefinity-Seite: das Original-Panel (tools/controls.js)
+ * wird EINMAL beim Boot gebaut und danach nur noch gefuellt/geschaltet —
+ * exakt das circleheart-Muster. Kein create/destroy, kein removeSection,
+ * kein eigener Panel-Lifecycle:
+ *   - Section "Bausteine": Stapel-Zeilen (Icon, Name, Auge, Loeschen,
+ *     Drag-Reorder) + "+ Baustein" (Bibliothek).
+ *   - Section "Werkzeuge": Bewegen / Verzerren / Zeichnen (V/W/Z).
+ *   - Je Block-Typ eine Section mit dessen Schema-Controls, Keys
+ *     namespaced ("kurve.size"). Selektion schaltet NUR Sichtbarkeit
+ *     (showSection) und setzt Instanz-Werte via panel.set — wie
+ *     circlehearts updateUI.
+ *   - Header wie circleheart: nur Reset ("Neu") + Layout-Toggle, der
+ *     Drag-Griff bleibt frei. Aktionen (Einpassen, PNG, Teilen,
+ *     Vollbild) als Section "Werk" im Body; Status via addMetricsOverlay.
  *
- * Robustness notes:
- * - Block schemas are built in parallel tasks; param keys of sibling modules
- *   are resolved via candidate lists (see setParam / setWarpCenter /
- *   buildDefaultScene) so key drift degrades gracefully instead of breaking.
- * - OneCanvasState is optional at runtime; every call is guarded.
+ * Auf der Leinwand bleibt: Wortmarke, Erstbesuchs-Fluesterzeile,
+ * Statuspillen, Bibliothek, Kommando-Palette (Cmd/Strg+K), Fokus-Modus,
+ * alle Gesten (Drag, Pan, Zoom, Pinch, Zeichnen) und das
+ * Selektions-Overlay der Engine.
  */
 (function () {
   'use strict';
@@ -71,7 +75,6 @@
     kaleidoskop: svgIcon(ICON_LENS + '<path d="M12 3.6v16.8M4.7 7.8l14.6 8.4M19.3 7.8L4.7 16.2" opacity="0.85"/>'),
     tapete: svgIcon(ICON_LENS + '<g fill="currentColor" stroke="none"><circle cx="9.2" cy="9.2" r="1.2"/><circle cx="14.8" cy="9.2" r="1.2"/><circle cx="9.2" cy="14.8" r="1.2"/><circle cx="14.8" cy="14.8" r="1.2"/></g>')
   };
-  var ICON_EYE = svgIcon('<path d="M3.5 12S6.8 6.9 12 6.9 20.5 12 20.5 12 17.2 17.1 12 17.1 3.5 12 3.5 12z"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>');
 
   /* Flüstersätze — Bibliotheks-Copy je Baustein-Typ */
   var TYPE_WHISPER = {
@@ -107,9 +110,6 @@
   var toastEl = null;
   var toastTimer = 0;
   var suppressRowClickUntil = 0;
-  // Auswahl kam von einem Canvas-Tap (nicht Stapel/Bibliothek): dann zeigt
-  // nur der Chip am Objekt — das Regler-Panel öffnet erst auf Wunsch
-  var selectViaCanvas = false;
 
   /* ---------- small helpers ---------- */
 
@@ -122,7 +122,7 @@
   }
 
   // select entry.options may be an array OR a function returning one —
-  // evaluated lazily at panel build so late-registered types are listed
+  // evaluated at panel build (alle Typen sind zu init() registriert)
   function entryOptions(entry) {
     var o = entry && entry.options;
     if (typeof o === 'function') {
@@ -154,6 +154,11 @@
       if (scene.blocks[i].id === id) return scene.blocks[i];
     }
     return null;
+  }
+
+  function blockKind(block) {
+    var def = scene.defs.get(block.type);
+    return def ? def.kind : 'ding';
   }
 
   function touchState() {
@@ -199,6 +204,10 @@
     return { x: ev.clientX - r.left, y: ev.clientY - r.top, w: r.width, h: r.height };
   }
 
+  function isDesktopLayout() {
+    return window.matchMedia('(min-width: 900px)').matches;
+  }
+
   /* ---------- toast ---------- */
 
   // toast('msg') or toast('msg', { action: 'Rückgängig', onAction: fn, ms: 5000 })
@@ -231,249 +240,324 @@
     }, (opts && opts.ms) || 1600);
   }
 
-  /* ---------- stack panel (Strahl: Blick oben, 0 unten) ---------- */
+  /* ---------- das Panel: einmal gebaut, danach nur gefuellt ---------- */
 
-  function blockKind(block) {
-    var def = scene.defs.get(block.type);
-    return def ? def.kind : 'ding';
+  var panel = null;          // ControlPanel-Singleton (Seiten-Lebensdauer)
+  var stackListEl = null;    // Stapel-Zeilen-Container in Section "Bausteine"
+  var typeSections = [];     // [{ type, def, entries }] — eine Section je Typ
+  var toolButtons = {};      // buttonKey -> Button-Element (aktiv-Markierung)
+  var shownType = null;      // Typ der sichtbaren Section (null = keine)
+
+  function panelKey(type, key) { return type + '.' + key; }
+
+  function panelSliderLabel(entry) {
+    return entry.unit ? entry.label + ' (' + entry.unit + ')' : entry.label;
   }
 
-  // how many visible forces lie ABOVE block index i (array is bottom-up:
-  // above = larger index); they all act on block i
-  function forcesAbove(i) {
-    var n = 0;
-    for (var j = i + 1; j < scene.blocks.length; j++) {
-      var b = scene.blocks[j];
-      if (b.visible && blockKind(b) === 'kraft') n++;
+  function sectionFor(type) {
+    for (var i = 0; i < typeSections.length; i++) {
+      if (typeSections[i].type === type) return typeSections[i];
     }
-    return n;
+    return null;
   }
 
-  function renderStack() {
-    var list = els.stackList;
-    list.innerHTML = '';
-    // display reversed: top of the stack is the first row
-    for (var i = scene.blocks.length - 1; i >= 0; i--) {
-      list.appendChild(buildStackRow(scene.blocks[i], i));
-    }
-    renderSpine();
-    renderMiniBeam();
-    updateScopeMarks();
-    if (els.stackN) els.stackN.textContent = scene.blocks.length;
-    updateRibbon(); // Position "n von m" / Feld-Zeile ändern sich mit dem Stapel
-    updateHullOverlay(); // Chip-Inhalt/Sichtbarkeit hängt am Stapel
+  // onChange-Ziel ist immer die AKTUELLE Instanz dieses Typs — die Rows
+  // werden einmal gebaut, der selektierte Block wechselt darunter
+  function applyToSelected(type, entry, cast) {
+    return function (v) {
+      var b = getBlock(scene.selectedId);
+      if (!b || b.type !== type) return;
+      b.params[entry.key] = cast ? cast(v) : v;
+      touchState();
+    };
   }
 
-  // kollabierter Stapel: Glyphen-Spine am rechten Rand
-  function renderSpine() {
-    if (!els.spineList) return;
-    els.spineList.innerHTML = '';
-    for (var i = scene.blocks.length - 1; i >= 0; i--) {
-      (function (block) {
-        var def = scene.defs.get(block.type);
-        var kind = def ? def.kind : 'ding';
-        var v = document.createElement('button');
-        v.type = 'button';
-        v.className = 'vertebra ' + kind
-          + (block.id === scene.selectedId ? ' selected' : '')
-          + (block.visible ? '' : ' hidden-block');
-        setTypeIcon(v, def);
-        v.title = (KIND_LABEL[kind] || kind) + ' — ' + block.name;
-        v.setAttribute('aria-label', v.title);
-        v.dataset.id = block.id;
-        v.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openStackPanel();
-          scene.select(block.id);
+  function addTypeControl(def, entry) {
+    var key = panelKey(def.type, entry.key);
+    switch (entry.ctrl) {
+      case 'slider':
+        panel.addSlider(key, {
+          label: panelSliderLabel(entry),
+          min: entry.min,
+          max: entry.max,
+          step: entry.step,
+          value: Number(entry.value),
+          decimals: entry.decimals,
+          onChange: applyToSelected(def.type, entry)
         });
-        els.spineList.appendChild(v);
-      })(scene.blocks[i]);
+        return true;
+      case 'toggle':
+        panel.addToggle(key, {
+          label: entry.label,
+          value: !!entry.value,
+          onChange: applyToSelected(def.type, entry, function (v) { return !!v; })
+        });
+        return true;
+      case 'select':
+        panel.addSelect(key, {
+          label: entry.label,
+          options: entryOptions(entry),
+          value: entry.value,
+          onChange: applyToSelected(def.type, entry)
+        });
+        return true;
+      case 'text':
+        panel.addInput(key, {
+          label: entry.label,
+          value: entry.value == null ? '' : String(entry.value),
+          onChange: applyToSelected(def.type, entry, String)
+        });
+        if (entry.maxlen && panel.bodyEl) {
+          var inp = panel.bodyEl.querySelector('[data-key="' + key + '"] .ctrl-input');
+          if (inp) inp.maxLength = entry.maxlen;
+        }
+        return true;
+      case 'patterns':
+        if (typeof panel.addPatternPicker !== 'function') {
+          console.warn('0necanvas ui: controls.js ohne addPatternPicker — "' + key + '" übersprungen');
+          return false;
+        }
+        panel.addPatternPicker(key, {
+          label: entry.label,
+          patterns: entry.patterns || [],
+          value: typeof entry.value === 'string' ? entry.value : null,
+          columns: entry.columns || 6,
+          buttonSize: entry.buttonSize || 40,
+          onChange: applyToSelected(def.type, entry, function (v) { return v || null; })
+        });
+        return true;
+      case 'hidden':
+        return false; // serialized param without UI (pfad pts)
+      default:
+        console.warn('0necanvas ui: unknown ctrl "' + entry.ctrl + '" for key "' + entry.key + '"');
+        return false;
     }
   }
 
-  function pulseSpine(id) {
-    if (!els.spineList) return;
-    var v = els.spineList.querySelector('[data-id="' + id + '"]');
-    if (!v) return;
-    v.classList.add('pulse');
-    setTimeout(function () { v.classList.remove('pulse'); }, 950);
+  function buildTypeSection(def) {
+    var kind = def.kind || 'ding';
+    panel.beginSection('type-' + def.type, {
+      title: (def.label || def.type) + ' — ' + (KIND_LABEL[kind] || kind)
+    });
+    var entries = [];
+    var schema = def.schema || [];
+    for (var i = 0; i < schema.length; i++) {
+      if (addTypeControl(def, schema[i])) entries.push(schema[i]);
+    }
+    panel.endSection();
+    panel.showSection('type-' + def.type, false);
+    typeSections.push({ type: def.type, def: def, entries: entries });
   }
 
-  // Mini-Strahl im Sheet-Griff (mobiler Peek-Zustand): Blick — Glieder — 0
-  function renderMiniBeam() {
-    if (!els.minibeam) return;
-    var mb = els.minibeam;
-    mb.innerHTML = '';
-    function line() {
-      var l = document.createElement('span');
-      l.className = 'mb-line';
-      mb.appendChild(l);
+  function buildPanel() {
+    if (!window.Controls || typeof Controls.createPanel !== 'function') {
+      console.warn('0necanvas ui: tools/controls.js fehlt — kein Controls-Panel');
+      return;
     }
-    var eye = document.createElement('span');
-    eye.className = 'mb-eye';
-    eye.innerHTML = ICON_EYE;
-    mb.appendChild(eye);
-    line();
-    for (var i = scene.blocks.length - 1; i >= 0; i--) {
-      var b = scene.blocks[i];
-      var dot = document.createElement('i');
-      dot.className = 'mb-dot ' + blockKind(b)
-        + (b.id === scene.selectedId ? ' sel' : '')
-        + (b.visible ? '' : ' hid');
-      mb.appendChild(dot);
-      line();
-    }
-    var zero = document.createElement('span');
-    zero.className = 'mb-zero';
-    zero.textContent = '0';
-    mb.appendChild(zero);
-  }
+    panel = Controls.createPanel({ id: 'oc-ctrl-panel', position: 'left' });
 
-  // Verzerren-Drag: die Kraft-Glyphe in Spine, Stapel-Zeile und Mobil-Pille
-  // pulsiert, solange gezogen wird — Ursache und Wirkung bleiben verbunden
-  function setForceLive(id, on) {
-    var sel = '[data-id="' + id + '"]';
-    if (els.spineList) {
-      var v = els.spineList.querySelector(sel);
-      if (v) v.classList.toggle('force-live', on);
+    // Header wie circleheart: nur der Reset-Button — mehr Icons wuerden
+    // auf Mobile den zentrierten Drag-Griff ueberdecken (Buttons sind
+    // rechts absolut positioniert, 40px breit)
+    panel.addResetButton({ icon: '∅', title: 'Neu — Szene leeren', onClick: onNewScene });
+
+    // Status ueber dem Panel: Zoom / fps / Instanzen (Original-Overlay)
+    panel.addMetricsOverlay('status', {
+      label: 'Status',
+      collapsed: !isDesktopLayout(),
+      showFps: false,
+      updateInterval: 500,
+      getData: function () {
+        return {
+          items: [
+            { label: 'Zoom', value: Math.round(scene.camera.scale * 100) + ' %' },
+            { label: 'fps', value: scene.fps ? String(Math.round(scene.fps)) : '—' },
+            { label: 'Instanzen', value: String(scene.instancesDrawn || 0) }
+          ]
+        };
+      }
+    });
+
+    // Section "Bausteine": der Stapel + Bibliothek-Zugang
+    panel.beginSection('stapel', { title: 'Bausteine' });
+    var stackSection = document.getElementById('oc-ctrl-panel-section-stapel');
+    stackListEl = document.createElement('div');
+    stackListEl.className = 'oc-stack';
+    if (stackSection) stackSection.appendChild(stackListEl);
+    panel.addButton('stapel.add', {
+      label: '+ Baustein',
+      title: 'Baustein hinzufügen — Bibliothek öffnen (A)',
+      onClick: openLibrary
+    });
+    panel.endSection();
+
+    // Section "Werkzeuge"
+    panel.beginSection('werkzeuge', { title: 'Werkzeuge' });
+    panel.addButtonGroup('tool', {
+      buttons: [
+        { key: 'move', label: 'Bewegen', title: 'Bewegen (V)', onClick: function () { setTool('move'); } },
+        { key: 'warp', label: 'Verzerren', title: 'Verzerren (W)', onClick: function () { setTool('warp'); } },
+        { key: 'draw', label: 'Zeichnen', title: 'Zeichnen (Z)', onClick: function () { setTool('draw'); } }
+      ]
+    });
+    panel.endSection();
+    var btns = panel.bodyEl.querySelectorAll('[data-key="tool"] .ctrl-button');
+    for (var b = 0; b < btns.length; b++) {
+      toolButtons[btns[b].dataset.buttonKey] = btns[b];
     }
-    if (els.stackList) {
-      var row = els.stackList.querySelector(sel);
-      if (row) {
-        var ic = row.querySelector('.type-icon');
-        if (ic) ic.classList.toggle('force-live', on);
+
+    // Je Block-Typ eine Section, in Familien-Reihenfolge der Bibliothek
+    var defsList = libDefs();
+    for (var c = 0; c < CAT_ORDER.length; c++) {
+      for (var i = 0; i < defsList.length; i++) {
+        if (defsList[i].kind === CAT_ORDER[c]) buildTypeSection(defsList[i]);
       }
     }
-    if (els.stackPill) {
-      els.stackPill.classList.toggle('force-live', on && !stackPanelOpen());
+    for (var j = 0; j < defsList.length; j++) {
+      if (CAT_ORDER.indexOf(defsList[j].kind) < 0) buildTypeSection(defsList[j]);
+    }
+
+    // Section "Werk": Aktionen als normale Panel-Buttons (circleheart-
+    // Muster: Aktionen wohnen im Body, nicht im Header)
+    panel.beginSection('werk', { title: 'Werk' });
+    panel.addButtonGroup('werk.ansicht', {
+      buttons: [
+        { key: 'fit', label: 'Einpassen', title: 'Ansicht auf die Szene zentrieren', onClick: fitView },
+        { key: 'vollbild', label: 'Vollbild', title: 'Vollbild', onClick: onFullscreen }
+      ]
+    });
+    panel.addButtonGroup('werk.teilen', {
+      buttons: [
+        { key: 'png', label: 'PNG', title: 'Als PNG exportieren', onClick: onExport },
+        { key: 'teilen', label: 'Teilen', title: 'Teilen — Szene liegt in der URL', onClick: onShare }
+      ]
+    });
+    panel.endSection();
+  }
+
+  // panel.set kennt die Pattern-Buttons nicht — aktive Kachel per Index
+  // spiegeln (Grid-Reihenfolge: [keins, ...entry.patterns])
+  function syncPatternPicker(key, entry, value) {
+    var picker = panel.bodyEl.querySelector('.ctrl-pattern-picker[data-key="' + key + '"]');
+    if (!picker) return;
+    var tiles = picker.querySelectorAll('.ctrl-pattern-btn');
+    var patterns = entry.patterns || [];
+    var want = typeof value === 'string' ? value : null;
+    for (var i = 0; i < tiles.length; i++) {
+      var id = i === 0 ? null : (patterns[i - 1] ? patterns[i - 1].id : undefined);
+      tiles[i].classList.toggle('active', id === want);
     }
   }
 
-  // Kraft ausgewählt: Zeilen in ihrem Feld markieren + Erklärzeile zeigen
-  function updateScopeMarks() {
-    if (!els.side) return;
-    var selIdx = -1;
-    for (var i = 0; i < scene.blocks.length; i++) {
-      if (scene.blocks[i].id === scene.selectedId) { selIdx = i; break; }
-    }
-    var isKraft = selIdx >= 0 && blockKind(scene.blocks[selIdx]) === 'kraft'
-      && scene.blocks[selIdx].visible; // unsichtbare Kraft wirkt nicht
-    els.side.classList.toggle('kraft-selected', isKraft && selIdx > 0);
-    var rows = els.stackList.children;
-    for (var r = 0; r < rows.length; r++) {
-      var rowIdx = (scene.blocks.length - 1) - r; // display order is reversed
-      rows[r].classList.toggle('in-scope', isKraft && rowIdx < selIdx);
-      // Quelle der Scope-Linie: die ausgewählte Kraft selbst
-      rows[r].classList.toggle('scope-src', isKraft && selIdx > 0 && rowIdx === selIdx);
+  // Instanz-Werte in die (bestehenden) Rows spiegeln — panel.set feuert
+  // kein onChange, exakt das circleheart-updateUI-Muster
+  function setPanelValues(block) {
+    var sec = sectionFor(block.type);
+    if (!sec) return;
+    for (var i = 0; i < sec.entries.length; i++) {
+      var entry = sec.entries[i];
+      var key = panelKey(block.type, entry.key);
+      var v = block.params[entry.key];
+      panel.set(key, entry.ctrl === 'toggle' ? !!v : v);
+      if (entry.ctrl === 'patterns') syncPatternPicker(key, entry, v);
     }
   }
 
-  function buildStackRow(block, index) {
+  // Boot-Selektion (Default-Szene / ?s=-Load) laeuft synchron nach init —
+  // erst danach scrollt eine Nutzer-Selektion die Typ-Section ins Bild
+  var bootDone = false;
+
+  // Panel-Body zur eingeblendeten Typ-Section scrollen, wenn sie
+  // ausserhalb des sichtbaren Ausschnitts liegt (Stapel steht darueber)
+  function scrollTypeSectionIntoView(type) {
+    requestAnimationFrame(function () {
+      if (!panel || !panel.bodyEl) return;
+      var secEl = document.getElementById('oc-ctrl-panel-section-type-' + type);
+      if (!secEl || secEl.classList.contains('hidden')) return;
+      var br = panel.bodyEl.getBoundingClientRect();
+      var sr = secEl.getBoundingClientRect();
+      if (sr.top < br.top || sr.top > br.bottom - 60) {
+        panel.bodyEl.scrollTop += Math.round(sr.top - br.top);
+      }
+    });
+  }
+
+  // Selektion -> nur Sichtbarkeit schalten + Werte setzen
+  function syncSelection() {
+    if (!panel) return;
+    var block = getBlock(scene.selectedId);
+    var type = block ? block.type : null;
+    if (type !== shownType) {
+      for (var i = 0; i < typeSections.length; i++) {
+        panel.showSection('type-' + typeSections[i].type, typeSections[i].type === type);
+      }
+      shownType = type;
+      // showSection stoesst das Mobil-Sheet-Layout nicht an — eine
+      // No-op-Row-Visibility ueber die Original-API holt den Refresh nach
+      panel.setRowVisibility('tool', true);
+      if (type && bootDone) scrollTypeSectionIntoView(type);
+    }
+    if (block) setPanelValues(block);
+    updateStackSelection();
+  }
+
+  // sync panel UI from params without firing onChange (used during canvas drags)
+  function refreshPropsValues() {
+    if (!panel) return;
+    var block = getBlock(scene.selectedId);
+    if (block && block.type === shownType) setPanelValues(block);
+  }
+
+  /* ---------- Stapel-Zeilen in Section "Bausteine" ---------- */
+
+  function renderStack() {
+    if (!stackListEl) return;
+    stackListEl.innerHTML = '';
+    if (!scene.blocks.length) {
+      var empty = document.createElement('div');
+      empty.className = 'oc-stack-empty';
+      empty.textContent = 'Noch keine Bausteine';
+      stackListEl.appendChild(empty);
+    }
+    // display reversed: top of the stack is the first row
+    for (var i = scene.blocks.length - 1; i >= 0; i--) {
+      stackListEl.appendChild(buildStackRow(scene.blocks[i]));
+    }
+    updateEmptyHint();
+  }
+
+  function buildStackRow(block) {
     var def = scene.defs.get(block.type);
     var kind = def ? def.kind : 'ding';
 
-    var li = document.createElement('li');
-    li.className = 'stack-row k-' + kind
+    var row = document.createElement('div');
+    row.className = 'oc-row k-' + kind
       + (block.id === scene.selectedId ? ' selected' : '')
       + (block.visible ? '' : ' hidden-layer');
-    li.dataset.id = block.id;
-
-    // Scope-Spalte: eine Linie je Kraft, die auf diese Zeile wirkt
-    var gutter = document.createElement('span');
-    gutter.className = 'scope-gutter';
-    var depth = Math.min(3, forcesAbove(index));
-    for (var g = 0; g < depth; g++) {
-      var ln = document.createElement('span');
-      ln.className = 'scope-line';
-      gutter.appendChild(ln);
-    }
-    if (kind === 'kraft' && block.visible) {
-      var src = document.createElement('span');
-      src.className = 'scope-line src';
-      gutter.appendChild(src);
-    }
-    li.appendChild(gutter);
+    row.dataset.id = block.id;
 
     var handle = document.createElement('span');
-    handle.className = 'drag-handle';
+    handle.className = 'oc-row-handle';
     handle.textContent = '⠿';
     handle.title = 'Ziehen zum Umsortieren';
     handle.addEventListener('pointerdown', function (ev) {
-      startRowDrag(ev, li, handle);
+      startRowDrag(ev, row, handle);
     });
 
     var icon = document.createElement('span');
     icon.className = 'type-icon ' + kind;
     setTypeIcon(icon, def);
 
-    var label = document.createElement('span');
-    label.className = 'row-label';
-    var kindEl = document.createElement('span');
-    kindEl.className = 'row-kind';
-    kindEl.textContent = KIND_LABEL[kind] || kind;
-    var nameEl = document.createElement('span');
-    nameEl.className = 'row-name';
-    nameEl.textContent = block.name;
-    label.appendChild(kindEl);
-    label.appendChild(nameEl);
-
-    // Umbenennen: Doppelklick auf den Namen -> Inline-Edit (Name läuft
-    // schon über serialize/?s=, hier bekommt er nur endlich eine UI)
-    function startRename() {
-      if (nameEl.querySelector('input')) return;
-      var input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'rename-input';
-      input.value = block.name;
-      input.maxLength = 48;
-      nameEl.textContent = '';
-      nameEl.appendChild(input);
-      input.focus();
-      input.select();
-      var done = false;
-      function commit(save) {
-        if (done) return;
-        done = true;
-        var v = input.value.trim();
-        if (save && v && v !== block.name) {
-          block.name = v;
-          touchState();
-        }
-        nameEl.textContent = block.name;
-        if (propsBlock === block && propsTitleName) propsTitleName.textContent = block.name;
-        updateRibbon();
-        updateHullOverlay();
-      }
-      input.addEventListener('keydown', function (e) {
-        e.stopPropagation();
-        if (e.key === 'Enter') commit(true);
-        else if (e.key === 'Escape') commit(false);
-      });
-      input.addEventListener('blur', function () { commit(true); });
-      input.addEventListener('click', function (e) { e.stopPropagation(); });
-      input.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
-    }
-    nameEl.title = 'Doppelklick zum Umbenennen';
-    nameEl.addEventListener('dblclick', function (ev) {
-      ev.stopPropagation();
-      ev.preventDefault();
-      startRename();
-    });
-
-    var dup = document.createElement('button');
-    dup.className = 'dup-btn';
-    dup.textContent = '⧉';
-    dup.title = 'Duplizieren';
-    dup.setAttribute('aria-label', 'Baustein duplizieren');
-    dup.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      duplicateBlock(block);
-    });
+    var name = document.createElement('span');
+    name.className = 'oc-row-name';
+    name.textContent = block.name;
+    name.title = (KIND_LABEL[kind] || kind) + ' — ' + block.name;
 
     var eye = document.createElement('button');
-    eye.className = 'eye-btn' + (block.visible ? '' : ' off');
+    eye.type = 'button';
+    eye.className = 'oc-row-btn eye' + (block.visible ? '' : ' off');
     eye.textContent = block.visible ? '◉' : '○';
-    eye.title = block.visible ? 'Ausblenden' : 'Einblenden';
+    eye.title = block.visible ? 'Ausblenden (H)' : 'Einblenden (H)';
     eye.setAttribute('aria-label', eye.title);
     eye.addEventListener('click', function (ev) {
       ev.stopPropagation();
@@ -481,7 +565,8 @@
     });
 
     var del = document.createElement('button');
-    del.className = 'del-btn';
+    del.type = 'button';
+    del.className = 'oc-row-btn del';
     del.textContent = '✕';
     del.title = 'Löschen';
     del.setAttribute('aria-label', 'Baustein löschen');
@@ -490,33 +575,38 @@
       removeBlockWithUndo(block);
     });
 
-    li.appendChild(handle);
-    li.appendChild(icon);
-    li.appendChild(label);
+    row.appendChild(handle);
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(eye);
+    row.appendChild(del);
 
-    // "wirkt ↓ n" — eine Kraft strahlt auf alles darunter
-    // (nur solange sie sichtbar ist: die Engine überspringt unsichtbare)
-    if (kind === 'kraft' && block.visible && index > 0) {
-      var tag = document.createElement('span');
-      tag.className = 'row-tag';
-      tag.title = 'Diese Kraft wirkt auf alle Bausteine darunter';
-      tag.textContent = 'wirkt ↓ ' + index;
-      li.appendChild(tag);
-    }
-
-    li.appendChild(dup);
-    li.appendChild(eye);
-    li.appendChild(del);
-
-    li.addEventListener('click', function () {
+    row.addEventListener('click', function () {
       if (Date.now() < suppressRowClickUntil) return;
       scene.select(block.id);
     });
-    return li;
+    return row;
+  }
+
+  function updateStackSelection() {
+    if (!stackListEl) return;
+    var rows = stackListEl.children;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].classList.toggle('selected', rows[i].dataset.id === scene.selectedId);
+    }
+  }
+
+  // Verzerren-Drag: die Kraft-Glyphe der Stapel-Zeile pulsiert, solange
+  // gezogen wird — Ursache und Wirkung bleiben verbunden
+  function setForceLive(id, on) {
+    if (!stackListEl) return;
+    var row = stackListEl.querySelector('[data-id="' + id + '"]');
+    if (!row) return;
+    var ic = row.querySelector('.type-icon');
+    if (ic) ic.classList.toggle('force-live', on);
   }
 
   // one-step undo: snapshot before removal, restore via toast action
-  // (Stapel-Zeile UND Chip am Objekt teilen sich diesen Pfad)
   function removeBlockWithUndo(block) {
     var snap = {
       type: block.type,
@@ -534,13 +624,9 @@
     });
   }
 
-  // Auge-Knopf, Shortcut H und Palette teilen sich diesen Pfad: der
-  // Re-Render hält Stapel, Spine, Ribbon und Scope-Marken konsistent —
-  // die Engine überspringt unsichtbare Kräfte, die UI muss folgen
   function toggleBlockVisible(block) {
     block.visible = !block.visible;
     renderStack();
-    updateEmptyHint();
     touchState();
   }
 
@@ -589,21 +675,6 @@
     touchState();
   }
 
-  function updateStackSelection() {
-    var rows = els.stackList.children;
-    for (var i = 0; i < rows.length; i++) {
-      rows[i].classList.toggle('selected', rows[i].dataset.id === scene.selectedId);
-    }
-    if (els.spineList) {
-      var verts = els.spineList.children;
-      for (var v = 0; v < verts.length; v++) {
-        verts[v].classList.toggle('selected', verts[v].dataset.id === scene.selectedId);
-      }
-    }
-    renderMiniBeam();
-    updateScopeMarks();
-  }
-
   /* ---------- drag-reorder (pointer events, works with touch) ---------- */
 
   function startRowDrag(ev, row, handle) {
@@ -617,14 +688,15 @@
     var startY = ev.clientY;
     var lastClientY = ev.clientY;
     var scrollRAF = 0;
+    var scrollEl = panel ? panel.bodyEl : null;
 
     try { handle.setPointerCapture(ev.pointerId); } catch (e) { /* older browsers */ }
 
     function otherRows() {
       var out = [];
-      var kids = els.stackList.children;
+      var kids = stackListEl.children;
       for (var i = 0; i < kids.length; i++) {
-        if (kids[i].dataset.id !== draggedId) out.push(kids[i]);
+        if (kids[i].dataset.id && kids[i].dataset.id !== draggedId) out.push(kids[i]);
       }
       return out;
     }
@@ -655,11 +727,12 @@
       }
     }
 
-    // list auto-scrolls while the pointer sits in the top/bottom edge zone
+    // Panel-Body auto-scrolls while the pointer sits in the edge zone
     var SCROLL_ZONE_PX = 32;
     function autoScrollTick() {
       scrollRAF = 0;
-      var lr = els.stackList.getBoundingClientRect();
+      if (!scrollEl) return;
+      var lr = scrollEl.getBoundingClientRect();
       var v = 0;
       if (lastClientY < lr.top + SCROLL_ZONE_PX) {
         v = -Math.ceil((lr.top + SCROLL_ZONE_PX - lastClientY) / 3);
@@ -667,9 +740,9 @@
         v = Math.ceil((lastClientY - (lr.bottom - SCROLL_ZONE_PX)) / 3);
       }
       if (!v) return;
-      var before = els.stackList.scrollTop;
-      els.stackList.scrollTop = before + v;
-      if (els.stackList.scrollTop !== before) markDropAt(lastClientY);
+      var before = scrollEl.scrollTop;
+      scrollEl.scrollTop = before + v;
+      if (scrollEl.scrollTop !== before) markDropAt(lastClientY);
       scrollRAF = requestAnimationFrame(autoScrollTick);
     }
 
@@ -708,505 +781,6 @@
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onEnd);
     handle.addEventListener('pointercancel', onEnd);
-  }
-
-  /* ---------- properties panel (tools/controls.js, the site's original) ---------- */
-  // One Controls.createPanel singleton for the whole page (like the other
-  // tools); selecting a block swaps its schema into a panel section via
-  // removeSection/beginSection (cleans params/callbacks — no zombie panels).
-  // Panel position, bar mode and mobile sheet position survive selection
-  // changes that way.
-
-  var propsPanel = null;       // ControlPanel singleton (page lifetime)
-  var propsBlock = null;       // block the panel is currently bound to
-  var propsPanelKeys = [];     // schema keys mirrored into the panel
-  var propsTitleIcon = null;
-  var propsTitleName = null;
-
-  // controls.js switches to its mobile bottom sheet at this width
-  function isSheetMobile() {
-    return window.innerWidth <= 768;
-  }
-
-  /* ---------- --visible-viewport-* live halten ----------
-   * Original-Mechanik aus meta.js (dort haelt sie das globale UI aktuell;
-   * 0necanvas laedt meta.js nicht): controls.js liest
-   * --visible-viewport-bottom fuers Mobile-Bottom-Offset, controls-theme.css
-   * nutzt --visible-viewport-height fuer die Sheet-max-height — beide
-   * muessen bei eingeblendeter Tastatur/geschrumpftem visualViewport
-   * mitlaufen statt statisch gepinnt zu sein. Code 1:1 aus meta.js. */
-  function syncVisibleViewport() {
-    var root = document.documentElement;
-    var visualViewport = window.visualViewport;
-    var layoutWidth = Math.max(root.clientWidth || 0, window.innerWidth || 0, 1);
-    var layoutHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1);
-    var width = Math.max(1, (visualViewport && visualViewport.width) || layoutWidth);
-    var height = Math.max(1, (visualViewport && visualViewport.height) || window.innerHeight || layoutHeight);
-    var top = Math.max(0, (visualViewport && visualViewport.offsetTop) || 0);
-    var left = Math.max(0, (visualViewport && visualViewport.offsetLeft) || 0);
-    var bottom = Math.max(0, layoutHeight - (top + height));
-
-    root.style.setProperty('--visible-viewport-width', Math.round(width) + 'px');
-    root.style.setProperty('--visible-viewport-height', Math.round(height) + 'px');
-    root.style.setProperty('--visible-viewport-top', Math.round(top) + 'px');
-    root.style.setProperty('--visible-viewport-left', Math.round(left) + 'px');
-    root.style.setProperty('--visible-viewport-bottom', Math.round(bottom) + 'px');
-  }
-
-  var visibleViewportFrame = 0;
-  function scheduleVisibleViewportSync() {
-    if (visibleViewportFrame) return;
-    visibleViewportFrame = requestAnimationFrame(function () {
-      visibleViewportFrame = 0;
-      syncVisibleViewport();
-    });
-  }
-
-  function initVisibleViewportSync() {
-    scheduleVisibleViewportSync();
-    window.addEventListener('load', scheduleVisibleViewportSync);
-    window.addEventListener('resize', scheduleVisibleViewportSync);
-    window.addEventListener('orientationchange', scheduleVisibleViewportSync);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', scheduleVisibleViewportSync);
-      window.visualViewport.addEventListener('scroll', scheduleVisibleViewportSync);
-    }
-  }
-
-  function ensurePropsPanel() {
-    if (propsPanel) return propsPanel;
-    if (!window.Controls || typeof Controls.createPanel !== 'function') {
-      console.warn('0necanvas ui: tools/controls.js fehlt — kein Eigenschaften-Panel');
-      return null;
-    }
-    var panel = Controls.createPanel({ id: 'oc-ctrl-panel', position: 'left' });
-
-    // header title: type icon + block name (info only; drag handle untouched)
-    if (panel.headerEl) {
-      var title = document.createElement('span');
-      title.className = 'oc-ctrl-title';
-      propsTitleIcon = document.createElement('span');
-      propsTitleIcon.className = 'type-icon ding';
-      propsTitleName = document.createElement('span');
-      propsTitleName.className = 'oc-ctrl-title-name';
-      title.appendChild(propsTitleIcon);
-      title.appendChild(propsTitleName);
-      panel.headerEl.appendChild(title);
-    }
-
-    panel.addHeaderButton({
-      icon: '⠿',
-      title: 'Bausteine (Auswahl aufheben)',
-      onClick: function () { scene.select(null); }
-    });
-    panel.addResetButton({
-      icon: '↺',
-      title: 'Block auf Standardwerte zurücksetzen',
-      onClick: resetBlockParams
-    });
-
-    propsPanel = panel;
-    return panel;
-  }
-
-  // Mobil-Sheet-Initialzustand wie das Original (circleheart): beim ersten
-  // Erscheinen zeigt sich NUR der Peek-Balken, der Nutzer öffnet selbst per
-  // Tap auf den Griff. controls.js' initPosition merkt sich dabei die
-  // Drittel-Höhe als Offen-Höhe (Tap-Ziel), landet aber je nach Content-
-  // Höhe offen statt auf Peek — deshalb einmalig nachstellen: im selben
-  // Frame NACH initPosition (dessen rAF ist beim ersten Zeigen schon
-  // eingereiht, unserer kommt danach — kein offener Frame wird gemalt) auf
-  // maxY setzen; rememberOpen:false lässt das Drittel-Tap-Ziel unangetastet.
-  var sheetPeekedOnce = false;
-
-  function setPanelShown(shown) {
-    document.body.classList.toggle('oc-props-open', !!shown);
-    if (propsPanel && propsPanel.el) {
-      var wasHidden = propsPanel.el.classList.contains('oc-hidden');
-      propsPanel.el.classList.toggle('oc-hidden', !shown);
-      if (shown && wasHidden) {
-        // panel could not measure itself while hidden — let controls.js re-layout
-        try { window.dispatchEvent(new Event('resize')); } catch (e) { /* noop */ }
-      }
-      if (shown && !sheetPeekedOnce && isSheetMobile() &&
-          typeof propsPanel._applyMobileSheetPosition === 'function') {
-        sheetPeekedOnce = true;
-        requestAnimationFrame(function () {
-          if (!propsPanel || !propsPanel.el || !isSheetMobile()) return;
-          if (propsPanel.el.classList.contains('oc-hidden')) return;
-          try {
-            // y weit jenseits maxY — controls.js klemmt auf den Peek-Balken
-            propsPanel._applyMobileSheetPosition(1e9, false, { rememberOpen: false, signalLayout: true });
-          } catch (e) { /* controls.js' Refresh entscheidet dann selbst */ }
-        });
-      }
-    }
-    updateRibbon();
-  }
-
-  /* ---------- Kontext-Ribbon über dem Regler-Panel ---------- */
-  // „Kurve — Ding · 3 von 5 · im Feld von: Raum verzerren". Liest nur:
-  // controls.js bleibt unangetastet, das Ribbon folgt dem Panel-Rechteck
-  // per rAF (Panel ist frei verschiebbar).
-
-  var ribbonRaf = 0;
-
-  function ribbonMetaText(block) {
-    var idx = -1;
-    for (var i = 0; i < scene.blocks.length; i++) {
-      if (scene.blocks[i].id === block.id) { idx = i; break; }
-    }
-    var kind = blockKind(block);
-    var parts = [KIND_LABEL[kind] || kind];
-    if (idx >= 0) parts.push((idx + 1) + ' von ' + scene.blocks.length);
-    if (kind === 'kraft') {
-      // eine ausgeblendete Kraft wirkt nicht (Engine überspringt sie)
-      if (idx > 0 && block.visible) parts.push('wirkt ↓ ' + idx);
-    } else if (idx >= 0) {
-      var names = [];
-      for (var j = idx + 1; j < scene.blocks.length; j++) {
-        var b = scene.blocks[j];
-        if (b.visible && blockKind(b) === 'kraft') names.push(b.name);
-      }
-      if (names.length === 1) parts.push('im Feld von: ' + names[0]);
-      else if (names.length > 1) parts.push('im Feld von: ' + names[0] + ' +' + (names.length - 1));
-    }
-    return parts.join(' · ');
-  }
-
-  // Mobil rueckt die Pillen-Zeile ueber das Regler-Sheet: --oc-ctrl-lift =
-  // sichtbare Sheet-Hoehe + Ribbon (sitzt oben drauf), geklemmt, damit die
-  // Pillen nie vom Schirm rutschen oder den Zurueck-Pfeil verdecken
-  function setCtrlLift(rect) {
-    if (!isSheetMobile()) return;
-    var lift = 0;
-    if (rect) {
-      var ribbonH = ((els.ribbon && els.ribbon.offsetHeight) || 34) + 6; // +6 = Schwebe-Abstand der Pille
-      lift = clamp(Math.round(window.innerHeight - rect.top + ribbonH), 0,
-        Math.round(window.innerHeight * 0.72));
-    }
-    document.body.style.setProperty('--oc-ctrl-lift', lift + 'px');
-  }
-
-  function positionRibbon() {
-    var el = propsPanel && propsPanel.el;
-    if (!el) return;
-    var covered = el.classList.contains('oc-hidden') || el.classList.contains('bar-mode');
-    var rect = covered ? null : el.getBoundingClientRect();
-    if (!rect || rect.width < 60 || rect.height < 40) {
-      els.ribbon.style.opacity = '0';
-      setCtrlLift(null);
-      return;
-    }
-    els.ribbon.style.opacity = '1';
-    var h = els.ribbon.offsetHeight || 34;
-    // Pille schwebt frei ueber dem Panel (das Panel traegt sein
-    // Original-Chrome aus meta.css — die Addition dockt nur an)
-    var gap = 6;
-    var inset = isSheetMobile() ? 10 : 0;
-    els.ribbon.style.left = (rect.left + inset) + 'px';
-    els.ribbon.style.top = (rect.top - h - gap) + 'px';
-    els.ribbon.style.width = Math.max(0, rect.width - inset * 2) + 'px';
-    setCtrlLift(rect);
-  }
-
-  function ribbonLoop() {
-    positionRibbon();
-    ribbonRaf = requestAnimationFrame(ribbonLoop);
-  }
-
-  function updateRibbon() {
-    if (!els.ribbon) return;
-    var show = !!propsBlock && document.body.classList.contains('oc-props-open');
-    if (!show) {
-      els.ribbon.hidden = true;
-      if (ribbonRaf) { cancelAnimationFrame(ribbonRaf); ribbonRaf = 0; }
-      document.body.style.setProperty('--oc-ctrl-lift', '0px');
-      return;
-    }
-    var def = scene.defs.get(propsBlock.type);
-    setTypeIcon(els.ribbonIco, def);
-    els.ribbonName.textContent = propsBlock.name;
-    els.ribbonMeta.textContent = ribbonMetaText(propsBlock);
-    els.ribbon.hidden = false;
-    positionRibbon();
-    if (!ribbonRaf) ribbonRaf = requestAnimationFrame(ribbonLoop);
-  }
-
-  /* ---------- Kontext am Objekt: Live-Hüllbox + Chip ---------- */
-  // Werk antippen -> Hüllbox um die emittierte Geometrie + Chip darüber
-  // (Name, Gattung, Regler, Duplizieren, Löschen). Die Kraft-Kette bleibt
-  // bewusst außen vor — wie hit() und das Auswahl-Overlay der Engine.
-  // Bounds über den minimalen Engine-Hook scene.blockBounds; die
-  // Welt->Schirm-Projektion läuft jeden Frame (klebt bei Pan/Zoom/Drag),
-  // die Bounds selbst werden alle 150ms erneuert (emit kann teuer sein).
-
-  var hullRaf = 0;
-  var hullBB = null;
-  var hullBBFor = null;
-  var hullBBAt = 0;
-  var HULL_PAD_PX = 12;
-  var HULL_BB_MS = 150;
-
-  function hullEligible() {
-    if (!autoPropsTabArmed) return null; // Boot-Select: stille Bühne zuerst
-    var b = getBlock(scene.selectedId);
-    if (!b || !b.visible) return null;
-    if (blockKind(b) === 'kraft') return null; // Kräfte haben keine eigene Form
-    return b;
-  }
-
-  function hideHull() {
-    if (els.selframe) els.selframe.hidden = true;
-    if (els.chip) els.chip.hidden = true;
-    hullBB = null;
-    hullBBFor = null;
-    if (hullRaf) { cancelAnimationFrame(hullRaf); hullRaf = 0; }
-  }
-
-  function updateChipContent(block) {
-    if (!els.chip) return;
-    var def = scene.defs.get(block.type);
-    setTypeIcon(els.chipIco, def);
-    els.chipName.textContent = block.name;
-    els.chipKind.textContent = KIND_LABEL[blockKind(block)] || '';
-  }
-
-  function hullFrame() {
-    hullRaf = 0;
-    var b = hullEligible();
-    if (!b) { hideHull(); return; }
-    var now = performance.now();
-    if (hullBBFor !== b.id || now - hullBBAt > HULL_BB_MS) {
-      hullBB = (typeof scene.blockBounds === 'function') ? scene.blockBounds(b.id) : null;
-      hullBBFor = b.id;
-      hullBBAt = now;
-    }
-    var r = els.canvas.getBoundingClientRect();
-    var cx, topY;
-    if (hullBB) {
-      var p0 = scene.worldToScreen(hullBB.minX, hullBB.minY);
-      var p1 = scene.worldToScreen(hullBB.maxX, hullBB.maxY);
-      var x = r.left + Math.min(p0[0], p1[0]) - HULL_PAD_PX;
-      var y = r.top + Math.min(p0[1], p1[1]) - HULL_PAD_PX;
-      var w = Math.abs(p1[0] - p0[0]) + HULL_PAD_PX * 2;
-      var h = Math.abs(p1[1] - p0[1]) + HULL_PAD_PX * 2;
-      els.selframe.style.left = x + 'px';
-      els.selframe.style.top = y + 'px';
-      els.selframe.style.width = w + 'px';
-      els.selframe.style.height = h + 'px';
-      els.selframe.hidden = false;
-      cx = x + w / 2;
-      topY = y;
-    } else {
-      // emit lieferte (noch) nichts: Chip am Block-Anker, ohne Rahmen
-      els.selframe.hidden = true;
-      var a = blockAnchor(b);
-      var p = scene.worldToScreen(a[0], a[1]);
-      cx = r.left + p[0];
-      topY = r.top + p[1];
-    }
-    els.chip.hidden = false;
-    var ch = els.chip.offsetHeight || 50;
-    var cw = els.chip.offsetWidth || 220;
-    cx = clamp(cx, cw / 2 + 8, window.innerWidth - cw / 2 - 8);
-    // nie über die Aktionsleiste oben rutschen (füllt die Form den Schirm,
-    // würde der Chip sonst die Ecken-Buttons verdecken)
-    var minTop = 8;
-    if (els.corner) {
-      var cr = els.corner.getBoundingClientRect();
-      if (cr.bottom > minTop) minTop = cr.bottom + 6;
-    }
-    var ct = clamp(topY - ch - 10, minTop, window.innerHeight - ch - 8);
-    els.chip.style.left = cx + 'px';
-    els.chip.style.top = ct + 'px';
-    hullRaf = requestAnimationFrame(hullFrame);
-  }
-
-  function updateHullOverlay() {
-    if (!els.chip || !els.selframe) return;
-    var b = hullEligible();
-    if (!b) { hideHull(); return; }
-    updateChipContent(b);
-    hullBBAt = 0; // Bounds sofort neu holen (Selektion/Stapel geändert)
-    if (!hullRaf) hullRaf = requestAnimationFrame(hullFrame);
-  }
-
-  // detach the current block (drops rows + their callbacks) and hide
-  function unbindPropsPanel() {
-    if (propsPanel && propsBlock) {
-      try { propsPanel.removeSection('props'); } catch (e) { console.warn('0necanvas ui: removeSection failed', e); }
-    }
-    propsBlock = null;
-    propsPanelKeys = [];
-    setPanelShown(false);
-  }
-
-  function panelSliderLabel(entry) {
-    return entry.unit ? entry.label + ' (' + entry.unit + ')' : entry.label;
-  }
-
-  function bindPropsPanel(block) {
-    var panel = ensurePropsPanel();
-    if (!panel) return;
-    if (propsBlock) {
-      try { panel.removeSection('props'); } catch (e) { console.warn('0necanvas ui: removeSection failed', e); }
-    }
-    propsBlock = block;
-    propsPanelKeys = [];
-
-    var def = scene.defs.get(block.type);
-    var kind = def ? def.kind : 'ding';
-    if (propsTitleIcon) {
-      propsTitleIcon.className = 'type-icon ' + kind;
-      setTypeIcon(propsTitleIcon, def);
-    }
-    if (propsTitleName) propsTitleName.textContent = block.name;
-
-    panel.beginSection('props');
-    var schema = (def && def.schema) || [];
-    for (var i = 0; i < schema.length; i++) {
-      addPanelControl(panel, block, schema[i]);
-    }
-    panel.endSection();
-
-    // Original-Lebenszyklus baut das Panel pro Seite neu — der Body startet
-    // immer bei scrollTop 0. Beim Singleton-Section-Swap explizit
-    // zuruecksetzen, sonst bleibt die Scroll-Position des alten Blocks stehen
-    // und die erste Zeile des neuen Blocks ist oben angeschnitten.
-    if (panel.bodyEl) panel.bodyEl.scrollTop = 0;
-
-    // Singleton-Section-Swap bei offenem Mobil-Sheet: die sichtbare Hoehe
-    // des Nutzers beibehalten und synchron auf den NEUEN Inhalt rebasen
-    // (setPosition mit animate=false => controls.js misst die Body-Hoehe
-    // sofort korrekt). Ohne das klassifiziert controls.js die stale
-    // Sheet-Position (y vom alten, groesseren Inhalt) als "mostly closed"
-    // und schnappt fuer einen Frame auf Peek; der Body bliebe bis zur
-    // naechsten Interaktion auf ~2px abgeschnitten.
-    if (isSheetMobile() &&
-        document.body.classList.contains('oc-props-open') &&
-        panel.el && !panel.el.classList.contains('oc-hidden') &&
-        typeof panel._applyMobileSheetPosition === 'function') {
-      try {
-        var visibleOld = Math.max(0, window.innerHeight - panel.el.getBoundingClientRect().top);
-        var naturalH = 0;
-        if (panel.bodyEl) {
-          // natuerliche Hoehe des NEUEN Inhalts messen: bei height:0 liefert
-          // scrollHeight die reine Contenthoehe (inline '' wuerde die
-          // CSS-calc-Hoehe greifen lassen, 'auto' den Flex-Stretch auf die
-          // alte Panelhoehe); setPosition setzt gleich wieder px-Werte
-          panel.bodyEl.style.height = '0px';
-          panel.bodyEl.style.maxHeight = 'none';
-          naturalH = panel.bodyEl.scrollHeight || 0;
-        }
-        var headerH = (panel.headerEl && panel.headerEl.offsetHeight) || 56;
-        var fullNew = Math.max(headerH, Math.min(headerH + naturalH, window.innerHeight));
-        var yNew = Math.max(0, fullNew - Math.min(visibleOld, fullNew));
-        panel._applyMobileSheetPosition(yNew, false);
-      } catch (e) { /* controls.js' ResizeObserver-Refresh greift als Fallback */ }
-    }
-  }
-
-  function addPanelControl(panel, block, entry) {
-    function apply(v) {
-      block.params[entry.key] = v;
-      touchState();
-    }
-    switch (entry.ctrl) {
-      case 'slider':
-        panel.addSlider(entry.key, {
-          label: panelSliderLabel(entry),
-          min: entry.min,
-          max: entry.max,
-          step: entry.step,
-          value: Number(block.params[entry.key]),
-          decimals: entry.decimals,
-          onChange: apply
-        });
-        propsPanelKeys.push(entry.key);
-        break;
-      case 'toggle':
-        panel.addToggle(entry.key, {
-          label: entry.label,
-          value: !!block.params[entry.key],
-          onChange: function (v) { apply(!!v); }
-        });
-        propsPanelKeys.push(entry.key);
-        break;
-      case 'select':
-        panel.addSelect(entry.key, {
-          label: entry.label,
-          options: entryOptions(entry),
-          value: block.params[entry.key],
-          onChange: apply
-        });
-        propsPanelKeys.push(entry.key);
-        break;
-      case 'text':
-        panel.addInput(entry.key, {
-          label: entry.label,
-          value: block.params[entry.key] == null ? '' : String(block.params[entry.key]),
-          onChange: function (v) { apply(String(v)); }
-        });
-        if (entry.maxlen && panel.bodyEl) {
-          var inp = panel.bodyEl.querySelector('[data-key="' + entry.key + '"] .ctrl-input');
-          if (inp) inp.maxLength = entry.maxlen;
-        }
-        propsPanelKeys.push(entry.key);
-        break;
-      case 'patterns':
-        // controls.js Pattern-Picker (Original-Nutzung: game0f1ife.html);
-        // param trägt die Pattern-id (string) oder null (= keins)
-        if (typeof panel.addPatternPicker !== 'function') {
-          console.warn('0necanvas ui: controls.js ohne addPatternPicker — "' + entry.key + '" übersprungen');
-          break;
-        }
-        panel.addPatternPicker(entry.key, {
-          label: entry.label,
-          patterns: entry.patterns || [],
-          value: typeof block.params[entry.key] === 'string' ? block.params[entry.key] : null,
-          columns: entry.columns || 6,
-          buttonSize: entry.buttonSize || 40,
-          onChange: function (patternId) { apply(patternId || null); }
-        });
-        propsPanelKeys.push(entry.key);
-        break;
-      case 'hidden':
-        break; // serialized param without UI (pfad pts)
-      default:
-        console.warn('0necanvas ui: unknown ctrl "' + entry.ctrl + '" for key "' + entry.key + '"');
-    }
-  }
-
-  // reset button: back to the block's schema defaults ('hidden' entries —
-  // drawn pfad points — survive; the stroke itself is not throwaway state)
-  function resetBlockParams() {
-    var block = propsBlock;
-    if (!block || !propsPanel) return;
-    var def = scene.defs.get(block.type);
-    var schema = (def && def.schema) || [];
-    var hasPatterns = false;
-    for (var i = 0; i < schema.length; i++) {
-      var entry = schema[i];
-      if (entry.ctrl === 'hidden') continue;
-      if (entry.ctrl === 'patterns') hasPatterns = true;
-      if (!hasKey(block.params, entry.key)) continue;
-      block.params[entry.key] = entry.value;
-      propsPanel.set(entry.key, entry.value); // updates UI without onChange
-    }
-    // panel.set() kennt die Pattern-Buttons nicht — Section neu aufbauen,
-    // damit der aktive Button den zurückgesetzten Wert zeigt
-    if (hasPatterns) bindPropsPanel(block);
-    touchState();
-  }
-
-  // sync panel UI from params without firing onChange (used during canvas drags)
-  function refreshPropsValues() {
-    if (!propsPanel || !propsBlock) return;
-    for (var i = 0; i < propsPanelKeys.length; i++) {
-      var k = propsPanelKeys[i];
-      propsPanel.set(k, propsBlock.params[k]);
-    }
   }
 
   /* ---------- library overlay ---------- */
@@ -1294,8 +868,7 @@
     if (def.kind !== 'kraft') slotBelowTopForces(block);
     scene.select(block.id);
     touchState();
-    els.stackList.scrollTop = 0;
-    pulseSpine(block.id);
+    if (panel && panel.bodyEl) panel.bodyEl.scrollTop = 0;
     toast(def.kind === 'kraft'
       ? (block.name + ' liegt oben — wirkt auf alles darunter')
       : (block.name + ' liegt im Stapel — unter den Kräften'));
@@ -1374,9 +947,7 @@
         run: onShare },
       { ico: '∅', label: 'Neue Szene', sub: 'alles leeren', extra: 'reset leer',
         run: onNewScene },
-      { ico: '⛶', label: 'Vollbild', extra: 'fullscreen', run: onFullscreen },
-      { ico: '⠿', label: stackPanelOpen() ? 'Stapel schließen' : 'Stapel öffnen',
-        extra: 'strahl liste bausteine', run: toggleStackPanel }
+      { ico: '⛶', label: 'Vollbild', extra: 'fullscreen', run: onFullscreen }
     ];
     var sel = getBlock(scene.selectedId);
     if (sel) {
@@ -1530,26 +1101,13 @@
     wake();
   }
 
-  /* ---------- Status-Chip: Zoom / fps / Instanzen ---------- */
-  // fps kommt aus der rAF-Messung der Engine (sc.fps, EMA), die Instanzen
-  // aus dem Frame-Zähler (sc.instancesDrawn). Zoom aktualisiert live bei
-  // Rad/Pinch (zoomAt), der Rest im 500ms-Statuspoll.
-
-  function updateStatusChip() {
-    if (!els.status) return;
-    if (els.stZoom) els.stZoom.textContent = Math.round(scene.camera.scale * 100) + ' %';
-    var f = scene.fps;
-    if (els.stFps) els.stFps.textContent = f ? String(Math.round(f)) : '—';
-    if (els.stInst) els.stInst.textContent = String(scene.instancesDrawn || 0);
-  }
-
   /* ---------- tools ---------- */
 
   function setTool(name) {
     tool = name;
-    els.toolMove.classList.toggle('active', name === 'move');
-    els.toolWarp.classList.toggle('active', name === 'warp');
-    if (els.toolDraw) els.toolDraw.classList.toggle('active', name === 'draw');
+    for (var k in toolButtons) {
+      if (hasKey(toolButtons, k)) toolButtons[k].classList.toggle('active', k === name);
+    }
     els.canvas.style.cursor = (name === 'warp' || name === 'draw') ? 'crosshair' : '';
   }
 
@@ -1666,7 +1224,6 @@
     // Tims Kernpunkt: Gezeichnetes muss unter die obersten Kräfte rutschen,
     // damit "Raum verzerren" & Co. auch auf frische Striche wirken
     slotBelowTopForces(block);
-    selectViaCanvas = true; // frischer Strich: Chip zeigt, Panel bleibt zu
     scene.select(block.id);
     touchState();
   }
@@ -1755,7 +1312,6 @@
     cam.scale = ns;
     cam.x = wx - (sx - cssW / 2) / ns;
     cam.y = wy - (sy - cssH / 2) / ns;
-    updateStatusChip(); // Zoom % lebt live, nicht erst im 500ms-Poll
   }
 
   function panByScreen(dx, dy) {
@@ -1839,7 +1395,6 @@
     // move tool
     var hit = hitTest(world[0], world[1], makeView());
     if (hit) {
-      selectViaCanvas = true;
       scene.select(hit.block.id);
       gesture = { mode: 'drag-block', block: hit.block, handle: hit.handle, def: hit.def, lastW: world.slice() };
     } else {
@@ -1850,7 +1405,6 @@
   function onCanvasMove(ev) {
     if (!pointers.has(ev.pointerId)) return;
     var pt = canvasPoint(ev);
-    var prev = pointers.get(ev.pointerId);
     pointers.set(ev.pointerId, { x: pt.x, y: pt.y });
     if (!gesture) return;
 
@@ -2155,7 +1709,6 @@
     scene.camera.y = (bb.minY + bb.maxY) / 2;
     scene.camera.scale = s;
     hideOffviewPill();
-    updateStatusChip();
     touchState();
   }
 
@@ -2207,9 +1760,9 @@
     els.offviewPill.hidden = lit;
   }
 
-  /* ---------- Flüster-Onboarding + Leerzustands-Hinweise ---------- */
-  // Kein Modal mehr: drei verankerte Flüsterzeilen (Mitte, Werkzeuge,
-  // Stapel), die der ersten Interaktion weichen und nie wiederkommen.
+  /* ---------- Flüster-Onboarding + Leerzustands-Hinweis ---------- */
+  // Eine einzige Erstbesuchs-Zeile, die der ersten Interaktion weicht
+  // und nie wiederkommt.
 
   var HINT_LS_KEY = 'oc-hint-v1';
   var whisperDone = false;
@@ -2225,23 +1778,20 @@
     if (whisperDone) return;
     whisperDone = true;
     lsSet(HINT_LS_KEY, '1');
-    document.body.classList.add('oc-worked'); // CSS blendet die Zeilen aus
+    document.body.classList.add('oc-worked'); // CSS blendet die Zeile aus
   }
 
   function initWhispers() {
     if (lsGet(HINT_LS_KEY)) { whisperDone = true; return; }
-    var ws = [els.whisperCenter, els.whisperTools, els.whisperStack];
-    for (var i = 0; i < ws.length; i++) {
-      if (ws[i]) ws[i].hidden = false;
-    }
+    if (els.whisperCenter) els.whisperCenter.hidden = false;
     // Erstinteraktion: der erste Tap oder Tastendruck irgendwo
     window.addEventListener('pointerdown', markWorked, { capture: true, once: true });
     window.addEventListener('keydown', markWorked, { capture: true, once: true });
   }
 
   /* ---------- Fokus-Modus: nur das Werk ---------- */
-  // Taste F oder der Halbmond oben rechts: aller Rand weicht, ein atmender
-  // Punkt unten rechts führt zurück (auch F/Escape beenden).
+  // Taste F oder die Palette: aller Rand weicht (auch das Panel), ein
+  // atmender Punkt unten rechts führt zurück (auch F/Escape beenden).
 
   function inFocus() {
     return document.body.classList.contains('oc-focus');
@@ -2250,8 +1800,7 @@
   function enterFocus() {
     if (inFocus()) return;
     document.body.classList.add('oc-focus');
-    scene.select(null); // schließt Chip + Regler-Panel
-    closeStackPanel();
+    scene.select(null);
     closeLibrary();
     toast('Fokus — nur das Werk. Der Punkt unten rechts führt zurück.', { ms: 2600 });
   }
@@ -2259,6 +1808,8 @@
   function exitFocus() {
     if (!inFocus()) return;
     document.body.classList.remove('oc-focus');
+    // Panel konnte sich versteckt nicht vermessen — controls.js re-layouten
+    try { window.dispatchEvent(new Event('resize')); } catch (e) { /* noop */ }
     wake();
   }
 
@@ -2268,7 +1819,7 @@
   }
 
   // stiller Leerzustand erklärt sich nicht selbst: leere Szene -> auf das
-  // + zeigen; nur Kräfte im Stapel -> erklären, dass darunter etwas fehlt
+  // Panel zeigen; nur Kräfte im Stapel -> erklären, dass darunter etwas fehlt
   function updateEmptyHint() {
     if (!els.emptyHint) return;
     var emitters = 0, forces = 0;
@@ -2282,7 +1833,7 @@
     }
     var msg = '';
     if (!emitters && !forces) {
-      msg = 'Leere Szene — „+" am rechten Rand fügt Bausteine hinzu';
+      msg = 'Leere Szene — „+ Baustein" im Panel fügt Bausteine hinzu';
     } else if (!emitters && forces) {
       msg = 'Nur Kräfte im Stapel — Kräfte brauchen etwas darunter (Ding oder Erzeuger)';
     }
@@ -2290,53 +1841,10 @@
     els.emptyHint.hidden = !msg;
   }
 
-  /* ---------- Stapel auf/zu (Glyphen-Spine <-> Panel) ---------- */
-
-  function isDesktopLayout() {
-    return window.matchMedia('(min-width: 900px)').matches;
-  }
-
-  function stackPanelOpen() {
-    return document.body.classList.contains('oc-stack-open');
-  }
-
-  // Mobiles Drill-in-Sheet: Peek (Mini-Strahl im Griff) / Halb / Voll.
-  // Desktop ignoriert die Klassen (CSS lebt in der 768px-Query).
-  var sheetState = 'half';
-
-  function setSheetState(st) {
-    sheetState = st;
-    document.body.classList.toggle('oc-sheet-peek', st === 'peek');
-    document.body.classList.toggle('oc-sheet-full', st === 'full');
-    wake();
-  }
-
-  function cycleSheetState() {
-    setSheetState(sheetState === 'peek' ? 'half' : (sheetState === 'half' ? 'full' : 'peek'));
-  }
-
-  function openStackPanel() {
-    // explizit geöffnet (Pille, Spine, Zurück-Pfeil): mindestens Halb —
-    // in den Peek-Streifen führt nur der Griff oder ein Canvas-Tap
-    if (!stackPanelOpen() && sheetState === 'peek') setSheetState('half');
-    document.body.classList.add('oc-stack-open');
-    wake();
-  }
-
-  function closeStackPanel() {
-    document.body.classList.remove('oc-stack-open');
-    wake();
-  }
-
-  function toggleStackPanel() {
-    if (stackPanelOpen()) closeStackPanel();
-    else openStackPanel();
-  }
-
   /* ---------- Idle-Dim: der Rand weicht dem Werk ---------- */
-  // 3,5 s ohne Eingabe -> body.oc-idle (Edge-Layer auf Opacity 0.05,
-  // siehe 0necanvas.css). Kein Dim solange ein Panel offen ist (Stapel,
-  // Bibliothek, Regler) oder ein Zeiger gedrückt bleibt (Slider-Drag).
+  // 3,5 s ohne Eingabe -> body.oc-idle (Wortmarke + Pillen auf Opacity
+  // 0.05, siehe 0necanvas.css). Das Panel dimmt NIE. Kein Dim solange
+  // Bibliothek/Palette offen sind oder ein Zeiger gedrückt bleibt.
 
   var idleTimer = 0;
   var lastWakeArm = 0;
@@ -2344,8 +1852,6 @@
 
   function uiBusy() {
     return pointerHeld
-      || stackPanelOpen()
-      || document.body.classList.contains('oc-props-open')
       || paletteOpenState()
       || (els.libOverlay && els.libOverlay.classList.contains('open'));
   }
@@ -2379,121 +1885,50 @@
     armIdle();
   }
 
-  // Boot-Selects (Default-Szene / ?s=-Load) öffnen das Regler-Panel NICHT —
-  // stille Bühne zuerst; erst die erste Nutzer-Auswahl holt die Regler
-  var autoPropsTabArmed = false;
-
   /* ---------- init ---------- */
 
   function init(sc) {
     if (scene) { console.warn('0necanvas ui: init called twice, ignoring'); return; }
     scene = sc;
 
-    initVisibleViewportSync();
-
     els = {
       canvas: $('oc-canvas'),
       stage: $('oc-stage'),
-      app: $('oc-app'),
-      side: $('oc-side'),
-      stackList: $('oc-stack-list'),
-      stackN: $('oc-stack-n'),
-      stackPill: $('oc-stack-pill'),
-      addPill: $('oc-add-pill'),
-      stackClose: $('oc-stack-close'),
-      spine: $('oc-spine'),
-      spineAdd: $('oc-spine-add'),
-      spineList: $('oc-spine-list'),
       libOverlay: $('oc-lib-overlay'),
       libScroll: $('oc-lib-scroll'),
       libSearch: $('oc-lib-search'),
-      addBtn: $('oc-add-btn'),
-      toolMove: $('oc-tool-move'),
-      toolWarp: $('oc-tool-warp'),
-      toolDraw: $('oc-tool-draw'),
-      shareBtn: $('oc-share-btn'),
-      exportBtn: $('oc-export-btn'),
-      fullscreenBtn: $('oc-fullscreen-btn'),
-      fitBtn: $('oc-fit-btn'),
-      newBtn: $('oc-new-btn'),
       limitPill: $('oc-limit-pill'),
       heavyPill: $('oc-heavy-pill'),
       offviewPill: $('oc-offview-pill'),
       emptyHint: $('oc-empty-hint'),
-      ribbon: $('oc-ctrl-ribbon'),
-      ribbonIco: $('oc-ribbon-ico'),
-      ribbonName: $('oc-ribbon-name'),
-      ribbonMeta: $('oc-ribbon-meta'),
-      corner: $('oc-corner'),
-      selframe: $('oc-selframe'),
-      chip: $('oc-chip'),
-      chipIco: $('oc-chip-ico'),
-      chipName: $('oc-chip-name'),
-      chipKind: $('oc-chip-kind'),
-      chipRegler: $('oc-chip-regler'),
-      chipDup: $('oc-chip-dup'),
-      chipDel: $('oc-chip-del'),
-      focusBtn: $('oc-focus-btn'),
-      focusExit: $('oc-focus-exit'),
       whisperCenter: $('oc-whisper-center'),
-      whisperTools: $('oc-whisper-tools'),
-      whisperStack: $('oc-whisper-stack'),
-      status: $('oc-status'),
-      stZoom: $('oc-st-zoom'),
-      stFps: $('oc-st-fps'),
-      stInst: $('oc-st-inst'),
+      focusExit: $('oc-focus-exit'),
       palette: $('oc-palette'),
       palInput: $('oc-pal-input'),
       palList: $('oc-pal-list'),
-      palEmpty: $('oc-pal-empty'),
-      sheetGrip: $('oc-sheet-grip'),
-      minibeam: $('oc-minibeam'),
-      ribbonBack: $('oc-ribbon-back')
+      palEmpty: $('oc-pal-empty')
     };
 
-    // scene hooks
+    // das Panel: EINMAL bauen, Original-Lifecycle macht den Rest
+    // (Position, Bar-Mode, Mobil-Sheet inkl. initPosition/Peek)
+    buildPanel();
+
+    // scene hooks: Stapel-Zeilen neu malen, Selektion nur schalten
     sc.onStackChange(function () {
       renderStack();
-      updateEmptyHint();
-      // selected block may be gone (delete without select event, load)
-      if (!getBlock(sc.selectedId)) {
-        unbindPropsPanel();
-      }
+      syncSelection(); // selected block may be gone (delete, load)
     });
-    sc.onSelect(function (id) {
-      updateStackSelection();
-      var viaCanvas = selectViaCanvas;
-      selectViaCanvas = false;
-      var block = getBlock(id);
-      if (!block) { unbindPropsPanel(); updateHullOverlay(); return; }
-      if (!autoPropsTabArmed) {
-        // Boot-Select (Default-Szene / ?s=): stille Bühne zuerst — das
-        // Regler-Panel öffnet erst auf die erste Nutzer-Auswahl
-        unbindPropsPanel();
-        return;
-      }
-      // Kontext am Objekt: ein Canvas-Tap auf ein Werk zeigt nur Hüllbox +
-      // Chip — das Regler-Panel folgt erst über den Chip ("Regler") oder
-      // bleibt offen, wenn es schon offen war. Kräfte (Verzerren-Werkzeug)
-      // haben keinen Chip und öffnen das Panel wie bisher.
-      var panelShown = document.body.classList.contains('oc-props-open');
-      var quiet = viaCanvas && !panelShown && blockKind(block) !== 'kraft';
-      if (!quiet) {
-        if (propsBlock !== block) bindPropsPanel(block);
-        else refreshPropsValues();
-        setPanelShown(true);
-      }
-      updateHullOverlay();
+    sc.onSelect(function () {
+      syncSelection();
     });
-    // boot (default scene / URL load) runs synchronously after init —
-    // arm the panel auto-open only afterwards
-    setTimeout(function () { autoPropsTabArmed = true; }, 0);
 
-    // stack initial paint
+    // initial paint
     renderStack();
+    syncSelection();
+    // boot (default scene / URL load) runs synchronously after init
+    setTimeout(function () { bootDone = true; }, 0);
 
     // library
-    els.addBtn.addEventListener('click', openLibrary);
     var libClose = $('oc-lib-close');
     if (libClose) libClose.addEventListener('click', closeLibrary);
     els.libOverlay.addEventListener('click', function (e) {
@@ -2513,13 +1948,10 @@
       if (e.key === 'Escape') {
         // Escape aus der Regler-UI wirkt nur lokal (controls.js: Popup zu +
         // Trigger fokussieren, Config-Wert-Revert, Wert-Feld behalten) — die
-        // globale Kette wuerde sonst den Block deselektieren und das Panel
-        // mitten in der Eingabe schliessen. Erkennung dreistufig:
-        // defaultPrevented = controls.js-Popup-Handler hat schon lokal
-        // behandelt (er raeumt Popup+Optionen vor unserem Bubble-Handler weg,
-        // target/DOM-Checks griffen dann zu spaet); closest = Fokus in
-        // Regler-UI ohne lokalen Handler (z.B. Wert-Feld); offenes Popup im
-        // DOM = Popup offen, Fokus woanders (Original laesst es offen).
+        // globale Kette wuerde sonst den Block deselektieren. Erkennung
+        // dreistufig: defaultPrevented = controls.js-Popup-Handler hat schon
+        // lokal behandelt; closest = Fokus in Regler-UI ohne lokalen Handler;
+        // offenes Popup im DOM = Popup offen, Fokus woanders.
         var escFrom = e.target;
         if (e.defaultPrevented ||
             (escFrom && escFrom.closest &&
@@ -2527,11 +1959,10 @@
             document.querySelector('.ctrl-select-popup.open, .ctrl-config-popup.open')) {
           return;
         }
-        // definierte Reihenfolge: Palette -> Fokus -> Bibliothek -> Stapel -> Auswahl
+        // definierte Reihenfolge: Palette -> Fokus -> Bibliothek -> Auswahl
         if (paletteOpenState()) closePalette();
         else if (inFocus()) exitFocus();
         else if (els.libOverlay.classList.contains('open')) closeLibrary();
-        else if (stackPanelOpen()) closeStackPanel();
         else if (scene.selectedId) scene.select(null);
         return;
       }
@@ -2589,67 +2020,10 @@
       });
     }
 
-    // Stapel auf/zu: Spine (Desktop), Pillen (Mobil), Schließen-Knopf
-    if (els.spine) {
-      els.spine.addEventListener('click', function (e) {
-        if (e.target.closest && e.target.closest('#oc-spine-add')) return;
-        openStackPanel();
-      });
-    }
-    if (els.spineAdd) {
-      els.spineAdd.addEventListener('click', function (e) {
-        e.stopPropagation();
-        openLibrary();
-      });
-    }
-    if (els.stackClose) els.stackClose.addEventListener('click', closeStackPanel);
-    if (els.stackPill) {
-      els.stackPill.addEventListener('click', function () {
-        // Regler-Sheet offen: die Stapel-Pille bringt den Stapel nach vorn
-        // (Pillen-Zeile bleibt IMMER erreichbar, kein Zwischenschritt)
-        if (isSheetMobile() && document.body.classList.contains('oc-props-open')) {
-          setPanelShown(false);
-          openStackPanel();
-          return;
-        }
-        toggleStackPanel();
-      });
-    }
-    if (els.addPill) els.addPill.addEventListener('click', openLibrary);
-    // Mobil: Tipp auf die Leinwand faltet das Sheet auf den Peek-Streifen
-    // zusammen (Mini-Strahl bleibt als Anker sichtbar)
-    els.canvas.addEventListener('pointerdown', function () {
-      if (isSheetMobile() && stackPanelOpen() && sheetState !== 'peek') setSheetState('peek');
-    });
-    // Drill-in-Sheet: Griff wechselt schmal/halb/voll, der Mini-Strahl
-    // klappt auf, der Zurück-Pfeil im Ribbon führt vom Regler zum Stapel
-    if (els.sheetGrip) {
-      els.sheetGrip.addEventListener('click', function (e) {
-        e.stopPropagation();
-        cycleSheetState();
-      });
-    }
-    if (els.minibeam) {
-      els.minibeam.addEventListener('click', function () { setSheetState('half'); });
-    }
-    if (els.ribbonBack) {
-      els.ribbonBack.addEventListener('click', function () {
-        setPanelShown(false);
-        openStackPanel();
-      });
-    }
-
-    // Strahl-Endpunkte: das Auge als stiller Endpunkt oben
-    var eyeMarks = document.querySelectorAll('#oc-spine .spine-eye, #oc-side .beam-eye .bt-mark');
-    for (var ei = 0; ei < eyeMarks.length; ei++) eyeMarks[ei].innerHTML = ICON_EYE;
-
-    // Stiller Rand: UI dimmt bei Inaktivität weg
+    // Stiller Rand: Wortmarke dimmt bei Inaktivität weg (Panel nie)
     initIdleDim();
 
-    // tools
-    els.toolMove.addEventListener('click', function () { setTool('move'); });
-    els.toolWarp.addEventListener('click', function () { setTool('warp'); });
-    if (els.toolDraw) els.toolDraw.addEventListener('click', function () { setTool('draw'); });
+    // tools (Panel-ButtonGroup ist gebaut — aktiv-Markierung setzen)
     setTool('move');
 
     // canvas gestures
@@ -2660,50 +2034,14 @@
     els.canvas.addEventListener('dblclick', onCanvasDblClick);
     els.canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
 
-    // actions
-    els.shareBtn.addEventListener('click', onShare);
-    if (els.exportBtn) els.exportBtn.addEventListener('click', onExport);
-    els.fullscreenBtn.addEventListener('click', onFullscreen);
-    if (els.fitBtn) els.fitBtn.addEventListener('click', fitView);
-    if (els.newBtn) els.newBtn.addEventListener('click', onNewScene);
     if (els.offviewPill) els.offviewPill.addEventListener('click', fitView);
 
-    // Kontext am Objekt: Chip-Aktionen
-    if (els.chipRegler) {
-      els.chipRegler.addEventListener('click', function () {
-        var b = getBlock(scene.selectedId);
-        if (!b) return;
-        if (propsBlock !== b) bindPropsPanel(b);
-        setPanelShown(true);
-        wake();
-      });
-    }
-    if (els.chipDup) {
-      els.chipDup.addEventListener('click', function () {
-        var b = getBlock(scene.selectedId);
-        if (b) duplicateBlock(b);
-      });
-    }
-    if (els.chipDel) {
-      els.chipDel.addEventListener('click', function () {
-        var b = getBlock(scene.selectedId);
-        if (b) removeBlockWithUndo(b);
-      });
-    }
-
-    // Fokus-Modus: Halbmond oben rechts, atmender Punkt führt zurück
-    if (els.focusBtn) els.focusBtn.addEventListener('click', toggleFocus);
+    // Fokus-Modus: atmender Punkt führt zurück
     if (els.focusExit) els.focusExit.addEventListener('click', exitFocus);
 
     // Flüster-Onboarding + Leerzustands-Hinweis
     initWhispers();
     updateEmptyHint();
-
-    // Status-Chip unten rechts (Desktop): erste Werte, dann 500ms-Poll
-    if (els.status) {
-      els.status.hidden = false;
-      updateStatusChip();
-    }
 
     // status pills (poll: flags are per-frame, no engine event).
     // heavy pill: fps < 10 sustained over ~2s; hides again with hysteresis.
@@ -2711,7 +2049,6 @@
     var slowPolls = 0;
     var pollTick = 0;
     setInterval(function () {
-      updateStatusChip();
       if (els.limitPill) els.limitPill.hidden = !sc.instanceLimitHit;
       if (els.heavyPill) {
         var f = sc.fps;
