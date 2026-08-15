@@ -45,8 +45,11 @@ def collect_structure():
     structure = {'folders': {}, 'files': []}
 
     for dirpath, dirnames, filenames in os.walk(ROOT_DIR):
+        # Ordner nach derselben Regel filtern wie Dateien: "." und "_" raus.
+        # Vorher galt "_" nur fuer Dateien, ein "_scratch"-Ordner landete also
+        # samt Inhalt im Menue.
         dirnames[:] = sorted(
-            [d for d in dirnames if not d.startswith('.') and d not in EXCLUDE_DIRS],
+            [d for d in dirnames if should_include(d) and d not in EXCLUDE_DIRS],
             key=lambda x: x.lower()
         )
 
