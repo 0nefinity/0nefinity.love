@@ -272,10 +272,27 @@
         const pointCountInput = document.getElementById('pointCount');
     
         // Funktion zum Abrufen der CSS-Variable '--text-color'
+        //
+        // Gecacht seit 27.08.2026. Vorher: fuenf Aufrufe aus drei
+        // rAF-Schleifen, jeder mit einer erzwungenen Style-Neuberechnung und
+        // einer Konsolenausgabe — bei 60 fps 120 Recalcs und 120 Zeilen pro
+        // Sekunde fuer einen Wert, der sich nur beim Themewechsel aendert.
+        // Der MutationObserver weiter unten leert den Cache; die Farbe bleibt
+        // also so aktuell wie vorher.
+        const cssVariablenCache = new Map();
+
+        function cssVariablenCacheLeeren() {
+            cssVariablenCache.clear();
+        }
+
         function getCSSVariable(variable) {
-            const value = getComputedStyle(document.body).getPropertyValue(variable).trim();
-            console.log(`CSS Variable ${variable}: ${value}`); // Debugging
-            return value;
+            if (!cssVariablenCache.has(variable)) {
+                cssVariablenCache.set(
+                    variable,
+                    getComputedStyle(document.body).getPropertyValue(variable).trim()
+                );
+            }
+            return cssVariablenCache.get(variable);
         }
     
         // Event Listener für Punktgröße
@@ -557,7 +574,10 @@
         }
     
         // Beobachte Änderungen am Style-Attribut des Body
-        const observer = new MutationObserver(updatePointColors);
+        const observer = new MutationObserver(() => {
+            cssVariablenCacheLeeren();
+            updatePointColors();
+        });
         observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
     
         // Initiale Aktualisierung

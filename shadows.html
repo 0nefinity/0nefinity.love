@@ -1082,6 +1082,12 @@
     needsUniformUpdate = true;
 
     cursorBlinkInterval = setInterval(() => {
+      // Im versteckten Tab nichts tun. setInterval laeuft dort weiter (anders
+      // als requestAnimationFrame, das der Browser anhaelt), und
+      // updateGlyphTextures baut drei Canvas mit 1024x1024 neu — rund 12 MB
+      // Texturen alle 500 ms fuer ein Blinken, das niemand sieht.
+      // Das Blinken selbst bleibt unveraendert bei 500 ms.
+      if (document.hidden) return;
       cursorVisible = !cursorVisible;
       updateGlyphTextures();
       needsUniformUpdate = true;
