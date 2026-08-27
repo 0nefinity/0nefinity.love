@@ -55,8 +55,18 @@
 })();
 
 // Tools synchron laden (sofort verfügbar für alle Seiten)
+//
+// decimal.js ist hier am 27.08.2026 rausgeflogen: 130.979 Bytes, die auf allen
+// 89 Seiten geladen, geparst und kompiliert wurden — gebraucht wird die
+// Bibliothek von zweien (kreisausdingen.html und
+// Kuriositäten/kreisausdingen-weird-8.html), die sie jetzt selbst einbinden.
+// Auch taschenrechner.html brauchte sie nie; dessen appendDecimal() ist eine
+// eigene Funktion, und controls.js meint mit seinen 42 "Decimal"-Treffern
+// durchweg Variablen wie baseDecimals, nie die Bibliothek.
+//
+// Kein Deckel, nur weniger Ballast: auf schwacher Hardware zählt die
+// Parse-Zeit, und die hängt an den unkomprimierten Bytes.
 document.write('<script src="/tools/zoom.js"><\/script>');
-document.write('<script src="/tools/tools/decimal.js"><\/script>');
 document.write('<script src="/tools/controls.js"><\/script>');
 
 (function (global) {

@@ -81,6 +81,27 @@ IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitatt
   AddOutputFilterByType DEFLATE text/plain text/html text/css application/javascript application/json image/svg+xml
 </IfModule>
 
+# Cache-Control. Vorher gab es keins - nur ein ETag. Der Browser laedt die
+# Dateien dann zwar nicht neu, fragt aber auf JEDER Seite nach, ob sie sich
+# geaendert haben. Bei meta.js, das auf 89 Seiten drei weitere Skripte
+# nachzieht, sind das vier Rueckfragen pro Seitenaufruf fuer Dateien, die sich
+# seit Wochen nicht geaendert haben.
+#
+# Bewusst gestaffelt, weil "Dateien bearbeiten -> sofort live" laut CLAUDE.md
+# ein Feature dieses Projekts ist:
+#   Schriften  ein Jahr  - 15949 Dateien, namensversioniert, aendern sich nie
+#   Skripte/CSS 5 Minuten - killt die Rueckfragen innerhalb eines Besuchs,
+#                           eine Aenderung ist trotzdem nach 5 Minuten draussen
+#   HTML/PHP    gar nichts - bleibt sofort live
+<IfModule mod_headers.c>
+  <FilesMatch "\.(woff2?|ttf|otf|eot)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "\.(js|css|png|jpe?g|gif|svg|webp|ico|mp4|webm)$">
+    Header set Cache-Control "public, max-age=300"
+  </FilesMatch>
+</IfModule>
+
 # Security: Content Security Policy. Alles same-origin. Blockt extern Fonts/CDN/Tracker
 # als Regression-Guard nach Selfhosting-Cleanup.
 # 'unsafe-inline'/'unsafe-eval' nötig wegen vorhandenem Inline-Code (Skripte/Styles)
