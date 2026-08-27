@@ -1216,13 +1216,25 @@
         // RENDERING
         // ============================================
 
+        // Themefarben pro Frame einmal lesen statt sechsmal. Jeder
+        // getComputedStyle-Aufruf erzwingt eine Style-Neuberechnung; bei 60 fps
+        // waren das 360 pro Sekunde fuer zwei Werte, die sich nur beim
+        // Themewechsel aendern. Kein Deckel — im Gegenteil: billiger zeichnen
+        // heisst, die Seite traegt mehr, bevor die Hardware aussteigt.
+        // Gleiche Idee wie invalidateCurrentStateCache() eine Zeile weiter.
+        let frameBgColor = 'black';
+        let frameTextColor = 'white';
+
         function draw() {
             // Cache pro Frame invalidieren – prepareStateForRendering läuft
             // einmal neu, innerhalb des Frames bleibt der Cache aktiv.
             invalidateCurrentStateCache();
 
-            const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || 'black';
-            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            const wurzelStil = getComputedStyle(document.documentElement);
+            frameBgColor = wurzelStil.getPropertyValue('--bg-color').trim() || 'black';
+            frameTextColor = wurzelStil.getPropertyValue('--text-color').trim() || 'white';
+            const bgColor = frameBgColor;
+            const textColor = frameTextColor;
             
             ctx.fillStyle = bgColor;
             ctx.fillRect(0, 0, width, height);
@@ -1236,7 +1248,7 @@
         function drawGrid() {
             if (!config.showGrid) return;
             const step = getRenderedGridDensity();
-            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            const textColor = frameTextColor;
             
             // 0nefinity: Bei Dichte 0 (oder negativ) wird das Gitter zum Kontinuum
             // Unendlich viele Linien = ausgefüllte Fläche
@@ -1297,7 +1309,7 @@
         
         function drawAxes() {
             if (!config.showAxes) return;
-            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            const textColor = frameTextColor;
             
             ctx.save();
             ctx.globalAlpha = 0.4;
@@ -1351,7 +1363,7 @@
         }
         
         function drawCircle() {
-            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            const textColor = frameTextColor;
             
             ctx.strokeStyle = textColor;
             ctx.lineWidth = 3;
@@ -1380,7 +1392,7 @@
             if (isResetting) return;
             
             // Hole die Textfarbe aus CSS
-            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || 'white';
+            const textColor = frameTextColor;
             const isTransitioning = !!stateTransition;
             
             for (const cp of controlPoints) {
