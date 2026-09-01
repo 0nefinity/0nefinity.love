@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+AUTH_DIR="/var/www/html/.auth"
+DB="$AUTH_DIR/auth.sqlite"
+TOKEN_FILE="$AUTH_DIR/setup-token"
+SCHEMA="$AUTH_DIR/schema.sql"
+AUTH_SEED="/usr/local/share/0nefinity/auth"
+
+# Ensure .auth dir exists (volume-mounted, may be empty on first start)
+mkdir -p "$AUTH_DIR"
+
+# Seed PHP libs + schema + .htaccess from the image into the named volume.
+# Named Volume überdeckt die Repo-.auth/, also brauchen wir bootstrap.php & co.
+# Wir kopieren bei jedem Start (overwrite), damit Image-Updates ankommen.
+# auth.sqlite, setup-token und csp-violations.log werden nicht angefasst.
+if [ -d "$AUTH_SEED" ]; then
+  for f in "$AUTH_SEED"/*.php "$AUTH_SEED"/schema.sql "$AUTH_SEED"/.htaccess; do
+    [ -e "$f" ] || continue
+    cp -f "$f" "$AUTH_DIR/$(basename "$f")"
+  done
+fi
+
+# Init DB if missing
+if [ ! -f "$DB" ]; then
+  echo "[entrypoint] initializing auth.sqlite"
+  sqlite3 "$DB" < "$SCHEMA"
+fi
+
+# Generate setup-token if no users yet AND no token-file
+USER_COUNT=$(sqlite3 "$DB" "SELECT COUNT(*) FROM users;")
+if [ "$USER_COUNT" = "0" ] && [ ! -f "$TOKEN_FILE" ]; then
+  TOKEN=$(openssl rand -hex 32)
+  echo -n "$TOKEN" > "$TOKEN_FILE"
+  chmod 600 "$TOKEN_FILE"
+  echo "[entrypoint] generated setup-token: cat $TOKEN_FILE"
+fi
+
+# Cleanup: delete token-file if users already exist
+if [ "$USER_COUNT" -gt "0" ] && [ -f "$TOKEN_FILE" ]; then
+  rm -f "$TOKEN_FILE"
+fi
+
+# Permissions for Apache
+chown -R www-data:www-data "$AUTH_DIR"
+chmod 750 "$AUTH_DIR"
+chmod 640 "$DB"
+if [ -f "$TOKEN_FILE" ]; then
+  chown www-data:www-data "$TOKEN_FILE"
+  chmod 600 "$TOKEN_FILE"
+fi
+
+# Hand off to Apache
+exec apache2-foreground
