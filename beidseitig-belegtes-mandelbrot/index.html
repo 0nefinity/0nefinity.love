@@ -6,12 +6,12 @@
 <title>beidseitig belegtes Mandelbrot</title>
 <style>
   :root {
-    --bg-color: #020306;
-    --text-color: #c9d5e3;
-    --text-dim: #8392a6;
-    --ui-surface: rgba(6, 9, 16, 0.78);
-    --ui-border-soft: rgba(201, 213, 227, 0.1);
-    --accent: #9cc4ea;
+    --bg-color: #000000;
+    --text-color: #d8d8d8;
+    --text-dim: #8e8e8e;
+    --ui-surface: rgba(8, 8, 8, 0.8);
+    --ui-border-soft: rgba(255, 255, 255, 0.1);
+    --accent: #e8e8e8;
     color-scheme: dark;
   }
   html, body {
@@ -83,13 +83,13 @@
     padding: 0 14px;
     border: 0;
     border-radius: 6px;
-    background: rgba(201, 213, 227, 0.08);
+    background: rgba(255, 255, 255, 0.07);
     color: var(--text-color);
     font: inherit;
     cursor: pointer;
     transition: background 150ms;
   }
-  button:hover { background: rgba(201, 213, 227, 0.16); }
+  button:hover { background: rgba(255, 255, 255, 0.14); }
   button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   #grenze, #fehler {
     top: 12px;
@@ -97,9 +97,36 @@
     padding: 6px 10px;
   }
   #fehler { color: #e0a4a4; }
+  button[aria-pressed="true"], button[aria-expanded="true"] { background: rgba(255, 255, 255, 0.2); }
+  #farben {
+    right: 12px;
+    bottom: 76px;
+    width: min(320px, calc(100% - 24px));
+    box-sizing: border-box;
+    padding: 14px;
+    display: grid;
+    gap: 2px;
+  }
+  #farben[hidden] { display: none; }
+  #paletten { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  #paletten button { padding: 0 12px; display: flex; align-items: center; gap: 10px; }
+  .muster {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid var(--ui-border-soft);
+  }
+  #farben label {
+    display: grid;
+    grid-template-columns: 4.5em 1fr;
+    align-items: center;
+    min-height: 44px;
+  }
+  input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--accent); }
   @media (max-width: 560px) {
     #werte { grid-template-columns: auto 1fr; }
     .knoepfe { grid-row: auto; grid-column: 1 / span 2; justify-content: flex-end; }
+    #farben { bottom: 124px; }
   }
 </style>
 </head>
@@ -114,7 +141,13 @@
   <div class="knoepfe">
     <button id="startknopf" type="button">Start</button>
     <button id="neuknopf" type="button">Neue Welt</button>
+    <button id="farbknopf" type="button" aria-expanded="false" aria-controls="farben">Farbe</button>
   </div>
+</div>
+<div id="farben" class="feld" hidden>
+  <div id="paletten" role="group" aria-label="Farbschema"></div>
+  <label><span class="name">Bänder</span><input id="baender" type="range" min="0" max="8" step="0.1"></label>
+  <label><span class="name">Linien</span><input id="linien" type="range" min="0" max="4" step="0.05"></label>
 </div>
 <script src="perturb.js"></script>
 <script src="chain.js"></script>
