@@ -146,7 +146,7 @@ function runPass(fid, g, p, levels, sink) {
   const jobs = tiles(g);
   let pending = jobs.length;
   const stats = { late: 0, inside: 0 };
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const next = (w) => {
       if (fid !== gen * 2 && fid !== gen * 2 + 1) return resolve(null);
       const t = jobs.shift();
@@ -156,7 +156,12 @@ function runPass(fid, g, p, levels, sink) {
       w.onmessage = (e) => {
         const m = e.data;
         if (m.fid !== fid) return;
-        sink(m);
+        try {
+          sink(m);
+        } catch (err) {
+          jobs.length = 0;
+          return reject(err);
+        }
         stats.late += m.late;
         stats.inside += m.inside;
         if (--pending === 0) return resolve(stats);
@@ -262,10 +267,26 @@ const PALETTES = {
 };
 
 const look = { palette: "grau", bands: 2.4, lines: 1 };
+let stored = null;
 try {
-  const saved = JSON.parse(localStorage.getItem("mandelbrot-look") || "null");
-  if (saved && PALETTES[saved.palette] && saved.bands >= 0 && saved.lines >= 0) Object.assign(look, saved);
+  stored = localStorage.getItem("mandelbrot-look");
 } catch (err) {
+  storeFailed("Farbe gilt nur bis zum Neuladen, der Browser speichert nichts", err);
+}
+try {
+  const saved = JSON.parse(stored || "null");
+  if (saved && Object.hasOwn(PALETTES, saved.palette) && saved.bands >= 0 && saved.lines >= 0) {
+    Object.assign(look, { palette: saved.palette, bands: +saved.bands, lines: +saved.lines });
+  } else if (saved) {
+    throw new Error("unbekannte Werte");
+  }
+} catch (err) {
+  storeFailed("Gespeicherte Farbe nicht lesbar, zeige Grau", err);
+}
+
+function storeFailed(text, err) {
+  $("fehler").textContent = text + ".";
+  $("fehler").hidden = false;
   console.error(err);
 }
 
@@ -297,10 +318,15 @@ function recolor() {
   recolorQueued = true;
   requestAnimationFrame(() => {
     recolorQueued = false;
-    localStorage.setItem("mandelbrot-look", JSON.stringify(look));
-    if (!field || field.view !== view) return;
-    for (const t of field.tiles) paintTile(ctx, t);
-    if (!$("status").classList.contains("an")) keepSnapshot(view);
+    if (field && field.view === view) {
+      for (const t of field.tiles) paintTile(ctx, t);
+      if (!$("status").classList.contains("an")) keepSnapshot(view);
+    }
+    try {
+      localStorage.setItem("mandelbrot-look", JSON.stringify(look));
+    } catch (err) {
+      storeFailed("Farbe gilt nur bis zum Neuladen, der Browser speichert nichts", err);
+    }
   });
 }
 
@@ -340,7 +366,7 @@ function unhex(s) { return s[0] === "-" ? -BigInt("0x" + s.slice(1)) : BigInt("0
 
 function writeHash() {
   history.replaceState(null, "",
-    `#welt=${chain.seed}&u=${hex(view.re)},${hex(view.im)},${view.Q}&r=${view.r.toExponential(6)}`);
+    `#welt=${chain.seed}&u=${hex(view.re)},${hex(view.im)},${view.Q}&r=${view.r.toExponential(6).replace("+", "")}`);
 }
 
 function readHash() {
@@ -352,7 +378,8 @@ function readHash() {
     $("fehler").hidden = false;
   }
   const w = (p.get("u") || "").split(",");
-  const r = parseFloat(p.get("r"));
+  // Older links wrote "e+4", which URLSearchParams reads as "e 4".
+  const r = parseFloat((p.get("r") || "").replace(" ", "+"));
   let view = null;
   chain = new Chain(Number.isFinite(seed) ? seed : 1);
   if (p.has("u")) {
@@ -387,6 +414,7 @@ function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(canvas.clientWidth * dpr);
   canvas.height = Math.round(canvas.clientHeight * dpr);
+  field = null;
   preview();
   clearTimeout(timer);
   timer = setTimeout(render, 160);
