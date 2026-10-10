@@ -1,11 +1,11 @@
 "use strict";
 
 const START_R = 2.5;
-const DEPTH_LIMIT = 1e-140;   // smallest c pixel: doubles run out near 1e-300 once squared
 const ROWS = 8;
 const ITER_CAP = 1000000;
 const PROBE = 200000;
 const MIN_R = 1e-280;         // keeps Q below 1024, where 2^Q still fits a double
+const MAX_R = 1e270;          // keeps pan steps times 2^Q inside doubles
 
 const canvas = document.getElementById("bild");
 const ctx = canvas.getContext("2d");
@@ -23,10 +23,10 @@ const workers = Array.from(
     return w;
   });
 
-let world, view, snapView = null;
-let gen = 0, timer = 0, lastMaxiter = 0;
+let chain, view, snapView = null;
+let gen = 0, timer = 0, lastBoost = 1;
 
-// ---- view: center w = (re + i im) / 2^Q as BigInt, half height r as double ----
+// ---- view: center u = (re + i im) / 2^Q as BigInt (level 0 coordinates), half height r ----
 
 function toNum(v, Q) {
   const bits = v.toString(2).length;
@@ -42,17 +42,26 @@ function setQ(v, Q) {
 
 function geometry(v) {
   const W = canvas.width, H = canvas.height;
-  const wcr = toNum(v.re, v.Q), wci = toNum(v.im, v.Q);
-  const s = 2 * v.r / H;
-  const reach = v.r * Math.hypot(1, W / H);
-  const maxW = Math.hypot(wcr, wci) + reach;
-  return { W, H, s, wcr, wci, maxW, cPix: s / maxW / maxW, inner: Math.hypot(wcr, wci) > 4 * reach };
+  return { W, H, s: 2 * v.r / H, reach: v.r * Math.hypot(1, W / H) };
 }
 
-function inBounds(v) {
+// Levels the view needs: from `low` (the lowest whose whole set is wider than two
+// pixels) up to `top`, one above the lowest level whose |c| <= 2 holds the window.
+// null where the chain ends.
+function plan(v) {
+  if (!(v.r >= MIN_R && v.r <= MAX_R)) return null;
   const g = geometry(v);
-  return v.r >= MIN_R && g.cPix >= DEPTH_LIMIT && g.maxW <= 1e140;
+  const lamAbs = (j) => Math.hypot(chain.at(j).lam[0], chain.at(j).lam[1]);
+  let low = 0;
+  while (lamAbs(low) * g.s > 1) if (!chain.at(++low)) return null;
+  for (let k = low; ; k++) {
+    if (!chain.at(k + 1)) return null;
+    const c = chain.centerAt(k, v, 64);
+    if (Math.hypot(toNum(c.cr, 64), toNum(c.ci, 64)) + g.reach * lamAbs(k) <= 2) return { low, top: k + 1 };
+  }
 }
+
+const inBounds = (v) => plan(v) !== null;
 
 // Move the view: zoom by f about screen point (px, py), then pan by (dx, dy) pixels.
 function transform(f, px, py, dx, dy) {
@@ -65,7 +74,11 @@ function transform(f, px, py, dx, dy) {
   const scale = Math.pow(2, next.Q);
   next.re += BigInt(Math.round(mr * scale));
   next.im += BigInt(Math.round(mi * scale));
-  if (!inBounds(next)) { flash(); return; }
+  try {
+    if (!inBounds(next)) { flash(); return; }
+  } catch (err) {
+    return fail(err);
+  }
   view = next;
   preview();
   writeHash();
@@ -98,9 +111,8 @@ function keepSnapshot(v) {
   snapView = { ...v };
 }
 
-function runPass(fid, g, ref, maxiter, sink) {
-  const frame = { type: "frame", fid, W: g.W, H: g.H, s: g.s, wcr: g.wcr, wci: g.wci,
-    inner: g.inner, Zr: ref.Zr, Zi: ref.Zi, L: ref.L, maxiter };
+function runPass(fid, g, p, levels, sink) {
+  const frame = { type: "frame", fid, W: g.W, H: g.H, s: g.s, top: p.top, low: p.low, levels, rounds: RENORM };
   const jobs = [];
   for (let y = 0; y < g.H; y += ROWS) jobs.push(y);
   let pending = jobs.length;
@@ -133,42 +145,52 @@ async function render() {
   const g = geometry(v);
   busy(true);
   try {
-    let n = 0;
-    while (world.drift() > 0.2 * g.cPix) {
-      world.refine();
-      if (++n % 6 === 0) {
-        showDigits();
-        await new Promise((r) => setTimeout(r));
-        if (my !== gen) return;
-      }
-    }
-    showDigits();
-    const P = Math.ceil(Math.log2(1 / g.cPix)) + 64;
-    const c = world.centerAt(P, g.inner ? v : null);
+    const p = plan(v);
+    if (!p) throw new Error("Ansicht außerhalb der Kette");
+    showReadouts();
     const q = { ...g, W: Math.ceil(g.W / 4), H: Math.ceil(g.H / 4), s: g.s * 4 };
     small.width = q.W;
     small.height = q.H;
-    // Iteration limit: pixels near the reference escape about when it does; the
-    // preview then shows whether escapes still crowd against the limit.
-    let ref = referenceOrbit(c.cr, c.ci, P, PROBE);
-    let maxiter = Math.min(ITER_CAP, Math.max(iterationsFor(g.cPix), lastMaxiter,
-      ref.L < PROBE ? Math.ceil(ref.L * 1.5) : 0));
-    for (let raise = 0; ; raise++) {
-      if (maxiter > PROBE && ref.L === PROBE) ref = referenceOrbit(c.cr, c.ci, P, maxiter);
+    // Per level: reference orbit at the view center in that level's coordinates.
+    // Pixels near the reference escape about when it does; iteration limits then
+    // scale together while the preview shows escapes crowding against them.
+    const base = [];
+    for (let j = p.low; j <= p.top; j++) {
+      const L = chain.at(j), lamAbs = Math.hypot(L.lam[0], L.lam[1]);
+      const P = Math.max(64, Math.ceil(Math.log2(1 / (lamAbs * g.s))) + 64);
+      const c = chain.centerAt(j, v, P);
+      const ref = referenceOrbit(c.cr, c.ci, P, PROBE);
+      base.push({ c, P, ref, len: PROBE, need: Math.max(iterationsFor(lamAbs * g.s) + (j > 0 ? 20 * L.q : 0),
+        ref.L < PROBE ? Math.ceil(ref.L * 1.5) : 0),
+        level: { q: L.q, l: L.l, lr: L.lam[0], li: L.lam[1], lamAbs, offset: L.offset,
+          cr: toNum(c.cr, P), ci: toNum(c.ci, P) } });
       if (my !== gen) return;
-      const st = await runPass(my * 2, q, ref, maxiter,
+    }
+    const levels = (boost) => base.map((b) => {
+      const maxiter = Math.min(ITER_CAP, boost * b.need);
+      if (maxiter > b.len && b.ref.L === b.len) {   // reference still bounded: extend it
+        b.ref = referenceOrbit(b.c.cr, b.c.ci, b.P, maxiter);
+        b.len = maxiter;
+      }
+      return { ...b.level, Zr: b.ref.Zr, Zi: b.ref.Zi, L: b.ref.L, maxiter };
+    });
+    let boost = lastBoost, lv;
+    for (let raise = 0; ; raise++) {
+      lv = levels(boost);
+      if (my !== gen) return;
+      const st = await runPass(my * 2, q, p, lv,
         (m) => smctx.putImageData(new ImageData(m.px, q.W, m.y1 - m.y0), 0, m.y0));
       if (st === null || my !== gen) return;
       const crowded = st.inside > 0 && st.late > 0.002 * q.W * q.H;
-      if (!crowded || raise === 2 || maxiter >= ITER_CAP) break;
-      maxiter = Math.min(ITER_CAP, maxiter * 4);
+      if (!crowded || raise === 2 || lv.every((l) => l.maxiter >= ITER_CAP)) break;
+      boost *= 4;
     }
-    lastMaxiter = Math.max(iterationsFor(g.cPix), Math.round(maxiter / 2));
+    lastBoost = Math.max(1, boost / 2);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
     keepSnapshot(v);
 
-    const done = await runPass(my * 2 + 1, g, ref, maxiter,
+    const done = await runPass(my * 2 + 1, g, p, lv,
       (m) => ctx.putImageData(new ImageData(m.px, g.W, m.y1 - m.y0), 0, m.y0));
     if (done === null || my !== gen) return;
     keepSnapshot(v);
@@ -196,14 +218,15 @@ function flash() {
   flashTimer = setTimeout(() => { $("grenze").hidden = true; }, 1800);
 }
 
-function showDigits() {
-  const d = world.digits();
-  const im = d.im.replace("−", "");
-  $("c0").textContent = `${d.re} ${d.imNeg ? "−" : "+"} ${im} i`;
-  $("stellen").textContent = d.count;
+// Level whose set the window shows at about its own scale: the largest j that is
+// still at least 1/50 of the window.
+function showReadouts() {
+  let j = 0;
+  for (let k = 1; chain.at(k) && Math.hypot(...chain.at(k).lam) * view.r >= 0.05; k++) j = k;
   const z = Math.log10(START_R / view.r);
   $("zoom").textContent = (z >= 0 ? "rein " : "raus ") + "10^" + Math.abs(z).toFixed(1);
-  $("welt").textContent = world.seed;
+  $("welt").textContent = chain.seed;
+  $("ebene").textContent = j;
 }
 
 // ---- state in the URL ----
@@ -213,16 +236,17 @@ function unhex(s) { return s[0] === "-" ? -BigInt("0x" + s.slice(1)) : BigInt("0
 
 function writeHash() {
   history.replaceState(null, "",
-    `#welt=${world.seed}&w=${hex(view.re)},${hex(view.im)},${view.Q}&r=${view.r.toExponential(6)}`);
+    `#welt=${chain.seed}&u=${hex(view.re)},${hex(view.im)},${view.Q}&r=${view.r.toExponential(6)}`);
 }
 
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   const seed = parseInt(p.get("welt"), 10);
-  const w = (p.get("w") || "").split(",");
+  const w = (p.get("u") || "").split(",");
   const r = parseFloat(p.get("r"));
   let view = null;
-  if (p.has("w")) {
+  chain = new Chain(Number.isFinite(seed) ? seed : 1);
+  if (p.has("u")) {
     try {
       const Q = +w[2];
       if (w.length !== 3 || !Number.isInteger(Q) || Q < 64 || Q > 1000) throw new Error();
@@ -240,11 +264,11 @@ function readHash() {
 }
 
 function start(seed, v) {
-  world = new World(seed, iteratePixel);
+  if (seed !== chain.seed) chain = new Chain(seed);
   view = v || { re: 0n, im: 0n, Q: 64, r: START_R };
   snapView = null;
+  lastBoost = 1;
   writeHash();
-  showDigits();
   render();
 }
 
@@ -306,7 +330,7 @@ window.addEventListener("keydown", (e) => {
   transform(k[0], W / 2, H / 2, k[1], k[2]);
 });
 
-$("startknopf").addEventListener("click", () => start(world.seed, null));
+$("startknopf").addEventListener("click", () => start(chain.seed, null));
 $("neuknopf").addEventListener("click", () => start((Math.random() * 1e9) >>> 0, null));
 window.addEventListener("resize", resize);
 
