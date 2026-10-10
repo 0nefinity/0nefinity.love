@@ -242,7 +242,7 @@ async function render() {
     ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
     keepSnapshot(v);
 
-    field = { view: shown, tiles: [] };
+    field = { view: shown, W: g.W, H: g.H, tiles: [] };
     const f = field;
     const done = await runPass(my * 2 + 1, g, p, lv, (m) => {
       f.tiles.push(m);
@@ -275,7 +275,8 @@ try {
 }
 try {
   const saved = JSON.parse(stored || "null");
-  if (saved && Object.hasOwn(PALETTES, saved.palette) && saved.bands >= 0 && saved.lines >= 0) {
+  const ok = (x) => typeof x === "number" && x >= 0 && x < Infinity;
+  if (saved && Object.prototype.hasOwnProperty.call(PALETTES, saved.palette) && ok(saved.bands) && ok(saved.lines)) {
     Object.assign(look, { palette: saved.palette, bands: +saved.bands, lines: +saved.lines });
   } else if (saved) {
     throw new Error("unbekannte Werte");
@@ -284,10 +285,12 @@ try {
   storeFailed("Gespeicherte Farbe nicht lesbar, zeige Grau", err);
 }
 
+// Never replaces a message already shown: a render error outranks this note.
 function storeFailed(text, err) {
+  console.error(err);
+  if (!$("fehler").hidden) return;
   $("fehler").textContent = text + ".";
   $("fehler").hidden = false;
-  console.error(err);
 }
 
 function paintTile(target, m) {
@@ -318,7 +321,7 @@ function recolor() {
   recolorQueued = true;
   requestAnimationFrame(() => {
     recolorQueued = false;
-    if (field && field.view === view) {
+    if (field && field.view === view && field.W === canvas.width && field.H === canvas.height) {
       for (const t of field.tiles) paintTile(ctx, t);
       if (!$("status").classList.contains("an")) keepSnapshot(view);
     }
@@ -414,7 +417,6 @@ function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(canvas.clientWidth * dpr);
   canvas.height = Math.round(canvas.clientHeight * dpr);
-  field = null;
   preview();
   clearTimeout(timer);
   timer = setTimeout(render, 160);
