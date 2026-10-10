@@ -5,6 +5,7 @@ const DEPTH_LIMIT = 1e-140;   // smallest c pixel: doubles run out near 1e-300 o
 const ROWS = 8;
 const ITER_CAP = 1000000;
 const PROBE = 200000;
+const MIN_R = 1e-280;         // keeps Q below 1024, where 2^Q still fits a double
 
 const canvas = document.getElementById("bild");
 const ctx = canvas.getContext("2d");
@@ -16,7 +17,11 @@ const $ = (id) => document.getElementById(id);
 
 const workers = Array.from(
   { length: Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)) },
-  () => new Worker("worker.js"));
+  () => {
+    const w = new Worker("worker.js");
+    w.onerror = (e) => fail(new Error("Worker: " + e.message));
+    return w;
+  });
 
 let world, view, snapView = null;
 let gen = 0, timer = 0, lastMaxiter = 0;
@@ -44,8 +49,14 @@ function geometry(v) {
   return { W, H, s, wcr, wci, maxW, cPix: s / maxW / maxW, inner: Math.hypot(wcr, wci) > 4 * reach };
 }
 
+function inBounds(v) {
+  const g = geometry(v);
+  return v.r >= MIN_R && g.cPix >= DEPTH_LIMIT && g.maxW <= 1e140;
+}
+
 // Move the view: zoom by f about screen point (px, py), then pan by (dx, dy) pixels.
 function transform(f, px, py, dx, dy) {
+  if (!(f > 0 && f < Infinity)) return;
   const g = geometry(view);
   const ar = (px - g.W / 2) * g.s, ai = (g.H / 2 - py) * g.s;
   const mr = ar * (1 - f) - dx * g.s * f, mi = ai * (1 - f) + dy * g.s * f;
@@ -54,8 +65,7 @@ function transform(f, px, py, dx, dy) {
   const scale = Math.pow(2, next.Q);
   next.re += BigInt(Math.round(mr * scale));
   next.im += BigInt(Math.round(mi * scale));
-  const ng = geometry(next);
-  if (ng.cPix < DEPTH_LIMIT || ng.maxW > 1e140) { flash(); return; }
+  if (!inBounds(next)) { flash(); return; }
   view = next;
   preview();
   writeHash();
@@ -211,10 +221,22 @@ function readHash() {
   const seed = parseInt(p.get("welt"), 10);
   const w = (p.get("w") || "").split(",");
   const r = parseFloat(p.get("r"));
-  return {
-    seed: Number.isFinite(seed) ? seed : null,
-    view: w.length === 3 && r > 0 ? { re: unhex(w[0]), im: unhex(w[1]), Q: +w[2], r } : null,
-  };
+  let view = null;
+  if (p.has("w")) {
+    try {
+      const Q = +w[2];
+      if (w.length !== 3 || !Number.isInteger(Q) || Q < 64 || Q > 1000) throw new Error();
+      view = { re: unhex(w[0]), im: unhex(w[1]), Q, r };
+    } catch {
+      view = null;
+    }
+    if (!view || !inBounds(view)) {
+      view = null;
+      $("fehler").textContent = "Link unvollständig, zeige die Startansicht.";
+      $("fehler").hidden = false;
+    }
+  }
+  return { seed: Number.isFinite(seed) ? seed : null, view };
 }
 
 function start(seed, v) {
@@ -288,8 +310,8 @@ $("startknopf").addEventListener("click", () => start(world.seed, null));
 $("neuknopf").addEventListener("click", () => start((Math.random() * 1e9) >>> 0, null));
 window.addEventListener("resize", resize);
 
-const initial = readHash();
 const dpr0 = Math.min(window.devicePixelRatio || 1, 2);
 canvas.width = Math.round(canvas.clientWidth * dpr0);
 canvas.height = Math.round(canvas.clientHeight * dpr0);
+const initial = readHash();
 start(initial.seed ?? 1, initial.view);
