@@ -72,17 +72,7 @@
     font-variant-numeric: tabular-nums;
   }
   .name { color: var(--text-dim); }
-  #c0 {
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.8125rem;
-    white-space: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    direction: ltr;
-  }
-  #c0::-webkit-scrollbar { display: none; }
   .knoepfe {
-    grid-row: 1 / span 2;
     grid-column: 3;
     display: flex;
     gap: 6px;
@@ -120,16 +110,14 @@
 <div id="fehler" class="feld" hidden></div>
 <div id="werte" class="feld">
   <span class="name">Zoom</span>
-  <span><span id="zoom"></span> <span class="name">&middot; Welt</span> <span id="welt"></span> <span class="name">&middot; Stellen von c&#8320;</span> <span id="stellen"></span></span>
+  <span><span id="zoom"></span> <span class="name">&middot; Ebene</span> <span id="ebene"></span> <span class="name">&middot; Welt</span> <span id="welt"></span></span>
   <div class="knoepfe">
     <button id="startknopf" type="button">Start</button>
     <button id="neuknopf" type="button">Neue Welt</button>
   </div>
-  <span class="name">c&#8320;</span>
-  <span id="c0"></span>
 </div>
 <script src="perturb.js"></script>
-<script src="world.js"></script>
+<script src="chain.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
