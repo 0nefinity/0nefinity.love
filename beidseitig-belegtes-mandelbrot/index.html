@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>beidseitig belegtes Mandelbrot</title>
+<style>
+  :root {
+    --bg-color: #020306;
+    --text-color: #c9d5e3;
+    --text-dim: #8392a6;
+    --ui-surface: rgba(6, 9, 16, 0.78);
+    --ui-border-soft: rgba(201, 213, 227, 0.1);
+    --accent: #9cc4ea;
+    color-scheme: dark;
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg-color);
+    color: var(--text-color);
+    font: 0.875rem/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+  #bild {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: grab;
+    display: block;
+  }
+  #bild:active { cursor: grabbing; }
+  .feld {
+    position: fixed;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border-soft);
+    border-radius: 6px;
+    backdrop-filter: blur(6px);
+  }
+  h1 {
+    top: 12px;
+    left: 12px;
+    margin: 0;
+    padding: 6px 10px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  #status {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    vertical-align: middle;
+    opacity: 0;
+    transition: opacity 200ms;
+  }
+  #status.an { opacity: 0.9; }
+  #werte {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 2px 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  .name { color: var(--text-dim); }
+  #c0 {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    direction: ltr;
+  }
+  #c0::-webkit-scrollbar { display: none; }
+  .knoepfe {
+    grid-row: 1 / span 2;
+    grid-column: 3;
+    display: flex;
+    gap: 6px;
+  }
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(201, 213, 227, 0.08);
+    color: var(--text-color);
+    font: inherit;
+    cursor: pointer;
+    transition: background 150ms;
+  }
+  button:hover { background: rgba(201, 213, 227, 0.16); }
+  button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+  #grenze, #fehler {
+    top: 12px;
+    right: 12px;
+    padding: 6px 10px;
+  }
+  #fehler { color: #e0a4a4; }
+  @media (max-width: 560px) {
+    #werte { grid-template-columns: auto 1fr; }
+    .knoepfe { grid-row: auto; grid-column: 1 / span 2; justify-content: flex-end; }
+  }
+</style>
+</head>
+<body>
+<canvas id="bild" aria-label="beidseitig belegtes Mandelbrot, zoombar"></canvas>
+<h1 class="feld">beidseitig belegtes Mandelbrot<span id="status"></span></h1>
+<div id="grenze" class="feld" hidden>Grenze dieses Prototyps erreicht</div>
+<div id="fehler" class="feld" hidden></div>
+<div id="werte" class="feld">
+  <span class="name">Zoom</span>
+  <span><span id="zoom"></span> <span class="name">&middot; Welt</span> <span id="welt"></span> <span class="name">&middot; Stellen von c&#8320;</span> <span id="stellen"></span></span>
+  <div class="knoepfe">
+    <button id="startknopf" type="button">Start</button>
+    <button id="neuknopf" type="button">Neue Welt</button>
+  </div>
+  <span class="name">c&#8320;</span>
+  <span id="c0"></span>
+</div>
+<script src="perturb.js"></script>
+<script src="world.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
