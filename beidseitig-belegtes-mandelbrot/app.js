@@ -241,7 +241,12 @@ function writeHash() {
 
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
-  const seed = parseInt(p.get("welt"), 10);
+  const raw = p.get("welt");
+  const seed = /^\d{1,10}$/.test(raw || "") && +raw < 2 ** 32 ? +raw : NaN;
+  if (raw !== null && !Number.isFinite(seed)) {
+    $("fehler").textContent = "Welt im Link ungültig, zeige Welt 1.";
+    $("fehler").hidden = false;
+  }
   const w = (p.get("u") || "").split(",");
   const r = parseFloat(p.get("r"));
   let view = null;

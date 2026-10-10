@@ -50,13 +50,15 @@ function fixed(x) {
 function referenceOrbit(cr, ci, P, maxiter) {
   const Zr = new Float64Array(maxiter + 1), Zi = new Float64Array(maxiter + 1);
   const Pb = BigInt(P), P1 = BigInt(P - 1);
-  const scale = Math.pow(2, -P);
+  // Number() of a BigInt beyond 2^1024 is Infinity: drop low bits first
+  const cut = Math.max(0, P - 960), cutB = BigInt(cut);
+  const scale = Math.pow(2, cut - P);
   let x = 0n, y = 0n, L = maxiter;
   for (let n = 1; n <= maxiter; n++) {
     const x2 = (x * x) >> Pb, y2 = (y * y) >> Pb, xy = (x * y) >> P1;
     x = x2 - y2 + cr;
     y = xy + ci;
-    const a = Number(x) * scale, b = Number(y) * scale;
+    const a = Number(x >> cutB) * scale, b = Number(y >> cutB) * scale;
     Zr[n] = a;
     Zi[n] = b;
     if (a * a + b * b > 4) { L = n; break; }
