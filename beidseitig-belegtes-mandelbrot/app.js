@@ -295,8 +295,7 @@ async function render() {
     const f = field;
     const done = await runPass(my * 2 + 1, g, p, lv, (m) => {
       f.tiles.push(m);
-      paintTile(ctx, m);
-      paintTile(slctx, m);
+      paintTile(ctx, m, slctx);
     });
     if (done === null || my !== gen) return;
     keepSnapshot(v, 1, canvas);
@@ -343,7 +342,7 @@ function storeFailed(text, err) {
   $("fehler").hidden = false;
 }
 
-function paintTile(target, m) {
+function paintTile(target, m, also) {
   const tw = m.x1 - m.x0, th = m.y1 - m.y0;
   const px = new Uint8ClampedArray(tw * th * 4);
   const pal = PALETTES[look.palette], { bands, lines } = look;
@@ -360,7 +359,9 @@ function paintTile(target, m) {
       px[o + c] = b + (pal.glow[c] - b) * gl;
     }
   }
-  target.putImageData(new ImageData(px, tw, th), m.x0, m.y0);
+  const img = new ImageData(px, tw, th);
+  target.putImageData(img, m.x0, m.y0);
+  if (also) also.putImageData(img, m.x0, m.y0);
 }
 
 // Repaint the finished part of the frame in the current look, at most once per
@@ -371,10 +372,18 @@ function recolor() {
   recolorQueued = true;
   requestAnimationFrame(() => {
     recolorQueued = false;
-    if (field && field.view === view && field.W === canvas.width && field.H === canvas.height) {
+    const done = !$("status").classList.contains("an");
+    if (done && field && field.view === view && field.W === canvas.width && field.H === canvas.height) {
       for (const t of field.tiles) paintTile(ctx, t);
-      if (fresh) for (const t of field.tiles) paintTile(slctx, t);
-      else keepSnapshot(view, 1, canvas);
+      keepSnapshot(view, 1, canvas);
+    } else {
+      // The snapshot and a running render carry the old colours: start over in
+      // the new look, the quarter pass then covers everything.
+      snapView = null;
+      fresh = false;
+      gen++;
+      clearTimeout(timer);
+      timer = setTimeout(render, 160);
     }
     try {
       localStorage.setItem("mandelbrot-look", JSON.stringify(look));
