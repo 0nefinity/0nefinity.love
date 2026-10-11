@@ -99,16 +99,20 @@ function transform(f, px, py, dx, dy) {
   } catch (err) {
     return fail(err);
   }
+  gen++;   // stop the running render, its tiles are for the old view
+  if (fresh) keepSnapshot(view);   // the canvas is the best picture of the old view
   view = next;
   preview();
-  writeHash();
+  showReadouts();
   clearTimeout(timer);
   timer = setTimeout(render, 160);
 }
 
 // ---- drawing ----
 
-function preview() {
+// The last picture, moved and scaled to the current view. Where it does not
+// reach (zooming out), `under` shows through, else the palette's background.
+function preview(under) {
   if (!snapView) return;
   const g = geometry(view);
   const Q = Math.max(view.Q, snapView.Q);
@@ -117,18 +121,26 @@ function preview() {
   const shr = toNum(a.re - b.re, Q) / g.s, shi = toNum(a.im - b.im, Q) / g.s;
   const k = snapView.r / view.r;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, g.W, g.H);
+  if (under) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(under, 0, 0, under.width * 4, under.height * 4);
+  } else {
+    ctx.fillStyle = `rgb(${PALETTES[look.palette].deep.join(",")})`;
+    ctx.fillRect(0, 0, g.W, g.H);
+  }
   ctx.setTransform(k, 0, 0, k, g.W / 2 * (1 - k) - shr, g.H / 2 * (1 - k) + shi);
   ctx.drawImage(snap, 0, 0);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
+// `fresh`: the canvas holds tiles newer than the snapshot.
+let fresh = false;
 function keepSnapshot(v) {
   snap.width = canvas.width;
   snap.height = canvas.height;
   sctx.drawImage(canvas, 0, 0);
   snapView = { ...v };
+  fresh = false;
 }
 
 // Tiles nearest the center first, so the middle of the picture appears first.
@@ -156,6 +168,8 @@ function runPass(fid, g, p, levels, sink) {
       w.onmessage = (e) => {
         const m = e.data;
         if (m.fid !== fid) return;
+        // Tiles still in flight when the view moved belong to the old picture.
+        if (fid !== gen * 2 && fid !== gen * 2 + 1) return resolve(null);
         try {
           sink(m);
         } catch (err) {
@@ -197,6 +211,7 @@ async function render() {
   try {
     const p = plan(v);
     if (!p) throw new Error("Ansicht außerhalb der Kette");
+    writeHash();
     showReadouts();
     const q = { ...g, W: Math.ceil(g.W / 4), H: Math.ceil(g.H / 4), s: g.s * 4 };
     small.width = q.W;
@@ -238,9 +253,15 @@ async function render() {
       boost *= 4;
     }
     lastBoost = Math.max(1, boost / 2);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
-    keepSnapshot(v);
+    // The quarter-size pass only fills what the last picture does not cover,
+    // unless that picture is already stretched beyond the pass's own blur.
+    if (snapView && snapView.r / v.r < 4) {
+      preview(small);
+    } else {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
+    }
+    fresh = true;
 
     field = { view: shown, W: g.W, H: g.H, tiles: [] };
     const f = field;
@@ -427,11 +448,28 @@ function devPx(e) {
   return [(e.clientX - b.left) * canvas.width / b.width, (e.clientY - b.top) * canvas.height / b.height];
 }
 
+// Wheel and key zooms glide: the requested zoom (as a logarithm) is spent a
+// third per display frame instead of jumping in notches.
+let glide = 0, glideAt = [0, 0], glideRaf = 0;
+function zoomSmooth(logF, x, y) {
+  glide += logF;
+  glideAt = [x, y];
+  if (!glideRaf) glideRaf = requestAnimationFrame(glideStep);
+}
+function glideStep() {
+  const step = Math.abs(glide) < 0.004 ? glide : glide / 3;
+  glide -= step;
+  const before = view;
+  transform(Math.exp(step), glideAt[0], glideAt[1], 0, 0);
+  if (view === before) glide = 0;   // hit the edge of the chain
+  glideRaf = glide ? requestAnimationFrame(glideStep) : 0;
+}
+
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const [x, y] = devPx(e);
   const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1;
-  transform(Math.pow(1.0015, e.deltaY * unit), x, y, 0, 0);
+  zoomSmooth(e.deltaY * unit * Math.log(1.0015), x, y);
 }, { passive: false });
 
 const pointers = new Map();
@@ -467,7 +505,8 @@ window.addEventListener("keydown", (e) => {
   const k = keys[e.key];
   if (!k) return;
   e.preventDefault();
-  transform(k[0], W / 2, H / 2, k[1], k[2]);
+  if (k[0] !== 1) zoomSmooth(Math.log(k[0]), W / 2, H / 2);
+  else transform(1, W / 2, H / 2, k[1], k[2]);
 });
 
 // ---- look panel ----
