@@ -106,7 +106,7 @@ function transform(f, px, py, dx, dy) {
     return fail(err);
   }
   gen++;   // stop the running render, its tiles are for the old view
-  if (fresh) keepSnapshot(view, canvasStretch, sharpLayer);   // the best picture of the old view
+  if (fresh) keepSnapshot(view, canvasStretch, sharpLayer, canvasStale);   // the best picture of the old view
   view = next;
   preview();
   showReadouts();
@@ -152,8 +152,11 @@ function place(target, img, [k, x, y]) {
 // `snap` holds only sharp content (transparent elsewhere), `snapAll` the whole
 // picture as shown. `snapStretch`: how far snap's content is already upscaled
 // from its own pixels, so stretching cannot compound across snapshots.
+// `snapStale`: the snapshot has colours from before a colour change; it still
+// moves along as preview, but the next quarter pass covers it.
 let fresh = false, snapS = 1, snapStretch = 1, canvasStretch = 1;
-function keepSnapshot(v, stretch, source) {
+let snapStale = false, canvasStale = false;
+function keepSnapshot(v, stretch, source, stale) {
   for (const [c, x, img] of [[snap, sctx, source], [snapAll, sactx, canvas]]) {
     c.width = canvas.width;
     c.height = canvas.height;
@@ -162,6 +165,7 @@ function keepSnapshot(v, stretch, source) {
   snapView = { ...v };
   snapS = geometry(v).s;
   snapStretch = stretch;
+  snapStale = stale;
   fresh = false;
 }
 
@@ -277,7 +281,7 @@ async function render() {
     lastBoost = Math.max(1, boost / 2);
     // The quarter-size pass only fills what the last picture does not cover,
     // unless that picture is already stretched beyond the pass's own blur.
-    const stretch = snapView ? snapStretch * snapS / g.s : Infinity;
+    const stretch = snapView && !snapStale ? snapStretch * snapS / g.s : Infinity;
     sharpLayer.width = g.W;
     sharpLayer.height = g.H;
     if (stretch < 4) {
@@ -289,6 +293,7 @@ async function render() {
       ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
       canvasStretch = 1;   // `sharpLayer` holds only full tiles
     }
+    canvasStale = false;
     fresh = true;
 
     field = { view: shown, W: g.W, H: g.H, tiles: [] };
@@ -298,7 +303,8 @@ async function render() {
       paintTile(ctx, m, slctx);
     });
     if (done === null || my !== gen) return;
-    keepSnapshot(v, 1, canvas);
+    f.done = true;
+    keepSnapshot(v, 1, canvas, false);
     busy(false);
   } catch (err) {
     fail(err);
@@ -372,18 +378,14 @@ function recolor() {
   recolorQueued = true;
   requestAnimationFrame(() => {
     recolorQueued = false;
-    const done = !$("status").classList.contains("an");
-    if (done && field && field.view === view && field.W === canvas.width && field.H === canvas.height) {
-      for (const t of field.tiles) paintTile(ctx, t);
-      keepSnapshot(view, 1, canvas);
+    const current = field && field.view === view && field.W === canvas.width && field.H === canvas.height;
+    if (current) for (const t of field.tiles) paintTile(ctx, t, fresh ? slctx : null);
+    if (current && field.done) {
+      keepSnapshot(view, 1, canvas, false);
     } else {
-      // The snapshot and a running render carry the old colours: start over in
-      // the new look, the quarter pass then covers everything.
-      snapView = null;
-      fresh = false;
-      gen++;
-      clearTimeout(timer);
-      timer = setTimeout(render, 160);
+      // Snapshot and unfinished canvas still show the old colours in places.
+      snapStale = true;
+      if (fresh) canvasStale = true;
     }
     try {
       localStorage.setItem("mandelbrot-look", JSON.stringify(look));
@@ -477,7 +479,7 @@ function start(seed, v) {
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   gen++;   // running tiles have the old geometry
-  if (fresh) keepSnapshot(view, canvasStretch, sharpLayer);
+  if (fresh) keepSnapshot(view, canvasStretch, sharpLayer, canvasStale);
   canvas.width = Math.round(canvas.clientWidth * dpr);
   canvas.height = Math.round(canvas.clientHeight * dpr);
   preview();
