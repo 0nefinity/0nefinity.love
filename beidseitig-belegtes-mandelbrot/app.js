@@ -100,7 +100,7 @@ function transform(f, px, py, dx, dy) {
     return fail(err);
   }
   gen++;   // stop the running render, its tiles are for the old view
-  if (fresh) keepSnapshot(view);   // the canvas is the best picture of the old view
+  if (fresh) keepSnapshot(view, canvasStretch);   // the canvas is the best picture of the old view
   view = next;
   preview();
   showReadouts();
@@ -115,11 +115,12 @@ function transform(f, px, py, dx, dy) {
 function preview(under) {
   if (!snapView) return;
   const g = geometry(view);
+  if (!g.W || !g.H || !snap.width || !snap.height) return;
   const Q = Math.max(view.Q, snapView.Q);
   const a = { ...view }, b = { ...snapView };
   setQ(a, Q); setQ(b, Q);
   const shr = toNum(a.re - b.re, Q) / g.s, shi = toNum(a.im - b.im, Q) / g.s;
-  const k = snapView.r / view.r;
+  const k = snapS / g.s;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (under) {
     ctx.imageSmoothingEnabled = true;
@@ -128,18 +129,22 @@ function preview(under) {
     ctx.fillStyle = `rgb(${PALETTES[look.palette].deep.join(",")})`;
     ctx.fillRect(0, 0, g.W, g.H);
   }
-  ctx.setTransform(k, 0, 0, k, g.W / 2 * (1 - k) - shr, g.H / 2 * (1 - k) + shi);
+  ctx.setTransform(k, 0, 0, k, g.W / 2 - k * snap.width / 2 - shr, g.H / 2 - k * snap.height / 2 + shi);
   ctx.drawImage(snap, 0, 0);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 // `fresh`: the canvas holds tiles newer than the snapshot.
-let fresh = false;
-function keepSnapshot(v) {
+// `snapStretch`: how far the snapshot's content is already upscaled from its own
+// pixels; snapshots of half-finished canvases inherit it, so it cannot creep.
+let fresh = false, snapS = 1, snapStretch = 1, canvasStretch = 1;
+function keepSnapshot(v, stretch) {
   snap.width = canvas.width;
   snap.height = canvas.height;
   sctx.drawImage(canvas, 0, 0);
   snapView = { ...v };
+  snapS = geometry(v).s;
+  snapStretch = stretch;
   fresh = false;
 }
 
@@ -255,11 +260,14 @@ async function render() {
     lastBoost = Math.max(1, boost / 2);
     // The quarter-size pass only fills what the last picture does not cover,
     // unless that picture is already stretched beyond the pass's own blur.
-    if (snapView && snapView.r / v.r < 4) {
+    const stretch = snapView ? snapStretch * snapS / g.s : Infinity;
+    if (stretch < 4) {
       preview(small);
+      canvasStretch = Math.max(1, stretch);
     } else {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
+      canvasStretch = 4;
     }
     fresh = true;
 
@@ -270,7 +278,7 @@ async function render() {
       paintTile(ctx, m);
     });
     if (done === null || my !== gen) return;
-    keepSnapshot(v);
+    keepSnapshot(v, 1);
     busy(false);
   } catch (err) {
     fail(err);
@@ -427,6 +435,7 @@ function start(seed, v) {
   if (seed !== chain.seed) { chain = new Chain(seed); refCache = new Map(); }
   view = v || { re: 0n, im: 0n, Q: 64, r: START_R };
   snapView = null;
+  fresh = false;   // the canvas still shows the old world
   lastBoost = 1;
   writeHash();
   render();
@@ -436,6 +445,8 @@ function start(seed, v) {
 
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  gen++;   // running tiles have the old geometry
+  if (fresh) keepSnapshot(view, canvasStretch);
   canvas.width = Math.round(canvas.clientWidth * dpr);
   canvas.height = Math.round(canvas.clientHeight * dpr);
   preview();
