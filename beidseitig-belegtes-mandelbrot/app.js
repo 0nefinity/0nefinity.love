@@ -11,6 +11,12 @@ const canvas = document.getElementById("bild");
 const ctx = canvas.getContext("2d");
 const snap = document.createElement("canvas");
 const sctx = snap.getContext("2d");
+const snapAll = document.createElement("canvas");
+const sactx = snapAll.getContext("2d");
+// Only the sharp part of the canvas (moved snapshot + full tiles), transparent
+// where the quarter pass shows through; snapshots of a running render copy it.
+const sharpLayer = document.createElement("canvas");
+const slctx = sharpLayer.getContext("2d");
 const small = document.createElement("canvas");
 const smctx = small.getContext("2d");
 const $ = (id) => document.getElementById(id);
@@ -100,7 +106,7 @@ function transform(f, px, py, dx, dy) {
     return fail(err);
   }
   gen++;   // stop the running render, its tiles are for the old view
-  if (fresh) keepSnapshot(view, canvasStretch);   // the canvas is the best picture of the old view
+  if (fresh) keepSnapshot(view, canvasStretch, sharpLayer);   // the best picture of the old view
   view = next;
   preview();
   showReadouts();
@@ -110,8 +116,9 @@ function transform(f, px, py, dx, dy) {
 
 // ---- drawing ----
 
-// The last picture, moved and scaled to the current view. Where it does not
-// reach (zooming out), `under` shows through, else the palette's background.
+// The last picture, moved and scaled to the current view. Its sharp part lies
+// over `under` (the new quarter pass) or, without one, over the whole last
+// picture including its blurry parts, then the palette's background.
 function preview(under) {
   if (!snapView) return;
   const g = geometry(view);
@@ -121,27 +128,37 @@ function preview(under) {
   setQ(a, Q); setQ(b, Q);
   const shr = toNum(a.re - b.re, Q) / g.s, shi = toNum(a.im - b.im, Q) / g.s;
   const k = snapS / g.s;
+  const at = [k, g.W / 2 - k * snap.width / 2 - shr, g.H / 2 - k * snap.height / 2 + shi];
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = true;
   if (under) {
-    ctx.imageSmoothingEnabled = true;
     ctx.drawImage(under, 0, 0, under.width * 4, under.height * 4);
   } else {
     ctx.fillStyle = `rgb(${PALETTES[look.palette].deep.join(",")})`;
     ctx.fillRect(0, 0, g.W, g.H);
+    place(ctx, snapAll, at);
   }
-  ctx.setTransform(k, 0, 0, k, g.W / 2 - k * snap.width / 2 - shr, g.H / 2 - k * snap.height / 2 + shi);
-  ctx.drawImage(snap, 0, 0);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  place(ctx, snap, at);
+  return at;
+}
+
+function place(target, img, [k, x, y]) {
+  target.setTransform(k, 0, 0, k, x, y);
+  target.drawImage(img, 0, 0);
+  target.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 // `fresh`: the canvas holds tiles newer than the snapshot.
-// `snapStretch`: how far the snapshot's content is already upscaled from its own
-// pixels; snapshots of half-finished canvases inherit it, so it cannot creep.
+// `snap` holds only sharp content (transparent elsewhere), `snapAll` the whole
+// picture as shown. `snapStretch`: how far snap's content is already upscaled
+// from its own pixels, so stretching cannot compound across snapshots.
 let fresh = false, snapS = 1, snapStretch = 1, canvasStretch = 1;
-function keepSnapshot(v, stretch) {
-  snap.width = canvas.width;
-  snap.height = canvas.height;
-  sctx.drawImage(canvas, 0, 0);
+function keepSnapshot(v, stretch, source) {
+  for (const [c, x, img] of [[snap, sctx, source], [snapAll, sactx, canvas]]) {
+    c.width = canvas.width;
+    c.height = canvas.height;
+    x.drawImage(img, 0, 0);
+  }
   snapView = { ...v };
   snapS = geometry(v).s;
   snapStretch = stretch;
@@ -261,13 +278,16 @@ async function render() {
     // The quarter-size pass only fills what the last picture does not cover,
     // unless that picture is already stretched beyond the pass's own blur.
     const stretch = snapView ? snapStretch * snapS / g.s : Infinity;
+    sharpLayer.width = g.W;
+    sharpLayer.height = g.H;
     if (stretch < 4) {
-      preview(small);
+      const at = preview(small);
+      if (at) place(slctx, snap, at);
       canvasStretch = Math.max(1, stretch);
     } else {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(small, 0, 0, q.W * 4, q.H * 4);
-      canvasStretch = 4;
+      canvasStretch = 1;   // `sharpLayer` holds only full tiles
     }
     fresh = true;
 
@@ -276,9 +296,10 @@ async function render() {
     const done = await runPass(my * 2 + 1, g, p, lv, (m) => {
       f.tiles.push(m);
       paintTile(ctx, m);
+      paintTile(slctx, m);
     });
     if (done === null || my !== gen) return;
-    keepSnapshot(v, 1);
+    keepSnapshot(v, 1, canvas);
     busy(false);
   } catch (err) {
     fail(err);
@@ -352,7 +373,8 @@ function recolor() {
     recolorQueued = false;
     if (field && field.view === view && field.W === canvas.width && field.H === canvas.height) {
       for (const t of field.tiles) paintTile(ctx, t);
-      if (!$("status").classList.contains("an")) keepSnapshot(view);
+      if (fresh) for (const t of field.tiles) paintTile(slctx, t);
+      else keepSnapshot(view, 1, canvas);
     }
     try {
       localStorage.setItem("mandelbrot-look", JSON.stringify(look));
@@ -446,7 +468,7 @@ function start(seed, v) {
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   gen++;   // running tiles have the old geometry
-  if (fresh) keepSnapshot(view, canvasStretch);
+  if (fresh) keepSnapshot(view, canvasStretch, sharpLayer);
   canvas.width = Math.round(canvas.clientWidth * dpr);
   canvas.height = Math.round(canvas.clientHeight * dpr);
   preview();
@@ -468,12 +490,13 @@ function zoomSmooth(logF, x, y) {
   if (!glideRaf) glideRaf = requestAnimationFrame(glideStep);
 }
 function glideStep() {
+  glideRaf = 0;   // cleared first, so a throwing step cannot leave the wheel dead
   const step = Math.abs(glide) < 0.004 ? glide : glide / 3;
   glide -= step;
   const before = view;
   transform(Math.exp(step), glideAt[0], glideAt[1], 0, 0);
   if (view === before) glide = 0;   // hit the edge of the chain
-  glideRaf = glide ? requestAnimationFrame(glideStep) : 0;
+  if (glide) glideRaf = requestAnimationFrame(glideStep);
 }
 
 canvas.addEventListener("wheel", (e) => {
