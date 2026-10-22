@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>0klang</title>
+<style>
+  :root{
+    --bg:#060608; --panel:#0d0d12; --line:#1c1c24;
+    --ink:#e8e8ee; --dim:#a0a0aa; --accent:#4de0c8; --accent-dim:#22665c;
+    --key:#15151b; --key-edge:#242430; --black:#0a0a0e;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,sans-serif; overflow:hidden}
+  body{display:flex; flex-direction:column; user-select:none}
+
+  header{display:flex; align-items:center; gap:16px; padding:14px 18px;
+    border-bottom:1px solid var(--line)}
+  .brand{font-weight:600; letter-spacing:.14em; font-size:14px}
+  .brand .z{color:var(--accent)}
+  .sub{color:var(--dim); font-size:12px; letter-spacing:.04em}
+  header .spacer{flex:1}
+
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden}
+  .seg button{background:transparent; color:var(--dim); border:0; padding:7px 14px;
+    font-size:12px; letter-spacing:.05em; cursor:pointer}
+  .seg button.on{background:var(--accent-dim); color:var(--accent)}
+
+  .ctrl{display:flex; align-items:center; gap:8px; color:var(--dim); font-size:12px}
+  input[type=range]{-webkit-appearance:none; appearance:none; width:92px; height:3px;
+    background:var(--line); border-radius:2px; outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:13px; height:13px;
+    border-radius:50%; background:var(--accent); cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:13px; height:13px; border:0;
+    border-radius:50%; background:var(--accent); cursor:pointer}
+
+  main{flex:1; display:flex; flex-direction:column; min-height:0}
+  canvas#spectrum{width:100%; height:100%; display:block; flex:1; min-height:0}
+
+  .chords{display:flex; gap:8px; padding:12px 14px; overflow-x:auto;
+    border-top:1px solid var(--line)}
+  .chords button{flex:0 0 auto; background:var(--panel); color:var(--ink);
+    border:1px solid var(--line); border-radius:10px; padding:11px 15px;
+    font-size:13px; min-width:62px; cursor:pointer; transition:background .05s,border-color .05s}
+  .chords button .n{display:block; font-size:12px; color:var(--dim); margin-top:2px}
+  .chords button.held{background:var(--accent-dim); border-color:var(--accent); color:var(--accent)}
+  .chords button.held .n{color:var(--accent)}
+
+  .keys{position:relative; height:190px; display:flex; padding:0 10px 14px;
+    border-top:1px solid var(--line)}
+  .whites{display:flex; flex:1; gap:4px}
+  .wk{flex:1; background:var(--key); border:1px solid var(--key-edge);
+    border-radius:0 0 8px 8px; position:relative; cursor:pointer}
+  .wk.held{background:var(--accent-dim); border-color:var(--accent)}
+  .wk .lab{position:absolute; bottom:8px; left:0; right:0; text-align:center;
+    font-size:12px; color:var(--dim)}
+  .wk.held .lab{color:var(--accent)}
+  .blacks{position:absolute; top:0; left:10px; right:10px; height:116px; pointer-events:none}
+  .bk{position:absolute; width:5.2%; height:100%; background:var(--black);
+    border:1px solid #000; border-radius:0 0 6px 6px; transform:translateX(-50%);
+    pointer-events:auto; cursor:pointer}
+  .bk.held{background:var(--accent-dim); border-color:var(--accent)}
+
+  .hint{padding:8px 18px; color:var(--dim); font-size:12px; letter-spacing:.03em;
+    border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand"><span class="z">0</span>klang</div>
+    <div class="sub">Töne aus Rauschen geschnitzt</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="seg" id="src">
+    <button data-src="noise" class="on">Rauschen</button>
+    <button data-src="mic">Mikro</button>
+  </div>
+  <div class="ctrl">Schärfe <input type="range" id="q" min="4" max="60" value="26"></div>
+  <div class="ctrl">Obertöne <input type="range" id="harm" min="0" max="100" value="45"></div>
+  <div class="ctrl">Pegel <input type="range" id="vol" min="0" max="100" value="55"></div>
+</header>
+
+<main>
+  <canvas id="spectrum"></canvas>
+</main>
+
+<div class="chords" id="chords"></div>
+
+<div class="keys">
+  <div class="whites" id="whites"></div>
+  <div class="blacks" id="blacks"></div>
+</div>
+
+<div class="hint" id="hint">Tipp: Pad oder Akkord gedrückt halten. Mehrere gleichzeitig = Akkord. „Mikro" nutzt dein Mikrofon als Klangquelle — auch sein Rauschen wird zu Tönen.</div>
+
+<script>
+const A4 = 440, A4_MIDI = 69;
+const midiToFreq = m => A4 * Math.pow(2, (m - A4_MIDI) / 12);
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const nameOf = m => NOTE_NAMES[m % 12] + (Math.floor(m/12) - 1);
+
+let ac, sourceBus, master, analyser, noiseGain, micGain, micStream, started = false;
+const active = new Map();            // midi -> {nodes:[...], gain}
+let settings = { q: 26, harm: 0.45, vol: 0.55 };
+
+function ensureAudio(){
+  if (started) return;
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = settings.vol;
+  analyser = ac.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.78;
+  master.connect(analyser); analyser.connect(ac.destination);
+
+  sourceBus = ac.createGain(); sourceBus.gain.value = 1;
+
+  // White-noise buffer, looping, always running
+  const len = ac.sampleRate * 2;
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource(); noise.buffer = buf; noise.loop = true;
+  noiseGain = ac.createGain(); noiseGain.gain.value = 1;
+  noise.connect(noiseGain); noiseGain.connect(sourceBus); noise.start();
+
+  micGain = ac.createGain(); micGain.gain.value = 0;
+  micGain.connect(sourceBus);
+
+  started = true;
+  drawSpectrum();
+}
+
+async function enableMic(){
+  ensureAudio();
+  if (!micStream){
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio:
+        { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+    } catch(e){
+      document.getElementById('hint').textContent =
+        'Mikro-Zugriff verweigert oder nicht verfügbar — bleibe bei Rauschen.';
+      setSource('noise'); return false;
+    }
+    const src = ac.createMediaStreamSource(micStream);
+    src.connect(micGain);
+  }
+  return true;
+}
+
+function setSource(s){
+  document.querySelectorAll('#src button').forEach(b =>
+    b.classList.toggle('on', b.dataset.src === s));
+  if (!started) return;
+  const useMic = s === 'mic';
+  micGain.gain.setTargetAtTime(useMic ? 1 : 0, ac.currentTime, 0.02);
+  noiseGain.gain.setTargetAtTime(useMic ? 0 : 1, ac.currentTime, 0.02);
+}
+
+function noteOn(midi){
+  ensureAudio();
+  if (ac.state === 'suspended') ac.resume();
+  if (active.has(midi)) return;
+  const gain = ac.createGain();
+  gain.gain.value = 0;
+  gain.connect(master);
+  const nodes = [];
+  const partials = [
+    { mult:1, amp:1 },
+    { mult:2, amp:settings.harm * 0.6 },
+    { mult:3, amp:settings.harm * 0.35 },
+  ];
+  const freq = midiToFreq(midi);
+  for (const p of partials){
+    if (p.amp <= 0.001) continue;
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = freq * p.mult;
+    bp.Q.value = settings.q;
+    const pg = ac.createGain(); pg.gain.value = p.amp;
+    sourceBus.connect(bp); bp.connect(pg); pg.connect(gain);
+    nodes.push(bp, pg);
+  }
+  gain.gain.setTargetAtTime(0.9, ac.currentTime, 0.015);
+  active.set(midi, { nodes, gain });
+  reflectKey(midi, true);
+}
+
+function noteOff(midi){
+  const e = active.get(midi);
+  if (!e) return;
+  active.delete(midi);
+  e.gain.gain.setTargetAtTime(0, ac.currentTime, 0.05);
+  setTimeout(() => { try{ e.gain.disconnect(); e.nodes.forEach(n => n.disconnect()); }catch(_){} }, 300);
+  reflectKey(midi, false);
+}
+
+function reflectKey(midi, on){
+  const el = document.querySelector('[data-midi="'+midi+'"]');
+  if (el) el.classList.toggle('held', on);
+}
+
+// ---- Keyboard build (C4..B5, two octaves) ----
+const LOW = 60, OCTAVES = 2;
+const whiteOffsets = [0,2,4,5,7,9,11];
+const blackMap = { 1:0.5, 3:1.5, 6:3.5, 8:4.5, 10:5.5 }; // semitone -> white-slot position
+const whites = document.getElementById('whites');
+const blacks = document.getElementById('blacks');
+let whiteCount = 0;
+for (let o = 0; o < OCTAVES; o++){
+  for (const off of whiteOffsets){
+    const midi = LOW + o*12 + off;
+    const k = document.createElement('div');
+    k.className = 'wk'; k.dataset.midi = midi;
+    k.innerHTML = '<span class="lab">'+nameOf(midi)+'</span>';
+    whites.appendChild(k);
+    whiteCount++;
+  }
+}
+const whitesPerOct = 7, totalWhites = whitesPerOct * OCTAVES;
+for (let o = 0; o < OCTAVES; o++){
+  for (const semi in blackMap){
+    const midi = LOW + o*12 + (+semi);
+    const slot = o*whitesPerOct + blackMap[semi];
+    const b = document.createElement('div');
+    b.className = 'bk'; b.dataset.midi = midi;
+    b.style.left = ((slot + 0.5) / totalWhites * 100) + '%';
+    blacks.appendChild(b);
+  }
+}
+
+// ---- Chord pads (diatonic C major + a couple colours) ----
+const CHORDS = [
+  { label:'C',   name:'Dur',   root:60, iv:[0,4,7] },
+  { label:'Dm',  name:'Moll',  root:62, iv:[0,3,7] },
+  { label:'Em',  name:'Moll',  root:64, iv:[0,3,7] },
+  { label:'F',   name:'Dur',   root:65, iv:[0,4,7] },
+  { label:'G',   name:'Dur',   root:67, iv:[0,4,7] },
+  { label:'Am',  name:'Moll',  root:69, iv:[0,3,7] },
+  { label:'G7',  name:'Dom7',  root:67, iv:[0,4,7,10] },
+  { label:'Cmaj7',name:'maj7', root:60, iv:[0,4,7,11] },
+];
+const chordsEl = document.getElementById('chords');
+CHORDS.forEach((c, i) => {
+  const b = document.createElement('button');
+  b.innerHTML = c.label + '<span class="n">'+c.name+'</span>';
+  b.dataset.chord = i;
+  chordsEl.appendChild(b);
+});
+const chordNotes = c => c.iv.map(iv => c.root + iv);
+
+// ---- Pointer handling (polyphonic, multi-touch) ----
+const pointerTargets = new Map(); // pointerId -> {type, key}
+
+function elMidi(el){ return el && el.dataset.midi ? +el.dataset.midi : null; }
+function chordOn(c){ chordNotes(c).forEach(noteOn); }
+function chordOff(c){ chordNotes(c).forEach(noteOff); }
+
+function pointerDown(e){
+  const t = e.target.closest('[data-midi],[data-chord]');
+  if (!t) return;
+  ensureAudio();
+  e.preventDefault();
+  if (t.dataset.chord != null){
+    const c = CHORDS[+t.dataset.chord];
+    t.classList.add('held'); chordOn(c);
+    pointerTargets.set(e.pointerId, { type:'chord', el:t, c });
+  } else {
+    const m = elMidi(t); noteOn(m);
+    pointerTargets.set(e.pointerId, { type:'note', el:t, m });
+  }
+}
+function pointerUp(e){
+  const p = pointerTargets.get(e.pointerId);
+  if (!p) return;
+  pointerTargets.delete(e.pointerId);
+  if (p.type === 'chord'){ p.el.classList.remove('held'); chordOff(p.c); }
+  else noteOff(p.m);
+}
+document.addEventListener('pointerdown', pointerDown);
+document.addEventListener('pointerup', pointerUp);
+document.addEventListener('pointercancel', pointerUp);
+
+// ---- QWERTY mapping (a=C4 .. k, w/e/t/y/u sharps) ----
+const KEYMAP = { a:60,w:61,s:62,e:63,d:64,f:65,t:66,g:67,y:68,h:69,u:70,j:71,k:72 };
+const heldKeys = new Set();
+addEventListener('keydown', e => {
+  if (e.repeat) return; const m = KEYMAP[e.key]; if (m==null) return;
+  heldKeys.add(e.key); noteOn(m);
+});
+addEventListener('keyup', e => {
+  const m = KEYMAP[e.key]; if (m==null) return;
+  heldKeys.delete(e.key); noteOff(m);
+});
+
+// ---- Controls ----
+document.getElementById('src').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.src === 'mic'){ ensureAudio(); if (await enableMic()) setSource('mic'); }
+  else setSource('noise');
+});
+document.getElementById('q').addEventListener('input', e => {
+  settings.q = +e.target.value;
+  active.forEach(a => a.nodes.forEach(n => { if (n.Q) n.Q.value = settings.q; }));
+});
+document.getElementById('harm').addEventListener('input', e => { settings.harm = +e.target.value/100; });
+document.getElementById('vol').addEventListener('input', e => {
+  settings.vol = +e.target.value/100;
+  if (master) master.gain.setTargetAtTime(settings.vol, ac.currentTime, 0.02);
+});
+
+// ---- Spectrum visual ----
+const cvs = document.getElementById('spectrum');
+const ctx = cvs.getContext('2d');
+function fit(){ cvs.width = cvs.clientWidth * devicePixelRatio; cvs.height = cvs.clientHeight * devicePixelRatio; }
+addEventListener('resize', fit); fit();
+function drawSpectrum(){
+  requestAnimationFrame(drawSpectrum);
+  if (!analyser) return;
+  const n = analyser.frequencyBinCount;
+  const data = new Uint8Array(n);
+  analyser.getByteFrequencyData(data);
+  const w = cvs.width, h = cvs.height;
+  ctx.clearRect(0,0,w,h);
+  // only show the musically relevant low range (~0-4kHz)
+  const shown = Math.floor(n * 0.18);
+  const bw = w / shown;
+  for (let i = 0; i < shown; i++){
+    const v = data[i] / 255;
+    const bh = v * h * 0.92;
+    const a = 0.12 + v * 0.88;
+    ctx.fillStyle = 'rgba(77,224,200,'+a.toFixed(3)+')';
+    ctx.fillRect(i*bw, h - bh, Math.max(1, bw-1), bh);
+  }
+}
+</script>
+</body>
+</html>
