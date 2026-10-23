@@ -125,7 +125,7 @@
         };
 
         const defaultSpectralParams = {
-            kernelWidth: 1.0,  // ε: log-Slider, 1.0 = aktueller Default (autoRadius = spacing · ε)
+            kernelWidth: 1.0,  // ε: linearer Slider [0, 5], 1.0 = aktueller Default (autoRadius = spacing · ε)
             twist: 0,          // α: lineare Phasen-Drift im FFT-Spektrum, 0 = keine Drehung
             scale: 1.0,        // s: Skalar-Skalierung der Lösung, 1.0 = aktuelle Stärke
             chirp: 0           // β: quadratische Phasen-Drift, low-k bleibt fast unverändert
@@ -149,6 +149,7 @@
         let activeShape = null;   // null = keine Form, sonst shape-ID
         let activeShapeSpectrum = null;  // FFT-Spektrum des aktiven Forms für Slider-Live-Modifier
         let savedText = '';       // gemerkter Text wenn Form aktiv
+        let syncTextRenderModeUI = () => {};  // vom Panel gesetzt
         
         // ============================================
         // KOORDINATEN-TRANSFORMATION
@@ -436,21 +437,9 @@
             if (index === -1 || deletingPoints.has(cp)) return;
 
             if (window.undoRedoPanel) {
-                window.undoRedoPanel.saveState({
-                    controlPoints: controlPoints
-                        .filter(point => point !== cp && !deletingPoints.has(point))
-                        .map(cloneControlPoint),
-                    config: {
-                        influenceRadius: config.influenceRadius,
-                        applyToAll: config.applyToAll,
-                        showControlPoints: config.showControlPoints,
-                        gridDensity: config.gridDensity,
-                        showAxes: config.showAxes,
-                        showGrid: config.showGrid
-                    },
-                    activeShape: activeShape,
-                    savedText: savedText
-                });
+                window.undoRedoPanel.saveState(snapshotState(
+                    controlPoints.filter(point => point !== cp && !deletingPoints.has(point))
+                ));
             }
 
             hoverTarget = null;
@@ -1215,13 +1204,14 @@
         let activeTextSpectrum = null;  // Spektrum + Text für Text-Spektral-Slider
         let activeTextString = '';
 
-        function applySymbol(text) {
+        // save=false: Slider-Rebuilds (Einstieg-Winkel, Bruecken-Punkt) legen keinen Undo-Eintrag
+        // pro Frame an; den setzt scheduleUndoCommit einmal nach dem Zug.
+        function applySymbol(text, { save = true } = {}) {
             if (!text || !text.trim()) {
-                activeTextSpectrum = null;
-                activeTextString = '';
                 startReset();
                 return;
             }
+            if (save) flushUndoCommit();
 
             const sp = config.spectralParams;
             const result = generateTextControlPoints(text, {
@@ -1233,23 +1223,13 @@
 
             activeTextSpectrum = result.spectrum;
             activeTextString = text;
+            activeShape = null;
+            activeShapeSpectrum = null;
 
-            const newState = {
-                controlPoints: result.points,
-                config: {
-                    influenceRadius: config.influenceRadius,
-                    applyToAll: false,
-                    showControlPoints: config.showControlPoints,
-                    gridDensity: config.gridDensity,
-                    showAxes: config.showAxes,
-                    showGrid: config.showGrid,
-                    spectralParams: { ...sp }
-                },
-                activeShape: null,
-                savedText: ''
-            };
+            const newState = snapshotState(result.points, { applyToAll: false });
+            newState.savedText = '';
 
-            if (window.undoRedoPanel) {
+            if (save && window.undoRedoPanel) {
                 window.undoRedoPanel.saveState(newState);
             }
             startStateTransition(newState);
@@ -1369,6 +1349,7 @@
         }
 
         function applyShape(shapeId) {
+            flushUndoCommit();
             if (!shapeId) {
                 // Form deaktiviert → Text wiederherstellen
                 activeShape = null;
@@ -1384,6 +1365,8 @@
             }
 
             activeShape = shapeId;
+            activeTextString = '';
+            activeTextSpectrum = null;
             syncShapeTextUI();
 
             const sp = config.spectralParams;
@@ -1392,20 +1375,7 @@
 
             activeShapeSpectrum = result.spectrum;
 
-            const newState = {
-                controlPoints: result.points,
-                config: {
-                    influenceRadius: config.influenceRadius,
-                    applyToAll: false,
-                    showControlPoints: config.showControlPoints,
-                    gridDensity: config.gridDensity,
-                    showAxes: config.showAxes,
-                    showGrid: config.showGrid,
-                    spectralParams: { ...sp }
-                },
-                activeShape: activeShape,
-                savedText: savedText
-            };
+            const newState = snapshotState(result.points, { applyToAll: false });
 
             if (window.undoRedoPanel) {
                 window.undoRedoPanel.saveState(newState);
@@ -1462,8 +1432,29 @@
             if (textRebuildFrame) return;
             textRebuildFrame = requestAnimationFrame(() => {
                 textRebuildFrame = 0;
-                if (activeTextString) applySymbol(activeTextString);
+                if (activeTextString) applySymbol(activeTextString, { save: false });
             });
+        }
+
+        // Ein Undo-Eintrag pro Slider-Zug statt pro Ereignis: der Stand wird gespeichert,
+        // sobald 350 ms lang kein Slider mehr bewegt wurde (oder vor Undo/Redo/Form/Text).
+        let undoCommitTimer = 0;
+        function scheduleUndoCommit() {
+            clearTimeout(undoCommitTimer);
+            undoCommitTimer = setTimeout(flushUndoCommit, 350);
+        }
+        function flushUndoCommit() {
+            if (!undoCommitTimer) return;
+            clearTimeout(undoCommitTimer);
+            undoCommitTimer = 0;
+            if (textRebuildFrame) {
+                cancelAnimationFrame(textRebuildFrame);
+                textRebuildFrame = 0;
+                if (activeTextString) applySymbol(activeTextString, { save: false });
+            }
+            if (window.undoRedoPanel) {
+                window.undoRedoPanel.saveState(getControlPointsState());
+            }
         }
 
         // Wird aufgerufen wenn ein spektraler Parameter geändert wurde.
@@ -1471,6 +1462,7 @@
         // kernelWidth verlangt Re-Solve (neue Eigenwerte), der Rest nur Re-Modifier.
         function onSpectralParamChange(key) {
             updateActiveSpectral(key === 'kernelWidth');
+            scheduleUndoCommit();
         }
 
         // Aktive Form/aktiver Text komplett neu loesen (Reset, startAngle)
@@ -1951,26 +1943,18 @@
         }
         
         function startReset() {
+            flushUndoCommit();
             finishStateTransition();
 
             activeShape = null;
+            activeShapeSpectrum = null;
+            activeTextString = '';
+            activeTextSpectrum = null;
             savedText = '';
             syncShapeTextUI();
 
             if (window.undoRedoPanel) {
-                window.undoRedoPanel.saveState({
-                    controlPoints: [],
-                    config: {
-                        influenceRadius: config.influenceRadius,
-                        applyToAll: config.applyToAll,
-                        showControlPoints: config.showControlPoints,
-                        gridDensity: config.gridDensity,
-                        showAxes: config.showAxes,
-                        showGrid: config.showGrid
-                    },
-                    activeShape: null,
-                    savedText: ''
-                });
+                window.undoRedoPanel.saveState(snapshotState([]));
                 // Text-Feld leeren
                 window.undoRedoPanel.set('symbol', '');
             }
@@ -2051,6 +2035,13 @@
                 ? controlPoints.filter(cp => !deletingPoints.has(cp))
                 : controlPoints;
 
+            return snapshotState(points);
+        }
+
+        // Vollstaendiger Undo-Stand: Punkte plus aller Modul-Zustand, der sie erzeugt hat
+        // (Form/Text, Spektral-Regler, Start-Winkel, Text-Stil). Die Spektren selbst werden
+        // nicht gespeichert, sondern beim naechsten Regler-Zug neu berechnet.
+        function snapshotState(points, configOverrides = {}) {
             return {
                 controlPoints: points.map(cp => cloneControlPoint(cp)),
                 config: {
@@ -2059,20 +2050,51 @@
                     showControlPoints: config.showControlPoints,
                     gridDensity: config.gridDensity,
                     showAxes: config.showAxes,
-                    showGrid: config.showGrid
+                    showGrid: config.showGrid,
+                    spectralParams: { ...config.spectralParams },
+                    startAngle: config.startAngle,
+                    glyphStartAngle: config.glyphStartAngle,
+                    textRenderMode: config.textRenderMode,
+                    ...configOverrides
                 },
                 activeShape: activeShape,
+                activeText: activeTextString,
                 savedText: savedText
             };
         }
 
-        function setControlPointsState(state) {
-            // Shape/Text-Zustand aus dem Undo/Redo-State wiederherstellen
-            if (state && typeof state.activeShape !== 'undefined') {
-                activeShape = state.activeShape;
-                savedText = state.savedText || '';
-                syncShapeTextUI();
+        // state == null: Zustand vor dem ersten Eintrag = Grundzustand
+        function restoreModuleState(state) {
+            const s = state || {};
+            const c = s.config || {};
+            clearTimeout(undoCommitTimer);
+            undoCommitTimer = 0;
+            if (textRebuildFrame) {
+                cancelAnimationFrame(textRebuildFrame);
+                textRebuildFrame = 0;
             }
+            activeShape = s.activeShape ?? null;
+            activeTextString = s.activeText || '';
+            savedText = s.savedText || '';
+            activeShapeSpectrum = null;
+            activeTextSpectrum = null;
+            Object.assign(config.spectralParams, defaultSpectralParams, c.spectralParams);
+            config.startAngle = c.startAngle ?? 0;
+            config.glyphStartAngle = c.glyphStartAngle ?? 0;
+            config.textRenderMode = c.textRenderMode ?? 'outline';
+
+            const panel = window.undoRedoPanel;
+            if (!panel) return;
+            for (const key of Object.keys(defaultSpectralParams)) panel.set(key, config.spectralParams[key]);
+            panel.set('startAngle', config.startAngle);
+            panel.set('glyphStartAngle', config.glyphStartAngle);
+            panel.set('symbol', activeShape ? savedText : activeTextString);
+            syncTextRenderModeUI();
+            syncShapeTextUI();
+        }
+
+        function setControlPointsState(state) {
+            restoreModuleState(state);
             startStateTransition(state);
         }
         
@@ -2088,6 +2110,12 @@
                 onRedo: (state) => setControlPointsState(state)
             });
             
+            // Ausstehenden Slider-Zug vor Undo/Redo abschliessen (Knopf und Ctrl+Z rufen panel.undo/redo)
+            for (const op of ['undo', 'redo']) {
+                const original = panel[op].bind(panel);
+                panel[op] = () => { flushUndoCommit(); original(); };
+            }
+
             // Dann Reset-Button (mittig)
             panel.addResetButton({
                 icon: '↺',
@@ -2108,6 +2136,7 @@
                             savedText = v;
                             if (activeShape) {
                                 activeShape = null;
+                                activeShapeSpectrum = null;
                                 syncShapeTextUI();
                             }
                         }
@@ -2247,6 +2276,7 @@
                         panel.set('startAngle',      0);
                         panel.set('glyphStartAngle', 0);
                         resolveActive();
+                        scheduleUndoCommit();
                     }
                 })
                 .addSlider('startAngle', {
@@ -2263,6 +2293,7 @@
                         } else {
                             scheduleTextRebuild();
                         }
+                        scheduleUndoCommit();
                     }
                 })
                 .addSlider('glyphStartAngle', {
@@ -2275,6 +2306,7 @@
                     onChange: v => {
                         config.glyphStartAngle = v;
                         scheduleTextRebuild();
+                        scheduleUndoCommit();
                     }
                 });
 
@@ -2310,6 +2342,8 @@
                     const currentText = panel.get('symbol');
                     if (currentText && currentText.trim() && !activeShape) {
                         applySymbol(currentText);
+                    } else {
+                        scheduleUndoCommit();
                     }
                 });
                 modeBtnEls[m.id] = btn;
@@ -2319,14 +2353,14 @@
             renderModeRow.appendChild(renderModeGroup);
             panel._currentContainer.appendChild(renderModeRow);
 
-            function syncTextRenderModeUI() {
+            syncTextRenderModeUI = () => {
                 for (const [id, btn] of Object.entries(modeBtnEls)) {
                     const active = config.textRenderMode === id;
                     btn.style.opacity = active ? '1' : '0.5';
                     btn.style.background = active ? 'var(--text-color, #fff)' : 'transparent';
                     btn.style.color = active ? 'var(--bg-color, #000)' : 'var(--text-color, #fff)';
                 }
-            }
+            };
             syncTextRenderModeUI();
 
             panel.addDivider()
