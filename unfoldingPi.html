@@ -21,13 +21,17 @@
       display: flex; justify-content: center;
     }
     .slider-row input[type="range"] { width: min(28rem, 90vw); }
+    /* Stil aus meta.css (.ctrl-range): ruhiger Track, Thumb in --text-color; hier nur größere Touch-Fläche. */
+    .slider-row .ctrl-range { box-sizing: content-box; padding: 14px 0; background-clip: content-box; }
+    .slider-row .ctrl-range::-webkit-slider-thumb { width: 24px; height: 24px; }
+    .slider-row .ctrl-range::-moz-range-thumb { width: 24px; height: 24px; }
   </style>
 </head>
 <body>
   <div class="stage _018" id="stage">
     <canvas id="pi"></canvas>
     <div class="slider-row">
-      <input type="range" min="-1" max="1" step="any" value="0" id="drift" aria-label="Drift">
+      <input type="range" class="ctrl-range" min="-1" max="1" step="any" value="0" id="drift" aria-label="Drift">
     </div>
   </div>
 
@@ -127,6 +131,9 @@
       return Math.min(4000, Math.ceil((dd / w) * Math.log(Math.max(dd * dpr, 1))) + 160);
     }
 
+    // Strichstärke der Schrift (Courier ca. 0,08 em), mindestens 2 Geräte-Pixel: so schmal werden Zeichen höchstens.
+    const minInk = () => Math.max(2 / dpr, S * 0.08);
+
     function settle(mode) {
       const dd = deff();
       const avail = Math.max(0, chain.length - 2) * w;
@@ -154,6 +161,9 @@
       const hd = Math.ceil(S * 1.3 * dpr);
       const fam = '"Courier New", Courier, monospace';
       atlas = {};
+      const probe = document.createElement('canvas').getContext('2d');
+      probe.fillStyle = color; probe.fillRect(0, 0, 1, 1);
+      const rgb = probe.getImageData(0, 0, 1, 1).data;
       for (const ch of GLYPHS) {
         const levels = [];
         let cw = wd;
@@ -164,6 +174,7 @@
         g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText(ch, cw / 2, hd / 2);
         levels.push(c);
+        const cw0 = cw;
         while (cw > 1) {
           const nw = Math.max(1, Math.ceil(cw / 2));
           const n = document.createElement('canvas'); n.width = nw; n.height = hd;
@@ -172,7 +183,18 @@
           ng.drawImage(levels[levels.length - 1], 0, 0, cw, hd, 0, 0, nw, hd);
           levels.push(n); cw = nw;
         }
-        atlas[ch] = { levels, wd, hd };
+        // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (das Zeichen "bis auf Strichstärke" gestaucht).
+        const px0 = g.getImageData(0, 0, cw0, hd).data;
+        const bar = document.createElement('canvas'); bar.width = 1; bar.height = hd;
+        const bg = bar.getContext('2d'), bd = bg.createImageData(1, hd);
+        const [br, bgc, bb] = rgb;
+        for (let y = 0; y < hd; y++) {
+          let m = 0;
+          for (let x = 0; x < cw0; x++) { const a = px0[(y * cw0 + x) * 4 + 3]; if (a > m) m = a; }
+          bd.data[y * 4] = br; bd.data[y * 4 + 1] = bgc; bd.data[y * 4 + 2] = bb; bd.data[y * 4 + 3] = m;
+        }
+        bg.putImageData(bd, 0, 0);
+        atlas[ch] = { levels, wd, hd, bar };
       }
       const img = atlas['8'].levels[0].getContext('2d').getImageData(0, 0, wd, hd).data;
       let top = -1, bot = -1;
@@ -195,6 +217,7 @@
       ctx.imageSmoothingEnabled = true;
       const dd = deff();
       const px = 1 / dpr;
+      const inkMin = minInk();
       const Ld = Math.round(L * dpr) * px, Rd = Math.round(R * dpr) * px;
       const iLinLo = Math.ceil((L + dd - X0) / w - 1e-9);
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
@@ -208,13 +231,16 @@
       for (let i = iLo; i <= iHi; i++) {
         const pa = X0 + i * w;
         const xa = warp(pa, dd), xb = warp(pa + w, dd);
-        const dw = Math.max(xb - xa, px);
+        const nat = xb - xa;
+        const dw = Math.max(nat, inkMin);
         let cx = (xa + xb) / 2;
         cx = Math.max(Ld + dw / 2, Math.min(Rd - dw / 2, cx));
         const g = atlas[chain[i]];
         if (!g) continue;
         let wDev = dw * dpr, xDev = (cx - dw / 2) * dpr;
         if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
+        // Unter Strichstärke: die Silhouette-Spalte auf Strichbreite ziehen.
+        if (nat < inkMin) { ctx.drawImage(g.bar, xDev, y0, wDev, hd); n++; continue; }
         const k = Math.max(0, Math.min(g.levels.length - 1, Math.floor(Math.log2(wd / wDev))));
         ctx.drawImage(g.levels[k], xDev, y0, wDev, hd);
         n++;
@@ -361,6 +387,7 @@
           chainLength: chain.length,
           inkTop: inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           inkBottom: inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
+          minInk: minInk(),
           color, error: piError
         };
       },

@@ -31,11 +31,17 @@ Abstand stauchen gemeinsam). Der Zeichenvorrat liegt als x-Mipmap-Atlas vor.
 
 ### Linie aus Verdichtung
 
-Die Linie wird nicht gemalt. Zeichen unter einem Gerätepixel Breite werden auf
-mindestens 1 Gerätepixel gezogen (bewusste Annahme "Mindest-Tintenbreite") und
-liegen zu vielen im selben Pixelstreifen. Source-over-Alpha summiert sich zu
-`1-(1-c)^N`; zusätzlich werden pro Rand so viele weitere Zeichen gezeichnet,
-bis die Spalte gesättigt ist (`160 + d/w*ln(d*dpr)`, höchstens 4000). Farbe aus
+Die Linie wird nicht gemalt. Ein Zeichen wird horizontal höchstens bis auf die
+Strichstärke der Schrift gestaucht (Mindest-Tintenbreite
+`max(2 Gerätepixel, 0,08 * font-size)`, Courier-Strich ca. 0,08 em); der
+Vorschub geht weiter gegen 0. Unter dieser Breite wird das Zeichen als
+Silhouette gezeichnet (je Zeile die stärkste Tinte, eine Spalte breit, auf
+Strichbreite gezogen), sodass schon wenige Stellen eine geschlossene Zeile
+ergeben. Die Zeichen liegen zu vielen im selben Streifen; Source-over-Alpha
+sättigt es zusätzlich, pro Rand werden so viele weitere Zeichen gezeichnet,
+bis die Spalte gesättigt ist (`160 + d/w*ln(d*dpr)`, höchstens 4000). Ergebnis:
+ein satter Strich so dick wie ein Ziffernstrich und so hoch wie die Ziffern.
+Farbe aus
 `meta.css` (`--text-color`), dunkel und hell lesbar.
 
 Voreinstellung `d = w`: Verdichtung nur innerhalb der letzten Zeichenzelle.
