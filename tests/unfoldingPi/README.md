@@ -1,0 +1,41 @@
+# Tests unfoldingPi
+
+Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (Playwright Python, Chromium, Firefox, WebKit). Die Dateien sind sofort live, es gibt keinen Build.
+
+    bash tests/unfoldingPi/run.sh        # alles, danach tests/irrational/run.sh
+    BROWSERS=chromium bash tests/unfoldingPi/run.sh
+    bash tests/unfoldingPi/mutants.sh    # jeder Mutant muss rot werden
+
+| Datei | Prüft |
+|---|---|
+| `test_constants.py` | pi, e, ln 2, √2, φ gegen `tests/irrational/ref`; Auswahlfeld; unbekannte Konstante ist laut |
+| `test_limits.py` | device: kleiner grauer Hinweis; engine: kein Text, `console.warn`; ohne Grenze kein Hinweis |
+| `test_ui.py` | Gesten, Pixelproben, Layout (nur Chromium, Touch per CDP) |
+| `test_front.py` | Kette wächst an der Front, Stellen korrekt (Chromium 2e6 in 25 s, sonst 1e6 in 150 s) |
+| `test_nowasm.py` | Rückfall auf BigInt ohne WebAssembly: Hinweisrahmen, `console.warn`; Firefox/WebKit enden bei 96000 Stellen als engine-Grenze |
+| `test_errors.py` | Fehlerpfade mit Worker-Attrappe |
+| `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
+| `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
+
+Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) wird an `Irrational.open` gereicht, z. B. `{failAlloc:50}` (device) oder `{maxPages:262}` (engine bei etwa 1,14e6 Stellen pi).
+
+## Mutanten
+
+`mutants.sh` ändert die ausgelieferte Datei per Route und erwartet Exit 1. Exit 3 heißt: Muster nicht gefunden, der Mutant ist wirkungslos.
+
+| Test | MUT | Änderung |
+|---|---|---|
+| limits | invert | `lim.kind === 'device'` umgedreht |
+| limits | always | Hinweis bei jedem Limit |
+| nowasm | norfall | BigInt-Rückfall im Worker abgeschaltet |
+| nowasm | nonotice | Worker schickt kein `notice` |
+| nowasm | nowarn | Seite ohne `console.warn` |
+| nowasm | nohint | Seite ohne Klasse `hinweis` |
+| errors | notry | Anhängen ohne `try` |
+| errors | swallow | Fehler verschluckt |
+| errors | nopiError | `.warte` ohne `!piError` |
+| big | cap | Testhaken `failAlloc:50` täuscht Speichermangel vor |
+
+`test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase, sliderpad, sliderleft).
+
+Nicht tötbar und deshalb nicht in der Liste: die Zeile `stage.classList.remove('warte', ...)` in `fail()`, weil `toggle('warte', !piError && ...)` dasselbe tut. Ebenso `console.warn` in `irrational.js`, weil der Worker selbst warnt.
