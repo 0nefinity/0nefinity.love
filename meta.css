@@ -4,6 +4,7 @@
     --bg-color: black;
     --text-color: white;
     --menu-open-width: 21rem;
+    --menu-effective-width: min(var(--menu-open-width), 90vw);
     --visible-viewport-width: 100vw;
     --visible-viewport-height: 100dvh;
     --visible-viewport-top: 0px;
@@ -447,8 +448,7 @@ button:focus {
 .menu.open,
 .menu:has(.menu-toggle-input:checked) {
     right: 0;
-    width: var(--menu-open-width); /* feste Breite im geöffneten Zustand */
-    max-width: 90vw; /* Maximal 90% der Viewport-Breite */
+    width: var(--menu-effective-width); /* feste Breite im geöffneten Zustand, höchstens 90% der Viewport-Breite */
     height: var(--visible-viewport-height);
     max-height: var(--visible-viewport-height);
     background: var(--bg-color);
@@ -470,7 +470,7 @@ button:focus {
     top: 0;
     left: 0;
     bottom: 0;
-    right: min(var(--menu-open-width), 90vw); /* gleiche Breite wie das offene Menü (max-width: 90vw) */
+    right: var(--menu-effective-width);
     z-index: 0;
     pointer-events: none; /* Scroll geht durch zum Body; Klick-außerhalb macht JS */
 }

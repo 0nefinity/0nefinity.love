@@ -18,21 +18,6 @@ function stripHtmlComments($content) {
     return $stripped === null ? $content : $stripped;
 }
 
-// readfile() fuehrt kein SSI aus; die Dev-Bedingung des Head-Includes wertet der Viewer selbst aus.
-function readHeadInclude($documentRoot) {
-    $html = file_get_contents($documentRoot . '/includes/something-in-the-head.html');
-    if ($html === false) {
-        failNotFound();
-    }
-    $isDev = strncmp((string)($_SERVER['HTTP_HOST'] ?? ''), 'dev.', 4) === 0;
-    $resolved = preg_replace_callback(
-        '/<!--#if expr="[^"]*" -->(.*?)<!--#endif -->/s',
-        function ($m) use ($isDev) { return $isDev ? $m[1] : ''; },
-        $html
-    );
-    return $resolved === null ? $html : $resolved;
-}
-
 function resolveRequestedFile($documentRoot) {
     $requestedPath = (string)($_GET['path'] ?? '');
     if ($requestedPath === '' || strpos($requestedPath, "\0") !== false) {
@@ -94,7 +79,7 @@ if ($isMarkdown) {
 ?><!DOCTYPE html>
 <html lang="de">
 <head>
-<?php echo readHeadInclude((string)($_SERVER['DOCUMENT_ROOT'] ?? '')); ?>
+<?php virtual('/includes/something-in-the-head.html'); ?>
   <title><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></title>
 </head>
 <body>

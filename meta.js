@@ -1,6 +1,4 @@
-// meta.js — globales UI-Framework; Menü + Back-Button kommen aus SSI-Include.
-// JS liefert nur: Suchfunktion, Menü-Komfort, Viewport-Sync, Pre-Fitting.
-// Menü, Back-Button und Fonts kommen aus den SSI-Includes; Dialog, Live-Reload und Math-Notation liegen in tools/.
+// meta.js — Suche, Menü-Komfort, Viewport-Sync, Pre-Fitting. Menü, Back-Button, Fonts kommen aus den SSI-Includes; Dialog, Live-Reload, Math-Notation liegen in tools/.
 
 // DOM-Manipulation erst wenn Body existiert
 document.addEventListener('DOMContentLoaded', () => {
@@ -108,21 +106,11 @@ function initMenuSearch(menu, fileList) {
 
     function filter(queryRaw) {
         const query = normalizeForSearch(queryRaw.trim());
-
         if (!query) {
             fileList.querySelectorAll('li').forEach(li => { li.style.display = ''; });
             fileList.querySelectorAll('details').forEach(details => { details.open = false; });
             return;
         }
-
-        fileList.querySelectorAll('li').forEach(li => { li.style.display = ''; });
-
-        fileList.querySelectorAll(':scope > li').forEach(li => {
-            const heading = li.querySelector(':scope > .menu-heading');
-            const isSeparator = li.classList.contains('menu-separator');
-            if (heading || isSeparator) li.style.display = 'none';
-        });
-
         filterList(fileList, query);
     }
 
@@ -135,28 +123,26 @@ function initMenuSearch(menu, fileList) {
         searchTimeoutId = setTimeout(() => filter(value), 100);
     });
 
-    clearButton.addEventListener('click', () => {
+    function clearSearch() {
         searchInput.value = '';
         clearButton.classList.remove('visible');
         filter('');
+    }
+
+    clearButton.addEventListener('click', () => {
+        clearSearch();
         searchInput.focus();
     });
 
     searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            searchInput.value = '';
-            filter('');
-            clearButton.classList.remove('visible');
+            clearSearch();
             searchInput.blur();
         }
     });
 
     return {
-        reset() {
-            searchInput.value = '';
-            clearButton.classList.remove('visible');
-            filter('');
-        },
+        reset: clearSearch,
         focus() {
             searchInput.focus();
             searchInput.select();
@@ -166,7 +152,6 @@ function initMenuSearch(menu, fileList) {
 
 // ─── Menü-Toggle: JS übernimmt vom Checkbox-Hack ───
 if (menu && menuButton && menuToggle) {
-    let touchHandled = false;
     const isDesktopDevice = window.matchMedia &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
@@ -185,26 +170,24 @@ if (menu && menuButton && menuToggle) {
         if (search) search.reset();
     }
 
-    menuButton.addEventListener('click', (e) => {
-        if (touchHandled) return;
-        e.preventDefault();
+    function toggleMenu(focusSearch) {
         if (menu.classList.contains('open')) {
             closeMenu();
         } else {
             openMenu();
-            if (isDesktopDevice && search) search.focus();
+            if (focusSearch && search) search.focus();
         }
+    }
+
+    // touchend + preventDefault unterdrückt den synthetisierten Click (kein Doppel-Toggle)
+    menuButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleMenu(isDesktopDevice);
     });
 
     menuButton.addEventListener('touchend', (e) => {
         e.preventDefault();
-        touchHandled = true;
-        if (menu.classList.contains('open')) {
-            closeMenu();
-        } else {
-            openMenu();
-        }
-        touchHandled = false;
+        toggleMenu(false);
     });
 
     function closeMenuIfOutside(e) {
