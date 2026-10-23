@@ -21,7 +21,7 @@
         if (!Number.isFinite(n) || n < 0) n = 0;
         n = Math.floor(n);
         if (n > MAX_DIGITS) {
-            console.warn(`[meta.js math-notation] n=${n} überschreitet ${MAX_DIGITS} Stellen — gekürzt.`);
+            console.warn(`[math-notation] n=${n} überschreitet ${MAX_DIGITS} Stellen — gekürzt.`);
             n = MAX_DIGITS;
         }
         if (n === 0) return source.charAt(0); // "3" oder "2"
@@ -29,8 +29,8 @@
         return source.slice(0, 2 + n);
     }
 
-    const PI_CHAR = 'π';   // π
-    const INF_CHAR = '∞';  // ∞
+    const PI_CHAR = 'π';
+    const INF_CHAR = '∞';
 
     // Regex für pi-Pattern. Optional negative Klammer-Inhalte werden ignoriert.
     // pi() oder pi(123) — n als Integer ≥ 0
@@ -59,22 +59,32 @@
         });
     }
 
-    // ─── Helper-Box (Singleton, wiederverwendet) ───
-    const helperBox = document.createElement('div');
-    helperBox.className = 'math-helper-box';
-    helperBox.setAttribute('role', 'dialog');
-    helperBox.setAttribute('aria-label', 'Mathematische Notation vorschlagen');
-    helperBox.hidden = true;
-    helperBox.innerHTML = `
-        <span class="math-helper-text"></span>
-        <button type="button" class="math-helper-accept" aria-label="Akzeptieren">✓</button>
-        <button type="button" class="math-helper-reject" aria-label="Ablehnen">×</button>
-    `;
-    document.body.appendChild(helperBox);
+    // ─── Helper-Box (Singleton, beim ersten Vorschlag gebaut) ───
+    let helperBox = null;
+    let helperTextEl = null;
 
-    const helperTextEl = helperBox.querySelector('.math-helper-text');
-    const helperAcceptBtn = helperBox.querySelector('.math-helper-accept');
-    const helperRejectBtn = helperBox.querySelector('.math-helper-reject');
+    function getHelperBox() {
+        if (helperBox) return helperBox;
+        helperBox = document.createElement('div');
+        helperBox.className = 'math-helper-box';
+        helperBox.setAttribute('role', 'dialog');
+        helperBox.setAttribute('aria-label', 'Mathematische Notation vorschlagen');
+        helperBox.hidden = true;
+        helperBox.innerHTML = `
+            <span class="math-helper-text"></span>
+            <button type="button" class="math-helper-accept" aria-label="Akzeptieren">✓</button>
+            <button type="button" class="math-helper-reject" aria-label="Ablehnen">×</button>
+        `;
+        document.body.appendChild(helperBox);
+        helperTextEl = helperBox.querySelector('.math-helper-text');
+        const acceptBtn = helperBox.querySelector('.math-helper-accept');
+        const rejectBtn = helperBox.querySelector('.math-helper-reject');
+        acceptBtn.addEventListener('mousedown', e => { e.preventDefault(); });
+        rejectBtn.addEventListener('mousedown', e => { e.preventDefault(); });
+        acceptBtn.addEventListener('click', applyHelperReplacement);
+        rejectBtn.addEventListener('click', rejectHelperSuggestion);
+        return helperBox;
+    }
 
     /** @type {{el:Element, kind:'pi'|'inf', start:number, end:number, replacement:string} | null} */
     let helperState = null;
@@ -103,11 +113,12 @@
     }
 
     function hideHelperBox() {
-        helperBox.hidden = true;
+        if (helperBox) helperBox.hidden = true;
         helperState = null;
     }
 
     function showHelperBoxAt(rect, text) {
+        getHelperBox();
         helperTextEl.textContent = text;
         helperBox.hidden = false;
         // Positionierung: unter dem rect, am linken Rand
@@ -427,11 +438,6 @@
         helperState && helperState.el && helperState.el.focus && helperState.el.focus();
     }
 
-    helperAcceptBtn.addEventListener('mousedown', e => { e.preventDefault(); });
-    helperRejectBtn.addEventListener('mousedown', e => { e.preventDefault(); });
-    helperAcceptBtn.addEventListener('click', applyHelperReplacement);
-    helperRejectBtn.addEventListener('click', rejectHelperSuggestion);
-
     // Phrase-Check innerhalb des aktuellen Texts (low-priority Bonus)
     function checkPhrase(el, text, caret) {
         const lower = text.toLowerCase();
@@ -494,13 +500,13 @@
 
     // Schließen der Helper-Box via ESC oder Klick außerhalb
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && !helperBox.hidden) {
+        if (e.key === 'Escape' && helperBox && !helperBox.hidden) {
             rejectHelperSuggestion();
         }
     });
 
     document.addEventListener('click', e => {
-        if (helperBox.hidden) return;
+        if (!helperBox || helperBox.hidden) return;
         if (helperBox.contains(e.target)) return;
         // Klick im selben Input → erlauben (Cursor-Move)
         if (helperState && e.target === helperState.el) return;
@@ -509,9 +515,9 @@
 
     // Re-positionieren bei Scroll/Resize
     window.addEventListener('scroll', () => {
-        if (!helperBox.hidden && helperState) {
+        if (helperBox && !helperBox.hidden && helperState) {
             const rect = getCaretRect(helperState.el);
             showHelperBoxAt(rect, helperTextEl.textContent);
         }
-    }, true);
+    }, { capture: true, passive: true });
 })();

@@ -6,6 +6,7 @@
   let lastStamp = null;
   let initialized = false;
   async function check() {
+    if (document.hidden) return;
     try {
       const res = await fetch('/_devmtime.php?_lr=' + Date.now(), { cache: 'no-store' });
       if (!res.ok) return;
@@ -20,6 +21,7 @@
     } catch (e) {}
     initialized = true;
   }
+  document.addEventListener('visibilitychange', check);
   setInterval(check, 2000);
   setTimeout(check, 100);
 })();
