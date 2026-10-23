@@ -107,6 +107,7 @@
       if (piError) return;
       piError = message;
       console.error('[unfoldingPi] ' + message);
+      stage.classList.remove('warte');
       stage.classList.add('fehler');
       driftEl.disabled = true;
       driftEl.value = 0;
@@ -241,7 +242,7 @@
       const iHi = Math.min(chain.length - 1, iLinHi + 1 + K);
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
       requestDigits(iLinHi + 2 + K + 100);
-      stage.classList.toggle('warte', iLinHi >= chain.length - 3);
+      stage.classList.toggle('warte', !piError && iLinHi >= chain.length - 3);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       let n = 0;

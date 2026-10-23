@@ -80,18 +80,24 @@ mindestens 40 px breit.
 
 - Eine DPR-scharfe Canvas, ein Slider, sonst kein DOM.
 - Pi-Stellen: Web Worker `tools/workers/pi-digits-worker.js`
-  (Chudnovsky, BigInt, Binary Splitting, unbegrenzt in Blöcken, Zielgröße
+  (Chudnovsky, GMP/WASM, Binary Splitting, unbegrenzt in Blöcken, Zielgröße
   verdoppelt sich). 1000 Stellen als eingebettete Reserve, damit der Start
   sofort steht und der Worker dagegen geprüft wird.
 - Pi endet nie (Fix 2026-10-23). Es gibt keine feste Stellengrenze; einzige
-  Grenze ist die Rechenleistung. Die Quadratwurzel läuft per Newton mit
-  Genauigkeitsverdopplung (vorher volle Newton-Schritte: bei 1e6 Stellen
-  7,6 s statt 2,7 s). Die Seite fordert das Doppelte der Front an, der
-  Worker rechnet die nächste Stufe also, sobald die Anzeige die Hälfte des
-  Vorrats erreicht. Steht die Anzeige an der letzten Stelle, wartet sie
-  (`.stage.warte`, dezent pulsierende Linie, `state().waiting`), ohne
-  Fehler und ohne Rücksprung. Inkrementelles Binary Splitting war
-  gemessen langsamer und ist nicht eingebaut.
+  Grenze ist die Rechenleistung und der Speicher des Geraets. Die Ganzzahlen
+  liegen in GMP als WebAssembly (`gmp-wasm` 1.3.2 mini, LGPL-3.0, selbst
+  gehostet in `tools/vendor/gmp-wasm/` mit Lizenz), nicht in JS-BigInt:
+  BigInt endet je Engine bei 2^20 Bit (Firefox, Safari/iOS, ab ca. 110k
+  Stellen) bzw. 2^30 Bit (Chromium). Der Worker laedt das Bundle per
+  `importScripts`; Ladefehler gehen ueber `fail('Pi-Rechenwerk nicht
+  ladbar: ...')`. Zwischenwerte werden je Knoten mit `mpz_clear` freigegeben,
+  Quadratwurzel und Division macht GMP (`mpz_sqrt`, `mpz_tdiv_q`). Die
+  Seite fordert das Doppelte der Front an, der Worker rechnet die naechste
+  Stufe also, sobald die Anzeige die Haelfte des Vorrats erreicht. Steht die
+  Anzeige an der letzten Stelle, wartet sie (`.stage.warte`, dezent
+  pulsierende Linie, `state().waiting`), ohne Fehler und ohne Rücksprung;
+  nach einem Fehler ist `.warte` weg (nur `.fehler`). Inkrementelles Binary
+  Splitting war gemessen langsamer und ist nicht eingebaut.
 - Fail loud: Worker-Fehler oder falsche Stellen führen zu `console.error`,
   rotem Rahmen (`.stage.fehler`), gestopptem Slider und eingefrorener Kette.
   Kein stiller Fallback.
