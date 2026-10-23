@@ -9,6 +9,19 @@ function failNotFound() {
     exit;
 }
 
+// Fail loud: ein fehlender Include darf keine kaputte Seite mit Status 200 liefern.
+// virtual() sendet beim Aufruf schon Header; danach geht nur noch sichtbarer Text.
+function failInclude($path, $detail) {
+    $message = 'weird-text-viewer: include ' . $path . ' failed' . ($detail ? ': ' . $detail : '');
+    error_log($message);
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    echo $message;
+    exit;
+}
+
 function startsWithPath($path, $prefix) {
     return $path === $prefix || strncmp($path, $prefix . '/', strlen($prefix) + 1) === 0;
 }
@@ -76,10 +89,21 @@ if ($isMarkdown) {
     $renderedContent = htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+// Vorab prüfen: nach virtual() lässt sich der Status nicht mehr ändern.
+$headInclude = '/includes/something-in-the-head.html';
+$headLookup = apache_lookup_uri($headInclude);
+if (!$headLookup || (int)$headLookup->status !== 200 || !is_file($headLookup->filename)) {
+    failInclude($headInclude, $headLookup ? 'status ' . $headLookup->status . ', file ' . $headLookup->filename : 'lookup failed');
+}
 ?><!DOCTYPE html>
 <html lang="de">
 <head>
-<?php virtual('/includes/something-in-the-head.html'); ?>
+<?php
+if (!@virtual($headInclude)) {
+    $lastError = error_get_last();
+    failInclude($headInclude, $lastError['message'] ?? '');
+}
+?>
   <title><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></title>
 </head>
 <body>
@@ -95,7 +119,12 @@ if ($isMarkdown) {
   <div class="text-viewer-content"><?php echo $renderedContent; ?></div>
 </main>
 
-<?php readfile($_SERVER['DOCUMENT_ROOT'] . '/includes/something-in-the-body.html'); ?>
+<?php
+if (readfile($_SERVER['DOCUMENT_ROOT'] . '/includes/something-in-the-body.html') === false) {
+    error_log('weird-text-viewer: include /includes/something-in-the-body.html failed');
+    echo '<p class="include-error">weird-text-viewer: include /includes/something-in-the-body.html failed</p>';
+}
+?>
 </body>
 </html>
 
