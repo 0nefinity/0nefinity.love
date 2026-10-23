@@ -10,7 +10,9 @@
   let failing = false;
   let unloading = false;
   // Beim Seitenwechsel bricht der Browser den laufenden fetch ab; das ist kein Ausfall.
+  // Aus dem bfcache zurueck (pageshow persisted) lebt die Seite wieder und muss Ausfaelle melden.
   window.addEventListener('pagehide', () => { unloading = true; });
+  window.addEventListener('pageshow', () => { unloading = false; });
 
   function fail(reason) {
     if (failing || unloading) return;

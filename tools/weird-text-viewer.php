@@ -34,8 +34,8 @@ function readInclude($relativePath) {
 }
 
 // PHP kennt kein SSI: die eine Bedingung der Includes (nur auf dev.* laden) wird hier selbst ausgewertet,
-// jede andere SSI-Direktive bricht laut ab statt unverarbeitet im HTML zu landen.
-function renderSsiHead($relativePath, $host) {
+// jede andere SSI-Direktive bricht laut ab statt unverarbeitet im HTML zu landen. Gilt fuer jedes Include.
+function renderSsiInclude($relativePath, $host) {
     $content = readInclude($relativePath);
     $isDev = preg_match('/^dev\./', $host) === 1;
     $open = '<!--#if expr="%{HTTP_HOST} =~ /^dev\./" -->';
@@ -117,8 +117,8 @@ if ($isMarkdown) {
     $renderedContent = htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-$headHtml = renderSsiHead('/includes/something-in-the-head.html', (string)($_SERVER['HTTP_HOST'] ?? ''));
-$bodyHtml = readInclude('/includes/something-in-the-body.html');
+$headHtml = renderSsiInclude('/includes/something-in-the-head.html', (string)($_SERVER['HTTP_HOST'] ?? ''));
+$bodyHtml = renderSsiInclude('/includes/something-in-the-body.html', (string)($_SERVER['HTTP_HOST'] ?? ''));
 ?><!DOCTYPE html>
 <html lang="de">
 <head>
