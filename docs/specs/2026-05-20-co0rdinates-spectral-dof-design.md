@@ -1,6 +1,6 @@
 # co0rdinates — Spektrale Freiheitsgrade
 
-**Status:** v1 spec
+**Status:** v1 spec, Erweiterungen (Chirp, Einstieg-Winkel, Brücken-Punkt, Linien-Modus) umgesetzt
 **Datum:** 2026-05-20
 **Ziel:** Drei mathematisch orthogonale, kontinuierliche Slider zur Verzerrungs-Modulation in `co0rdinates.html`. Form-Identität bleibt, Charakter der Verzerrung wird über kontinuierliche Parameter-Familien gesteuert. Jeder Slider hat ℝ-Range — unendlich viele Werte pro Achse, ∞³ Kombinationen.
 
@@ -193,6 +193,50 @@ UI: kleiner Toggle-Button "Linie / Umriss" oberhalb oder neben dem Text-Eingabef
 
 Mathematische Konsequenz: Die nachgelagerte RBF-/Spektral-Pipeline ist unverändert — sie verarbeitet beliebige Kontroll-Punkt-Sequenzen. Spektral-Slider funktionieren in beiden Modi gleich.
 
+## Spätere Erweiterungen (Stand Code, 2026-10)
+
+Nach v1 kamen drei weitere Freiheitsgrade und zwei Änderungen am Text-Modus dazu. Dieser Abschnitt beschreibt den Code in `co0rdinates.html`, nicht die ursprüngliche Planung.
+
+### Chirp β (`spectralParams.chirp`)
+
+- Slider "Chirp β", Range [-1, 1], Schritt 0.01, Default 0.
+- Math: zusätzlich zur linearen Phase des Twist erhält jeder Bin eine quadratische Phase. In `applySpectralModifiers(spectrum, twist, scale, chirp)` gilt für `k = 1 .. N/2-1`: `phase = α·k + β·π·k²/half²` mit `half = N/2`. Nyquist-Bin: `phase = α·half + β·π`.
+- Effekt: niedrige Frequenzen (grobe Form) bleiben fast unverändert, hohe Frequenzen (Ecken, Details) werden stärker gedreht. Die Grundform bleibt erkennbar, sie verdrillt sich nur zum Rand hin ("formerhaltender Twist").
+- Wie Twist und Stärke wirkt Chirp nur auf das gecachte Spektrum: Änderung = Re-Modifier plus IFFT, kein Re-Solve.
+- Default 0 liefert bit-exakt das Verhalten ohne Chirp.
+
+### Einstieg-Winkel (`config.startAngle`)
+
+- Slider "Einstieg-Winkel", Range [0, 6.283], Schritt 0.05, Default 0. Sichtbar, sobald eine Form oder ein Text aktiv ist.
+- Formen: `generateShapeControlPoints` dreht die Polygon-Vertices physisch um `startAngle` (Rotationsmatrix), bevor die radiale Projektion berechnet wird. Die Form dreht sich sichtbar. Eine reine Index-Verschiebung der Kontrollpunkte wäre unsichtbar, weil Position und Ziel dieselbe Permutation erfahren würden.
+- Text: `generateTextControlPoints` verschiebt den Startindex auf dem normalisierten Pfad zyklisch um `round(startAngle / 2π · Pfadlänge)` relativ zum rechtesten Punkt (θ = 0). Der Pfad selbst bleibt geometrisch gleich, nur die Zuordnung Pfadpunkt zu Kreiswinkel ändert sich, dadurch ändert sich der Charakter der Verzerrung.
+- Bei Formen läuft die Änderung über Re-Solve (`onSpectralParamChange('kernelWidth')`), bei Text über `applySymbol(activeTextString)`.
+
+### Brücken-Punkt (`config.glyphStartAngle`)
+
+- Slider "Brücken-Punkt", Range [0, 6.283], Schritt 0.05, Default 0. Nur sichtbar, wenn Text aktiv ist (bei Formen ausgeblendet).
+- In `layoutTextContours` wird jede Glyph-Kontur zyklisch um `round(glyphStartAngle / 2π · n)` Punkte rotiert (`n` = Punktzahl der Kontur), bevor sie an die Zeichenposition gesetzt wird.
+- Effekt: `connectContours` verbindet die Konturen der Glyphen mit Brücken. Die Rotation verschiebt, an welcher Stelle der Kontur die Brücke ansetzt. Die Glyphen selbst sehen gleich aus, die Verbindungslinien und damit die Verzerrung ändern sich.
+
+### Text-Stil: Umriss oder Linie (`config.textRenderMode`)
+
+- Zwei Buttons "Umriss" (Default) und "Linie" unter den Spektral-Slidern. Wirkt nur im Text-Modus, ein Wechsel rendert den aktuellen Text neu.
+- Umriss: `extractCharContour`, Moore-Neighbor-Außenkontur (wie v1).
+- Linie: `extractCharSkeleton` rastert das Zeichen, reduziert es per Zhang-Suen-Thinning (`zhangSuenThin`) auf ein 1-Pixel-Skelett und zerlegt es per Nachbarschafts-Walk in Pfade. Pfade kürzer als `min(10, max(2, 10 % der längsten))` Pixel gelten als Junction-Artefakte und werden entfernt.
+- Doppelter Pfad: das Skelett ist offen, Start und Ende fallen nicht zusammen. `generateTextControlPoints` hängt deshalb die umgekehrte Kopie an (`connectedPath.concat(reversed)`), damit der Pfad geschlossen ist und kein langer Rücksprung entsteht. Folge: jede Skelettlinie wird hin und zurück durchlaufen.
+
+### Kernel-Breite: Range ab 0
+
+- Der Slider läuft von 0 bis 5 (Schritt 0.05, linear, nicht logarithmisch) und akzeptiert 0. Der Handler setzt `Math.max(0, v)`.
+- `gaussian(distance, 0)` ist als Dirac definiert (1 bei Abstand 0, sonst 0). Damit ist ε = 0 ein erlaubter, nicht-werfender Zustand.
+
+### Abweichungen Code gegenüber v1-Spec
+
+- Kernel-Breite ist ein linearer Slider mit Range [0, 5], die v1-Spec nannte log-Skala [0.1, 5].
+- Der Reset-Button "Verzerrung zurücksetzen" setzt zusätzlich Chirp, Einstieg-Winkel und Brücken-Punkt auf 0.
+- URL-State (`?eps=...`) wurde nicht umgesetzt (schon im Plan als v2 markiert).
+- Die Slider sind auch im Text-Modus aktiv, nicht nur bei aktiver Form; "Erst eine Form aktivieren" gilt nicht mehr.
+
 ## Out-of-Scope (v1)
 
 - Per-Kontrollpunkt-Variation (würde FFT-Circulant-Annahme brechen)
@@ -228,3 +272,18 @@ Mathematische Konsequenz: Die nachgelagerte RBF-/Spektral-Pipeline ist unveränd
 4. **Handler:** Slider-Events → Re-Solve oder Re-Modifier.
 5. **URL-State:** Query-Param-Sync.
 6. **Verify:** Playwright-Tests + Mobile-Check.
+
+## Acceptance Criteria
+
+Messbar und per Playwright prüfbar gegen `/co0rdinates.html` (Seite laden, 1 s warten, `page.on('console'|'pageerror'|'requestfailed')` mitschreiben). Slider sind `input.ctrl-range` in der Zeile `[data-key="<key>"]`.
+
+1. Laden: keine Console-Errors, keine Pageerrors, keine fehlgeschlagenen oder 404-Requests.
+2. Chirp: Zeile `[data-key="chirp"]` existiert, Range min -1, max 1, Default-Wert 0. Sie ist beim Laden `display:none` und wird sichtbar (`display:grid`), sobald eine Form oder ein Text aktiv ist. Bei aktiver Form (und bei Text "37") ändert ein Wert von 0 auf 0.5 den gerenderten Canvas (Pixel-Hash unterscheidet sich) und wirft nichts. Beim Text "37" stellt Zurück auf 0 den Ausgangs-Hash wieder her (bei Formen erst nach Ende der Übergangsanimation vergleichen).
+3. Einstieg-Winkel: Zeile `[data-key="startAngle"]` existiert, Range 0 bis 6.283, Default 0. Bei Form "square": Wert 0.5 verändert den Canvas-Hash. Bei Text "37": Wert 1.0 verändert die Kontrollpunkte (Canvas-Hash) ohne Fehler.
+4. Brücken-Punkt: Zeile `[data-key="glyphStartAngle"]` existiert, Range 0 bis 6.283, Default 0. Sie ist bei aktiver Form `display:none`, bei Text "37" sichtbar. Wert 1.0 verändert den Canvas-Hash bei Text "37" ohne Fehler.
+5. Text-Linie: Bei Text "37" und Klick auf Button "Linie" (`button[data-mode-id="line"]`) rendert Canvas weiterhin sichtbaren Inhalt (Anteil nicht-Hintergrund-Pixel > 0), Hash unterscheidet sich vom Umriss-Modus, keine Fehler. Rückwechsel auf "Umriss" stellt den ursprünglichen Hash wieder her.
+6. Kernel-Breite 0: Zeile `[data-key="kernelWidth"]` hat Range min 0, max 5. Setzen auf 0 (Form und Text) wirft keinen Fehler und erzeugt keine NaN-Kontrollpunkte (Canvas bleibt gezeichnet, keine Console-Errors).
+7. Reset: Klick auf "Verzerrung zurücksetzen" setzt alle sechs Slider (ε = 1, α = 0, s = 1, β = 0, Einstieg = 0, Brücke = 0) zurück; der Canvas-Hash entspricht dem Zustand vor den Änderungen.
+8. Start- und Form-Zustand: Beim Laden ist keine Form aktiv (`activeShape === null`), der Canvas zeigt den Einheitskreis. Ein Klick auf `button[title="Quadrat"]` setzt `activeShape === 'square'` und verändert den Canvas-Hash.
+9. Text "37": Eingabe von "37" in das Symbol-Feld rendert sichtbaren Inhalt (nicht-Hintergrund-Pixel > 0) in beiden Text-Stilen.
+10. Keine externen Ressourcen: alle Requests gehen an dieselbe Origin.
