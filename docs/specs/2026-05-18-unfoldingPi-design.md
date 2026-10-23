@@ -83,6 +83,15 @@ mindestens 40 px breit.
   (Chudnovsky, BigInt, Binary Splitting, unbegrenzt in Blöcken, Zielgröße
   verdoppelt sich). 1000 Stellen als eingebettete Reserve, damit der Start
   sofort steht und der Worker dagegen geprüft wird.
+- Pi endet nie (Fix 2026-10-23). Es gibt keine feste Stellengrenze; einzige
+  Grenze ist die Rechenleistung. Die Quadratwurzel läuft per Newton mit
+  Genauigkeitsverdopplung (vorher volle Newton-Schritte: bei 1e6 Stellen
+  7,6 s statt 2,7 s). Die Seite fordert das Doppelte der Front an, der
+  Worker rechnet die nächste Stufe also, sobald die Anzeige die Hälfte des
+  Vorrats erreicht. Steht die Anzeige an der letzten Stelle, wartet sie
+  (`.stage.warte`, dezent pulsierende Linie, `state().waiting`), ohne
+  Fehler und ohne Rücksprung. Inkrementelles Binary Splitting war
+  gemessen langsamer und ist nicht eingebaut.
 - Fail loud: Worker-Fehler oder falsche Stellen führen zu `console.error`,
   rotem Rahmen (`.stage.fehler`), gestopptem Slider und eingefrorener Kette.
   Kein stiller Fallback.
@@ -104,7 +113,8 @@ Prüfbar per Playwright gegen `https://dev.0nefinity.love/unfoldingPi` über
    Slider Mitte (steht), Slider rechts (sinkt, Halt bei 0) verändern den
    Zustand wie in der Tabelle; Maus und Touch.
 4. Die ersten 3000 Stellen des Workers stimmen mit einer unabhängigen
-   Referenz (Machin) überein; die Reserve ebenso.
+   Referenz (Machin) überein; die Reserve ebenso. Stellen 99.991-100.000 =
+   5493624646 und 999.991-1.000.000 = 5779458151 (gegen mpmath geprüft).
 5. Keine Konsolenfehler, alle Requests same-origin, Fehlerpfad zeigt
    `error`, `console.error` und roten Rahmen.
 6. Mobil (390x844): Startzustand im Bild, Linie satt.
