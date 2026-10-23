@@ -16,13 +16,20 @@
     }
     .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
     #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+    /* Der Daumen sitzt in Ruhe immer in der Bildschirmmitte: Zeile symmetrisch, keine einseitige Einrückung.
+       Das controls.js-Panel (unten links) liegt unter 1200 px in der Slider-Höhe im Weg, deshalb steht die Zeile
+       dort über dem eingeklappten Panel (Mobil: Peek-Leiste 44 px, Desktop: 81 px). */
     .slider-row {
-      width: 100%; padding: 1rem; box-sizing: border-box;
+      width: 100%; box-sizing: border-box;
+      padding: 1rem 1rem calc(3.5rem + env(safe-area-inset-bottom, 0px));
       display: flex; justify-content: center;
     }
-    .slider-row input[type="range"] { width: min(28rem, 90vw); }
-    /* Desktop: das controls.js-Panel (max. 30rem) sitzt links unten; der Slider nimmt den Rest daneben. */
-    @media (min-width: 769px) { .slider-row { padding-left: 31rem; } }
+    .slider-row input[type="range"] { flex: 0 1 auto; width: min(28rem, 90vw); }
+    @media (min-width: 769px) and (max-width: 1199px) { .slider-row { padding-bottom: 6.5rem; } }
+    @media (min-width: 1200px) {
+      .slider-row { padding-bottom: 1rem; }
+      .slider-row input[type="range"] { width: min(28rem, calc(100vw - 64rem)); }
+    }
     /* Stil aus meta.css (.ctrl-range): ruhiger Track, Thumb in --text-color; hier nur größere Touch-Fläche. */
     .slider-row .ctrl-range { box-sizing: content-box; padding: 14px 0; background-clip: content-box; }
     .slider-row .ctrl-range::-webkit-slider-thumb { width: 24px; height: 24px; }
@@ -280,6 +287,7 @@
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
+      if (drag) drag.rebase = true;   // der nächste pointermove setzt die Zugwerte neu, sonst springt er
     }
 
     // ─── Interaktion ───
@@ -311,6 +319,7 @@
         canvas.style.cursor = h === 'swipe' ? 'grab' : (h ? 'ew-resize' : 'default');
         return;
       }
+      if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = x; }
       const dx = x - drag.x0, dd = deff();
       let mode = 'x';
       if (drag.mode === 'R') {
@@ -340,6 +349,7 @@
     }
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('lostpointercapture', endDrag);
 
     // ─── Drift (Slider): Mitte = Stillstand, exponentielle Kennlinie, nach oben offen ───
     const DEAD_ZONE = 0.02;   // |Slider| darunter gilt als Mitte: kein Kriechen
