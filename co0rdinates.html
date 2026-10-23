@@ -1056,12 +1056,6 @@
             return { dx, dy };
         }
 
-        // Backward-compat: solveCirculantRBF(...) ≡ applySpectralModifiers(computeBaseSpectrum(...), 0, 1, 0)
-        function solveCirculantRBF(n, targetDx, targetDy, radius) {
-            const spectrum = computeBaseSpectrum(n, targetDx, targetDy, radius);
-            return applySpectralModifiers(spectrum, 0, 1, 0);
-        }
-
         // Text-Layout: Konturen aller Zeichen mit Position extrahieren
         function layoutTextContours(text, fontFamily, fontSize) {
             const lines = text.split(/\r?\n/);
@@ -1123,6 +1117,11 @@
             return allContours;
         }
 
+        // Frisches Objekt pro Aufruf: Aufrufer duerfen points nicht gemeinsam nutzen
+        function emptyGeneration() {
+            return { points: [], spectrum: null };
+        }
+
         function generateTextControlPoints(text, options = {}) {
             const {
                 fontFamily = 'Arial, sans-serif',
@@ -1133,11 +1132,11 @@
                 spectralParams = defaultSpectralParams
             } = options;
 
-            if (!text || !text.trim()) return { points: [], spectrum: null, autoRadius: null };
+            if (!text || !text.trim()) return emptyGeneration();
 
             // Konturen für den gesamten Text layouten
             const allContours = layoutTextContours(text, fontFamily, fontSize);
-            if (allContours.length === 0) return { points: [], spectrum: null, autoRadius: null };
+            if (allContours.length === 0) return emptyGeneration();
 
             // Alle Konturen zu einem Pfad verbinden
             let connectedPath = connectContours(allContours);
@@ -1199,7 +1198,7 @@
 
             // Basis-Spektrum + Modifier (analog zu Shape-Pipeline)
             const spectrum = computeBaseSpectrum(autoNumPoints, naiveDx, naiveDy, autoRadius);
-            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale, spectralParams.chirp || 0);
+            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale, spectralParams.chirp);
 
             const points = circlePositions.map((pos, i) => ({
                 id: `symbol-${i}`,
@@ -1210,7 +1209,7 @@
                 radius: autoRadius
             }));
 
-            return { points, spectrum, autoRadius };
+            return { points, spectrum };
         }
 
         let activeTextSpectrum = null;  // Spektrum + Text für Text-Spektral-Slider
@@ -1318,10 +1317,10 @@
 
         function generateShapeControlPoints(shapeId, spectralParams = defaultSpectralParams) {
             const shapeDef = shapeDefinitions[shapeId];
-            if (!shapeDef) return { points: [], spectrum: null, autoRadius: null };
+            if (!shapeDef) return emptyGeneration();
 
             const vertices = shapeDef.vertices();
-            if (vertices.length < 3) return { points: [], spectrum: null, autoRadius: null };
+            if (vertices.length < 3) return emptyGeneration();
 
             // 256 Punkte → guter Kompromiss Schärfe vs. Performance
             const numPoints = 256;
@@ -1355,7 +1354,7 @@
 
             // Basis-Spektrum (ε-abhängig) und Modifier (twist + scale + chirp) getrennt
             const spectrum = computeBaseSpectrum(numPoints, naiveDx, naiveDy, autoRadius);
-            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale, spectralParams.chirp || 0);
+            const solved = applySpectralModifiers(spectrum, spectralParams.twist, spectralParams.scale, spectralParams.chirp);
 
             const points = circlePositions.map((pos, i) => ({
                 id: `shape-${i}`,
@@ -1366,7 +1365,7 @@
                 radius: autoRadius
             }));
 
-            return { points, spectrum, autoRadius };
+            return { points, spectrum };
         }
 
         function applyShape(shapeId) {
@@ -1405,8 +1404,7 @@
                     spectralParams: { ...sp }
                 },
                 activeShape: activeShape,
-                savedText: savedText,
-                _shapeSpectrum: result.spectrum
+                savedText: savedText
             };
 
             if (window.undoRedoPanel) {
@@ -1445,15 +1443,42 @@
             }
 
             // Spektrale Slider mit Shape-Aktivität synchronisieren
-            if (typeof window._updateSpectralRowVisibility === 'function') {
-                window._updateSpectralRowVisibility();
+            updateSpectralRowVisibility(panel);
+        }
+
+        // Spektrale Slider nur bei aktiver Form oder aktivem Text; Brücken-Punkt nur bei Text
+        function updateSpectralRowVisibility(panel) {
+            const hasText = !!(activeTextString && activeTextString.trim());
+            const visible = !!(activeShape || hasText);
+            for (const k of ['kernelWidth', 'twist', 'chirp', 'scale', 'spectralReset', 'startAngle']) {
+                panel.setRowVisibility(k, visible);
             }
+            panel.setRowVisibility('glyphStartAngle', hasText);
+        }
+
+        // Ein Slider-Ereignis pro Frame genuegt: applySymbol rastert den ganzen Text neu
+        let textRebuildFrame = 0;
+        function scheduleTextRebuild() {
+            if (textRebuildFrame) return;
+            textRebuildFrame = requestAnimationFrame(() => {
+                textRebuildFrame = 0;
+                if (activeTextString) applySymbol(activeTextString);
+            });
         }
 
         // Wird aufgerufen wenn ein spektraler Parameter geändert wurde.
-        // key: 'kernelWidth' | 'twist' | 'scale'
-        // kernelWidth verlangt Re-Solve (neue Eigenwerte), twist/scale nur Re-Modifier.
+        // key: 'kernelWidth' | 'twist' | 'chirp' | 'scale'
+        // kernelWidth verlangt Re-Solve (neue Eigenwerte), der Rest nur Re-Modifier.
         function onSpectralParamChange(key) {
+            updateActiveSpectral(key === 'kernelWidth');
+        }
+
+        // Aktive Form/aktiver Text komplett neu loesen (Reset, startAngle)
+        function resolveActive() {
+            updateActiveSpectral(true);
+        }
+
+        function updateActiveSpectral(resolve) {
             const hasShape = !!activeShape;
             const hasText  = !!activeTextString;
             if (!hasShape && !hasText) return;
@@ -1461,35 +1486,20 @@
 
             const sp = config.spectralParams;
 
-            if (hasShape) {
-                if (key === 'kernelWidth' || !activeShapeSpectrum) {
-                    const result = generateShapeControlPoints(activeShape, sp);
-                    if (result.points.length === 0) return;
-                    activeShapeSpectrum = result.spectrum;
-                    controlPoints = result.points.map(p => normalizeControlPoint(p));
-                } else {
-                    const solved = applySpectralModifiers(activeShapeSpectrum, sp.twist, sp.scale, sp.chirp || 0);
-                    for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
-                        controlPoints[i].dx = solved.dx[i];
-                        controlPoints[i].dy = solved.dy[i];
-                    }
-                }
-            } else if (hasText) {
-                if (key === 'kernelWidth' || !activeTextSpectrum) {
-                    // Re-Solve: Skelett-/Konturen-Generation neu (Kernel-Breite oder erstes Mal)
-                    const result = generateTextControlPoints(activeTextString, {
-                        targetRadius: 1.5,
-                        spectralParams: sp
-                    });
-                    if (result.points.length === 0) return;
-                    activeTextSpectrum = result.spectrum;
-                    controlPoints = result.points.map(p => normalizeControlPoint(p));
-                } else {
-                    const solved = applySpectralModifiers(activeTextSpectrum, sp.twist, sp.scale, sp.chirp || 0);
-                    for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
-                        controlPoints[i].dx = solved.dx[i];
-                        controlPoints[i].dy = solved.dy[i];
-                    }
+            const spectrum = hasShape ? activeShapeSpectrum : activeTextSpectrum;
+            if (resolve || !spectrum) {
+                const result = hasShape
+                    ? generateShapeControlPoints(activeShape, sp)
+                    : generateTextControlPoints(activeTextString, { targetRadius: 1.5, spectralParams: sp });
+                if (result.points.length === 0) return;
+                if (hasShape) activeShapeSpectrum = result.spectrum;
+                else activeTextSpectrum = result.spectrum;
+                controlPoints = result.points.map(p => normalizeControlPoint(p));
+            } else {
+                const solved = applySpectralModifiers(spectrum, sp.twist, sp.scale, sp.chirp);
+                for (let i = 0; i < solved.dx.length && i < controlPoints.length; i++) {
+                    controlPoints[i].dx = solved.dx[i];
+                    controlPoints[i].dy = solved.dy[i];
                 }
             }
 
@@ -2102,9 +2112,7 @@
                             }
                         }
                         applySymbol(v);
-                        if (typeof window._updateSpectralRowVisibility === 'function') {
-                            window._updateSpectralRowVisibility();
-                        }
+                        updateSpectralRowVisibility(panel);
                     }
                 })
                 .addDivider();
@@ -2230,19 +2238,15 @@
                 .addButton('spectralReset', {
                     label: 'Verzerrung zurücksetzen',
                     onClick: () => {
-                        config.spectralParams.kernelWidth = defaultSpectralParams.kernelWidth;
-                        config.spectralParams.twist       = defaultSpectralParams.twist;
-                        config.spectralParams.scale       = defaultSpectralParams.scale;
-                        config.spectralParams.chirp       = defaultSpectralParams.chirp;
-                        config.startAngle                 = 0;
-                        config.glyphStartAngle            = 0;
-                        panel.set('kernelWidth', defaultSpectralParams.kernelWidth);
-                        panel.set('twist',       defaultSpectralParams.twist);
-                        panel.set('scale',       defaultSpectralParams.scale);
-                        panel.set('chirp',       defaultSpectralParams.chirp);
+                        for (const key of Object.keys(defaultSpectralParams)) {
+                            config.spectralParams[key] = defaultSpectralParams[key];
+                            panel.set(key, defaultSpectralParams[key]);
+                        }
+                        config.startAngle      = 0;
+                        config.glyphStartAngle = 0;
                         panel.set('startAngle',      0);
                         panel.set('glyphStartAngle', 0);
-                        onSpectralParamChange('kernelWidth');
+                        resolveActive();
                     }
                 })
                 .addSlider('startAngle', {
@@ -2255,9 +2259,9 @@
                     onChange: v => {
                         config.startAngle = v;
                         if (activeShape) {
-                            onSpectralParamChange('kernelWidth'); // forciert re-solve mit neuem startAngle
-                        } else if (typeof activeTextString !== 'undefined' && activeTextString) {
-                            applySymbol(activeTextString);
+                            resolveActive(); // neuer startAngle verlangt Re-Solve der Form
+                        } else {
+                            scheduleTextRebuild();
                         }
                     }
                 })
@@ -2270,25 +2274,11 @@
                     decimals: 2,
                     onChange: v => {
                         config.glyphStartAngle = v;
-                        if (typeof activeTextString !== 'undefined' && activeTextString) {
-                            applySymbol(activeTextString);
-                        }
+                        scheduleTextRebuild();
                     }
                 });
 
-            function updateSpectralRowVisibility() {
-                const hasText = typeof activeTextString !== 'undefined' && activeTextString && activeTextString.trim();
-                const visible = !!(activeShape || hasText);
-                const spectralKeys = ['kernelWidth', 'twist', 'chirp', 'scale', 'spectralReset', 'startAngle'];
-                for (const k of spectralKeys) {
-                    const row = panel.bodyEl?.querySelector(`[data-key="${k}"]`);
-                    if (row) row.style.display = visible ? '' : 'none';
-                }
-                const textOnlyRow = panel.bodyEl?.querySelector('[data-key="glyphStartAngle"]');
-                if (textOnlyRow) textOnlyRow.style.display = hasText ? '' : 'none';
-            }
-            window._updateSpectralRowVisibility = updateSpectralRowVisibility;
-            updateSpectralRowVisibility();
+            updateSpectralRowVisibility(panel);
 
             // ============================================
             // TEXT-STIL-TOGGLE (Umriss vs. Linie / Skelett)
