@@ -4,7 +4,7 @@
 This repository is a creative and philosophical project centered on "0nefinity" (the identity $0 \equiv 1 \equiv \infty$). It lacks a traditional formal architecture, instead functioning as a collection of HTML, JavaScript, and Markdown experiments.
 
 - **Entry Points**: [./index.html](./index.html) and [./README.html](./README.html) contain the primary explanations and navigation.
-- **Global Assets**: [./meta.js](./meta.js) and [./meta.css](./meta.css) govern the global UI, including the menu system and color schemes.
+- **Global Assets**: [./meta.js](./meta.js) and [./meta.css](./meta.css) govern the global UI: menu behavior (toggle, search) and color schemes. Menu markup comes from the SSI includes in `includes/`; math notation, dialog and dev live-reload live in `tools/` and load only where used.
 - **Core Logic**: [./0nefinity.js](./0nefinity.js) is the central script for the 0nefinity theory's manifestations.
 - **Tools & Libraries**: Shared utilities and libraries (e.g., [./tools/tools/pixi.js](./tools/tools/pixi.js), [./tools/tools/decimal.js](./tools/tools/decimal.js), [./tools/controls.js](./tools/controls.js)) are located in the [./tools/](./tools/) directory.
 - **Archive**: Older versions and raw ideas are kept in [./00_Archiv/](./00_Archiv/).

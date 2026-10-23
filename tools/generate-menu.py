@@ -138,17 +138,6 @@ def generate():
     lines.append('</div>')
     lines.append('</div>')
     lines.append('</nav>')
-    lines.append('\n\n<div class="meta-dialog-backdrop" hidden>')
-    lines.append('\n    <div class="meta-dialog" role="dialog" aria-modal="true" aria-labelledby="meta-dialog-title" aria-describedby="meta-dialog-message">')
-    lines.append('\n        <div class="meta-dialog-title" id="meta-dialog-title"></div>')
-    lines.append('\n        <div class="meta-dialog-message" id="meta-dialog-message"></div>')
-    lines.append('\n        <div class="meta-dialog-actions">')
-    lines.append('\n            <button type="button" class="meta-dialog-secondary" data-dialog-action="dismiss"></button>')
-    lines.append('\n            <button type="button" class="meta-dialog-secondary" data-dialog-action="cancel"></button>')
-    lines.append('\n            <button type="button" class="meta-dialog-confirm" data-dialog-action="confirm"></button>')
-    lines.append('\n        </div>')
-    lines.append('\n    </div>')
-    lines.append('\n</div>')
 
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as out:

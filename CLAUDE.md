@@ -60,7 +60,10 @@ Flache Sammlung selbst-enthaltener HTML-Seiten. Die gemeinsame Infrastruktur:
 | Datei | Rolle |
 |-------|-------|
 | `meta.css` | Globales Theme, CSS-Variablen (`--bg-color`, `--text-color` etc.), Menü-Styling. Nutzt `!important` bewusst. **Immer für Farben konsultieren.** |
-| `meta.js` | Globales UI-Framework, `_018Space`-Objekt, Menü-Verhalten |
+| `meta.js` | Nur was echtes JS braucht: Menü-Verhalten (`.open` auf `.menu`, `body.menu-open`), Menüsuche, Viewport-Sync, `<pre>`-Fitting. Menü-Markup, Back-Button und Fonts kommen aus den SSI-Includes in `includes/`. meta.js setzt kein globales Objekt mehr: `_018Math` und `_018Space` aus meta.js sind weg (`_018Space` steht nur noch inline in `heart.html`), `window._018Dialog` kommt aus `tools/dialog.js` |
+| `tools/math-notation.js` | `pi(n)`/`e(n)`-Ersetzung und π/∞-Vorschläge in Eingabefeldern. Nur dort per `<script defer>`, wo Eingabefelder sind; die Menüsuche lädt sie beim ersten Fokus nach |
+| `tools/dialog.js` | Dialog (baut sein Markup selbst), nur `bibelaufdenpunkt.html` und `bibelaufdenpunkt copy 3.html` |
+| `tools/live-reload.js` | Dev-only Live-Reload (Poll auf `/_devmtime.php`), vom Head-Include nur auf `dev.*` geladen; meldet Ausfall per `console.error` |
 | `tools/controls.js` | Interaktive UI-Steuerelemente (Slider, Inputs, Zoom) |
 | `tools/zoom.js` | Zoom und Skalierung für Canvas-Seiten |
 | `0nefinity.js` | Mathematische Konstanten und Manifestationen der 0nefinity-Theorie |
