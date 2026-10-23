@@ -72,8 +72,7 @@ function work() {
             const target = Math.max(wanted, have * 2, 2000);
             const s = piDigits(target);
             if (reference) {
-                const n = Math.min(reference.length, s.length);
-                if (s.slice(0, n) !== reference.slice(0, n)) {
+                if (!(s.length >= reference.length ? s.startsWith(reference) : reference.startsWith(s))) {
                     fail('Pi-Referenz stimmt nicht mit den berechneten Stellen überein');
                     return;
                 }

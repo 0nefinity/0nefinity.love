@@ -21,6 +21,8 @@
       display: flex; justify-content: center;
     }
     .slider-row input[type="range"] { width: min(28rem, 90vw); }
+    /* Desktop: das controls.js-Panel (max. 30rem) sitzt links unten; der Slider nimmt den Rest daneben. */
+    @media (min-width: 769px) { .slider-row { padding-left: 31rem; } }
     /* Stil aus meta.css (.ctrl-range): ruhiger Track, Thumb in --text-color; hier nur größere Touch-Fläche. */
     .slider-row .ctrl-range { box-sizing: content-box; padding: 14px 0; background-clip: content-box; }
     .slider-row .ctrl-range::-webkit-slider-thumb { width: 24px; height: 24px; }
@@ -77,8 +79,17 @@
     let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0;
     let dirty = true;
     let velocity = 0, drawnCount = 0;
+    let panel = null;   // Verdichtungs-Regler (tools/controls.js), im Boot angelegt
 
     const deff = () => Math.max(0, Math.min(d, (W - 2 * MARGIN) / 2));
+    const startIdx = () => (L + deff() - X0) / w;            // Index des ersten linear sichtbaren Zeichens
+    const avail = () => Math.max(0, chain.length - 2) * w;   // Länge aller Nachkommastellen
+
+    // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
+    function refreshColor() {
+      const cs = getComputedStyle(stage).color;
+      if (cs !== color) { color = cs; dirty = true; }
+    }
 
     // ─── Pi-Worker ───
     let worker = null;
@@ -102,15 +113,10 @@
         if (m.type !== 'digits') return;
         const have = chain.length - 2;
         if (m.from > have) { fail('Pi-Worker lieferte eine Lücke bei Stelle ' + have); return; }
-        const overlap = have - m.from;
-        if (overlap > 0 && chain.slice(2 + m.from, 2 + have) !== m.str.slice(0, overlap)) {
-          fail('Pi-Stellen weichen von der Referenz ab (ab Stelle ' + m.from + ')');
-          return;
-        }
-        chain += m.str.slice(overlap);
+        chain += m.str.slice(have - m.from);
         dirty = true;
       };
-      worker.postMessage({ type: 'init', reference: RESERVE });
+      worker.postMessage({ type: 'init', reference: chain.replace('.', '') });
       requestDigits(2000);
     }
     function requestDigits(total) {
@@ -136,9 +142,7 @@
 
     function settle(mode) {
       const dd = deff();
-      const avail = Math.max(0, chain.length - 2) * w;
-      R = Math.min(R, X0 + avail + dd, W - MARGIN);
-      X0 = Math.max(X0, R - dd - avail);
+      R = Math.min(R, X0 + avail() + dd, W - MARGIN);   // erzwingt zugleich X0 >= R - dd - avail()
       if (mode === 'three') {
         X0 = Math.min(X0, R - dd);
         L = Math.max(MARGIN, X0 - dd);
@@ -151,11 +155,20 @@
       dirty = true;
     }
 
-    function clampX0() { X0 = Math.max(X0, R - deff() - Math.max(0, chain.length - 2) * w); }
+    function clampX0() { X0 = Math.max(X0, R - deff() - avail()); }
 
     function rolledLeft() { return X0 < L + deff() - 0.5; }
 
     // ─── Atlas: je Zeichen mehrere Breitenstufen (Mipmap in x) ───
+    function rowMaxAlpha(data, width, height) {
+      const out = new Uint8Array(height);
+      for (let y = 0; y < height; y++) {
+        let m = 0;
+        for (let x = 0; x < width; x++) { const a = data[(y * width + x) * 4 + 3]; if (a > m) m = a; }
+        out[y] = m;
+      }
+      return out;
+    }
     function buildAtlas() {
       const wd = Math.max(1, Math.round(w * dpr));
       const hd = Math.ceil(S * 1.3 * dpr);
@@ -184,25 +197,18 @@
           levels.push(n); cw = nw;
         }
         // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (das Zeichen "bis auf Strichstärke" gestaucht).
-        const px0 = g.getImageData(0, 0, cw0, hd).data;
+        const rowMax = rowMaxAlpha(g.getImageData(0, 0, cw0, hd).data, cw0, hd);
         const bar = document.createElement('canvas'); bar.width = 1; bar.height = hd;
         const bg = bar.getContext('2d'), bd = bg.createImageData(1, hd);
         const [br, bgc, bb] = rgb;
         for (let y = 0; y < hd; y++) {
-          let m = 0;
-          for (let x = 0; x < cw0; x++) { const a = px0[(y * cw0 + x) * 4 + 3]; if (a > m) m = a; }
-          bd.data[y * 4] = br; bd.data[y * 4 + 1] = bgc; bd.data[y * 4 + 2] = bb; bd.data[y * 4 + 3] = m;
+          bd.data[y * 4] = br; bd.data[y * 4 + 1] = bgc; bd.data[y * 4 + 2] = bb; bd.data[y * 4 + 3] = rowMax[y];
         }
         bg.putImageData(bd, 0, 0);
-        atlas[ch] = { levels, wd, hd, bar };
+        atlas[ch] = { levels, wd, hd, bar, rowMax };
       }
-      const img = atlas['8'].levels[0].getContext('2d').getImageData(0, 0, wd, hd).data;
       let top = -1, bot = -1;
-      for (let y = 0; y < hd; y++) {
-        let any = false;
-        for (let x = 0; x < wd; x++) if (img[(y * wd + x) * 4 + 3] > 40) { any = true; break; }
-        if (any) { if (top < 0) top = y; bot = y; }
-      }
+      atlas['8'].rowMax.forEach((m, y) => { if (m > 40) { if (top < 0) top = y; bot = y; } });
       inkTop = top; inkBottom = bot;
       atlasKey = color + '|' + S + '|' + dpr + '|' + w;
     }
@@ -210,8 +216,7 @@
     // ─── Rendern ───
     function render() {
       dirty = false;
-      const cs = getComputedStyle(stage).color;
-      if (cs !== color || !atlas || atlasKey !== cs + '|' + S + '|' + dpr + '|' + w) { color = cs; buildAtlas(); }
+      if (!atlas || atlasKey !== color + '|' + S + '|' + dpr + '|' + w) buildAtlas();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = true;
@@ -224,7 +229,7 @@
       const K = stackCount(dd);
       const iLo = Math.max(0, iLinLo - 1 - K);
       const iHi = Math.min(chain.length - 1, iLinHi + 1 + K);
-      requestDigits(Math.ceil((iLinHi + 2 + K) * 2) + 100);
+      requestDigits(iLinHi + 2 + K + 100);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       let n = 0;
@@ -259,11 +264,12 @@
     }
     function applySize(first) {
       const m = measure();
-      const oldW = w, oldDd = deff(), oldIdx = (L + oldDd - X0) / oldW;
+      const oldIdx = startIdx();
       const wasDefaultD = Math.abs(d - w) < 0.01;
       W = m.cw; H = m.ch; dpr = m.ndpr; S = m.nS; w = m.nw;
-      canvas.width = Math.max(1, Math.round(W * dpr));
-      canvas.height = Math.max(1, Math.round(H * dpr));
+      const cwDev = Math.max(1, Math.round(W * dpr)), chDev = Math.max(1, Math.round(H * dpr));
+      if (canvas.width !== cwDev) canvas.width = cwDev;
+      if (canvas.height !== chDev) canvas.height = chDev;
       if (first) {
         d = w;
         L = (W - 3 * w) / 2; X0 = L + d; R = X0 + w + d;
@@ -279,13 +285,15 @@
     // ─── Interaktion ───
     let drag = null;
     const rect = () => canvas.getBoundingClientRect();
+    // Der nächste Griff gewinnt: die 3 (nur solange links nichts eingerollt ist), R, L (nur wenn eingerollt).
     function hitTest(x) {
-      const dd = deff();
-      if (!rolledLeft() && x >= X0 - HIT && x <= X0 + w && !(Math.abs(x - R) <= HIT && Math.abs(x - R) < Math.abs(x - (X0 + w / 2)))) return 'three';
-      if (Math.abs(x - R) <= HIT) return 'R';
-      if (rolledLeft() && Math.abs(x - L) <= HIT) return 'L';
-      if (x > L && x < R) return 'swipe';
-      return null;
+      const rolled = rolledLeft();
+      const cands = [];
+      if (!rolled && x >= X0 - HIT && x <= X0 + w) cands.push(['three', Math.abs(x - (X0 + w / 2))]);
+      if (Math.abs(x - R) <= HIT) cands.push(['R', Math.abs(x - R)]);
+      if (rolled && Math.abs(x - L) <= HIT) cands.push(['L', Math.abs(x - L)]);
+      if (cands.length) return cands.reduce((a, c) => (c[1] < a[1] ? c : a))[0];
+      return x > L && x < R ? 'swipe' : null;
     }
     canvas.addEventListener('pointerdown', (e) => {
       if (drag || piError) return;
@@ -304,25 +312,25 @@
         return;
       }
       const dx = x - drag.x0, dd = deff();
+      let mode = 'x';
       if (drag.mode === 'R') {
         R = Math.max(L + 2 * dd, Math.min(W - MARGIN, drag.R + dx));
-        settle('x');
       } else if (drag.mode === 'three') {
         X0 = drag.X0 + dx;
-        settle('three');
+        mode = 'three';
       } else if (drag.mode === 'L') {
         const Lt = Math.max(MARGIN, Math.min(R - 2 * dd, drag.L + dx));
         if (Lt + dd <= X0) {
           drag.mode = 'three'; drag.x0 = x; X0 = Lt + dd; drag.X0 = X0;
-          settle('three');
+          mode = 'three';
         } else {
-          L = Lt; settle('x');
+          L = Lt;
         }
       } else {
         X0 = drag.X0 + dx;
         clampX0();
-        settle('x');
       }
+      settle(mode);
       e.preventDefault();
     });
     function endDrag(e) {
@@ -334,13 +342,15 @@
     canvas.addEventListener('pointercancel', endDrag);
 
     // ─── Drift (Slider): Mitte = Stillstand, exponentielle Kennlinie, nach oben offen ───
+    const DEAD_ZONE = 0.02;   // |Slider| darunter gilt als Mitte: kein Kriechen
     const rateOf = (s) => Math.sign(s) * (Math.pow(10, 10 * Math.abs(s)) - 1);
     let last = 0;
     function frame(now) {
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
-      const rate = piError ? 0 : rateOf(-(parseFloat(driftEl.value) || 0));
-      const before = (L + deff() - X0) / w;
+      const sv = parseFloat(driftEl.value) || 0;
+      const rate = piError || Math.abs(sv) < DEAD_ZONE ? 0 : rateOf(-sv);
+      const before = startIdx();
       if (rate !== 0 && dt > 0) {
         const prev = X0;
         X0 -= rate * w * dt;   // links (rate > 0): Kette läuft nach links
@@ -349,13 +359,12 @@
         settle(drag && drag.mode === 'three' ? 'three' : 'x');
       }
       if (dirty) render();
-      const after = (L + deff() - X0) / w;
+      const after = startIdx();
       velocity = dt > 0 ? (after - before) / dt : 0;
       requestAnimationFrame(frame);
     }
 
     // ─── Verdichtungs-Regler (tools/controls.js) ───
-    let panel = null;
     function setD(v) {
       const wasUnrolled = !rolledLeft();
       d = Math.max(0, v);
@@ -370,6 +379,10 @@
       onChange: setD
     });
     window.addEventListener('resize', () => applySize(false));
+    refreshColor();
+    const themeObs = new MutationObserver(refreshColor);
+    for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
     startWorker();
     requestAnimationFrame(frame);
 
@@ -377,7 +390,7 @@
     window.unfoldingPi = {
       state() {
         const dd = deff();
-        const startIndex = Math.max(0, (L + dd - X0) / w);
+        const startIndex = Math.max(0, startIdx());
         const endIndex = Math.max(0, (R - dd - X0) / w);
         return {
           L, R, X0, d, dEff: dd, w, W, H, dpr,
@@ -391,7 +404,7 @@
           color, error: piError
         };
       },
-      digits() { return chain.slice(0, 2) + chain.slice(2); }
+      digits() { return chain; }
     };
   })();
   </script>
