@@ -1,7 +1,7 @@
 # unfoldingPi — Design
 
 **Status:** v2 umgesetzt, 2026-10-23
-**Datei:** `unfoldingPi.html`, Worker `tools/workers/pi-digits-worker.js`
+**Datei:** `unfoldingPi.html`, Modul `tools/irrational.js`, Worker `tools/workers/irrational-worker.js`
 **Quelle der Wünsche:** Tims Prompts vom 18.05.2026 (`~/.tmux/018-pi-falten-prompts.md`)
 
 ## Konzept
@@ -79,36 +79,50 @@ mindestens 40 px breit.
 ## Architektur
 
 - Eine DPR-scharfe Canvas, ein Slider, sonst kein DOM.
-- Pi-Stellen: Web Worker `tools/workers/pi-digits-worker.js`
-  (Chudnovsky, GMP/WASM, Binary Splitting, unbegrenzt in Blöcken, Zielgröße
-  verdoppelt sich). 1000 Stellen als eingebettete Reserve, damit der Start
-  sofort steht und der Worker dagegen geprüft wird.
-- Pi endet nie (Fix 2026-10-23). Es gibt keine feste Stellengrenze; einzige
-  Grenze ist die Rechenleistung und der Speicher des Geraets. Die Ganzzahlen
-  liegen in GMP als WebAssembly (`gmp-wasm` 1.3.2 mini, LGPL-3.0, selbst
-  gehostet in `tools/vendor/gmp-wasm/` mit Lizenz), nicht in JS-BigInt:
-  BigInt endet je Engine bei 2^20 Bit (Firefox, Safari/iOS, ab ca. 110k
-  Stellen) bzw. 2^30 Bit (Chromium). Der Worker laedt das Bundle per
-  `importScripts`; Ladefehler gehen ueber `fail('Pi-Rechenwerk nicht
-  ladbar: ...')`. Zwischenwerte werden je Knoten mit `mpz_clear` freigegeben,
-  Quadratwurzel und Division macht GMP (`mpz_sqrt`, `mpz_tdiv_q`). Die
-  Seite fordert das Doppelte der Front an, der Worker rechnet die naechste
-  Stufe also, sobald die Anzeige die Haelfte des Vorrats erreicht. Steht die
-  Anzeige an der letzten Stelle, wartet sie (`.stage.warte`, dezent
-  pulsierende Linie, `state().waiting`), ohne Fehler und ohne Rücksprung;
-  nach einem Fehler ist `.warte` weg (nur `.fehler`). Inkrementelles Binary
-  Splitting war gemessen langsamer und ist nicht eingebaut.
+- Stellen: gemeinsames Modul `tools/irrational.js` (global `Irrational`) mit
+  Worker `tools/workers/irrational-worker.js`. Es rechnet pi, e, ln 2, √2 und
+  φ; die Seite wählt per `panel.addSelect` (oder `?c=`), ein Wechsel startet
+  die Kette neu. Algorithmus je Konstante nach dem Vorbild von y-cruncher:
+  pi Chudnovsky, e Taylorreihe, ln 2 Machin-artige acoth-Formel (jeweils
+  Binary Splitting), √2 und φ ganzzahlige Wurzel (`mpz_sqrt`); Quellen im
+  Plan `docs/plans/PLAN-irrational.md`. 1000 Stellen pi als eingebettete
+  Reserve, damit der Start sofort steht und der Worker dagegen geprüft wird.
+  Die Seite fordert das Doppelte der Front an; steht die Anzeige an der
+  letzten Stelle, wartet sie (`.stage.warte`, `state().waiting`), ohne
+  Fehler und ohne Rücksprung. Nach einem Fehler ist `.warte` weg.
+- Grenzen: Die Kette ist nicht unendlich. Zeit ist keine Grenze, Speicher
+  ist eine. Ganzzahlen liegen in GMP als WebAssembly (`gmp-wasm` 1.3.2 mini,
+  LGPL-3.0, gehostet in `tools/vendor/gmp-wasm/`). Das wasm32-Modul
+  adressiert höchstens 4 GiB; ein Byte-Patch (`patch-4gib.js`) hebt die
+  Standardgrenze darauf an. Das ergibt etwa 2,8e8 Stellen pi; je Stelle
+  braucht pi 12 Byte, e 10, ln 2 13, √2 und φ 9. Dazu kommt die
+  V8-Stringgrenze von etwa 5,36e8 Zeichen. Der Worker meldet genau eine
+  Grenze, in zwei Klassen:
+  - `engine`: Rechenwerk oder Stringgrenze (4 GiB, Stringlänge, BigInt-Grenze
+    der Engine). Auf der Seite steht kein Text, nur `console.warn`; die
+    Anzeige bleibt stehen.
+  - `device`: das Gerät gibt keinen Speicher mehr her (Allokation scheitert).
+    Die Seite zeigt einen winzigen grauen Hinweis auf Englisch: "use better
+    hardware to get access to more digits". Annahme dahinter: ein besseres
+    Gerät kommt weiter.
+  Stürzt der Tab bei Speichermangel ab, lässt sich das nicht abfangen; dann
+  gibt es keinen Hinweis. Alles andere meldet `error` laut (`console.error`,
+  roter Rahmen), nie still. Messung und Tests: `tests/irrational/`,
+  `tests/unfoldingPi/`.
+- Stufe 2 (nicht gebaut): Memory64 oder ein eigener GMP-Build ohne 4-GiB-Grenze,
+  Out-of-Core über OPFS, Mehrkern, weitere Konstanten (γ, ζ(3), Catalan). Für
+  eine spätere fälschungssichere Benchmark-Bestenliste würde das Ergebnis
+  nicht als Zahl eingereicht, sondern über Stellen belegt, die der Server
+  stichprobenartig nachrechnet. Wer die Stellen hat, hat gerechnet.
 - Rückfall ohne WebAssembly (Safari im Lockdown-Modus): ist `WebAssembly`
-  nicht vorhanden oder nicht benutzbar, rechnet der Worker dieselbe
-  Chudnovsky-Rechnung mit JS-BigInt (Stand `984c37b7`, Newton-Wurzel) und
-  schickt einmal `{type:'notice'}`. Die Seite zeigt das ohne Text als dünnen
-  ockerfarbenen Rahmen (`.stage.hinweis`, `state().notice`) plus
-  `console.warn`; der Drift läuft weiter. Das Vorrechnen darf an der
-  BigInt-Grenze der Engine scheitern (Firefox/Safari ca. 115k Stellen, die
-  Grenze wird durch Halbieren gesucht); erst wenn die Front selbst nicht mehr
-  bedient werden kann, endet es laut über `fail()` (roter Rahmen,
-  `.hinweis` weg). Ein Ladefehler des Bundles bei vorhandenem WebAssembly
-  bleibt `fail('Pi-Rechenwerk nicht ladbar: ...')`, kein Rückfall.
+  nicht vorhanden oder nicht benutzbar, rechnet der Worker dieselbe Konstante
+  mit JS-BigInt und schickt einmal `{type:'notice'}`. Die Seite zeigt das ohne
+  Text als dünnen ockerfarbenen Rahmen (`.stage.hinweis`, `state().notice`)
+  plus `console.warn`; der Drift läuft weiter. In Firefox und Safari endet
+  die Kette dort an der BigInt-Grenze der Engine (ab etwa 1e5 Stellen); das
+  ist eine `engine`-Grenze: kein Text, `console.warn`, Anzeige bleibt stehen.
+  Scheitert das Laden des Bundles bei vorhandenem WebAssembly, greift
+  derselbe Rückfall samt `notice` mit dem Grund; still ist er nie.
 - Lizenz und Herkunft: `gmp-wasm` 1.3.2 (npm, `dist/mini.umd.min.js`,
   unverändert) und GMP stehen unter LGPL-3.0-only. Die Texte liegen same-origin
   als `tools/vendor/gmp-wasm/LICENSE-LGPL-3.0.txt` und `LICENSE-GPL-3.0.txt`
@@ -117,7 +131,7 @@ mindestens 40 px breit.
   Ordner-`.htaccess` dort schaltet den Textviewer der Wurzel-`.htaccess` für
   `.txt` und `.md` ab, sonst lieferte der Server eine HTML-Seite aus.
 - `worker.onmessage` fängt Ausnahmen beim Anhängen neuer Stellen ab und meldet
-  sie über `fail('Pi-Stellen nicht verarbeitbar: ...')`.
+  sie über `fail('Stellen nicht verarbeitbar: ...')`.
 - Fail loud: Worker-Fehler oder falsche Stellen führen zu `console.error`,
   rotem Rahmen (`.stage.fehler`), gestopptem Slider und eingefrorener Kette.
   Kein stiller Fallback; der einzige Rückfall (BigInt ohne WebAssembly) meldet
