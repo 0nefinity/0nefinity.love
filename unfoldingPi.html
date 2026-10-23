@@ -19,6 +19,8 @@
     /* Wartezustand: die Anzeige steht an der letzten berechneten Stelle und wartet auf den Worker (kein Ende, kein Fehler). */
     .stage.warte::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-color); pointer-events: none; animation: warte-puls 1.6s ease-in-out infinite; }
     @keyframes warte-puls { 0%, 100% { opacity: 0.08; } 50% { opacity: 0.45; } }
+    /* Hinweis nur bei Geraetegrenze: klein, gedaempft, ohne Interaktion. */
+    .limit-hint { position: absolute; top: 0.75rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; font-size: 0.7rem; color: var(--text-color); opacity: 0.45; pointer-events: none; }
     #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
     /* Der Daumen sitzt in Ruhe immer in der Bildschirmmitte: Zeile symmetrisch, keine einseitige Einrückung.
        Das controls.js-Panel (unten links) liegt unter 1200 px in der Slider-Höhe im Weg, deshalb steht die Zeile
@@ -33,6 +35,9 @@
     @media (min-width: 1200px) {
       .slider-row { padding-bottom: 1rem; }
       .slider-row input[type="range"] { width: min(28rem, calc(100vw - 64rem)); }
+      /* Breites Panel (zwei Reihen nebeneinander) ist breiter als die Mitte: der Regler steht dann wie darunter ueber ihm. */
+      body:has(.ctrl-panel.bar-mode) .slider-row { padding-bottom: 6.5rem; }
+      body:has(.ctrl-panel.bar-mode) .slider-row input[type="range"] { width: min(28rem, 90vw); }
     }
     /* Stil aus meta.css (.ctrl-range): ruhiger Track, Thumb in --text-color; hier nur größere Touch-Fläche. */
     .slider-row .ctrl-range { box-sizing: content-box; padding: 14px 0; background-clip: content-box; }
@@ -48,6 +53,7 @@
     </div>
   </div>
 
+  <script src="/tools/irrational.js"></script>
   <script>
   (() => {
     'use strict';
@@ -68,11 +74,20 @@
       "38142061717766914730359825349042875546873115956286388235378759375195778185778053"+
       "2171226806613001927876611195909216420198";
 
-    // Kette: "3", ".", "1", "4", ... Index 0 = "3".
-    let chain = '3.' + RESERVE.slice(1);
+    // Ganzzahlteil je Konstante; die Kette ist ein String: Ganzzahl, ".", Nachkommastellen. Index 0 = Ganzzahl.
+    const INT_PART = { pi: '3', e: '2', ln2: '0', sqrt2: '1', phi: '1' };
+    const CONSTS = Irrational.constants;
+    const params = new URLSearchParams(location.search);
+    let cid = params.get('c') || 'pi';
+    let chain = '';
     let requestedTotal = 0;
     let piError = null;
     let piNotice = null;
+    let limitState = null;
+    let handle = null;
+    let hintEl = null;
+    const decoder = new TextDecoder('latin1');
+    const startChain = () => { chain = (INT_PART[cid] || '0') + '.' + (cid === 'pi' ? RESERVE.slice(1) : ''); };
 
     const MARGIN = 8;          // Mindestabstand der Enden zum Bildrand (px)
     const HIT = 20;            // halbe Trefferbreite (>= 40px breit)
@@ -103,8 +118,7 @@
       if (cs !== color) { color = cs; dirty = true; }
     }
 
-    // ─── Pi-Worker ───
-    let worker = null;
+    // ─── Konstanten-Rechner (tools/irrational.js) ───
     function fail(message) {
       if (piError) return;
       piError = message;
@@ -115,7 +129,7 @@
       driftEl.value = 0;
       dirty = true;
     }
-    // Nicht sperrender Hinweis (Rückfall auf BigInt ohne WebAssembly): gleicher Rahmenweg wie fail(), der Drift läuft weiter.
+    // Nicht sperrender Hinweis (Rueckfall auf BigInt ohne WebAssembly): gleicher Rahmenweg wie fail(), der Drift laeuft weiter.
     function notice(message) {
       if (piNotice || piError) return;
       piNotice = message;
@@ -123,33 +137,73 @@
       stage.classList.add('hinweis');
       dirty = true;
     }
-    function startWorker() {
-      try {
-        worker = new Worker('/tools/workers/pi-digits-worker.js');
-      } catch (e) { fail('Pi-Worker nicht startbar: ' + e.message); return; }
-      worker.onerror = (e) => fail('Pi-Worker-Fehler: ' + (e.message || 'unbekannt'));
-      worker.onmessageerror = () => fail('Pi-Worker-Nachricht nicht lesbar');
-      worker.onmessage = (ev) => {
-        try {
-          const m = ev.data;
-          if (m.type === 'error') { fail(m.message); return; }
-          if (m.type === 'notice') { notice(m.message); return; }
-          if (m.type !== 'digits') return;
-          const have = chain.length - 2;
-          if (m.from > have) { fail('Pi-Worker lieferte eine Lücke bei Stelle ' + have); return; }
-          chain += m.str.slice(have - m.from);
-          dirty = true;
-        } catch (e) {
-          fail('Pi-Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+    function onLimit(lim) {
+      limitState = lim;
+      stage.classList.remove('warte');
+      if (lim.kind === 'device') {
+        if (!hintEl) {
+          hintEl = document.createElement('div');
+          hintEl.id = 'limit-hint';
+          hintEl.className = 'limit-hint';
+          hintEl.textContent = 'use better hardware to get access to more digits';
+          stage.appendChild(hintEl);
         }
-      };
-      worker.postMessage({ type: 'init', reference: chain.replace('.', '') });
+      }
+      dirty = true;
+    }
+    function onDigits(u8, offset) {
+      try {
+        const have = chain.length - 2;
+        if (offset > have) { fail('Luecke in den Stellen bei ' + have); return; }
+        const skip = have - offset;
+        if (skip > 0) {
+          const ov = Math.min(skip, u8.length);
+          if (decoder.decode(u8.subarray(0, ov)) !== chain.slice(2 + offset, 2 + offset + ov)) { fail('Stellen widersprechen den bekannten Stellen'); return; }
+        }
+        if (skip >= u8.length) return;
+        chain += decoder.decode(u8.subarray(skip));
+        dirty = true;
+      } catch (e) {
+        if (e instanceof RangeError) {
+          // V8-Stringgrenze: Rechenwerk-Grenze, kein Text, die Anzeige bleibt stehen.
+          console.warn('[unfoldingPi] engine limit: string length at ' + (chain.length - 2) + ' digits');
+          limitState = { kind: 'engine', reason: 'string length', digits: chain.length - 2 };
+          stage.classList.remove('warte');
+          if (handle) handle.close();
+          return;
+        }
+        fail('Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+      }
+    }
+    function startWorker() {
+      if (handle) { handle.close(); handle = null; }
+      limitState = null;
+      requestedTotal = 0;
+      stage.classList.remove('warte', 'hinweis');
+      if (hintEl) { hintEl.remove(); hintEl = null; }
+      piNotice = null;
+      startChain();
+      try {
+        handle = Irrational.open(cid, { onDigits, onLimit, onNotice: notice, onError: (e) => fail(e.message) }, window.unfoldingPiTest);
+      } catch (e) { fail('Rechner nicht startbar: ' + e.message); return; }
       requestDigits(2000);
     }
     function requestDigits(total) {
-      if (!worker || piError || total <= requestedTotal) return;
+      if (!handle || piError || limitState || total <= requestedTotal) return;
       requestedTotal = total;
-      worker.postMessage({ type: 'need', total });
+      handle.want(total);
+    }
+    function symbolOf(id) { return CONSTS.find((k) => k.id === id).symbol; }
+    function setConstant(id) {
+      if (id === cid) return;
+      cid = id;
+      const u = new URL(location.href);
+      u.searchParams.set('c', id);
+      history.replaceState(null, '', u);
+      document.title = id === 'pi' ? 'unfoldingPi' : 'unfolding ' + symbolOf(id);
+      X0 = L + deff();
+      startWorker();
+      settle('three');
     }
 
     // ─── Geometrie ───
@@ -258,7 +312,7 @@
       const iHi = Math.min(chain.length - 1, iLinHi + 1 + K);
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
       requestDigits(iLinHi + 2 + K + 100);
-      stage.classList.toggle('warte', !piError && iLinHi >= chain.length - 3);
+      stage.classList.toggle('warte', !piError && !limitState && iLinHi >= chain.length - 3);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       let n = 0;
@@ -404,18 +458,26 @@
     }
 
     // ─── Boot ───
+    startChain();
+    if (!INT_PART[cid]) fail('Unbekannte Konstante: ' + cid);
+    else if (cid !== 'pi') document.title = 'unfolding ' + symbolOf(cid);
     applySize(true);
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
     panel.addSlider('d', {
       label: 'Verdichtung', min: 0, max: 400, step: 0.5, value: d, decimals: 1,
       onChange: setD
     });
+    panel.addSelect('const', {
+      label: 'Konstante', value: cid,
+      options: CONSTS.map((k) => ({ value: k.id, label: k.symbol })),
+      onChange: setConstant
+    });
     window.addEventListener('resize', () => applySize(false));
     refreshColor();
     const themeObs = new MutationObserver(refreshColor);
     for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
-    startWorker();
+    if (!piError) startWorker();
     requestAnimationFrame(frame);
 
     // Nur lesende Zustandsabfrage für Tests.
@@ -433,7 +495,7 @@
           inkTop: inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           inkBottom: inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           minInk: minInk(),
-          color, error: piError, notice: piNotice, waiting: stage.classList.contains('warte'), requestedTotal
+          color, constant: cid, limit: limitState, error: piError, notice: piNotice, waiting: stage.classList.contains('warte'), requestedTotal
         };
       },
       digits() { return chain; }

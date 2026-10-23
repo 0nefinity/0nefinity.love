@@ -1,11 +1,16 @@
 // Durchsatz pi: neuer irrational-worker gegen alten pi-digits-worker, gleiche Stelle, abwechselnd, Median.
+// Der alte Worker ist aus dem Baum entfernt; er wird aus Commit 839eac73 in eine Temp-Datei geholt.
 // Aufruf: node tests/irrational/bench-throughput.js [stellen=1000000] [laeufe=3]
 'use strict';
 const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { execFileSync } = require('child_process');
 const { createWorker, ROOT } = require('./lib/vmworker');
 const N = Number(process.argv[2] || 1000000);
 const RUNS = Number(process.argv[3] || 3);
-const OLD = path.join(ROOT, 'tools/workers/pi-digits-worker.js');
+const OLD = path.join(os.tmpdir(), 'pi-digits-worker-839eac73.js');
+fs.writeFileSync(OLD, execFileSync('git', ['show', '839eac73:tools/workers/pi-digits-worker.js'], { cwd: ROOT }));
 
 async function runNew() {
     const w = createWorker();

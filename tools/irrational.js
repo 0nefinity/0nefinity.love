@@ -5,6 +5,7 @@
  *   const h = Irrational.open('pi', {
  *     onDigits(u8, offset) {},          // u8: ASCII-Ziffern '0'..'9', offset = Nachkommastelle des ersten Bytes (0 = erste nach dem Komma)
  *     onLimit({ kind, reason, digits }) {}, // kind 'engine' (Rechenwerk-Grenze) | 'device' (Geraet gibt keinen Speicher mehr)
+ *     onNotice(message) {},             // nicht sperrend: Rueckfall auf BigInt (kein WebAssembly)
  *     onError(err) {},                  // alles andere, laut
  *   });
  *   h.want(n); h.state(); h.close();
@@ -49,6 +50,7 @@
                 st.algorithm = m.algorithm + (m.mode === 'bigint' ? ' (BigInt fallback)' : '');
             } else if (m.type === 'notice') {
                 st.algorithm = c.algorithm + ' (BigInt fallback)';
+                if (h.onNotice) h.onNotice(m.message);
             } else if (m.type === 'limit') {
                 st.limit = { kind: m.kind, reason: m.reason, digits: m.digits };
                 if (m.kind === 'engine') console.warn('[Irrational] ' + id + ': engine limit at ' + m.digits + ' digits: ' + m.reason);
