@@ -1,5 +1,8 @@
 /**
- * Pi-Stellen-Worker (unbegrenzt, BigInt, Chudnovsky mit Binary Splitting).
+ * Pi-Stellen-Worker (unbegrenzt, GMP/WASM, Chudnovsky mit Binary Splitting).
+ *
+ * Die Ganzzahlen liegen im WASM-Speicher von GMP, nicht in JS-BigInt: BigInt hat je Engine eine feste
+ * Größengrenze (Firefox/Safari 2^20 Bit, Chromium 2^30 Bit), GMP nur die Grenze des Gerätespeichers.
  *
  * Nachrichten an den Worker:
  *   { type: 'init', reference: '3141...' }   Referenz-Anfang (Ziffern inkl. 3, ohne Punkt) zur Selbstprüfung
@@ -11,74 +14,107 @@
  */
 'use strict';
 
-const C3_OVER_24 = 640320n ** 3n / 24n;
 const GUARD = 30;
+// Vorrat: der Worker hält mindestens VORRAT mal die gemeldete Front bereit und wächst je Stufe um denselben Faktor.
+const VORRAT = 2;
 
+let g = null; // GMP-Binding, gesetzt sobald das WASM instanziiert ist
 let have = 0;
 let reference = '';
 let failed = false;
 let busy = false;
 let wanted = 0;
-// Vorrat: der Worker hält mindestens VORRAT mal die gemeldete Front bereit und wächst je Stufe um denselben Faktor.
-const VORRAT = 2;
-
-function bs(a, b) {
-    if (b - a === 1n) {
-        let P, Q;
-        if (a === 0n) {
-            P = 1n; Q = 1n;
-        } else {
-            P = (6n * a - 5n) * (2n * a - 1n) * (6n * a - 1n);
-            Q = a * a * a * C3_OVER_24;
-        }
-        let T = P * (13591409n + 545140134n * a);
-        if (a & 1n) T = -T;
-        return [P, Q, T];
-    }
-    const m = (a + b) / 2n;
-    const [P1, Q1, T1] = bs(a, m);
-    const [P2, Q2, T2] = bs(m, b);
-    return [P1 * P2, Q1 * Q2, Q2 * T1 + P1 * T2];
-}
-
-// Newton mit Genauigkeitsverdopplung: Wurzel der oberen Hälfte der Bits, dann ein Newton-Schritt in voller Länge.
-function isqrt(n) {
-    return isqrtBits(n, n.toString(2).length);
-}
-
-function isqrtBits(n, bits) {
-    if (n < (1n << 52n)) {
-        let r = BigInt(Math.floor(Math.sqrt(Number(n))));
-        while (r * r > n) r--;
-        while ((r + 1n) * (r + 1n) <= n) r++;
-        return r;
-    }
-    const s = bits >> 2;
-    const a = isqrtBits(n >> BigInt(2 * s), bits - 2 * s);
-    const x = (a + 1n) << BigInt(s);
-    let y = (x + n / x) >> 1n;
-    let d = n - y * y;
-    while (d < 0n) { d += 2n * y - 1n; y--; }
-    return y;
-}
-
-function piDigits(decimals) {
-    const n = BigInt(decimals + GUARD);
-    const one = 10n ** n;
-    const terms = BigInt(Math.floor((decimals + GUARD) / 14.18) + 2);
-    const [, Q, T] = bs(0n, terms);
-    const sqrtC = isqrt(10005n * one * one);
-    const pi = (Q * 426880n * sqrtC) / T;
-    return pi.toString().slice(0, decimals + 1); // "3" + Nachkommastellen
-}
 
 function fail(message) {
     failed = true;
     postMessage({ type: 'error', message });
 }
 
+function newMpz() {
+    const p = g.mpz_t();
+    g.mpz_init(p);
+    return p;
+}
+
+function freeMpz(p) {
+    g.mpz_clear(p);
+    g.free(p);
+}
+
+// Binary Splitting über die Terme [a, b). Rückgabe [P, Q, T] als GMP-Zeiger; der Aufrufer gibt sie frei.
+// P wird nur gebraucht, wo ein Elternknoten es multipliziert; am rechten Rand (needP = false) entfällt es.
+function bs(a, b, needP, c3over24) {
+    if (b - a === 1) {
+        const P = newMpz(), Q = newMpz(), T = newMpz();
+        if (a === 0) {
+            g.mpz_set_ui(P, 1);
+            g.mpz_set_ui(Q, 1);
+        } else {
+            g.mpz_set_ui(P, 6 * a - 5);
+            g.mpz_mul_ui(P, P, 2 * a - 1);
+            g.mpz_mul_ui(P, P, 6 * a - 1);
+            g.mpz_mul_ui(Q, c3over24, a);
+            g.mpz_mul_ui(Q, Q, a);
+            g.mpz_mul_ui(Q, Q, a);
+        }
+        // T = P * (13591409 + 545140134 * a), negativ bei ungeradem a
+        g.mpz_set_ui(T, 545140134);
+        g.mpz_mul_ui(T, T, a);
+        g.mpz_add_ui(T, T, 13591409);
+        g.mpz_mul(T, T, P);
+        if (a & 1) g.mpz_neg(T, T);
+        if (!needP) { freeMpz(P); return [0, Q, T]; }
+        return [P, Q, T];
+    }
+    const m = Math.floor((a + b) / 2);
+    const [P1, Q1, T1] = bs(a, m, true, c3over24);
+    const [P2, Q2, T2] = bs(m, b, needP, c3over24);
+    // T = Q2*T1 + P1*T2, P = P1*P2, Q = Q1*Q2 (jeweils in Q1/T1/P1, die Hälften werden freigegeben)
+    g.mpz_mul(T1, T1, Q2);
+    g.mpz_addmul(T1, P1, T2);
+    g.mpz_mul(Q1, Q1, Q2);
+    if (needP) g.mpz_mul(P1, P1, P2);
+    freeMpz(Q2); freeMpz(T2);
+    if (P2) freeMpz(P2);
+    if (!needP) freeMpz(P1);
+    return [needP ? P1 : 0, Q1, T1];
+}
+
+function piDigits(decimals) {
+    const n = decimals + GUARD;
+    const terms = Math.floor(n / 14.18) + 2;
+    if (6 * terms >= 2 ** 32) throw new Error('Rechenwerk-Grenze (32-Bit-Faktoren) erreicht');
+    const c3over24 = newMpz();
+    const sqrtC = newMpz(), pi = newMpz(), one = newMpz();
+    try {
+        // 640320^3 / 24
+        g.mpz_ui_pow_ui(c3over24, 640320, 3);
+        g.mpz_tdiv_q_2exp(c3over24, c3over24, 3); // /8
+        const three = newMpz();
+        g.mpz_set_ui(three, 3);
+        g.mpz_tdiv_q(c3over24, c3over24, three);
+        freeMpz(three);
+        const [, Q, T] = bs(0, terms, false, c3over24);
+        g.mpz_ui_pow_ui(one, 10, n);
+        g.mpz_mul(one, one, one);
+        g.mpz_mul_ui(one, one, 10005);
+        g.mpz_sqrt(sqrtC, one);
+        g.mpz_mul(Q, Q, sqrtC);
+        g.mpz_mul_ui(Q, Q, 426880);
+        g.mpz_tdiv_q(pi, Q, T);
+        freeMpz(Q); freeMpz(T);
+        // mpz_get_str liefert einen Zeiger auf ASCII-Ziffern im WASM-Speicher: "3" + Nachkommastellen
+        const ptr = g.mpz_get_str(0, 10, pi);
+        const str = new TextDecoder().decode(g.mem.subarray(ptr, ptr + decimals + 1));
+        g.free(ptr);
+        return str;
+    } finally {
+        freeMpz(c3over24); freeMpz(sqrtC); freeMpz(pi); freeMpz(one);
+    }
+}
+
 function work() {
-    if (busy || failed) return;
+    if (busy || failed || !g) return;
     busy = true;
     try {
         while (have < wanted) {
@@ -110,3 +146,13 @@ onmessage = (ev) => {
         work();
     }
 };
+
+try {
+    importScripts('/tools/vendor/gmp-wasm/gmp-wasm-1.3.2.mini.umd.min.js');
+    self.gmp.init().then((lib) => {
+        g = lib.binding;
+        work();
+    }).catch((e) => fail('Pi-Rechenwerk nicht ladbar: ' + (e && e.message ? e.message : e)));
+} catch (e) {
+    fail('Pi-Rechenwerk nicht ladbar: ' + (e && e.message ? e.message : e));
+}
