@@ -3,10 +3,11 @@
 # test_ui (Touch per CDP) und test_license (Server, nicht Browser) laufen nur in chromium.
 # Aufruf: bash tests/unfoldingPi/run.sh   (BROWSERS="chromium" zum Eingrenzen; SKIP_B1=1 ueberspringt tests/irrational/run.sh)
 cd "$(dirname "$0")" || exit 2
+export PYTHONDONTWRITEBYTECODE=1
 BROWSERS=${BROWSERS:-"chromium firefox webkit"}
 fail=0
 for b in $BROWSERS; do
-  for t in test_constants test_limits test_ui test_front test_nowasm test_errors test_big test_license; do
+  for t in test_constants test_limits test_ui test_front test_nowasm test_errors test_restart test_big test_license; do
     case "$t" in test_license|test_ui) [ "$b" != chromium ] && continue;; esac
     echo "=== $b $t"
     BROWSER=$b python3 $t.py > /tmp/unfoldingPi-$b-$t.log 2>&1 && echo "ok   $b $t" || { echo "FAIL $b $t (Log /tmp/unfoldingPi-$b-$t.log)"; fail=1; }

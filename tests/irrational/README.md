@@ -6,10 +6,11 @@ Tests fuer `tools/workers/irrational-worker.js` und `tools/irrational.js`. Alles
 |---|---|
 | `test_patch.js` | Bundle-Patch: Maximum 32768 -> 65536 Seiten, Original unveraendert, Skript reproduzierbar, bricht bei Doppelanwendung ab |
 | `test_engine.js stages` | je Konstante 1e5 Stellen (pi 4e5) gleich mpmath, lueckenlose Bloecke |
-| `test_engine.js a1` | Maximum 65536; mehr als 2 GiB belegt; Zeiger >= 2^31 (`>>> 0`); danach 1e5 pi-Stellen korrekt |
+| `test_engine.js a1` | Maximum 65536; mehr als 2 GiB belegt; Zeiger >= 2^31 (`>>> 0`), auch der Rueckgabezeiger von `mpz_get_str`; danach 1e5 pi-Stellen korrekt |
 | `test_engine.js a2` | Limit `engine` vor dem Rechnen (Maximum gesenkt), Limit `device` bei injiziertem Allokationsfehler, andere Fehler -> `error` |
 | `test_engine.js a3` | BigInt-Rueckfall 1e4 Stellen je Konstante, laut (notice + console.warn), Limit stets `engine` |
-| `test_engine.js a4` | hinterlegte Byte/Stelle >= gemessen |
+| `test_engine.js a4` | hinterlegte Byte/Stelle (aus dem geladenen Worker) >= gemessen |
+| `test_engine.js a5` | Selbstpruefungen `checkGuard`/`checkHead`: direkt und ueber verfaelschte Rechenergebnisse (wasm und BigInt), Kontrolle ohne Verfaelschung |
 | `test_browser.py` | 1e5 Stellen je Konstante in chromium, firefox, webkit ueber `Irrational.open` (`harness.html`) |
 | `measure-bpd.js`, `bench-throughput.js` | Messungen (unten) |
 
@@ -36,6 +37,8 @@ Daraus folgt eine Engine-Grenze bei 4 GiB von etwa 2,8e8 Stellen (pi).
 Median alt (`pi-digits-worker.js`) 2,13 s, neu 2,13 s, Verhaeltnis 1,00. Kein Rueckschritt.
 
 ## Mutationslauf
+
+`bash tests/irrational/mutants.sh`: noguard, nohead (a5), bpd_pi_low (a4), getstr_signed (a1) muessen rot werden. Aeltere Handlaeufe:
 
 `IRRATIONAL_WORKER=<Kopie> node tests/irrational/test_engine.js a2`, Kopien per sed aus dem Worker:
 

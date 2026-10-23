@@ -46,6 +46,8 @@ function createWorker(opts = {}) {
 
     const api = {
         messages, warnings,
+        // Code im Skopus des Workers ausfuehren (Zugriff auf seine Funktionen und let/const, nur fuer Tests).
+        run(code) { return vm.runInContext(code, ctx); },
         send(msg) { ctx.onmessage({ data: msg.type === 'open' && !('intLen' in msg) ? Object.assign({ intLen: intLenOf(msg.id) }, msg) : msg }); },
         waitFor(pred, ms = 120000) {
             return new Promise((resolve, reject) => {

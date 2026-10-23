@@ -14,6 +14,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_front.py` | Kette wächst an der Front, Stellen korrekt (Chromium 2e6 in 25 s, sonst 1e6 in 150 s) |
 | `test_nowasm.py` | Rückfall auf BigInt ohne WebAssembly: Hinweisrahmen, `console.warn`; Firefox/WebKit enden bei 96000 Stellen als engine-Grenze |
 | `test_errors.py` | Fehlerpfade mit Worker-Attrappe |
+| `test_restart.py` | Konstantenwechsel nach Fehler (`?c=foo`, Fehler mitten im Lauf): Fehler-/Grenzzustand ist zurueckgesetzt, Kette waechst, Stellen 2.71828 |
 | `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
@@ -21,7 +22,7 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 
 ## Mutanten
 
-`mutants.sh` ändert die ausgelieferte Datei per Route und erwartet Exit 1. Exit 3 heißt: Muster nicht gefunden, der Mutant ist wirkungslos.
+`mutants.sh` startet am Ende auch `tests/irrational/mutants.sh` (Worker-Mutanten). Die Skripte setzen `PYTHONDONTWRITEBYTECODE=1`, damit kein `__pycache__` im oeffentlich ausgelieferten Baum entsteht; Einzelaufrufe `python3 tests/...` ebenso mit `PYTHONDONTWRITEBYTECODE=1`. `mutants.sh` ändert die ausgelieferte Datei per Route und erwartet Exit 1. Exit 3 heißt: Muster nicht gefunden, der Mutant ist wirkungslos.
 
 | Test | MUT | Änderung |
 |---|---|---|
@@ -34,6 +35,9 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 | errors | notry | Anhängen ohne `try` |
 | errors | swallow | Fehler verschluckt |
 | errors | nopiError | `.warte` ohne `!piError` |
+| restart | nopiError_reset | `startWorker()` setzt `piError` nicht zurueck |
+| restart | nodrift_reset | Drift bleibt nach Neustart gesperrt |
+| restart | nofehlerclass_reset | Fehlerrahmen bleibt nach Neustart |
 | big | cap | Testhaken `failAlloc:50` täuscht Speichermangel vor |
 
 `test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase, sliderpad, sliderleft).
