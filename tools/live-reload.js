@@ -8,9 +8,12 @@
   let lastStamp = null;
   let initialized = false;
   let failing = false;
+  let unloading = false;
+  // Beim Seitenwechsel bricht der Browser den laufenden fetch ab; das ist kein Ausfall.
+  window.addEventListener('pagehide', () => { unloading = true; });
 
   function fail(reason) {
-    if (failing) return;
+    if (failing || unloading) return;
     failing = true;
     console.error('[live-reload] ausgefallen, Seite lädt nicht mehr automatisch neu: ' + reason);
   }
