@@ -98,9 +98,30 @@ mindestens 40 px breit.
   pulsierende Linie, `state().waiting`), ohne Fehler und ohne Rücksprung;
   nach einem Fehler ist `.warte` weg (nur `.fehler`). Inkrementelles Binary
   Splitting war gemessen langsamer und ist nicht eingebaut.
+- Rückfall ohne WebAssembly (Safari im Lockdown-Modus): ist `WebAssembly`
+  nicht vorhanden oder nicht benutzbar, rechnet der Worker dieselbe
+  Chudnovsky-Rechnung mit JS-BigInt (Stand `984c37b7`, Newton-Wurzel) und
+  schickt einmal `{type:'notice'}`. Die Seite zeigt das ohne Text als dünnen
+  ockerfarbenen Rahmen (`.stage.hinweis`, `state().notice`) plus
+  `console.warn`; der Drift läuft weiter. Das Vorrechnen darf an der
+  BigInt-Grenze der Engine scheitern (Firefox/Safari ca. 115k Stellen, die
+  Grenze wird durch Halbieren gesucht); erst wenn die Front selbst nicht mehr
+  bedient werden kann, endet es laut über `fail()` (roter Rahmen,
+  `.hinweis` weg). Ein Ladefehler des Bundles bei vorhandenem WebAssembly
+  bleibt `fail('Pi-Rechenwerk nicht ladbar: ...')`, kein Rückfall.
+- Lizenz und Herkunft: `gmp-wasm` 1.3.2 (npm, `dist/mini.umd.min.js`,
+  unverändert) und GMP stehen unter LGPL-3.0-only. Die Texte liegen same-origin
+  als `tools/vendor/gmp-wasm/LICENSE-LGPL-3.0.txt` und `LICENSE-GPL-3.0.txt`
+  (GPL aus `/usr/share/common-licenses/GPL-3`), Herkunft in `README.md` daneben
+  und als Kommentar im Worker; auf der Seite steht dazu kein Text. Die
+  Ordner-`.htaccess` dort schaltet den Textviewer der Wurzel-`.htaccess` für
+  `.txt` und `.md` ab, sonst lieferte der Server eine HTML-Seite aus.
+- `worker.onmessage` fängt Ausnahmen beim Anhängen neuer Stellen ab und meldet
+  sie über `fail('Pi-Stellen nicht verarbeitbar: ...')`.
 - Fail loud: Worker-Fehler oder falsche Stellen führen zu `console.error`,
   rotem Rahmen (`.stage.fehler`), gestopptem Slider und eingefrorener Kette.
-  Kein stiller Fallback.
+  Kein stiller Fallback; der einzige Rückfall (BigInt ohne WebAssembly) meldet
+  sich sichtbar und per `console.warn`.
 - Nur lesende Testschnittstelle: `window.unfoldingPi.state()` mit
   `{L, R, X0, d, startIndex, endIndex, visibleCount, velocity, error, ...}`.
 - Strikt same-origin, keine Fremdressourcen.

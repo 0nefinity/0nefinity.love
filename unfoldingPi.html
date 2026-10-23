@@ -14,6 +14,7 @@
       color: var(--text-color);
       user-select: none; -webkit-user-select: none;
     }
+    .stage.hinweis { box-shadow: inset 0 0 0 2px #b8860b; }
     .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
     /* Wartezustand: die Anzeige steht an der letzten berechneten Stelle und wartet auf den Worker (kein Ende, kein Fehler). */
     .stage.warte::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-color); pointer-events: none; animation: warte-puls 1.6s ease-in-out infinite; }
@@ -71,6 +72,7 @@
     let chain = '3.' + RESERVE.slice(1);
     let requestedTotal = 0;
     let piError = null;
+    let piNotice = null;
 
     const MARGIN = 8;          // Mindestabstand der Enden zum Bildrand (px)
     const HIT = 20;            // halbe Trefferbreite (>= 40px breit)
@@ -107,10 +109,18 @@
       if (piError) return;
       piError = message;
       console.error('[unfoldingPi] ' + message);
-      stage.classList.remove('warte');
+      stage.classList.remove('warte', 'hinweis');
       stage.classList.add('fehler');
       driftEl.disabled = true;
       driftEl.value = 0;
+      dirty = true;
+    }
+    // Nicht sperrender Hinweis (Rückfall auf BigInt ohne WebAssembly): gleicher Rahmenweg wie fail(), der Drift läuft weiter.
+    function notice(message) {
+      if (piNotice || piError) return;
+      piNotice = message;
+      console.warn('[unfoldingPi] ' + message);
+      stage.classList.add('hinweis');
       dirty = true;
     }
     function startWorker() {
@@ -118,14 +128,20 @@
         worker = new Worker('/tools/workers/pi-digits-worker.js');
       } catch (e) { fail('Pi-Worker nicht startbar: ' + e.message); return; }
       worker.onerror = (e) => fail('Pi-Worker-Fehler: ' + (e.message || 'unbekannt'));
+      worker.onmessageerror = () => fail('Pi-Worker-Nachricht nicht lesbar');
       worker.onmessage = (ev) => {
-        const m = ev.data;
-        if (m.type === 'error') { fail(m.message); return; }
-        if (m.type !== 'digits') return;
-        const have = chain.length - 2;
-        if (m.from > have) { fail('Pi-Worker lieferte eine Lücke bei Stelle ' + have); return; }
-        chain += m.str.slice(have - m.from);
-        dirty = true;
+        try {
+          const m = ev.data;
+          if (m.type === 'error') { fail(m.message); return; }
+          if (m.type === 'notice') { notice(m.message); return; }
+          if (m.type !== 'digits') return;
+          const have = chain.length - 2;
+          if (m.from > have) { fail('Pi-Worker lieferte eine Lücke bei Stelle ' + have); return; }
+          chain += m.str.slice(have - m.from);
+          dirty = true;
+        } catch (e) {
+          fail('Pi-Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+        }
       };
       worker.postMessage({ type: 'init', reference: chain.replace('.', '') });
       requestDigits(2000);
@@ -417,7 +433,7 @@
           inkTop: inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           inkBottom: inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           minInk: minInk(),
-          color, error: piError, waiting: stage.classList.contains('warte'), requestedTotal
+          color, error: piError, notice: piNotice, waiting: stage.classList.contains('warte'), requestedTotal
         };
       },
       digits() { return chain; }

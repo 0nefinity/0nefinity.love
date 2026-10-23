@@ -8,7 +8,16 @@
  *   { type: 'init', reference: '3141...' }   Referenz-Anfang (Ziffern inkl. 3, ohne Punkt) zur Selbstprüfung
  *   { type: 'need', total: N }               Front: N Nachkommastellen werden gebraucht, der Worker hält VORRAT mal N bereit
  *
+ * Ohne nutzbares WebAssembly (z. B. Safari im Lockdown-Modus) rechnet der Worker dieselbe Chudnovsky-Rechnung mit
+ * JS-BigInt (Rückfall, begrenzt auf wenige 100.000 Stellen) und meldet das einmal als 'notice'.
+ *
+ * Herkunft und Lizenz: gmp-wasm 1.3.2 (https://github.com/Daninet/gmp-wasm, npm "gmp-wasm", Datei dist/mini.umd.min.js,
+ * unverändert) bindet GMP (https://gmplib.org) ein; beide LGPL-3.0-only. Lizenztexte same-origin:
+ * /tools/vendor/gmp-wasm/LICENSE-LGPL-3.0.txt und /tools/vendor/gmp-wasm/LICENSE-GPL-3.0.txt (LGPL-3.0 baut auf der GPL-3.0 auf),
+ * Herkunft in /tools/vendor/gmp-wasm/README.md. Die Bibliothek bleibt als eigene Datei austauschbar.
+ *
  * Nachrichten vom Worker:
+ *   { type: 'notice', message }              Hinweis ohne Abbruch (Rückfall auf BigInt); die Seite rechnet weiter
  *   { type: 'digits', from, str }            Nachkommastellen from.. (0 = erste Stelle nach dem Punkt)
  *   { type: 'error', message }               Fehler oder falsche Stellen: danach liefert der Worker nichts mehr
  */
@@ -19,6 +28,15 @@ const GUARD = 30;
 const VORRAT = 2;
 
 let g = null; // GMP-Binding, gesetzt sobald das WASM instanziiert ist
+let useBigInt = false; // Rückfall ohne WebAssembly
+// BigInt hat je Engine eine feste Größengrenze; sie wird beim Vorrechnen gesucht (halbieren bis auf BIG_SUCHE Stellen genau).
+const BIG_SUCHE = 2000;
+let bigFail = Infinity; // kleinste Stellenzahl, an der BigInt scheiterte
+let bigDone = false;    // Grenze auf BIG_SUCHE Stellen eingegrenzt: nicht weiter suchen
+let bigError = '';
+let front = 0;          // zuletzt gemeldete Front der Seite
+let ready = false;
+const C3_OVER_24 = 640320n ** 3n / 24n;
 let have = 0;
 let reference = '';
 let failed = false;
@@ -28,6 +46,16 @@ let wanted = 0;
 function fail(message) {
     failed = true;
     postMessage({ type: 'error', message });
+}
+
+// WebAssembly vorhanden und benutzbar? Lockdown-Modus entfernt das Objekt oder lässt Module() scheitern.
+function wasmUsable() {
+    try {
+        return typeof WebAssembly === 'object' && typeof WebAssembly.Module === 'function' &&
+            new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])) instanceof WebAssembly.Module;
+    } catch (e) {
+        return false;
+    }
 }
 
 function newMpz() {
@@ -113,13 +141,85 @@ function piDigits(decimals) {
     }
 }
 
+function bsBig(a, b) {
+    if (b - a === 1n) {
+        let P, Q;
+        if (a === 0n) {
+            P = 1n; Q = 1n;
+        } else {
+            P = (6n * a - 5n) * (2n * a - 1n) * (6n * a - 1n);
+            Q = a * a * a * C3_OVER_24;
+        }
+        let T = P * (13591409n + 545140134n * a);
+        if (a & 1n) T = -T;
+        return [P, Q, T];
+    }
+    const m = (a + b) / 2n;
+    const [P1, Q1, T1] = bsBig(a, m);
+    const [P2, Q2, T2] = bsBig(m, b);
+    return [P1 * P2, Q1 * Q2, Q2 * T1 + P1 * T2];
+}
+
+// Newton mit Genauigkeitsverdopplung: Wurzel der oberen Hälfte der Bits, dann ein Newton-Schritt in voller Länge.
+function isqrtBig(n) {
+    return isqrtBitsBig(n, n.toString(2).length);
+}
+
+function isqrtBitsBig(n, bits) {
+    if (n < (1n << 52n)) {
+        let r = BigInt(Math.floor(Math.sqrt(Number(n))));
+        while (r * r > n) r--;
+        while ((r + 1n) * (r + 1n) <= n) r++;
+        return r;
+    }
+    const s = bits >> 2;
+    const a = isqrtBitsBig(n >> BigInt(2 * s), bits - 2 * s);
+    const x = (a + 1n) << BigInt(s);
+    let y = (x + n / x) >> 1n;
+    let d = n - y * y;
+    while (d < 0n) { d += 2n * y - 1n; y--; }
+    return y;
+}
+
+function piDigitsBig(decimals) {
+    const n = BigInt(decimals + GUARD);
+    const one = 10n ** n;
+    const terms = BigInt(Math.floor((decimals + GUARD) / 14.18) + 2);
+    const [, Q, T] = bsBig(0n, terms);
+    const sqrtC = isqrtBig(10005n * one * one);
+    const pi = (Q * 426880n * sqrtC) / T;
+    return pi.toString().slice(0, decimals + 1); // "3" + Nachkommastellen
+}
+
+
 function work() {
-    if (busy || failed || !g) return;
+    if (busy || failed || !ready) return;
     busy = true;
     try {
         while (have < wanted) {
-            const target = Math.max(wanted, have * VORRAT, 2000);
-            const s = piDigits(target);
+            let target = Math.max(wanted, have * VORRAT, 2000);
+            let s = null;
+            if (useBigInt) {
+                // Vorrat darf an der Engine-Grenze scheitern; nur wenn die Front selbst nicht mehr bedient werden kann, endet es laut.
+                while (s === null && !bigDone) {
+                    target = Math.min(target, bigFail - 1);
+                    if (target <= have) break;
+                    try {
+                        s = piDigitsBig(target);
+                    } catch (e) {
+                        bigFail = target;
+                        bigError = e && e.message ? e.message : String(e);
+                        if (target - have > BIG_SUCHE) target = have + Math.floor((target - have) / 2);
+                        else bigDone = true;
+                    }
+                }
+                if (s === null) {
+                    if (have < front) throw new Error('BigInt-Grenze erreicht bei ' + have + ' Stellen (' + bigError + ')');
+                    return;
+                }
+            } else {
+                s = piDigits(target);
+            }
             if (reference) {
                 if (!(s.length >= reference.length ? s.startsWith(reference) : reference.startsWith(s))) {
                     fail('Pi-Referenz stimmt nicht mit den berechneten Stellen überein');
@@ -142,17 +242,27 @@ onmessage = (ev) => {
     if (m.type === 'init') {
         reference = String(m.reference || '');
     } else if (m.type === 'need') {
+        front = Math.max(front, Math.floor(m.total) || 0);
         wanted = Math.max(wanted, VORRAT * (Math.floor(m.total) || 0));
         work();
     }
 };
 
-try {
-    importScripts('/tools/vendor/gmp-wasm/gmp-wasm-1.3.2.mini.umd.min.js');
-    self.gmp.init().then((lib) => {
-        g = lib.binding;
-        work();
-    }).catch((e) => fail('Pi-Rechenwerk nicht ladbar: ' + (e && e.message ? e.message : e)));
-} catch (e) {
-    fail('Pi-Rechenwerk nicht ladbar: ' + (e && e.message ? e.message : e));
+if (!wasmUsable()) {
+    useBigInt = true;
+    ready = true;
+    const message = 'WebAssembly nicht verfügbar: Pi wird mit BigInt gerechnet, die Stellenzahl ist begrenzt';
+    console.warn('[pi-digits-worker] ' + message);
+    postMessage({ type: 'notice', message });
+} else {
+    try {
+        importScripts('/tools/vendor/gmp-wasm/gmp-wasm-1.3.2.mini.umd.min.js');
+        self.gmp.init().then((lib) => {
+            g = lib.binding;
+            ready = true;
+            work();
+        }).catch((e) => fail('Pi-Rechenwerk nicht ladbar: ' + (e && e.message ? e.message : e)));
+    } catch (e) {
+        fail('Pi-Rechenwerk nicht ladbar: ' + (e && e.message ? e.message : e));
+    }
 }
