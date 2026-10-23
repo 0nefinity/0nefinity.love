@@ -18,6 +18,7 @@
   min-height: 0;
   width: 100%;
   display: block;
+  cursor: crosshair;
 }
 
 #akkorde {
@@ -100,9 +101,13 @@
 (() => {
 'use strict';
 
+// Noise sounds all the time. Holding a note does not add a tone: it pulls
+// everything except that note's bands down. Per band the dry share (r) and the
+// band path (1 - r) add up to 1 at the band centre, so the note keeps its level
+// while the rest falls by "Tiefe".
+
 const NAMEN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const IST_WEISS = [1,0,1,0,1,1,0,1,0,1,0,1];
-const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
 const LOW = 60;
 const BEREICHE = [84, 79, 72];          // C6, G5, C5 as highest key
 const MIN_TASTE_PX = 30;
@@ -118,146 +123,211 @@ const AKKORDE = [
   { name: 'Cmaj7', root: 60, iv: [0, 4, 7, 11] },
 ];
 
-const PARTIALE = [ { mult: 1, w: 1 }, { mult: 2, w: 0.6 }, { mult: 3, w: 0.35 } ];
-const ZIEL_RMS = 0.08;
-const MAX_AUSGLEICH = 60;
+const cfg = {
+  quelle: 'rosa', pegel: 0.55,
+  tiefe: 30, breite: 40, ein: 0.08, aus: 0.4,
+  oberMenge: 0.5, oberAnzahl: 2,
+  halten: false, raster: false, a4: 440,
+};
 
-const cfg = { mic: false, q: 26, harm: 0.45, vol: 0.55 };
+const tonFreq = semi => cfg.a4 * Math.pow(2, (semi - 69) / 12);
+const restPegel = () => Math.pow(10, -Math.max(0, cfg.tiefe) / 20);
+
+// -3 dB width of two cascaded identical bandpass stages is 0.6436 x the width of one stage
+function stufenQ(){
+  const c = Math.max(0, cfg.breite);
+  const spanne = Math.pow(2, c / 2400) - Math.pow(2, -c / 2400);
+  return spanne > 0 ? Math.min(3000, 0.6436 / spanne) : 3000;
+}
 
 // ---------- audio ----------
-let ac = null, sourceBus, voiceBus, master, noiseGain, micGain, micStream = null;
+let ac = null, quellBus, trocken, mix, master;
+let rauschGain = {}, micGain, micStream = null;
 let anaSrc, anaOut, bufSrc, bufOut;
-const stimmen = new Map();              // midi -> { gain, partials:[{bp, pg, mult, w}] }
-const zaehler = new Map();              // midi -> how many holders press it
+const aktive = new Set();               // voices that are held (not fading out)
 
-function ausgleich(freq){
-  const q = Math.max(cfg.q, 0.01);
-  const rms = 0.8 * 0.577 * Math.sqrt(1.57 * freq / (q * ac.sampleRate / 2));
-  return Math.min(MAX_AUSGLEICH, ZIEL_RMS / Math.max(rms, 1e-6));
+function gleite(param, ziel, sek){
+  const t = ac.currentTime;
+  param.cancelScheduledValues(t);
+  param.setValueAtTime(param.value, t);
+  if (sek > 0) param.setTargetAtTime(ziel, t, sek / 3);
+  else param.setValueAtTime(ziel, t);
+}
+
+function rauschPuffer(rosa){
+  const sr = ac.sampleRate, n = sr * 6, f = 2048;
+  const x = new Float32Array(n + f);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < n + f; i++){
+    const w = Math.random() * 2 - 1;
+    if (!rosa){ x[i] = w; continue; }
+    b0 = 0.99886 * b0 + w * 0.0555179;
+    b1 = 0.99332 * b1 + w * 0.0750759;
+    b2 = 0.96900 * b2 + w * 0.1538520;
+    b3 = 0.86650 * b3 + w * 0.3104856;
+    b4 = 0.55000 * b4 + w * 0.5329522;
+    b5 = -0.7616 * b5 - w * 0.0168980;
+    x[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362;
+    b6 = w * 0.115926;
+  }
+  // crossfade the tail into the head so the loop has no seam
+  for (let i = 0; i < f; i++) x[i] = x[i] * (i / f) + x[n + i] * (1 - i / f);
+  let s = 0;
+  for (let i = 0; i < n; i++) s += x[i] * x[i];
+  const k = 0.2 / Math.sqrt(s / n);
+  const buf = ac.createBuffer(1, n, sr);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = x[i] * k;
+  return buf;
 }
 
 function startAudio(){
-  if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  if (ac) { if (ac.state === 'suspended' && !document.hidden) ac.resume(); return; }
   ac = new (window.AudioContext || window.webkitAudioContext)();
 
-  sourceBus = ac.createGain();
-  voiceBus = ac.createGain();
-  master = ac.createGain(); master.gain.value = cfg.vol;
+  quellBus = ac.createGain();
+  trocken = ac.createGain();
+  mix = ac.createGain();
+  master = ac.createGain(); master.gain.value = cfg.pegel;
   const limiter = ac.createDynamicsCompressor();
-  limiter.threshold.value = -10; limiter.knee.value = 6; limiter.ratio.value = 12;
+  limiter.threshold.value = -6; limiter.knee.value = 6; limiter.ratio.value = 12;
   limiter.attack.value = 0.003; limiter.release.value = 0.2;
-  voiceBus.connect(master); master.connect(limiter); limiter.connect(ac.destination);
+  quellBus.connect(trocken); trocken.connect(mix);
+  mix.connect(master); master.connect(limiter); limiter.connect(ac.destination);
 
   anaSrc = ac.createAnalyser(); anaOut = ac.createAnalyser();
-  for (const a of [anaSrc, anaOut]) { a.fftSize = 8192; a.smoothingTimeConstant = 0.85; }
-  sourceBus.connect(anaSrc);
-  voiceBus.connect(anaOut);
+  // 16384 points: about five bins per semitone at C4, so narrow bands read as narrow peaks
+  for (const a of [anaSrc, anaOut]) { a.fftSize = 16384; a.smoothingTimeConstant = 0.7; }
+  quellBus.connect(anaSrc);
+  mix.connect(anaOut);
   bufSrc = new Float32Array(anaSrc.frequencyBinCount);
   bufOut = new Float32Array(anaOut.frequencyBinCount);
 
-  const len = ac.sampleRate * 2;
-  const buf = ac.createBuffer(1, len, ac.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-  const noise = ac.createBufferSource(); noise.buffer = buf; noise.loop = true;
-  noiseGain = ac.createGain(); noiseGain.gain.value = cfg.mic ? 0 : 1;
-  noise.connect(noiseGain); noiseGain.connect(sourceBus); noise.start();
-
+  for (const art of ['rosa', 'weiss']){
+    const src = ac.createBufferSource();
+    src.buffer = rauschPuffer(art === 'rosa'); src.loop = true;
+    const g = ac.createGain(); g.gain.value = cfg.quelle === art ? 1 : 0;
+    src.connect(g); g.connect(quellBus); src.start();
+    rauschGain[art] = g;
+  }
   micGain = ac.createGain(); micGain.gain.value = 0;
-  micGain.connect(sourceBus);
+  micGain.connect(quellBus);
 
   spaltenRechnen();
   requestAnimationFrame(zeichnen);
 }
 
-function partialGain(p, freq){
-  const amp = p.mult === 1 ? 1 : cfg.harm * p.w;
-  return amp * ausgleich(freq * p.mult);
-}
+function oberGewicht(k){ return k === 1 ? 1 : Math.pow(Math.max(0, cfg.oberMenge), k - 1); }
 
-function stimmeAn(midi){
-  const freq = midiFreq(midi);
-  const gain = ac.createGain();
-  gain.gain.value = 0;
-  gain.connect(voiceBus);
-  const partials = [];
-  for (const p of PARTIALE){
-    if (freq * p.mult >= ac.sampleRate / 2) continue;
-    const bp = ac.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = freq * p.mult;
-    bp.Q.value = cfg.q;
-    // second identical stage: 12 dB/oct skirts instead of 6, so the carved band stands out
-    const bp2 = ac.createBiquadFilter();
-    bp2.type = 'bandpass';
-    bp2.frequency.value = freq * p.mult;
-    bp2.Q.value = cfg.q;
-    const pg = ac.createGain();
-    pg.gain.value = partialGain(p, freq);
-    sourceBus.connect(bp); bp.connect(bp2); bp2.connect(pg); pg.connect(gain);
-    partials.push({ bp, bp2, pg, mult: p.mult, w: p.w });
+function teiltoeneBauen(v){
+  for (const p of v.partials){ quellBus.disconnect(p.bp); p.bp.disconnect(); p.bp2.disconnect(); p.pg.disconnect(); }
+  v.partials = [];
+  const q = stufenQ(), f = tonFreq(v.semi);
+  const anzahl = 1 + Math.max(0, Math.round(cfg.oberAnzahl));
+  for (let k = 1; k <= anzahl; k++){
+    if (f * k >= ac.sampleRate * 0.48) break;
+    const bp = ac.createBiquadFilter(), bp2 = ac.createBiquadFilter();
+    bp.type = bp2.type = 'bandpass';
+    bp.frequency.value = bp2.frequency.value = Math.max(1, f * k);
+    bp.Q.value = bp2.Q.value = q;
+    const pg = ac.createGain(); pg.gain.value = oberGewicht(k);
+    quellBus.connect(bp); bp.connect(bp2); bp2.connect(pg); pg.connect(v.gain);
+    v.partials.push({ bp, bp2, pg, k });
   }
-  gain.gain.setTargetAtTime(0.9, ac.currentTime, 0.015);
-  stimmen.set(midi, { gain, partials, freq });
 }
 
-function stimmeAus(midi){
-  const s = stimmen.get(midi);
-  if (!s) return;
-  stimmen.delete(midi);
-  s.gain.gain.setTargetAtTime(0, ac.currentTime, 0.05);
+function stimmeAn(semi){
+  const v = { semi, gain: ac.createGain(), partials: [] };
+  v.gain.gain.value = 0;
+  v.gain.connect(mix);
+  teiltoeneBauen(v);
+  aktive.add(v);
+  const r = restPegel();
+  gleite(v.gain.gain, 1 - r, cfg.ein);
+  gleite(trocken.gain, r, cfg.ein);
+  return v;
+}
+
+function stimmeAus(v){
+  if (!aktive.delete(v)) return;
+  gleite(v.gain.gain, 0, cfg.aus);
+  if (!aktive.size) gleite(trocken.gain, 1, cfg.aus);
   setTimeout(() => {
-    s.gain.disconnect();
-    for (const p of s.partials){ sourceBus.disconnect(p.bp); p.bp.disconnect(); p.bp2.disconnect(); p.pg.disconnect(); }
-  }, 400);
+    v.gain.disconnect();
+    for (const p of v.partials){ quellBus.disconnect(p.bp); p.bp.disconnect(); p.bp2.disconnect(); p.pg.disconnect(); }
+  }, (Math.max(0, cfg.aus) * 2.5 + 0.1) * 1000);
 }
 
-function stimmenNachstellen(){
+function stimmeTon(v, semi){
+  v.semi = semi;
+  const f = tonFreq(semi), t = ac.currentTime;
+  for (const p of v.partials){
+    const z = Math.min(ac.sampleRate * 0.49, Math.max(1, f * p.k));
+    p.bp.frequency.setTargetAtTime(z, t, 0.008);
+    p.bp2.frequency.setTargetAtTime(z, t, 0.008);
+  }
+}
+
+function tiefeNachstellen(){
+  if (!ac || !aktive.size) return;
+  const r = restPegel();
+  gleite(trocken.gain, r, 0.03);
+  aktive.forEach(v => gleite(v.gain.gain, 1 - r, 0.03));
+}
+function filterNachstellen(){
   if (!ac) return;
-  const t = ac.currentTime;
-  stimmen.forEach(s => s.partials.forEach(p => {
-    p.bp.Q.setTargetAtTime(cfg.q, t, 0.02);
-    p.bp2.Q.setTargetAtTime(cfg.q, t, 0.02);
-    p.pg.gain.setTargetAtTime(partialGain(p, s.freq), t, 0.02);
+  const q = stufenQ(), t = ac.currentTime;
+  aktive.forEach(v => v.partials.forEach(p => {
+    p.bp.Q.setTargetAtTime(q, t, 0.02);
+    p.bp2.Q.setTargetAtTime(q, t, 0.02);
+    p.pg.gain.setTargetAtTime(oberGewicht(p.k), t, 0.02);
   }));
 }
-
-function noteOn(midi){
-  const n = (zaehler.get(midi) || 0) + 1;
-  zaehler.set(midi, n);
-  if (n === 1){ stimmeAn(midi); tasteZeigen(midi, true); }
-}
-function noteOff(midi){
-  const n = (zaehler.get(midi) || 0) - 1;
-  if (n > 0){ zaehler.set(midi, n); return; }
-  zaehler.delete(midi);
-  stimmeAus(midi); tasteZeigen(midi, false);
-}
-function allesAus(){
-  tastenHalter.forEach(m => noteOff(m));
-  tastenHalter.clear();
-  halter.forEach(h => loslassen(h));
-  halter.clear();
+function teiltoeneNeu(){ if (ac) aktive.forEach(teiltoeneBauen); }
+function stimmungNachstellen(){
+  if (!ac) return;
+  aktive.forEach(v => stimmeTon(v, v.semi));
+  spaltenRechnen();
 }
 
-async function micSetzen(on){
-  cfg.mic = on;
+async function quelleSetzen(art){
+  const vorher = cfg.quelle;
+  cfg.quelle = art;
   if (!ac) startAudio();
-  if (on && !micStream){
+  if (art === 'mikro' && !micStream){
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio:
         { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
     } catch (err) {
       console.error('0klang: Mikrofon nicht verfuegbar', err);
-      cfg.mic = false;
-      panel.set('mic', false);
+      cfg.quelle = vorher === 'mikro' ? 'rosa' : vorher;
+      panel.set('quelle', cfg.quelle);
       return;
     }
     ac.createMediaStreamSource(micStream).connect(micGain);
   }
   const t = ac.currentTime;
-  micGain.gain.setTargetAtTime(cfg.mic ? 1 : 0, t, 0.02);
-  noiseGain.gain.setTargetAtTime(cfg.mic ? 0 : 1, t, 0.02);
+  micGain.gain.setTargetAtTime(cfg.quelle === 'mikro' ? 1 : 0, t, 0.02);
+  for (const k in rauschGain) rauschGain[k].gain.setTargetAtTime(cfg.quelle === k ? 1 : 0, t, 0.02);
+}
+
+// ---------- notes from keys and pads ----------
+const tonStimmen = new Map();           // midi -> voice
+const zaehler = new Map();              // midi -> how many holders press it
+
+function noteOn(midi){
+  const n = (zaehler.get(midi) || 0) + 1;
+  zaehler.set(midi, n);
+  if (n === 1){ tonStimmen.set(midi, stimmeAn(midi)); tasteZeigen(midi, true); }
+}
+function noteOff(midi){
+  const n = (zaehler.get(midi) || 0) - 1;
+  if (n > 0){ zaehler.set(midi, n); return; }
+  zaehler.delete(midi);
+  const v = tonStimmen.get(midi);
+  tonStimmen.delete(midi);
+  if (v) stimmeAus(v);
+  tasteZeigen(midi, false);
 }
 
 // ---------- layout: keys, pads ----------
@@ -274,7 +344,6 @@ function tastenBauen(){
     if (breite / w >= MIN_TASTE_PX){ high = h; break; }
   }
   if (high === HIGH && tastenEl.childElementCount) return;
-  allesAus();
   HIGH = high;
   tastenEl.textContent = '';
   mitten = [];
@@ -319,9 +388,28 @@ AKKORDE.forEach((c, i) => {
   akkordeEl.appendChild(p);
 });
 
-// ---------- input: pointer (multi-touch, glide) ----------
-const halter = new Map();               // holder id -> { art:'note'|'akkord', midi?, el? , notes? }
+// ---------- key axis <-> semitone ----------
+function semitonAusX(xw){
+  const n = mitten.length, last = n - 1;
+  if (xw <= mitten[0]) return (xw - mitten[0]) * 12 / 7;
+  if (xw >= mitten[last]) return last + (xw - mitten[last]) * 12 / 7;
+  let i = 0;
+  while (mitten[i + 1] < xw) i++;
+  return i + (xw - mitten[i]) / (mitten[i + 1] - mitten[i]);
+}
+function xwAusSemiton(s){
+  const last = mitten.length - 1;
+  if (s <= 0) return mitten[0] + s * 7 / 12;
+  if (s >= last) return mitten[last] + (s - last) * 7 / 12;
+  const i = Math.floor(s);
+  return mitten[i] + (s - i) * (mitten[i + 1] - mitten[i]);
+}
+
+// ---------- input: pointer (multi-touch, glide, latch) ----------
+const halter = new Map();               // pointer id -> holder
 const tastenHalter = new Map();         // key code -> holder
+const gerastet = new Map();             // latched keys/pads: 'n'+midi | 'a'+index -> holder
+const freie = new Set();                // free voices on the spectrum: { v, latched }
 
 function greifen(ziel){
   if (ziel.dataset.akkord != null){
@@ -337,23 +425,86 @@ function greifen(ziel){
 }
 function loslassen(h){
   if (h.art === 'akkord'){ h.notes.forEach(noteOff); h.el.classList.remove('an'); }
-  else noteOff(h.midi);
+  else if (h.art === 'note') noteOff(h.midi);
+}
+function rastSchluessel(ziel){
+  return ziel.dataset.akkord != null ? 'a' + ziel.dataset.akkord : 'n' + ziel.dataset.midi;
+}
+
+function momentanLos(){
+  tastenHalter.forEach(m => noteOff(m));
+  tastenHalter.clear();
+  halter.forEach(h => { if (h.art === 'frei') freiLos(h); else loslassen(h); });
+  halter.clear();
+}
+function alleLos(){
+  momentanLos();
+  gerastet.forEach(loslassen);
+  gerastet.clear();
+  freie.forEach(f => stimmeAus(f.v));
+  freie.clear();
 }
 
 const ZIELE = '[data-midi],[data-akkord]';
+const cvs = document.getElementById('spektrum');
+
+function semitonAmFinger(e){
+  const r = cvs.getBoundingClientRect();
+  const s = LOW + semitonAusX((e.clientX - r.left) / Math.max(1, r.width) * weissAnzahl);
+  return cfg.raster ? Math.round(s) : s;
+}
+function xAmTon(semi){ return xwAusSemiton(semi - LOW) / weissAnzahl * cvs.clientWidth; }
+
+function freiGreifen(e){
+  const r = cvs.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  if (cfg.halten){
+    let nah = null, best = 16;
+    freie.forEach(f => { const d = Math.abs(xAmTon(f.v.semi) - x); if (f.latched && d < best){ best = d; nah = f; } });
+    if (nah){ nah.latched = false; return { art: 'frei', f: nah, x0: e.clientX, alt: true, bewegt: false }; }
+  }
+  const f = { v: stimmeAn(semitonAmFinger(e)), latched: false };
+  freie.add(f);
+  return { art: 'frei', f, x0: e.clientX, alt: false, bewegt: false };
+}
+function freiLos(h){
+  if (cfg.halten && !(h.alt && !h.bewegt)){ h.f.latched = true; return; }
+  freie.delete(h.f);
+  stimmeAus(h.f.v);
+}
 
 stage.addEventListener('pointerdown', e => {
+  if (e.target === cvs){
+    e.preventDefault();
+    startAudio();
+    if (!weissAnzahl) return;
+    cvs.setPointerCapture(e.pointerId);
+    halter.set(e.pointerId, freiGreifen(e));
+    return;
+  }
   const ziel = e.target.closest(ZIELE);
   if (!ziel) return;
   e.preventDefault();
   startAudio();
+  if (cfg.halten){
+    const k = rastSchluessel(ziel);
+    if (gerastet.has(k)){ loslassen(gerastet.get(k)); gerastet.delete(k); }
+    else gerastet.set(k, greifen(ziel));
+    return;
+  }
   if (halter.has(e.pointerId)) loslassen(halter.get(e.pointerId));
   halter.set(e.pointerId, greifen(ziel));
 });
 
 stage.addEventListener('pointermove', e => {
   const h = halter.get(e.pointerId);
-  if (!h || h.art !== 'note') return;
+  if (!h) return;
+  if (h.art === 'frei'){
+    if (Math.abs(e.clientX - h.x0) > 4) h.bewegt = true;
+    if (h.bewegt || !h.alt) stimmeTon(h.f.v, semitonAmFinger(e));
+    return;
+  }
+  if (h.art !== 'note') return;
   const unter = document.elementFromPoint(e.clientX, e.clientY);
   const ziel = unter && unter.closest('[data-midi]');
   if (!ziel || +ziel.dataset.midi === h.midi) return;
@@ -366,14 +517,14 @@ function pointerEnde(e){
   const h = halter.get(e.pointerId);
   if (!h) return;
   halter.delete(e.pointerId);
-  loslassen(h);
+  if (h.art === 'frei') freiLos(h); else loslassen(h);
 }
 addEventListener('pointerup', pointerEnde);
 addEventListener('pointercancel', pointerEnde);
-stage.addEventListener('contextmenu', e => { if (e.target.closest(ZIELE)) e.preventDefault(); });
+stage.addEventListener('contextmenu', e => { if (e.target === cvs || e.target.closest(ZIELE)) e.preventDefault(); });
 
 // iOS only unlocks audio on certain gesture types; resume on any of them
-addEventListener('touchend', () => { if (ac && ac.state === 'suspended') ac.resume(); }, { passive: true });
+addEventListener('touchend', () => { if (ac && ac.state === 'suspended' && !document.hidden) ac.resume(); }, { passive: true });
 
 // ---------- input: computer keyboard ----------
 const QWERTZ = { KeyA:60, KeyW:61, KeyS:62, KeyE:63, KeyD:64, KeyF:65, KeyT:66,
@@ -389,6 +540,12 @@ addEventListener('keydown', e => {
   const m = QWERTZ[e.code];
   if (m == null || e.repeat || !tippenErlaubt(e) || tastenHalter.has(e.code)) return;
   startAudio();
+  if (cfg.halten){
+    const k = 'n' + m;
+    if (gerastet.has(k)){ loslassen(gerastet.get(k)); gerastet.delete(k); }
+    else { noteOn(m); gerastet.set(k, { art: 'note', midi: m }); }
+    return;
+  }
   noteOn(m);
   tastenHalter.set(e.code, m);
 });
@@ -398,19 +555,39 @@ addEventListener('keyup', e => {
   tastenHalter.delete(e.code);
   noteOff(m);
 });
-addEventListener('blur', allesAus);
-document.addEventListener('visibilitychange', () => { if (document.hidden) allesAus(); });
+addEventListener('blur', momentanLos);
+document.addEventListener('visibilitychange', () => {
+  if (!ac) return;
+  if (document.hidden){ momentanLos(); ac.suspend(); }
+  else ac.resume();
+});
 
 // ---------- settings panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
 panel
-  .addToggle('mic',  { label: 'Mikro',    value: cfg.mic, onChange: v => micSetzen(v) })
+  .addSelect('quelle', { label: 'Quelle', value: cfg.quelle,
+      options: [{ value: 'rosa', label: 'rosa' }, { value: 'weiss', label: 'weiß' }, { value: 'mikro', label: 'Mikro' }],
+      onChange: v => quelleSetzen(v) })
+  .addSlider('pegel', { label: 'Pegel', min: 0, max: 1, step: 0.01, value: cfg.pegel, decimals: 2, onChange: v => {
+      cfg.pegel = v; if (ac) master.gain.setTargetAtTime(Math.max(0, v), ac.currentTime, 0.02); } })
   .addDivider()
-  .addSlider('q',    { label: 'Schärfe',  min: 0, max: 100, step: 0.1,  value: cfg.q,    decimals: 1, onChange: v => { cfg.q = v; stimmenNachstellen(); } })
-  .addSlider('harm', { label: 'Obertöne', min: 0, max: 1,   step: 0.01, value: cfg.harm, decimals: 2, onChange: v => { cfg.harm = v; stimmenNachstellen(); } })
-  .addSlider('vol',  { label: 'Pegel',    min: 0, max: 1,   step: 0.01, value: cfg.vol,  decimals: 2, onChange: v => {
-      cfg.vol = v; if (ac) master.gain.setTargetAtTime(v, ac.currentTime, 0.02); } })
+  .addSlider('tiefe',  { label: 'Tiefe dB',     min: 0, max: 60,  step: 0.5,  value: cfg.tiefe,  decimals: 1, onChange: v => { cfg.tiefe = v; tiefeNachstellen(); } })
+  .addSlider('breite', { label: 'Breite ct',    min: 0, max: 200, step: 1,    value: cfg.breite, decimals: 0, onChange: v => { cfg.breite = v; filterNachstellen(); } })
+  .addSlider('ein',    { label: 'Einblenden s', min: 0, max: 4,   step: 0.01, value: cfg.ein,    decimals: 2, onChange: v => { cfg.ein = v; } })
+  .addSlider('aus',    { label: 'Ausblenden s', min: 0, max: 8,   step: 0.01, value: cfg.aus,    decimals: 2, onChange: v => { cfg.aus = v; } })
+  .addDivider()
+  .addSlider('oberMenge',  { label: 'Obertöne', min: 0, max: 1, step: 0.01, value: cfg.oberMenge,  decimals: 2, onChange: v => { cfg.oberMenge = v; filterNachstellen(); } })
+  .addSlider('oberAnzahl', { label: 'Anzahl',   min: 0, max: 12, step: 1,   value: cfg.oberAnzahl, decimals: 0, onChange: v => { cfg.oberAnzahl = v; teiltoeneNeu(); } })
+  .addDivider()
+  .addToggle('halten', { label: 'Halten', value: cfg.halten, onChange: v => {
+      cfg.halten = v;
+      if (!v){ gerastet.forEach(loslassen); gerastet.clear(); freie.forEach(f => { if (f.latched){ freie.delete(f); stimmeAus(f.v); } }); } } })
+  .addToggle('raster', { label: 'Raster', value: cfg.raster, onChange: v => { cfg.raster = v; } })
+  .addButton('los', { label: 'alle los', onClick: alleLos })
+  .addDivider()
+  .addSlider('a4', { label: 'Stimmung A4', min: 415, max: 466, step: 0.1, value: cfg.a4, decimals: 1, onChange: v => { cfg.a4 = v; stimmungNachstellen(); } })
 ;
+panel.el.addEventListener('pointerdown', () => startAudio());
 
 function raumFuerPanel(){
   const r = panel.el.getBoundingClientRect();
@@ -425,38 +602,56 @@ function raumFuerPanel(){
   }
 }
 
-// ---------- spectrum ----------
-const cvs = document.getElementById('spektrum');
+// ---------- spectrum: one display, what you hear ----------
 const ctx = cvs.getContext('2d');
-let W = 0, H = 0, spalten = 0, binVon, binBis;
+let W = 0, H = 0, dpr = 1, spalten = 0;
+let sVon = null, sBis = null, sPos = null, sKipp = null, pegelOut = null, pegelSrc = null;
 const SPALTE_PX = 2;
-let ref = null;
-
-function semitonAusX(xw){
-  const n = mitten.length, last = n - 1;
-  if (xw <= mitten[0]) return (xw - mitten[0]) * 12 / 7;
-  if (xw >= mitten[last]) return last + (xw - mitten[last]) * 12 / 7;
-  let i = 0;
-  while (mitten[i + 1] < xw) i++;
-  return i + (xw - mitten[i]) / (mitten[i + 1] - mitten[i]);
-}
+const BAND = 0.78;                      // the noise floor sits at this height
+const UNTER = 66;                       // dB shown below it
+let ref = null, bild = 0;
 
 function spaltenRechnen(){
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  dpr = Math.min(devicePixelRatio || 1, 2);
   W = Math.max(1, Math.round(cvs.clientWidth * dpr));
   H = Math.max(1, Math.round(cvs.clientHeight * dpr));
   cvs.width = W; cvs.height = H;
   spalten = Math.ceil(W / SPALTE_PX);
-  if (!ac || !weissAnzahl) { zeichnenStill(); return; }
-  const binHz = ac.sampleRate / anaSrc.fftSize;
-  const maxBin = anaSrc.frequencyBinCount - 1;
-  binVon = new Int32Array(spalten); binBis = new Int32Array(spalten);
-  const fAus = px => midiFreq(LOW + semitonAusX(px / W * weissAnzahl));
+  if (!ac || !weissAnzahl) { sVon = null; zeichnenStill(); return; }
+  const binHz = ac.sampleRate / anaOut.fftSize;
+  const maxBin = anaOut.frequencyBinCount - 2;
+  const fAus = px => tonFreq(LOW + semitonAusX(px / W * weissAnzahl));
+  sVon = new Int32Array(spalten); sBis = new Int32Array(spalten);
+  sPos = new Float32Array(spalten); sKipp = new Float32Array(spalten);
+  pegelOut = new Float32Array(spalten); pegelSrc = new Float32Array(spalten);
   for (let c = 0; c < spalten; c++){
-    const a = Math.round(fAus(c * SPALTE_PX) / binHz);
-    const b = Math.round(fAus((c + 1) * SPALTE_PX) / binHz);
-    binVon[c] = Math.min(maxBin, Math.max(0, a));
-    binBis[c] = Math.min(maxBin, Math.max(binVon[c], b));
+    const a = Math.max(0, fAus(c * SPALTE_PX) / binHz);
+    const b = Math.max(0, fAus((c + 1) * SPALTE_PX) / binHz);
+    const m = Math.max(1, fAus((c + 0.5) * SPALTE_PX));
+    if (b - a < 1){
+      sPos[c] = Math.min(maxBin, m / binHz);
+      sVon[c] = -1;
+    } else {
+      sVon[c] = Math.min(maxBin, Math.round(a));
+      sBis[c] = Math.min(maxBin, Math.max(sVon[c], Math.round(b) - 1));
+    }
+    // +3 dB per octave: pink noise reads flat across the keys
+    sKipp[c] = 10 * Math.log10(m / 1000);
+  }
+}
+
+function pegelLesen(buf, ziel){
+  for (let c = 0; c < spalten; c++){
+    let v;
+    if (sVon[c] < 0){
+      const p = sPos[c], i = p | 0, fr = p - i;
+      v = Math.max(buf[i], -200) * (1 - fr) + Math.max(buf[i + 1], -200) * fr;
+    } else {
+      let s = 0;
+      for (let b = sVon[c]; b <= sBis[c]; b++) s += Math.pow(10, Math.max(buf[b], -200) / 10);
+      v = 10 * Math.log10(s / (sBis[c] - sVon[c] + 1));
+    }
+    ziel[c] = v + sKipp[c];
   }
 }
 
@@ -464,56 +659,58 @@ function farbe(){
   return getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim();
 }
 
-const BAND = 0.62;
-
 function zeichnenStill(){
   ctx.clearRect(0, 0, W, H);
-  ctx.globalAlpha = 0.14;
-  ctx.fillStyle = farbe();
+  ctx.fillStyle = ctx.strokeStyle = farbe();
+  ctx.globalAlpha = 0.16;
   ctx.fillRect(0, H * (1 - BAND), W, H * BAND);
+  ctx.globalAlpha = 0.8;
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.beginPath(); ctx.moveTo(0, H * (1 - BAND)); ctx.lineTo(W, H * (1 - BAND)); ctx.stroke();
   ctx.globalAlpha = 1;
-}
-
-function flaeche(buf, unten, oben){
-  const spanne = oben - unten;
-  ctx.beginPath();
-  ctx.moveTo(0, H);
-  for (let c = 0; c < spalten; c++){
-    let m = -Infinity;
-    for (let b = binVon[c]; b <= binBis[c]; b++) if (buf[b] > m) m = buf[b];
-    const v = Math.min(1, Math.max(0, (m - unten) / spanne));
-    const y = H - v * H;
-    ctx.lineTo(c * SPALTE_PX, y);
-    ctx.lineTo((c + 1) * SPALTE_PX, y);
-  }
-  ctx.lineTo(W, H);
-  ctx.closePath();
-  ctx.fill();
 }
 
 function zeichnen(){
   requestAnimationFrame(zeichnen);
-  if (!binVon) return;
-  anaSrc.getFloatFrequencyData(bufSrc);
-  anaOut.getFloatFrequencyData(bufOut);
+  if (!sVon) return;
+  if (ac.state !== 'running') return;
 
-  let summe = 0, n = 0;
-  for (let c = 0; c < spalten; c++){
-    const v = bufSrc[binVon[c]];
-    if (v > -200) { summe += v; n++; }
+  if (bild++ % 6 === 0 || ref == null){
+    anaSrc.getFloatFrequencyData(bufSrc);
+    pegelLesen(bufSrc, pegelSrc);
+    let s = 0; for (let c = 0; c < spalten; c++) s += pegelSrc[c];
+    const mittel = s / spalten;
+    ref = ref == null ? mittel : ref * 0.85 + mittel * 0.15;
   }
-  const mittel = n ? summe / n : -140;
-  ref = ref == null ? mittel : ref * 0.96 + mittel * 0.04;
-  const r = Math.max(ref, -140);
-  // band of the source sits at BAND height; 45 dB below that is the floor
-  const unten = r - 45, oben = unten + 45 / BAND;
+  anaOut.getFloatFrequencyData(bufOut);
+  pegelLesen(bufOut, pegelOut);
+
+  const r = Math.max(ref, -150);
+  const unten = r - UNTER, spanne = UNTER / BAND;
+  const y = v => H - Math.min(1, Math.max(0, (v - unten) / spanne)) * H;
 
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = farbe();
-  ctx.globalAlpha = 0.14;
-  flaeche(bufSrc, unten, oben);
+  ctx.fillStyle = ctx.strokeStyle = farbe();
+  ctx.beginPath();
+  ctx.moveTo(0, y(pegelOut[0]));
+  for (let c = 0; c < spalten; c++) ctx.lineTo((c + 0.5) * SPALTE_PX, y(pegelOut[c]));
+  ctx.lineTo(W, y(pegelOut[spalten - 1]));
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = 0.9;
+  ctx.stroke();
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  ctx.globalAlpha = 0.16;
+  ctx.fill();
+
+  if (freie.size){
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = dpr;
+    ctx.beginPath();
+    freie.forEach(f => { const x = Math.round(xAmTon(f.v.semi) * dpr) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); });
+    ctx.stroke();
+  }
   ctx.globalAlpha = 1;
-  flaeche(bufOut, unten, oben);
 }
 
 // ---------- boot ----------
