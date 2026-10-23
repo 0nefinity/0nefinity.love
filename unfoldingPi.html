@@ -16,8 +16,7 @@
     }
     .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
     /* Wartezustand: die Anzeige steht an der letzten berechneten Stelle und wartet auf den Worker (kein Ende, kein Fehler). */
-    #warte { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-color); opacity: 0; pointer-events: none; }
-    .stage.warte #warte { animation: warte-puls 1.6s ease-in-out infinite; }
+    .stage.warte::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-color); pointer-events: none; animation: warte-puls 1.6s ease-in-out infinite; }
     @keyframes warte-puls { 0%, 100% { opacity: 0.08; } 50% { opacity: 0.45; } }
     #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
     /* Der Daumen sitzt in Ruhe immer in der Bildschirmmitte: Zeile symmetrisch, keine einseitige Einrückung.
@@ -43,7 +42,6 @@
 <body>
   <div class="stage _018" id="stage">
     <canvas id="pi"></canvas>
-    <div id="warte" aria-hidden="true"></div>
     <div class="slider-row">
       <input type="range" class="ctrl-range" min="-1" max="1" step="any" value="0" id="drift" aria-label="Drift">
     </div>
@@ -90,7 +88,6 @@
     let color = '#fff';
     let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0;
     let dirty = true;
-    let waitingNow = false;
     let velocity = 0, drawnCount = 0;
     let panel = null;   // Verdichtungs-Regler (tools/controls.js), im Boot angelegt
 
@@ -242,11 +239,9 @@
       const K = stackCount(dd);
       const iLo = Math.max(0, iLinLo - 1 - K);
       const iHi = Math.min(chain.length - 1, iLinHi + 1 + K);
-      // Der Worker bleibt eine Stufe voraus: Vorrat mindestens das Doppelte der Front. Erreicht die Anzeige die Hälfte des
-      // Vorrats, startet schon die nächste Stufe, bevor die Kette trocken läuft. Mehr als nötig fordert die Seite nicht an.
-      requestDigits(2 * (iLinHi + 2 + K + 100));
-      const waiting = iLinHi >= chain.length - 3;
-      if (waiting !== waitingNow) { waitingNow = waiting; stage.classList.toggle('warte', waiting); }
+      // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
+      requestDigits(iLinHi + 2 + K + 100);
+      stage.classList.toggle('warte', iLinHi >= chain.length - 3);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       let n = 0;
@@ -421,7 +416,7 @@
           inkTop: inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           inkBottom: inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2),
           minInk: minInk(),
-          color, error: piError, waiting: waitingNow, requestedTotal
+          color, error: piError, waiting: stage.classList.contains('warte'), requestedTotal
         };
       },
       digits() { return chain; }
