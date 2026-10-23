@@ -16,7 +16,7 @@ Die Spektrale-DOF-Erweiterung integriert den ehemaligen Swirl-Effekt als bewusst
 
 ## Die drei Slider
 
-### 1. `Kernel-Breite` ε — log-Slider, Range [0.1, 5.0], Default 1.0
+### 1. `Kernel-Breite` ε — Slider, Range [0, 5], linear, Default 1.0 (v1 sah log-Skala [0.1, 5.0] vor; geändert, siehe Abschnitt "Abweichungen Code gegenüber v1-Spec")
 
 **Math:** `autoRadius = spacing · ε`, wobei `spacing = 2π/256`. Steuert den Gauß-Sigma der RBF-Kernel sowohl beim Solving als auch beim Rendering.
 
@@ -78,7 +78,7 @@ Operatoren kommutieren. Form-Identität (Spektral-Träger) bleibt erhalten solan
 
 Pro Form-State zusätzlich speichern:
 - `spectrum: { dxRe, dxIm, dyRe, dyIm }` — komplexes Basis-Spektrum (vor Twist, vor Scale, mit aktuellem ε bereits eingebaut)
-- `spectralParams: { kernelWidth, twist, scale }` — die drei Slider-Werte
+- `spectralParams: { kernelWidth, twist, scale, chirp }` — die vier Slider-Werte (chirp kam in v2 hinzu)
 - `cachedKernelWidth` — zum Erkennen wann Re-Solve nötig ist
 
 ### Refactor in `generateShapeControlPoints`
@@ -162,7 +162,7 @@ Vorschlag: `solveCirculantRBF` zerlegen in:
 
 Drei neue Slider direkt unter den Shape-Buttons im bestehenden Control-Panel. Beschriftung deutsch:
 
-- **Kernel-Breite** (ε) — Wertebereich `0.1` bis `5.0`, log-Skala
+- **Kernel-Breite** (ε) — Wertebereich `0` bis `5`, lineare Skala (v1: `0.1` bis `5.0` log; siehe "Abweichungen Code gegenüber v1-Spec")
 - **Twist** (α) — Wertebereich `-2π` bis `+2π`, lineare Skala, Beschriftung in Bruchteilen von π (`-π/2`, `0`, `+π`)
 - **Stärke** (s) — Wertebereich `-2` bis `+2`, lineare Skala
 
@@ -235,6 +235,7 @@ Nach v1 kamen drei weitere Freiheitsgrade und zwei Änderungen am Text-Modus daz
 - Kernel-Breite ist ein linearer Slider mit Range [0, 5], die v1-Spec nannte log-Skala [0.1, 5].
 - Der Reset-Button "Verzerrung zurücksetzen" setzt zusätzlich Chirp, Einstieg-Winkel und Brücken-Punkt auf 0.
 - URL-State (`?eps=...`) wurde nicht umgesetzt (schon im Plan als v2 markiert).
+- Undo/Redo erfasst den ganzen Zustand: Kontrollpunkte, aktive Form bzw. aktiven Text, ε/α/β/s, Einstieg-Winkel, Brücken-Punkt und Text-Stil. Ein Slider-Zug ergibt einen Eintrag (gespeichert 350 ms nach der letzten Bewegung oder vor Undo/Redo). Die Spektren werden nicht gespeichert, sondern nach der Wiederherstellung beim nächsten Regler-Zug neu berechnet. Reset löscht Form und Text samt Spektren.
 - Die Slider sind auch im Text-Modus aktiv, nicht nur bei aktiver Form; "Erst eine Form aktivieren" gilt nicht mehr.
 
 ## Out-of-Scope (v1)
