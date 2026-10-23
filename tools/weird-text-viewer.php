@@ -10,16 +10,44 @@ function failNotFound() {
 }
 
 // Fail loud: ein fehlender Include darf keine kaputte Seite mit Status 200 liefern.
-// virtual() sendet beim Aufruf schon Header; danach geht nur noch sichtbarer Text.
+// Alle Includes werden gelesen, bevor irgendetwas ausgegeben wird; Pfad und Detail nur ins error_log.
 function failInclude($path, $detail) {
-    $message = 'weird-text-viewer: include ' . $path . ' failed' . ($detail ? ': ' . $detail : '');
-    error_log($message);
-    if (!headers_sent()) {
-        http_response_code(500);
-        header('Content-Type: text/plain; charset=utf-8');
-    }
-    echo $message;
+    error_log('weird-text-viewer: include ' . $path . ' failed' . ($detail ? ': ' . $detail : ''));
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Internal Server Error';
     exit;
+}
+
+// Liest ein Include direkt von Platte (kein Subrequest, keine Rewrite-Regeln, keine Warnung im Body).
+function readInclude($relativePath) {
+    $file = (string)($_SERVER['DOCUMENT_ROOT'] ?? '') . $relativePath;
+    if (!is_file($file) || !is_readable($file)) {
+        failInclude($relativePath, 'not a readable file');
+    }
+    $content = @file_get_contents($file);
+    if ($content === false) {
+        $lastError = error_get_last();
+        failInclude($relativePath, $lastError['message'] ?? 'read failed');
+    }
+    return $content;
+}
+
+// PHP kennt kein SSI: die eine Bedingung der Includes (nur auf dev.* laden) wird hier selbst ausgewertet,
+// jede andere SSI-Direktive bricht laut ab statt unverarbeitet im HTML zu landen.
+function renderSsiHead($relativePath, $host) {
+    $content = readInclude($relativePath);
+    $isDev = preg_match('/^dev\./', $host) === 1;
+    $open = '<!--#if expr="%{HTTP_HOST} =~ /^dev\./" -->';
+    $content = preg_replace_callback(
+        '/' . preg_quote($open, '/') . '(.*?)' . preg_quote('<!--#endif -->', '/') . '/s',
+        function ($m) use ($isDev) { return $isDev ? $m[1] : ''; },
+        $content
+    );
+    if ($content === null || strpos($content, '<!--#') !== false) {
+        failInclude($relativePath, 'unsupported SSI directive');
+    }
+    return $content;
 }
 
 function startsWithPath($path, $prefix) {
@@ -89,21 +117,12 @@ if ($isMarkdown) {
     $renderedContent = htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-// Vorab prüfen: nach virtual() lässt sich der Status nicht mehr ändern.
-$headInclude = '/includes/something-in-the-head.html';
-$headLookup = apache_lookup_uri($headInclude);
-if (!$headLookup || (int)$headLookup->status !== 200 || !is_file($headLookup->filename)) {
-    failInclude($headInclude, $headLookup ? 'status ' . $headLookup->status . ', file ' . $headLookup->filename : 'lookup failed');
-}
+$headHtml = renderSsiHead('/includes/something-in-the-head.html', (string)($_SERVER['HTTP_HOST'] ?? ''));
+$bodyHtml = readInclude('/includes/something-in-the-body.html');
 ?><!DOCTYPE html>
 <html lang="de">
 <head>
-<?php
-if (!@virtual($headInclude)) {
-    $lastError = error_get_last();
-    failInclude($headInclude, $lastError['message'] ?? '');
-}
-?>
+<?php echo $headHtml; ?>
   <title><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></title>
 </head>
 <body>
@@ -119,12 +138,6 @@ if (!@virtual($headInclude)) {
   <div class="text-viewer-content"><?php echo $renderedContent; ?></div>
 </main>
 
-<?php
-if (readfile($_SERVER['DOCUMENT_ROOT'] . '/includes/something-in-the-body.html') === false) {
-    error_log('weird-text-viewer: include /includes/something-in-the-body.html failed');
-    echo '<p class="include-error">weird-text-viewer: include /includes/something-in-the-body.html failed</p>';
-}
-?>
+<?php echo $bodyHtml; ?>
 </body>
 </html>
-
