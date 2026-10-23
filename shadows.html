@@ -595,9 +595,9 @@
 
   let ambientLight;
   let spotFloor, spotBack, spotSide;
-  let spotBackB, spotSideB;   // second sphere's wall spots (dualMode only)
+  let spotBackB, spotSideB;   // lower sphere's own wall spots (5-lamp GEB only)
   let lampFloor, lampBack, lampSide;
-  let lampBackB, lampSideB, lightConeBackB, lightConeSideB;  // second sphere's lamp meshes + cones (dualMode only)
+  let lampBackB, lampSideB, lightConeBackB, lightConeSideB;  // lamp meshes + cones of the B spots (5-lamp GEB only)
   let lightConeFloor, lightConeBack, lightConeSide;
   let baseBgColor, textColorThree;
   let floor, backWall, sideWall;  // Nebel-Scheiben (fog layers)
@@ -609,7 +609,8 @@
 
   let gebEnabled = true;  // 018 Mode ist immer aktiv
   let invertMode = false;
-  let dualMode = false;   // GEB-Mode (Hofstadter): 2 spheres + 5 lamps. NOT gebEnabled (that is the glyph-cutout flag).
+  let dualMode = false;   // GEB-Mode (Hofstadter): 2 stacked spheres. NOT gebEnabled (that is the glyph-cutout flag).
+  let gebFiveLamps = false;  // ?geb=5: one wall lamp pair per sphere. Default (?geb=1): 3 lamps, wall lamps between the spheres.
 
   // Lampen-Zustände (an/aus)
   let lampStates = {
@@ -621,9 +622,18 @@
   const DEFAULT_GLYPH_CHARS = { left: '0', right: '1', floor: '∞' };
   let glyphChars = { ...DEFAULT_GLYPH_CHARS };
 
-  const DUAL_GAP = 2.5; // center-to-center Y distance in sphere radii (primary at y=0, second below)
+  const DUAL_GAP = 3.5; // center-to-center Y distance in sphere radii (lower sphere at y=0, primary above)
   const DUAL_DEFAULT_RADIUS = 2.5; // GEB-Mode-Default ohne URL-r: groß genug für lesbare Wand-Glyphen
-  function secondSphereY() { return -DUAL_GAP * (params.sphereRadius || 1); }
+  function upperSphereY() { return dualMode ? DUAL_GAP * (params.sphereRadius || 1) : 0; }
+  function wallLampY() { return dualMode && !gebFiveLamps ? upperSphereY() / 2 : upperSphereY(); }
+  // 3-lamp GEB: the wall lamp sits between the spheres, so its cone has to reach the far edge of both.
+  // The penumbra eats the outer ~30% of the cone, hence the widening.
+  function wallLampAngleDeg() {
+    const user = params.spotAngle ?? PARAMS_CONFIG.spotAngle.default;
+    if (!dualMode || gebFiveLamps) return user;
+    const reachDeg = Math.atan((DUAL_GAP / 2 + 1) * (params.sphereRadius || 1) / Math.max(params.lightDistance, 0.001)) * 180 / Math.PI;
+    return Math.min(89, Math.max(user, reachDeg / 0.7));
+  }
   function derivedGlyphs(base) { return { left: base.right, right: base.left, floor: base.floor }; }
 
   const GLYPH_URL_KEYS = { left: 'g0', right: 'g1', floor: 'g8' };
@@ -757,8 +767,9 @@
 
     // GEB-Mode aus URL laden
     const gebFromUrl = urlParams.get('geb');
-    if (gebFromUrl === '1') {
+    if (gebFromUrl === '1' || gebFromUrl === '5') {
       dualMode = true;
+      gebFiveLamps = gebFromUrl === '5';
     }
 
     // GEB-Mode Default-Radius: Bei r=1 sind die zwei Kugeln so klein, dass die
@@ -768,6 +779,13 @@
     // ein explizites ?r=... wird respektiert.
     if (dualMode && !urlParams.has(PARAMS_CONFIG.sphereRadius.urlKey)) {
       params.sphereRadius = DUAL_DEFAULT_RADIUS;
+    }
+
+    // Der GEB-Aufbau ist höher (Lampe über der oberen Kugel): ohne eigenes 'zoom' weiter heraus,
+    // damit Bodenlampe, beide Kugeln und der Boden ins Bild passen.
+    if (dualMode && !urlParams.has(PARAMS_CONFIG.cameraDistance.urlKey)) {
+      params.cameraDistance = Math.max(params.cameraDistance,
+        1.55 * (upperSphereY() + params.lightDistance + params.wallDistance));
     }
 
     // Lampen-Zustände aus URL laden (z.B. lights=110 → floor=1, back=1, side=0)
@@ -816,7 +834,7 @@
 
     // GEB-Mode in URL schreiben
     if (dualMode) {
-      urlParams.set('geb', '1');
+      urlParams.set('geb', gebFiveLamps ? '5' : '1');
     } else {
       urlParams.delete('geb');
     }
@@ -872,23 +890,38 @@
     return Math.tan(angleRad) * dist;
   }
 
+  // Lampen und Ziele. Die Bodenlampe sitzt immer über der obersten Kugel, die Wandlampen
+  // auf Höhe der Kugel (Einzel/5 Lampen) bzw. in der Mitte zwischen beiden (3 Lampen).
+  function placeSpots() {
+    if (!spotFloor) return;
+    const d = params.lightDistance;
+    const w = params.wallDistance;
+    const yW = wallLampY();
+    spotFloor.position.set(0, upperSphereY() + d, 0);
+    spotFloor.target.position.set(0, -w, 0);
+    spotBack.position.set(0, yW, d);
+    spotBack.target.position.set(0, yW, -w);
+    spotSide.position.set(d, yW, 0);
+    spotSide.target.position.set(-w, yW, 0);
+    if (spotBackB) {
+      spotBackB.position.set(0, 0, d);
+      spotBackB.target.position.set(0, 0, -w);
+      spotSideB.position.set(d, 0, 0);
+      spotSideB.target.position.set(-w, 0, 0);
+    }
+  }
+
   function updateGeometryFromParams() {
     // Kugel-Radius über Scale steuern (alle Kugeln skalieren + Y-Position anpassen)
     if (spheres.length && typeof params.sphereRadius === 'number') {
       const r = Math.max(0.001, params.sphereRadius);
       spheres.forEach((s, i) => {
         s.mesh.scale.setScalar(r);
-        s.mesh.position.y = (i === 0) ? 0 : -DUAL_GAP * r;
+        s.mesh.position.y = (i === 0) ? upperSphereY() : 0;
       });
       needsUniformUpdate = true;  // Matrix-Inverse muss neu berechnet werden
-      if (spotBackB) {
-        const yB = secondSphereY();
-        spotBackB.position.set(0, yB, params.lightDistance);
-        if (spotBackB.target) spotBackB.target.position.set(0, yB, -params.wallDistance);
-        spotSideB.position.set(params.lightDistance, yB, 0);
-        if (spotSideB.target) spotSideB.target.position.set(-params.wallDistance, yB, 0);
-      }
     }
+    placeSpots();
 
     // Shader-Uniforms aktualisieren
     if (sphereMesh && sphereMesh.material && sphereMesh.material.uniforms) {
@@ -909,18 +942,6 @@
       if (hitLayerBack) hitLayerBack.position.z = d;
       if (hitLayerSide) hitLayerSide.position.x = d;
 
-      if (spotFloor && spotFloor.target) {
-        spotFloor.target.position.set(0, -params.wallDistance, 0);
-      }
-      if (spotBack && spotBack.target) {
-        spotBack.target.position.set(0, 0, -params.wallDistance);
-      }
-      if (spotSide && spotSide.target) {
-        spotSide.target.position.set(-params.wallDistance, 0, 0);
-      }
-      const yB = secondSphereY();
-      if (spotBackB && spotBackB.target) spotBackB.target.position.set(0, yB, -params.wallDistance);
-      if (spotSideB && spotSideB.target) spotSideB.target.position.set(-params.wallDistance, yB, 0);
     }
 
     if (typeof params.wallSize === 'number') {
@@ -928,16 +949,6 @@
       if (floor) floor.scale.set(s, s, 1);
       if (backWall) backWall.scale.set(s, s, 1);
       if (sideWall) sideWall.scale.set(s, s, 1);
-    }
-
-    if (typeof params.lightDistance === 'number') {
-      const d = params.lightDistance;
-      if (spotFloor) spotFloor.position.set(0, d, 0);
-      if (spotBack) spotBack.position.set(0, 0, d);
-      if (spotSide) spotSide.position.set(d, 0, 0);
-      const yB = secondSphereY();
-      if (spotBackB) spotBackB.position.set(0, yB, d);
-      if (spotSideB) spotSideB.position.set(d, yB, 0);
     }
 
     if (typeof params.lampScale === 'number') {
@@ -986,7 +997,8 @@
     spots.forEach(spot => {
       if (!spot) return;
       if (typeof params.spotAngle === 'number') {
-        spot.angle = params.spotAngle * Math.PI / 180;
+        const isWallSpot = spot === spotBack || spot === spotSide;
+        spot.angle = (isWallSpot ? wallLampAngleDeg() : params.spotAngle) * Math.PI / 180;
       }
       if (typeof params.spotPenumbra === 'number') {
         spot.penumbra = params.spotPenumbra;
@@ -1796,6 +1808,13 @@
     uniform vec3 uSphere2Pos;      // Zentrum der zweiten Kugel (Weltkoordinaten)
     uniform vec3 uLight2Pos;       // Position des zweiten Spotlights
     uniform vec3 uLight2Dir;       // Richtung des zweiten Spotlights
+    uniform float uSphere2Series;  // 1.0 = zweite Kugel wird gegen dieselbe Lampe getestet (Licht muss beide passieren)
+    // Testverschiebungen (nur Series-Pfad): Der Schattenwurf einer schräg zur Lampe versetzten Kugel
+    // verschmiert die Glyphe (die Tunnel liegen auf den Achsen), deshalb sieht jede Kugel die Lampe
+    // auf ihrer eigenen Höhe (Wände) bzw. den ganzen Strahl mitverschoben (Boden: beide ∞ decken sich).
+    uniform vec3 uTest1LampShift;
+    uniform vec3 uTest2LampShift;
+    uniform vec3 uTest2PointShift;
     uniform sampler2D uGlyph2TexX;
     uniform sampler2D uGlyph2TexY;
     uniform sampler2D uGlyph2TexZ;
@@ -1953,15 +1972,16 @@
       // Beitrag 1: primäre Kugel + zugehöriges Spotlight
       float intensity = 0.0;
       float spot1 = getSpotlightFrom(samplePos, uLightPos, uLightDir);
-      if (spot1 > 0.0 && !rayHitsSphereAt(samplePos, uLightPos, uSpherePos, false)) {
-        intensity += spot1;
+      bool lit1 = spot1 > 0.0 && !rayHitsSphereAt(samplePos, uLightPos + uTest1LampShift, uSpherePos, false);
+      // Gemeinsame Lampe (Boden, Wandlampen im 3-Lampen-GEB): der Strahl muss auch die zweite Kugel passieren.
+      // Wandpunkte oben/unten treffen nur eine der beiden Kugeln, das ergibt die gestapelten Glyphen.
+      if (lit1 && uSphere2Active > 0.5 && uSphere2Series > 0.5) {
+        lit1 = !rayHitsSphereAt(samplePos + uTest2PointShift, uLightPos + uTest2LampShift, uSphere2Pos, true);
       }
+      if (lit1) intensity += spot1;
 
-      // Beitrag 2: zweite Kugel + zweites Spotlight (GEB-Mode).
-      // Auf den Wänden ergeben die beiden Spots zwei übereinander gestapelte
-      // Glyphen; auf dem Boden teilen sich beide Kugeln dieselbe Lichtquelle
-      // (uLight2Pos == uLightPos) und projizieren dasselbe ∞ nach unten → bleibt eins.
-      if (uSphere2Active > 0.5) {
+      // Beitrag 2: zweite Kugel + eigenes Spotlight (5-Lampen-GEB): zwei übereinander gestapelte Glyphen.
+      if (uSphere2Active > 0.5 && uSphere2Series < 0.5) {
         float spot2 = getSpotlightFrom(samplePos, uLight2Pos, uLight2Dir);
         if (spot2 > 0.0 && !rayHitsSphereAt(samplePos, uLight2Pos, uSphere2Pos, true)) {
           intensity += spot2;
@@ -2004,6 +2024,10 @@
         // GEB-Mode (zweite Kugel + zweites Spotlight); im Single-Mode inaktiv
         uSphere2Active: { value: 0.0 },
         uSphere2Pos: { value: new THREE.Vector3(0, 0, 0) },
+        uSphere2Series: { value: 0.0 },
+        uTest1LampShift: { value: new THREE.Vector3() },
+        uTest2LampShift: { value: new THREE.Vector3() },
+        uTest2PointShift: { value: new THREE.Vector3() },
         uLight2Pos: { value: lightPos.clone() },
         uLight2Dir: { value: lightDir.clone() },
         uGlyph2TexX: { value: glyphTextures.x },
@@ -2025,7 +2049,6 @@
   const _tempLightDir = new THREE.Vector3();
 
   function updateFogUniforms() {
-    const angleRad = (params.spotAngle ?? PARAMS_CONFIG.spotAngle.default) * Math.PI / 180;
     const brightness = (params.brightness ?? 80) / 100;
 
     fogMaterials.forEach((mat, idx) => {
@@ -2037,7 +2060,9 @@
       mat.uniforms.uGlyphTexZ.value = glyphTextures.z;
       mat.uniforms.uGebEnabled.value = gebEnabled ? 1 : 0;
       mat.uniforms.uInvertMode.value = invertMode ? 1 : 0;
-      mat.uniforms.uSpotAngle.value = Math.cos(angleRad);
+      const angleDeg = (idx === 1 || idx === 2) ? wallLampAngleDeg() : (params.spotAngle ?? PARAMS_CONFIG.spotAngle.default);
+      mat.uniforms.uSpotAngle.value = Math.cos(angleDeg * Math.PI / 180);
+      mat.uniforms.uSpherePos.value.set(0, upperSphereY(), 0);
       mat.uniforms.uSpotPenumbra.value = params.spotPenumbra || 0.3;
       mat.uniforms.uDecay.value = params.spotDecay ?? 0;
       mat.uniforms.uLightIntensity.value = brightness;
@@ -2062,20 +2087,24 @@
         mat.uniforms.uLightActive.value = lampStates.side ? 1.0 : 0.0;
       }
 
-      // GEB-Mode: zweite Kugel + zweites Spotlight pro Scheibe einschalten
+      // GEB-Mode: zweite (untere) Kugel pro Scheibe einschalten
       if (dualMode && spheres[1]) {
-        const yB = secondSphereY();
         mat.uniforms.uSphere2Active.value = 1.0;
-        mat.uniforms.uSphere2Pos.value.set(0, yB, 0);
+        mat.uniforms.uSphere2Pos.value.set(0, 0, 0);
         const g2 = spheres[1].glyphTextures;
         mat.uniforms.uGlyph2TexX.value = g2.x;
         mat.uniforms.uGlyph2TexY.value = g2.y;
         mat.uniforms.uGlyph2TexZ.value = g2.z;
-        // Zweites Spotlight: Boden teilt sich spotFloor (shared), Wände nutzen die B-Spots
+        // Boden und (3 Lampen) Wände: dieselbe Lampe leuchtet durch beide Kugeln; 5 Lampen: Wände nutzen die B-Spots
+        const isFloor = idx === 0;
+        const sharedWallLamp = !isFloor && !gebFiveLamps;
+        const halfGap = upperSphereY() / 2;
+        mat.uniforms.uSphere2Series.value = (isFloor || sharedWallLamp) ? 1.0 : 0.0;
+        mat.uniforms.uTest1LampShift.value.set(0, sharedWallLamp ? halfGap : 0, 0);
+        mat.uniforms.uTest2LampShift.value.set(0, isFloor ? -2 * halfGap : (sharedWallLamp ? -halfGap : 0), 0);
+        mat.uniforms.uTest2PointShift.value.set(0, isFloor ? -2 * halfGap : 0, 0);
         let spot2 = null;
-        if (idx === 0) spot2 = spotFloor;       // Boden: gemeinsames Licht → ein ∞
-        else if (idx === 1) spot2 = spotBackB;  // Rückwand: zweite Glyphe unten
-        else if (idx === 2) spot2 = spotSideB;  // Seitenwand: zweite Glyphe unten
+        if (gebFiveLamps) spot2 = idx === 1 ? spotBackB : (idx === 2 ? spotSideB : null);
         if (spot2 && spot2.target) {
           mat.uniforms.uLight2Pos.value.copy(spot2.position);
           _tempLightDir.copy(spot2.target.position).sub(spot2.position).normalize();
@@ -2162,11 +2191,10 @@
     spheres = [];
 
     // Primäre Kugel aufbauen
-    spheres.push(buildOneSphere(glyphChars, 0));
+    spheres.push(buildOneSphere(glyphChars, upperSphereY()));
 
     if (dualMode) {
-      const r = params.sphereRadius || 1;
-      spheres.push(buildOneSphere(derivedGlyphs(glyphChars), -DUAL_GAP * r));
+      spheres.push(buildOneSphere(derivedGlyphs(glyphChars), 0));
     }
 
     // Legacy-Alias für alle bestehenden Call-Sites
@@ -2218,7 +2246,7 @@
 
   // Orbit-Ziel: Einzel-Modus = Ursprung, GEB-Mode = vertikaler Mittelpunkt der zwei Kugeln
   function orbitTargetY() {
-    return dualMode ? secondSphereY() / 2 : 0;
+    return upperSphereY() / 2;
   }
 
   function applyCameraFromParams() {
@@ -2717,7 +2745,7 @@
       applyLampVisibility(); // Initialzustand
     }
 
-    // GEB-Mode Toggle: struktureller Moduswechsel (1 vs 2 Kugeln, 3 vs 5 Lampen)
+    // GEB-Mode Toggle: struktureller Moduswechsel (1 vs 2 Kugeln); an = 3-Lampen-Variante (?geb=1)
     // -> URL anpassen + neu laden, damit init() sauber neu aufbaut. Andere Params bleiben erhalten.
     const gebEl = document.getElementById('gebMode');
     if (gebEl) {
@@ -3159,32 +3187,31 @@
 	    // Auf den Boden (Licht entlang -Y-Achse)
 	    spotFloor = addSpot(
 	      initialSpotIntensity,
-	      0, params.lightDistance, 0,
+	      0, upperSphereY() + params.lightDistance, 0,
 	      0, -params.wallDistance, 0
 	    );
 	    // Auf die Rückwand (Licht entlang -Z-Achse)
 	    spotBack = addSpot(
 	      initialSpotIntensity,
-	      0, 0, params.lightDistance,
-	      0, 0, -params.wallDistance
+	      0, wallLampY(), params.lightDistance,
+	      0, wallLampY(), -params.wallDistance
 	    );
 	    // Auf die Seitenwand (Licht entlang -X-Achse)
 	    spotSide = addSpot(
 	      initialSpotIntensity,
-	      params.lightDistance, 0, 0,
-	      -params.wallDistance, 0, 0
+	      params.lightDistance, wallLampY(), 0,
+	      -params.wallDistance, wallLampY(), 0
 	    );
 
-    if (dualMode) {
-      const yB = secondSphereY();
-      // second sphere back wall (light along -Z, at the lower sphere height)
+    if (dualMode && gebFiveLamps) {
+      // lower sphere back wall (light along -Z)
       spotBackB = addSpot(initialSpotIntensity,
-        0, yB, params.lightDistance,
-        0, yB, -params.wallDistance);
-      // second sphere side wall (light along -X)
+        0, 0, params.lightDistance,
+        0, 0, -params.wallDistance);
+      // lower sphere side wall (light along -X)
       spotSideB = addSpot(initialSpotIntensity,
-        params.lightDistance, yB, 0,
-        -params.wallDistance, yB, 0);
+        params.lightDistance, 0, 0,
+        -params.wallDistance, 0, 0);
     }
 
 		    const lampColor = textColorThree;
@@ -3199,8 +3226,8 @@
 		    lightConeSide  = createLightCone(lampColor);
 		    scene.add(lightConeFloor, lightConeBack, lightConeSide);
 
-		    // GEB-Mode: Lampen + Lichtkegel der zweiten Kugel (zwei zusätzliche Spots)
-		    if (dualMode) {
+		    // 5-Lampen-GEB: Lampen + Lichtkegel der B-Spots (zwei zusätzliche Spots)
+		    if (dualMode && gebFiveLamps) {
 		      lampBackB = createLampMesh(lampColor);
 		      lampSideB = createLampMesh(lampColor);
 		      scene.add(lampBackB, lampSideB);
