@@ -9,12 +9,13 @@
  *   phi    (1 + sqrt 5) / 2 ueber mpz_sqrt
  *
  * Nachrichten an den Worker:
- *   { type: 'open', id }        Konstante waehlen ('pi' | 'e' | 'ln2' | 'sqrt2' | 'phi'), startet das Laden der Engine
+ *   { type: 'open', id, intLen } Konstante waehlen ('pi' | 'e' | 'ln2' | 'sqrt2' | 'phi'), startet das Laden der Engine;
+ *                               intLen = Ziffern des Ganzzahlteils im Ergebnis-String (ln2: 0), Quelle: Irrational.constants
  *   { type: 'want', total }     Stellen bis total (Nachkommastellen) anfordern, idempotent, steigend
  *   { type: 'test', ... }       nur Tests (kein Weg fuer Nutzer): maxPages, failAlloc, failOther, ballastBytes, bigintMaxBits
  *
  * Nachrichten vom Worker:
- *   { type: 'info', mode: 'wasm'|'bigint', algorithm, maxPages, bytesPerDigit }
+ *   { type: 'info', mode: 'wasm'|'bigint', maxPages }
  *   { type: 'digits', from, buf, total, memBytes, maxPtr }   buf = Uint8Array (ASCII-Ziffern '0'..'9', Transfer), ab Nachkommastelle `from`
  *   { type: 'limit', kind: 'engine'|'device', reason, digits }  genau einmal, danach liefert der Worker nichts mehr
  *   { type: 'notice', message }  Rueckfall auf BigInt
@@ -45,17 +46,12 @@ const BYTES_PER_DIGIT = {
     phi: 9,
 };
 
-const CONSTANTS = {
-    pi: { algorithm: 'Chudnovsky, binary splitting', intLen: 1 },
-    e: { algorithm: 'Taylor series sum 1/k!, binary splitting', intLen: 1 },
-    ln2: { algorithm: 'Machin-like acoth formula, binary splitting', intLen: 0 },
-    sqrt2: { algorithm: 'integer square root (mpz_sqrt)', intLen: 1 },
-    phi: { algorithm: 'integer square root (mpz_sqrt), (1+sqrt5)/2', intLen: 1 },
-};
+const C3_OVER_24 = 640320n ** 3n / 24n;
 // ln 2 = sum coef * acoth(x), geprueft gegen mpmath (tests/irrational)
 const LN2_TERMS = [[144, 251], [54, 449], [-38, 4801], [62, 8749]];
 
 let id = null;
+let intLen = 0;             // Ziffern des Ganzzahlteils im Ergebnis-String
 let g = null;               // GMP-Binding
 let mode = null;            // 'wasm' | 'bigint'
 let ready = false;
@@ -79,7 +75,6 @@ function limit(kind, reason) {
     limited = true;
     g = null; // Instanz verwerfen
     postMessage({ type: 'limit', kind, reason, digits: have });
-    if (kind === 'engine') console.warn('[irrational-worker] engine limit at ' + have + ' digits: ' + reason);
 }
 
 function wasmUsable() {
@@ -130,6 +125,10 @@ function freeMpz(p) {
     g.free(p);
 }
 
+function assertU32(maxFactor) {
+    if (maxFactor >= 2 ** 32) throw new Error('32-bit factor limit of the mpz_*_ui calls reached');
+}
+
 function pow10(n) {
     const p = newMpz();
     g.mpz_ui_pow_ui(p, 10, n);
@@ -176,7 +175,7 @@ function bsPi(a, b, needP, c3over24) {
 // floor(pi * 10^n) (bis auf wenige Einheiten der letzten Stelle)
 function calcPi(n) {
     const terms = Math.floor(n / 14.18) + 2;
-    if (6 * terms >= 2 ** 32) throw new Error('32-bit factor limit of the mpz_*_ui calls reached');
+    assertU32(6 * terms);
     const c3over24 = newMpz(), sqrtC = newMpz(), pi = newMpz(), one = newMpz(), three = newMpz();
     try {
         g.mpz_ui_pow_ui(c3over24, 640320, 3);
@@ -184,8 +183,7 @@ function calcPi(n) {
         g.mpz_set_ui(three, 3);
         g.mpz_tdiv_q(c3over24, c3over24, three);
         const [, Q, T] = bsPi(0, terms, false, c3over24);
-        g.mpz_ui_pow_ui(one, 10, n);
-        g.mpz_mul(one, one, one);
+        g.mpz_ui_pow_ui(one, 10, 2 * n);
         g.mpz_mul_ui(one, one, 10005);
         g.mpz_sqrt(sqrtC, one);
         g.mpz_mul(Q, Q, sqrtC);
@@ -236,7 +234,7 @@ function termsForE(n) {
 
 function calcE(n) {
     const N = termsForE(n);
-    if (N >= 2 ** 32) throw new Error('32-bit factor limit of the mpz_*_ui calls reached');
+    assertU32(N);
     const [Q, T] = bsE(1, N + 1);
     const r = newMpz();
     try {
@@ -285,9 +283,9 @@ function calcLn2(n) {
     try {
         for (const [coef, x] of LN2_TERMS) {
             const N = Math.ceil((n + 10) / (2 * Math.log10(x))) + 1;
-            if (2 * N + 1 >= 2 ** 32) throw new Error('32-bit factor limit of the mpz_*_ui calls reached');
+            assertU32(2 * N + 1);
             const [Q, B, T] = bsAcoth(x, 0, N);
-            const s = pow10(n);
+            const s = pow10(n); // erst nach bsAcoth: eine ueber die Rekursion gehaltene Potenz hob den Spitzenspeicher auf 14,4 B/Stelle (Test A4)
             g.mpz_mul(T, T, s);
             freeMpz(s);
             g.mpz_mul(Q, Q, B);
@@ -350,7 +348,6 @@ function calcWasm(n) {
 // Stufe mit GMP: Ziffern [have, target) als Uint8Array (ASCII); prueft die Stufenkopf-Stellen gegen die erste Stufe.
 function stageWasm(target) {
     const n = target + GUARD;
-    const intLen = CONSTANTS[id].intLen;
     const r = calcWasm(n);
     let ptr = 0;
     try {
@@ -400,7 +397,7 @@ function bsPiBig(a, b) {
         let P, Q;
         if (a === 0n) { P = 1n; Q = 1n; } else {
             P = (6n * a - 5n) * (2n * a - 1n) * (6n * a - 1n);
-            Q = a * a * a * (640320n ** 3n / 24n);
+            Q = a * a * a * C3_OVER_24;
         }
         let T = P * (13591409n + 545140134n * a);
         if (a & 1n) T = -T;
@@ -479,7 +476,6 @@ function calcBig(n) {
 function stageBig(target) {
     const n = target + GUARD;
     const s = calcBig(n).toString();
-    const intLen = CONSTANTS[id].intLen;
     if (s.length !== n + intLen) throw new Error('unerwartete Ziffernzahl des Ergebnisses (Rechenfehler)');
     const bytes = new TextEncoder().encode(s);
     checkGuard(bytes, intLen, target);
@@ -561,8 +557,7 @@ function makeBallast() {
 }
 
 function start() {
-    const c = CONSTANTS[id];
-    const info = (m) => postMessage({ type: 'info', mode: m, algorithm: c.algorithm, maxPages: cfg.maxPages, bytesPerDigit: BYTES_PER_DIGIT[id] });
+    const info = (m) => postMessage({ type: 'info', mode: m, maxPages: cfg.maxPages });
     const toBigInt = (why) => {
         mode = 'bigint';
         ready = true;
@@ -594,8 +589,10 @@ onmessage = (ev) => {
         for (const k of Object.keys(cfg)) if (k in m) cfg[k] = m[k];
     } else if (m.type === 'open') {
         if (id !== null) return fail('irrational-worker: open called twice');
-        if (!CONSTANTS[m.id]) return fail('irrational-worker: unknown constant ' + m.id);
+        if (!BYTES_PER_DIGIT[m.id]) return fail('irrational-worker: unknown constant ' + m.id);
+        if (!Number.isInteger(m.intLen) || m.intLen < 0) return fail('irrational-worker: open without valid intLen');
         id = m.id;
+        intLen = m.intLen;
         start();
     } else if (m.type === 'want') {
         wanted = Math.max(wanted, Math.floor(m.total) || 0);

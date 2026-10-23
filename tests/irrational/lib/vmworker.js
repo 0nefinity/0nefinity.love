@@ -8,6 +8,15 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const DEFAULT_WORKER = path.join(ROOT, 'tools/workers/irrational-worker.js');
 
+// Wie der Browser-Client: intLen kommt aus Irrational.constants (tools/irrational.js), nicht aus dem Test.
+const clientSandbox = {};
+clientSandbox.self = clientSandbox;
+vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'tools/irrational.js'), 'utf8'), clientSandbox);
+const intLenOf = (id) => {
+    const c = clientSandbox.Irrational.constants.find((k) => k.id === id);
+    return c ? (c.intPart === '0' ? 0 : c.intPart.length) : undefined;
+};
+
 function createWorker(opts = {}) {
     const workerPath = opts.workerPath || process.env.IRRATIONAL_WORKER || DEFAULT_WORKER;
     const messages = [];
@@ -37,7 +46,7 @@ function createWorker(opts = {}) {
 
     const api = {
         messages, warnings,
-        send(msg) { ctx.onmessage({ data: msg }); },
+        send(msg) { ctx.onmessage({ data: msg.type === 'open' && !('intLen' in msg) ? Object.assign({ intLen: intLenOf(msg.id) }, msg) : msg }); },
         waitFor(pred, ms = 120000) {
             return new Promise((resolve, reject) => {
                 const check = () => {

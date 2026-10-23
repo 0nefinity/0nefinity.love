@@ -2,6 +2,7 @@
 // Liest das Memory-Limit (min/max in Seiten) des in ein gmp-wasm-Bundle eingebetteten WASM.
 // Unabhaengig vom Patch-Skript: das Bundle wird in einem vm-Kontext ausgefuehrt, WebAssembly.compile
 // faengt die Bytes ab, die Sektion 5 (Memory) wird selbst geparst.
+// Die Sektion-Lesung steht absichtlich ein zweites Mal hier (auch in tools/vendor/gmp-wasm/patch-4gib.js): die Pruefung soll nicht vom Patch-Skript abhaengen, das sie prueft.
 const vm = require('vm');
 const fs = require('fs');
 
