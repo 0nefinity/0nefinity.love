@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <title>how many corners a circle has?</title>
+  <meta name="description" content="how many corners a circle has? 0, 1 or ∞? or all of it at once?">
+  <style>
+    main {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: var(--visible-viewport-height, 100svh);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(2.5rem, 7vmin, 4.5rem);
+      padding: 4rem 1.5rem;
+      white-space: normal;
+    }
+
+    .circle {
+      display: block;
+      width: min(62vmin, 22rem);
+      height: auto;
+      overflow: visible;
+    }
+
+    .circle circle {
+      fill: none;
+      stroke: var(--text-color);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .question {
+      margin: 0;
+      white-space: pre-line;
+      font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem);
+      line-height: 1.8;
+      letter-spacing: 0.02em;
+      color: var(--ui-text-80);
+      text-shadow: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <svg class="circle" viewBox="0 0 100 100" role="img" aria-label="a circle">
+      <circle cx="50" cy="50" r="49.5"></circle>
+    </svg>
+    <p class="question">how many corners a circle has?
+0, 1 or ∞?
+or all of it at once?</p>
+  </main>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
