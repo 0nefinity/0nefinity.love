@@ -1,124 +1,104 @@
 # unfoldingPi — Design
 
-**Status:** v1 spec
-**Datum:** 2026-05-18
-**Ziel:** Interaktives Tool, das die Idee „Pi mit Dicke 0 lässt sich aus einem Punkt aufrollen und in einem Punkt einrollen" anfassbar macht.
-
----
+**Status:** v2 umgesetzt, 2026-10-23
+**Datei:** `unfoldingPi.html`, Worker `tools/workers/pi-digits-worker.js`
+**Quelle der Wünsche:** Tims Prompts vom 18.05.2026 (`~/.tmux/018-pi-falten-prompts.md`)
 
 ## Konzept
 
-Pi hat unendlich viele Dezimalstellen. Jede Stelle ist „dimensionslos" — eine Position ohne Ausdehnung. Damit lässt sich der ganze Pi-Strang gedanklich in einen 0-Dicke-Punkt **aufrollen**. Der Punkt enthält Pi vollständig.
+Pi als Kette von Zeichen (`3`, `.`, `1`, `4`, `1`, `5` ...), die an beiden
+Enden ins Nichts verdichtet wird. Eine Zahlenfolge ohne Dicke lässt sich
+unendlich oft in einen Punkt falten. Die Seite zeigt ein Fenster auf diese
+Kette; an den Rändern stauchen sich Zeichen und Abstände, bis sie zu einer
+hellen Linie zusammenfallen. Kein Text, kein Titel.
 
-Aus zwei solchen Punkten kann man Pi **entrollen**, indem man sie auseinanderzieht. Dazwischen wird ein Stück Pi sichtbar — die Stellen, die gerade nicht in einem der beiden Punkte aufgerollt sitzen. Schiebt man die Punkte wieder zusammen, verschwindet Pi wieder vollständig im Punkt.
+## Modell
 
-Beide Endpunkte enthalten in jedem Moment „den ganzen Rest von Pi" — Pi ist nicht weg, nur uneingerollt.
+Zustand (Bildschirm-Pixel): `L`, `R` (die beiden Enden), `X0` (linke Kante
+von Zeichen 0, der `3`), `d` (Verdichtungsstrecke), `w` (Zeichenbreite).
 
-### Mental-Modell: Pumpen-Stream
+Zeichen `i` liegt linear bei `p = X0 + i*w`. Warp von `p` auf Bildschirm-x:
 
-- **Zwei Anker** (linker + rechter), beide visuell als dünner Strich
-- Dazwischen: das **Pi-Fenster** = sichtbarer Ausschnitt aus dem Pi-Stream
-- **Anker draggen** → Fenster-Breite ändert sich → mehr oder weniger Stellen sichtbar
-- **Folge swipen** → Offset im Stream verschiebt sich (Fenster-Breite bleibt, andere Stellen drin)
-- Stellen die rauslaufen → rollen in den jeweiligen Anker (ins Unendlich)
-- **Slider unten** → automatischer Stream-Drift, Geschwindigkeit = Slider-Ausschlag
-
-### Pi-Anfang (`3`)
-
-Initialer Zustand: linker Anker hat den Wert `3` (Pi materialisiert dort als Start). Rechter Anker ist direkt daneben, kein Pi dazwischen sichtbar. Beim Ziehen entrollt die Folge `.141592...` rechts der `3`.
-
-Die `3` ist **nicht speziell** — sie ist nur der erste materialisierte 0-Punkt. Beim Swipen nach links rollt sie selbst auch wieder in den linken Unendlich-Anker rein, kann komplett unsichtbar werden.
-
----
-
-## UI
-
-```
-┌─────────────────────────────────────────────────┐
-│                                                 │
-│                                                 │
-│         3 1 4 1 5 9 2 6 5 3 5 8 9              │
-│         ↑                       ↑               │
-│       linker                  rechter           │
-│       Anker                   Anker             │
-│                                                 │
-│  ◄────────────────●─────────────────►          │
-│                  Slider                         │
-└─────────────────────────────────────────────────┘
-```
-
-- **Schriftart:** `Courier New` monospace (konsistent mit `numberline.html`, `taschenrechner`)
-- **Farben:** `meta.css` Variablen (`--bg-color`, `--text-color`)
-- **Anker:** vertikaler Strich, 2px breit, full-height-Zeile, gleiche Farbe wie Text
-- **Pi-Stellen:** zentriert in einer Zeile, fixed font-size, single-line
-- **Slider:** unter der Folge, Thumb mittig (= Stop), Range optisch unbegrenzt, links = nach-links-drift, rechts = nach-rechts-drift
-
-## Interaktionen
-
-| Aktion | Effekt |
+| Bereich | x |
 |---|---|
-| Drag linker Anker nach links | Fenster wird breiter, Pi entrollt zwischen Ankern (mehr Stellen sichtbar links) |
-| Drag linker Anker nach rechts | Fenster wird schmaler, Pi rollt wieder rein |
-| Drag rechter Anker nach rechts | Wie oben, aber Pi entrollt rechts |
-| Drag rechter Anker nach links | Pi rollt rechts wieder ein |
-| Swipe auf der Folge | Stream-Offset verschiebt sich — Stellen rollen in einem Anker rein, im anderen raus |
-| Slider nach links | Auto-Drift nach links, Speed ∝ Ausschlag |
-| Slider mittig | Stop |
-| Slider nach rechts | Auto-Drift nach rechts, Speed ∝ Ausschlag |
-| Slider loslassen | Slider snapt zurück in die Mitte? **Offen** — v1: Slider bleibt wo gelassen |
+| `L+d <= p <= R-d` | `p` |
+| `p > R-d` | `R - d * exp(-(p-(R-d))/d)` |
+| `p < L+d` | `L + d * exp((p-(L+d))/d)` |
+| `d = 0` | alles jenseits des Randes landet auf dem Rand |
 
-Touch + Maus + Stylus über Pointer Events.
+Jedes Zeichen wird mit `scaleX` = lokale Ableitung gezeichnet (Zeichen und
+Abstand stauchen gemeinsam). Der Zeichenvorrat liegt als x-Mipmap-Atlas vor.
+
+### Linie aus Verdichtung
+
+Die Linie wird nicht gemalt. Zeichen unter einem Gerätepixel Breite werden auf
+mindestens 1 Gerätepixel gezogen (bewusste Annahme "Mindest-Tintenbreite") und
+liegen zu vielen im selben Pixelstreifen. Source-over-Alpha summiert sich zu
+`1-(1-c)^N`; zusätzlich werden pro Rand so viele weitere Zeichen gezeichnet,
+bis die Spalte gesättigt ist (`160 + d/w*ln(d*dpr)`, höchstens 4000). Farbe aus
+`meta.css` (`--text-color`), dunkel und hell lesbar.
+
+Voreinstellung `d = w`: Verdichtung nur innerhalb der letzten Zeichenzelle.
+Einstellbar über `tools/controls.js` (Regler "Verdichtung", 0 erlaubt, nach
+oben offen).
+
+### Gewählte Lesarten
+
+- Solange links nichts eingerollt ist, IST die `3` das linke Ende.
+- Die `3` ziehen trägt die Kette (rechtes Ende bleibt); eine Linie ziehen
+  bewegt nur das Ende, die Kette steht.
+- Slider nach links: Kette läuft nach links in die vordere Linie; nach rechts:
+  rückwärts, Halt, sobald die `3` wieder vorn steht. Der Slider federt nicht
+  zurück.
+- Der Dezimalpunkt gehört zur Kette (Index 1).
+- Startzustand: `3` plus genau eine Zelle, in der sich ".14159..." verdichtet,
+  Gruppe mittig.
+- Fehlen links eingerollte Ziffern, gibt es dort keine Linie; ihre Dichte
+  wächst mit der Zahl eingerollter Stellen.
+
+## Interaktion
+
+| Geste | Wirkung |
+|---|---|
+| Rechte Linie ziehen | `R` bewegt sich, Kette steht, Stellen erscheinen oder verschwinden |
+| `3` ziehen (nichts links eingerollt) | `X0` und linkes Ende wandern, `R` bleibt |
+| Linke Linie ziehen (links eingerollt) | `L` bewegt sich, Kette steht; erreicht sie die `3`, geht es nahtlos in "3 ziehen" über |
+| Wischen auf der Kette | Kette folgt dem Finger, `L` und `R` stehen; erreicht die `3` die Front, folgt das linke Ende der `3` |
+| Slider unten (Mitte = Stopp) | exponentielle Kennlinie, nach oben offen; Maximum ist die Rechen- und Zeichengeschwindigkeit, die Kette wartet am Rechenlimit |
+| Fenstergröße | Enden bleiben im Bild |
+
+Pointer Events, `touch-action: none`, `setPointerCapture`, Trefferflächen
+mindestens 40 px breit.
 
 ## Architektur
 
-### v1 Stack
+- Eine DPR-scharfe Canvas, ein Slider, sonst kein DOM.
+- Pi-Stellen: Web Worker `tools/workers/pi-digits-worker.js`
+  (Chudnovsky, BigInt, Binary Splitting, unbegrenzt in Blöcken, Zielgröße
+  verdoppelt sich). 1000 Stellen als eingebettete Reserve, damit der Start
+  sofort steht und der Worker dagegen geprüft wird.
+- Fail loud: Worker-Fehler oder falsche Stellen führen zu `console.error`,
+  rotem Rahmen (`.stage.fehler`), gestopptem Slider und eingefrorener Kette.
+  Kein stiller Fallback.
+- Nur lesende Testschnittstelle: `window.unfoldingPi.state()` mit
+  `{L, R, X0, d, startIndex, endIndex, visibleCount, velocity, error, ...}`.
+- Strikt same-origin, keine Fremdressourcen.
 
-- **Plain HTML/CSS/JS**, kein Build
-- **DOM-spans + CSS transform** für die Folge (jedes Zeichen = `<span>`, alles in einem Container mit `transform: translateX(offset)`)
-- **Pi-Source:** initial 5000 Stellen inline als String. Reicht für die meisten Sessions.
-- **Lazy growth:** wenn User Richtung Stream-Ende driftet → on-demand mehr Stellen nachladen (v1: aus inline-string, v2: Web Worker mit Spigot-Algorithmus)
-- **Pointer Events** für Drag (vereint Maus/Touch/Stylus)
-- **requestAnimationFrame-Loop** für Slider-Auto-Drift
+## Acceptance Criteria
 
-### Komponenten
+Prüfbar per Playwright gegen `https://dev.0nefinity.love/unfoldingPi` über
+`window.unfoldingPi.state()` (Pixelprobe per `getImageData` auf der Canvas).
 
-1. **`unfoldingPi.html`** — Layout + inline Script
-2. **Pi-Source-Modul** (inline in script tag, v1): konstanter String + Lazy-Cursor
-3. **State:**
-   - `streamOffset` (int) — welche Pi-Stelle sitzt am linken Anker (default 0 = die `3`)
-   - `windowSize` (int) — wieviele Stellen sichtbar (default 1 — nur die `3`)
-   - `leftAnchorPos`, `rightAnchorPos` (px) — Anker-Positionen am Bildschirm
-   - `driftSpeed` (float, stellen/sec) — Slider-Output
-4. **Render-Funktion:** baut DOM aus `state` (oder updated minimal-diff)
-5. **Drag-Handler:** pointerdown auf Anker oder Folge → updated state
-6. **rAF-Loop:** wenn `driftSpeed != 0` → `streamOffset += driftSpeed * dt`, re-render
-
-### Out of Scope für v1
-
-- Spiegel-Pi / Pi-in-beide-Richtungen (kommt v2 wenn v1 funktioniert)
-- Bi-infinite Strings (formales Objekt, separates Tool)
-- Andere irrationale Zahlen (Slider zum Konstanten-Wechsel) — v2
-- Web Worker für unbegrenzte Pi-Generierung — v2 falls 5000 Stellen nicht reichen
-- Mobile-spezifische UX-Optimierungen (Tap-Targets, Safe-Area) — wird beim Test pro Memory `feedback_mobile_check_before_merge` geprüft
-
-## Performance-Budget
-
-- Soll auf „Gurken"-HW flüssig laufen (Tim's CLAUDE.md)
-- Sichtbar gleichzeitig: ≤ ~500 Stellen (bei breitem Display + großem Fenster) — easy für DOM
-- Drift-Loop: 60fps zielen, fps-Drop OK aber kein Stutter
-
-## Essay-Sektion
-
-Direkt auf der `unfoldingPi.html` als kurzer Intro-Text (oben oder ausklappbar): erklärt das Konzept „Pi mit Dicke 0", wieso beide Anker den Rest enthalten, und dass die `3` nicht speziell ist. Stil entsprechend der bestehenden Essay-Pages (`einPunkt.md`, `der.punkt`, `was-ist-die-eine-null`).
-
-## Test-Plan
-
-1. Tool öffnet → sieht `3 |` mittig + Slider unten
-2. Drag rechten Strich nach rechts → `3.141592...` entrollt
-3. Drag linken Strich (`3`) nach links → mehr Stellen zwischen ihnen
-4. Swipe Folge nach links → `3` verschwindet im linken Strich, neue Stellen kommen rechts
-5. Slider nach links → Auto-Drift nach links
-6. Slider mittig → Stop
-7. Slider nach rechts → Auto-Drift rückwärts
-8. Mobile: Touch funktioniert wie Maus, Anker-Tap-Targets ≥40px
-9. Mit `meta.css` Dark/Light Mode: Striche und Stellen lesbar in beiden
+1. Start: `startIndex 0`, `visibleCount 1`, Gruppe mittig.
+2. Pixeltest: Randspalte über Ziffernhöhe mit Mittelwert >= 0.9 und Minimum
+   >= 0.6 der Textfarbe, rechts im Start, beide Seiten nach Wischen mit
+   vielen eingerollten Stellen, auch im hellen Thema; links ohne Einrollung
+   keine Linie.
+3. Rechte Linie, `3`, linke Linie, Wischen, Slider links (startIndex wächst),
+   Slider Mitte (steht), Slider rechts (sinkt, Halt bei 0) verändern den
+   Zustand wie in der Tabelle; Maus und Touch.
+4. Die ersten 3000 Stellen des Workers stimmen mit einer unabhängigen
+   Referenz (Machin) überein; die Reserve ebenso.
+5. Keine Konsolenfehler, alle Requests same-origin, Fehlerpfad zeigt
+   `error`, `console.error` und roten Rahmen.
+6. Mobil (390x844): Startzustand im Bild, Linie satt.
