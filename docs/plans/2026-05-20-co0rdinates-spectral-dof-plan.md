@@ -898,6 +898,24 @@ DFS extrahiert verbundene Pfad-Segmente. Default bleibt outline."
 
 ---
 
+---
+
+## Nachtrag: Umgesetzte Erweiterungen (Stand Code)
+
+Nach den Tasks 1 bis 6 sind weitere Freiheitsgrade gebaut worden. Alles in `co0rdinates.html`, keine neuen Dateien, keine Änderungen an `meta.css`, `meta.js`, `controls.js`. Details und Mathematik stehen im Spec-Abschnitt "Spätere Erweiterungen".
+
+- [x] **Task 7: Chirp β.** `applySpectralModifiers(spectrum, twist, scale, chirp)` addiert die Phase `β·π·k²/half²` (Nyquist: `β·π`). `spectralParams.chirp`, Default 0, Slider "Chirp β" [-1, 1]. Cache-Pfad wie Twist: nur Re-Modifier, kein Re-Solve.
+- [x] **Task 8: Einstieg-Winkel.** `config.startAngle` [0, 2π]. Formen: Polygon-Vertices werden in `generateShapeControlPoints` physisch gedreht (eine reine Index-Verschiebung wäre unsichtbar). Text: Startindex auf dem normalisierten Pfad wird zyklisch verschoben. Formen laufen über Re-Solve, Text über `applySymbol`.
+- [x] **Task 9: Brücken-Punkt.** `config.glyphStartAngle` [0, 2π], nur Text. In `layoutTextContours` wird jede Glyph-Kontur zyklisch rotiert, dadurch wandert der Ansatzpunkt der Brücken zwischen den Glyphen. Slider bei Formen ausgeblendet.
+- [x] **Task 10: Linien-Modus.** `extractCharSkeleton` (Zhang-Suen, `zhangSuenThin`), Pfad wird verdoppelt (Vorwärts- plus umgekehrte Kopie), damit er geschlossen ist.
+- [x] **Task 11: Kernel-Breite ab 0.** Slider-Range [0, 5], linear; `Math.max(0, v)`; `gaussian(d, 0)` als Dirac.
+
+Nicht umgesetzt: URL-State-Sync, Undo/Redo der Slider-Werte, Persistenz der Slider beim Formwechsel.
+
+Der Reset-Button "Verzerrung zurücksetzen" stellt ε, α, s, β, Einstieg-Winkel und Brücken-Punkt wieder her.
+
+Verifikation der Erweiterungen: Acceptance Criteria im Spec (`../specs/2026-05-20-co0rdinates-spectral-dof-design.md`). Stand der Prüfung per Playwright gegen den Release-Stand (Chromium headless): keine Console-Errors, keine 404, alle Slider mit den genannten Ranges, jede Änderung von Chirp, Einstieg-Winkel, Brücken-Punkt, Kernel-Breite 0 und Linien-Modus verändert den Canvas ohne Fehler.
+
 ## Self-Review
 
 Spec-Coverage Check:
@@ -921,3 +939,18 @@ Typkonsistenz:
 - `spectrum`-Objekt: `{ dxRe, dxIm, dyRe, dyIm }` Float64Array — konsistent in Task 1, 2, 4
 - `spectralParams`: `{ kernelWidth, twist, scale }` Number — konsistent in Task 2, 3, 4
 - `generateShapeControlPoints` Rückgabewert: `{ points, spectrum, autoRadius }` — geändert in Task 2, alle Aufrufer angepasst in Task 2.3 (applyShape) und Task 4.1 (onSpectralParamChange)
+
+## Acceptance Criteria
+
+Messbar und per Playwright prüfbar gegen `/co0rdinates.html` (Seite laden, 1 s warten, `page.on('console'|'pageerror'|'requestfailed')` mitschreiben). Slider sind `input.ctrl-range` in der Zeile `[data-key="<key>"]`.
+
+1. Laden: keine Console-Errors, keine Pageerrors, keine fehlgeschlagenen oder 404-Requests.
+2. Chirp: Zeile `[data-key="chirp"]` existiert, Range min -1, max 1, Default-Wert 0. Sie ist beim Laden `display:none` und wird sichtbar (`display:grid`), sobald eine Form oder ein Text aktiv ist. Bei aktiver Form (und bei Text "37") ändert ein Wert von 0 auf 0.5 den gerenderten Canvas (Pixel-Hash unterscheidet sich) und wirft nichts. Beim Text "37" stellt Zurück auf 0 den Ausgangs-Hash wieder her (bei Formen erst nach Ende der Übergangsanimation vergleichen).
+3. Einstieg-Winkel: Zeile `[data-key="startAngle"]` existiert, Range 0 bis 6.283, Default 0. Bei Form "square": Wert 0.5 verändert den Canvas-Hash. Bei Text "37": Wert 1.0 verändert die Kontrollpunkte (Canvas-Hash) ohne Fehler.
+4. Brücken-Punkt: Zeile `[data-key="glyphStartAngle"]` existiert, Range 0 bis 6.283, Default 0. Sie ist bei aktiver Form `display:none`, bei Text "37" sichtbar. Wert 1.0 verändert den Canvas-Hash bei Text "37" ohne Fehler.
+5. Text-Linie: Bei Text "37" und Klick auf Button "Linie" (`button[data-mode-id="line"]`) rendert Canvas weiterhin sichtbaren Inhalt (Anteil nicht-Hintergrund-Pixel > 0), Hash unterscheidet sich vom Umriss-Modus, keine Fehler. Rückwechsel auf "Umriss" stellt den ursprünglichen Hash wieder her.
+6. Kernel-Breite 0: Zeile `[data-key="kernelWidth"]` hat Range min 0, max 5. Setzen auf 0 (Form und Text) wirft keinen Fehler und erzeugt keine NaN-Kontrollpunkte (Canvas bleibt gezeichnet, keine Console-Errors).
+7. Reset: Klick auf "Verzerrung zurücksetzen" setzt alle sechs Slider (ε = 1, α = 0, s = 1, β = 0, Einstieg = 0, Brücke = 0) zurück; der Canvas-Hash entspricht dem Zustand vor den Änderungen.
+8. Start- und Form-Zustand: Beim Laden ist keine Form aktiv (`activeShape === null`), der Canvas zeigt den Einheitskreis. Ein Klick auf `button[title="Quadrat"]` setzt `activeShape === 'square'` und verändert den Canvas-Hash.
+9. Text "37": Eingabe von "37" in das Symbol-Feld rendert sichtbaren Inhalt (nicht-Hintergrund-Pixel > 0) in beiden Text-Stilen.
+10. Keine externen Ressourcen: alle Requests gehen an dieselbe Origin.
