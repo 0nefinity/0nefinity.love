@@ -624,8 +624,16 @@
 
   const DUAL_GAP = 3.5; // center-to-center Y distance in sphere radii (lower sphere at y=0, primary above)
   const DUAL_DEFAULT_RADIUS = 2.5; // GEB-Mode-Default ohne URL-r: groß genug für lesbare Wand-Glyphen
+  // GEB-Mode-Default ohne URL-ldist: weit weg, damit die Strahlen fast parallel laufen und die
+  // Schatten nahe Kugelgröße bleiben (Vergrößerung = (L + dist) / L) - sonst wachsen die zwei Glyphen je Wand ineinander.
+  const DUAL_DEFAULT_LIGHT_DISTANCE = 60;
   function upperSphereY() { return dualMode ? DUAL_GAP * (params.sphereRadius || 1) : 0; }
-  function wallLampY() { return dualMode && !gebFiveLamps ? upperSphereY() / 2 : upperSphereY(); }
+  // Mitte des Kugelstapels; alle Lampen sitzen im Abstand lightDistance von hier (Boden: darüber, Wände: seitlich).
+  function stackMidY() { return upperSphereY() / 2; }
+  // 5-Lampen-GEB (Vergleichsvariante, Lichtabstand 15) behält die Bodenlampe über der oberen Kugel: näher am Stapel
+  // verzerren die Perspektiven der zwei Kugeln das Boden-∞.
+  function floorLampY() { return (gebFiveLamps ? upperSphereY() : stackMidY()) + params.lightDistance; }
+  function wallLampY() { return dualMode && !gebFiveLamps ? stackMidY() : upperSphereY(); }
   // 3-lamp GEB: the wall lamp sits between the spheres, so its cone has to reach the far edge of both.
   // The penumbra eats the outer ~30% of the cone, hence the widening.
   function wallLampAngleDeg() {
@@ -781,11 +789,16 @@
       params.sphereRadius = DUAL_DEFAULT_RADIUS;
     }
 
-    // Der GEB-Aufbau ist höher (Lampe über der oberen Kugel): ohne eigenes 'zoom' weiter heraus,
-    // damit Bodenlampe, beide Kugeln und der Boden ins Bild passen.
+    // Nicht im 5-Lampen-Modus: dort würden die breiten Kegel der zwei Wandlampen ineinanderlaufen und die Glyphen füllen.
+    if (dualMode && !gebFiveLamps && !urlParams.has(PARAMS_CONFIG.lightDistance.urlKey)) {
+      params.lightDistance = DUAL_DEFAULT_LIGHT_DISTANCE;
+    }
+
+    // Der GEB-Aufbau ist höher: ohne eigenes 'zoom' weiter heraus, damit beide Kugeln und die Scheiben
+    // ins Bild passen. Lampen weiter weg als 15 bleiben bewusst außerhalb des Bildes.
     if (dualMode && !urlParams.has(PARAMS_CONFIG.cameraDistance.urlKey)) {
       params.cameraDistance = Math.max(params.cameraDistance,
-        1.55 * (upperSphereY() + params.lightDistance + params.wallDistance));
+        1.55 * (upperSphereY() + Math.min(params.lightDistance, 15) + params.wallDistance));
     }
 
     // Lampen-Zustände aus URL laden (z.B. lights=110 → floor=1, back=1, side=0)
@@ -890,14 +903,14 @@
     return Math.tan(angleRad) * dist;
   }
 
-  // Lampen und Ziele. Die Bodenlampe sitzt immer über der obersten Kugel, die Wandlampen
+  // Lampen und Ziele. Die Bodenlampe sitzt im Abstand lightDistance über der Stapelmitte (5 Lampen: über der obersten Kugel), die Wandlampen
   // auf Höhe der Kugel (Einzel/5 Lampen) bzw. in der Mitte zwischen beiden (3 Lampen).
   function placeSpots() {
     if (!spotFloor) return;
     const d = params.lightDistance;
     const w = params.wallDistance;
     const yW = wallLampY();
-    spotFloor.position.set(0, upperSphereY() + d, 0);
+    spotFloor.position.set(0, floorLampY(), 0);
     spotFloor.target.position.set(0, -w, 0);
     spotBack.position.set(0, yW, d);
     spotBack.target.position.set(0, yW, -w);
@@ -2246,7 +2259,7 @@
 
   // Orbit-Ziel: Einzel-Modus = Ursprung, GEB-Mode = vertikaler Mittelpunkt der zwei Kugeln
   function orbitTargetY() {
-    return upperSphereY() / 2;
+    return stackMidY();
   }
 
   function applyCameraFromParams() {
@@ -3187,7 +3200,7 @@
 	    // Auf den Boden (Licht entlang -Y-Achse)
 	    spotFloor = addSpot(
 	      initialSpotIntensity,
-	      0, upperSphereY() + params.lightDistance, 0,
+	      0, floorLampY(), 0,
 	      0, -params.wallDistance, 0
 	    );
 	    // Auf die Rückwand (Licht entlang -Z-Achse)
