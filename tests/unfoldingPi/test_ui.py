@@ -1,29 +1,11 @@
-import json, os, sys, time
+import os, tempfile
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from common import *
 
-URL = os.environ.get('URL', 'https://dev.0nefinity.love/unfoldingPi')
-import tempfile
 OUT = os.environ.get('OUT') or tempfile.mkdtemp(prefix='unfoldingPi-ui-') + '/'
-results = []
-
-def check(name, ok, info=''):
-    results.append((name, ok, info))
-    print(('PASS ' if ok else 'FAIL ') + name + ' ' + str(info), flush=True)
-
-def machin(n):
-    # Referenz: unabhängig vom Worker (Machin-Formel mit Python-ints)
-    one = 10 ** (n + 20)
-    def arccot(x):
-        s = t = one // x
-        k = 1; x2 = x * x; sign = -1
-        while t:
-            t //= x2; k += 2
-            s += sign * (t // k); sign = -sign
-        return s
-    return str(4 * (4 * arccot(5) - arccot(239)))[:n + 1]
-
-REF = machin(3000)
+R = Res()
+check = R.check
 
 # Mutanten: MUT=<name> ersetzt Code der Seite per Route (Test muss dann rot werden).
 MUTANTS = {
@@ -37,14 +19,10 @@ MUT = os.environ.get('MUT')
 def mk(br, **kw):
     c = br.new_context(**kw)
     if MUT:
-        a, b = MUTANTS[MUT]
-        def h(route):
-            r = route.fetch()
-            t = r.text()
-            if a not in t: raise SystemExit('Mutant passt nicht: ' + MUT)
-            route.fulfill(response=r, body=t.replace(a, b), content_type='text/html')
-        c.route('**/unfoldingPi', h)
+        mutate(c, '**/unfoldingPi', *MUTANTS[MUT], label=MUT)
     return c
+
+PI = ref('pi')[:3000]
 
 def st(p): return p.evaluate('window.unfoldingPi.state()')
 
@@ -255,12 +233,11 @@ with sync_playwright() as pw:
     rp.close()
 
     # 4 Pi-Stellen
-    page.wait_for_function('window.unfoldingPi.state().chainLength > 3000', timeout=60000) if False else None
     chain = page.evaluate('window.unfoldingPi.digits()')
     dec = chain[2:]
     n = min(len(dec), 3000)
-    check('4a Worker-Stellen == Referenz (Machin, Python)', dec[:n] == REF[1:n + 1] and n >= 1500, 'verglichen %d Stellen' % n)
-    check('4b Reserve (erste 998) == Referenz', chain[2:1000] == REF[1:999], '')
+    check('4a Worker-Stellen == Referenz (mpmath, tests/irrational/ref)', dec[:n] == PI[:n] and n >= 1500, 'verglichen %d Stellen' % n)
+    check('4b Reserve (erste 998) == Referenz', chain[2:1000] == PI[:998], '')
 
     # Dark/Light
     page.evaluate("document.documentElement.style.setProperty('--bg-color','white'); document.documentElement.style.setProperty('--text-color','black')")
@@ -277,7 +254,7 @@ with sync_playwright() as pw:
     check('5a Light: Textfarbe dunkel, Linie satt', tl2['color'] == 'rgb(0, 0, 0)' and pr3['mean'] >= 0.9 and pr3['min'] >= 0.6, (tl2['color'], pr3))
     page.evaluate("document.documentElement.style.removeProperty('--bg-color'); document.documentElement.style.removeProperty('--text-color')")
 
-    ext = [u for u in reqs if urlparse(u).netloc not in ('dev.0nefinity.love',) and not u.startswith('data:') and not u.startswith('blob:')]
+    ext = [u for u in reqs if urlparse(u).netloc not in (urlparse(HOST).netloc,) and not u.startswith('data:') and not u.startswith('blob:')]
     check('5b alle Requests same-origin', not ext, (len(reqs), ext[:5]))
     check('5c keine Konsolenfehler', not errors, errors[:5])
     check('5d kein Pi-Fehlerzustand', st(page)['error'] is None, '')
@@ -362,6 +339,4 @@ with sync_playwright() as pw:
     mctx.close()
     br.close()
 
-bad = [r for r in results if not r[1]]
-print('\n%d/%d bestanden' % (len(results) - len(bad), len(results)))
-sys.exit(1 if bad else 0)
+R.done()

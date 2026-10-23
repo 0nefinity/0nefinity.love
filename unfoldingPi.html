@@ -75,9 +75,9 @@
       "38142061717766914730359825349042875546873115956286388235378759375195778185778053"+
       "2171226806613001927876611195909216420198";
 
-    // Ganzzahlteil je Konstante; die Kette ist ein String: Ganzzahl, ".", Nachkommastellen. Index 0 = Ganzzahl.
-    const INT_PART = { pi: '3', e: '2', ln2: '0', sqrt2: '1', phi: '1' };
+    // Die Kette ist ein String: Ganzzahl (Irrational.constants[].intPart), ".", Nachkommastellen. Index 0 = Ganzzahl.
     const CONSTS = Irrational.constants;
+    const constOf = (id) => CONSTS.find((k) => k.id === id);
     const params = new URLSearchParams(location.search);
     let cid = params.get('c') || 'pi';
     let chain = '';
@@ -86,9 +86,8 @@
     let piNotice = null;
     let limitState = null;
     let handle = null;
-    let hintEl = null;
     const decoder = new TextDecoder('latin1');
-    const startChain = () => { chain = (INT_PART[cid] || '0') + '.' + (cid === 'pi' ? RESERVE.slice(1) : ''); };
+    const startChain = () => { chain = (constOf(cid) ? constOf(cid).intPart : '0') + '.' + (cid === 'pi' ? RESERVE.slice(1) : ''); };
 
     const MARGIN = 8;          // Mindestabstand der Enden zum Bildrand (px)
     const HIT = 20;            // halbe Trefferbreite (>= 40px breit)
@@ -141,15 +140,14 @@
     function onLimit(lim) {
       limitState = lim;
       stage.classList.remove('warte');
-      if (lim.kind === 'device') {
-        if (!hintEl) {
-          hintEl = document.createElement('div');
-          hintEl.id = 'limit-hint';
-          hintEl.className = 'limit-hint';
-          hintEl.textContent = 'use better hardware to get access to more digits';
-          stage.appendChild(hintEl);
-        }
+      if (lim.kind === 'device' && !document.getElementById('limit-hint')) {
+        const hint = document.createElement('div');
+        hint.id = 'limit-hint';
+        hint.className = 'limit-hint';
+        hint.textContent = 'use better hardware to get access to more digits';
+        stage.appendChild(hint);
       }
+      if (handle) handle.close(); // der Worker gibt seinen WASM-Speicher frei; die Anzeige bleibt
       dirty = true;
     }
     function onDigits(u8, offset) {
@@ -181,7 +179,8 @@
       limitState = null;
       requestedTotal = 0;
       stage.classList.remove('warte', 'hinweis');
-      if (hintEl) { hintEl.remove(); hintEl = null; }
+      const old = document.getElementById('limit-hint');
+      if (old) old.remove();
       piNotice = null;
       startChain();
       try {
@@ -194,7 +193,7 @@
       requestedTotal = total;
       handle.want(total);
     }
-    function symbolOf(id) { return CONSTS.find((k) => k.id === id).symbol; }
+    function symbolOf(id) { return constOf(id).symbol; }
     function setConstant(id) {
       if (id === cid) return;
       cid = id;
@@ -460,7 +459,7 @@
 
     // ─── Boot ───
     startChain();
-    if (!INT_PART[cid]) fail('Unbekannte Konstante: ' + cid);
+    if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
     else if (cid !== 'pi') document.title = 'unfolding ' + symbolOf(cid);
     applySize(true);
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });

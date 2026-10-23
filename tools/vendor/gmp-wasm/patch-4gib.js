@@ -6,6 +6,7 @@
 // Ablauf: Base64-Literal im Bundle -> raw deflate -> WASM -> Memory-Sektion (id 5): LEB128 32768 = 80 80 02
 // wird 80 80 04 (65536), gleiche Byte-Laenge -> neu deflaten, Base64, Literal ersetzen.
 // Bricht laut ab, wenn das Muster nicht genau einmal vorkommt.
+// Die Sektion-Lesung gibt es absichtlich ein zweites Mal unabhaengig in tests/irrational/lib/wasm-limits.js: die Pruefung soll nicht vom Patch-Skript abhaengen.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
