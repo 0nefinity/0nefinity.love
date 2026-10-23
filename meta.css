@@ -470,9 +470,16 @@ button:focus {
     top: 0;
     left: 0;
     bottom: 0;
-    right: var(--menu-open-width);
+    right: min(var(--menu-open-width), 90vw); /* gleiche Breite wie das offene Menü (max-width: 90vw) */
     z-index: 0;
     pointer-events: none; /* Scroll geht durch zum Body; Klick-außerhalb macht JS */
+}
+
+/* Ohne JS schließt das Label den Checkbox-Hack: Klick außerhalb des Menüs genügt */
+@media (scripting: none) {
+    .menu-toggle-input:checked ~ .menu-backdrop {
+        pointer-events: auto;
+    }
 }
 
 /* Wrapper für den Button - erlaubt Text-Selektion */
@@ -1021,6 +1028,7 @@ body:has(._018-canvas) {
 /* weird-text-viewer.php Styling */
 .text-viewer-content {
     white-space: pre-wrap !important;
+    overflow-wrap: anywhere; /* lange Zeichenketten ohne Leerzeichen sprengen sonst den Viewport (Menü-Button landet außerhalb) */
 }
 
 /* Media Query für kleinere Geräte */
