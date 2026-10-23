@@ -17,12 +17,13 @@ with sync_playwright() as p:
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.on("requestfailed", lambda r: failed.append(r.url))
     page.goto(url, wait_until="networkidle")
-    has_space = page.evaluate("() => typeof window._018Space === 'object'")
+    has_meta_js = page.evaluate(
+        "() => document.documentElement.style.getPropertyValue('--visible-viewport-width') !== ''")
     dup_controls = page.evaluate(
         "() => [...document.scripts].filter(s => s.src.includes('/tools/controls.js')).length")
     if errors: fail.append(f"JS-on console errors: {errors}")
     if failed: fail.append(f"JS-on failed requests: {failed}")
-    if not has_space: fail.append("JS-on: window._018Space missing")
+    if not has_meta_js: fail.append("JS-on: meta.js did not run (--visible-viewport-width unset)")
     if dup_controls > 1: fail.append(f"JS-on: controls.js loaded {dup_controls}x")
     ctx.close()
 
