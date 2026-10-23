@@ -178,7 +178,9 @@
       if (handle) { handle.close(); handle = null; }
       limitState = null;
       requestedTotal = 0;
-      stage.classList.remove('warte', 'hinweis');
+      piError = null;
+      driftEl.disabled = false;
+      stage.classList.remove('warte', 'hinweis', 'fehler');
       const old = document.getElementById('limit-hint');
       if (old) old.remove();
       piNotice = null;

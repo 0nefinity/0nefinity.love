@@ -1,6 +1,6 @@
 'use strict';
 // Node-Tests der Engine (tools/workers/irrational-worker.js im vm-Kontext) gegen mpmath-Referenzen.
-// Aufruf: node test_engine.js [a1|a2|a3|a4|stages|all]   (Env IRRATIONAL_WORKER = Mutant-Worker)
+// Aufruf: node test_engine.js [a1|a2|a3|a4|a5|stages|all]   (Env IRRATIONAL_WORKER = Mutant-Worker)
 const { createWorker, ref } = require('./lib/vmworker');
 const path = require('path');
 const { memoryLimits } = require('./lib/wasm-limits');
@@ -42,6 +42,9 @@ async function a1() {
     const GiB = 1024 ** 3;
     w.send({ type: 'test', ballastBytes: 2.3 * GiB });
     w.send({ type: 'open', id: 'pi' });
+    await w.waitFor((m) => m.type === 'info');
+    // Rueckgabezeiger von mpz_get_str (Ergebnisstring) mitschreiben, roh wie vom Binding geliefert
+    w.run(`(function(){ const o = g.mpz_get_str; globalThis.__strPtrs = []; g.mpz_get_str = function () { const r = o.apply(this, arguments); __strPtrs.push(r); return r; }; })()`);
     w.send({ type: 'want', total: 100000 });
     const s = await w.digitsUpTo(100000, 200000);
     const err = w.messages.find((m) => m.type === 'error' || m.type === 'limit');
@@ -50,6 +53,8 @@ async function a1() {
     check('A1 Worker-Maximum == Maximum im Bundle (65536 Seiten)', info && info.maxPages === 65536 && l.max === 65536, JSON.stringify({ worker: info && info.maxPages, bundle: l.max }));
     check('A1 > 2 GiB belegt', last && last.memBytes > 2 * GiB, 'memBytes=' + (last && (last.memBytes / GiB).toFixed(2)) + ' GiB');
     check('A1 Zeiger >= 2^31 gelesen (>>> 0)', last && last.maxPtr >= 2 ** 31, 'maxPtr=' + (last && last.maxPtr));
+    const strPtrs = w.run('__strPtrs');
+    check('A1 Ergebnisstring (mpz_get_str) liegt oberhalb 2^31 und wird korrekt gelesen', strPtrs.length > 0 && Math.max(...strPtrs.map((x) => x >>> 0)) >= 2 ** 31, 'Zeiger=' + strPtrs.map((x) => (x >>> 0).toString(16)).join(','));
     check('A1 danach 1e5 Stellen pi korrekt', !err && s.slice(0, 100000) === ref('pi').slice(0, 100000), err ? JSON.stringify(err) : '');
 }
 
@@ -138,13 +143,10 @@ async function a3() {
 }
 
 async function a4() {
-    const fs = require('fs');
-    const src = fs.readFileSync(path.join(ROOT, 'tools/workers/irrational-worker.js'), 'utf8');
     const N = 2000000;
     for (const id of IDS) {
-        const m = new RegExp("BYTES_PER_DIGIT[\\s\\S]*?\\b" + id + ":\\s*([0-9.]+)").exec(src);
-        const bpd = m ? Number(m[1]) : NaN;
         const w = createWorker();
+        const bpd = Number(w.run('BYTES_PER_DIGIT.' + id)); // Wert des geladenen Workers (auch bei IRRATIONAL_WORKER=Mutant)
         w.send({ type: 'open', id });
         w.send({ type: 'want', total: N });
         await w.digitsUpTo(N, 200000);
@@ -154,12 +156,63 @@ async function a4() {
     }
 }
 
+// Selbstpruefungen des Workers (checkGuard, checkHead): direkt und ueber den Rechenweg (Rechenergebnis verfaelscht).
+async function a5() {
+    // direkt
+    {
+        const w = createWorker();
+        const G = w.run('GUARD');
+        const thrown = (code) => { try { w.run(code); return false; } catch (e) { return true; } };
+        const mk = (fill) => `(new Uint8Array(5000)).fill(${fill})`;
+        check('A5 checkGuard: alle 0 wirft', thrown(`checkGuard(${mk(48)}, 1, 100)`));
+        check('A5 checkGuard: alle 9 wirft', thrown(`checkGuard(${mk(57)}, 1, 100)`));
+        check('A5 checkGuard: gemischte Schutzstellen werfen nicht', !thrown(`(function(){ const b=${mk(48)}; b[1+100+${G - 1}]=49; checkGuard(b, 1, 100); })()`));
+        check('A5 checkHead: erste Stufe setzt Kopf, gleicher Kopf wirft nicht, falscher Kopf wirft',
+            !thrown('checkHead(Uint8Array.from([49,50,51,52]))') && !thrown('checkHead(Uint8Array.from([49,50,51,52,53]))') && thrown('checkHead(Uint8Array.from([49,50,52,52]))'));
+    }
+    // ueber den Rechenweg: calcWasm bzw. calcBig liefert eine verfaelschte Zahl der richtigen Laenge
+    const variants = {
+        wasm: (kind) => `(function(){ let calls = 0; calcWasm = function (n) {
+            const L = n + intLen; const p = newMpz(); g.mpz_ui_pow_ui(p, 10, L - 1);
+            ${kind === 'zero' ? '' : 'g.mpz_add_ui(p, p, 12345);'}
+            if (${kind === 'head'} && ++calls >= 2) { const q = newMpz(); g.mpz_ui_pow_ui(q, 10, L - 1 - intLen - 100); g.mpz_add(p, p, q); freeMpz(q); }
+            return p; }; })()`,
+        bigint: (kind) => `(function(){ let calls = 0; calcBig = function (n) {
+            const L = n + intLen; let p = 10n ** BigInt(L - 1);
+            ${kind === 'zero' ? '' : kind === 'nine' ? 'p = p * 10n - 1n;' : 'p += 12345n;'}
+            if (${kind === 'head'} && ++calls >= 2) p += 10n ** BigInt(L - 1 - intLen - 100);
+            return p; }; })()`,
+    };
+    for (const mode of ['wasm', 'bigint']) {
+        for (const kind of ['ok', 'zero', 'nine', 'head']) {
+            if (mode === 'wasm' && kind === 'nine') continue;
+            const w = createWorker({ noWasm: mode === 'bigint' });
+            w.send({ type: 'open', id: 'pi' });
+            await w.waitFor((m) => m.type === 'info');
+            w.run(variants[mode](kind));
+            w.send({ type: 'want', total: 5000 });
+            const first = await w.waitFor((m) => m.type === 'digits' || m.type === 'error' || m.type === 'limit');
+            if (kind === 'head' || kind === 'ok') {
+                if (first.type !== 'digits') { check('A5 ' + mode + ' ' + kind + ': erste Stufe geliefert', false, JSON.stringify(first)); continue; }
+                w.send({ type: 'want', total: 20000 });
+                await w.waitFor((m) => m.type === 'error' || (m.type === 'digits' && m.total >= 20000));
+            }
+            const err = w.messages.find((m) => m.type === 'error');
+            const want = { ok: null, zero: /Schutzstellen/, nine: /Schutzstellen/, head: /Kontrollstellen/ }[kind];
+            check('A5 ' + mode + ' ' + kind + (want ? ': Selbstpruefung meldet error' : ': Kontrolle ohne Verfaelschung, kein error'),
+                want ? err && want.test(err.message) && !w.messages.some((m) => m.type === 'digits' && m.total > (kind === 'head' ? 5000 : 0)) : !err && w.messages.some((m) => m.type === 'digits'),
+                err ? err.message.split('\n')[0] : '');
+        }
+    }
+}
+
 (async () => {
     if (run('stages')) await stages();
     if (run('a1')) await a1();
     if (run('a2')) await a2();
     if (run('a3')) await a3();
     if (run('a4')) await a4();
+    if (run('a5')) await a5();
     console.log(fails ? 'FAILED ' + fails : 'ALL PASS');
     process.exit(fails ? 1 : 0);
 })().catch((e) => { console.error('FAIL Ausnahme', e); process.exit(1); });

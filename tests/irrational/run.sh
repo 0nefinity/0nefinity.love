@@ -2,11 +2,12 @@
 # Alle Tests der Irrational-Engine. Aufruf: bash tests/irrational/run.sh [node|browser]
 # Referenzen neu erzeugen (nur bei Bedarf): python3 tests/irrational/gen-refs.py
 set -u
+export PYTHONDONTWRITEBYTECODE=1
 cd "$(dirname "$0")/../.."
 fail=0
 if [ "${1:-all}" != browser ]; then
   node tests/irrational/test_patch.js || fail=1
-  for m in stages a1 a2 a3 a4; do
+  for m in stages a1 a2 a3 a4 a5; do
     node tests/irrational/test_engine.js "$m" || fail=1
   done
 fi
