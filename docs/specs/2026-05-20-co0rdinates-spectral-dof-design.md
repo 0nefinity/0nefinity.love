@@ -235,7 +235,7 @@ Nach v1 kamen drei weitere Freiheitsgrade und zwei Änderungen am Text-Modus daz
 - Kernel-Breite ist ein linearer Slider mit Range [0, 5], die v1-Spec nannte log-Skala [0.1, 5].
 - Der Reset-Button "Verzerrung zurücksetzen" setzt zusätzlich Chirp, Einstieg-Winkel und Brücken-Punkt auf 0.
 - URL-State (`?eps=...`) wurde nicht umgesetzt (schon im Plan als v2 markiert).
-- Undo/Redo erfasst den ganzen Zustand: Kontrollpunkte, aktive Form bzw. aktiven Text, ε/α/β/s, Einstieg-Winkel, Brücken-Punkt und Text-Stil. Ein Slider-Zug ergibt einen Eintrag (gespeichert 350 ms nach der letzten Bewegung oder vor Undo/Redo). Die Spektren werden nicht gespeichert, sondern nach der Wiederherstellung beim nächsten Regler-Zug neu berechnet. Reset löscht Form und Text samt Spektren.
+- Undo/Redo erfasst den ganzen Zustand: Kontrollpunkte, aktive Form bzw. aktiven Text, ε/α/β/s, Einstieg-Winkel, Brücken-Punkt und Text-Stil. Ein Slider-Zug ergibt einen Eintrag, solange er nicht laenger als 350 ms pausiert (gespeichert 350 ms nach der letzten Bewegung oder vor Undo/Redo); eine laengere Pause teilt den Zug in zwei Eintraege. Waehrend des Reset-Ausblendens gilt der leere Zielzustand. Die Spektren werden nicht gespeichert, sondern nach der Wiederherstellung beim nächsten Regler-Zug neu berechnet. Reset löscht Form und Text samt Spektren.
 - Die Slider sind auch im Text-Modus aktiv, nicht nur bei aktiver Form; "Erst eine Form aktivieren" gilt nicht mehr.
 
 ## Out-of-Scope (v1)

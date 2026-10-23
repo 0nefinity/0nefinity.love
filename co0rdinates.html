@@ -2044,6 +2044,9 @@
         // State für Undo/Redo
         function getControlPointsState(options = {}) {
             const { excludeDeleting = true } = options;
+            // Waehrend des Reset-Ausblendens gilt der Zielzustand (leer), nicht die halb
+            // entspannten Zwischenpunkte; Form/Text sind schon geleert.
+            if (isResetting) return snapshotState([]);
             const points = excludeDeleting
                 ? controlPoints.filter(cp => !deletingPoints.has(cp))
                 : controlPoints;
