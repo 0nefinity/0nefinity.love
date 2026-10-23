@@ -114,6 +114,22 @@ function initMenuSearch(menu, fileList) {
         filterList(fileList, query);
     }
 
+    // Eingabehilfe (π/∞-Vorschläge, pi(n)) lädt nur dort, wo sie gebraucht wird: Seiten ohne
+    // Eingabefelder laden math-notation.js nicht, die Menüsuche holt sie beim ersten Fokus nach.
+    const MATH_SRC = '/tools/math-notation.js';
+    function ensureMathNotation() {
+        if (document.querySelector(`script[src="${MATH_SRC}"]`)) return;
+        const script = document.createElement('script');
+        script.src = MATH_SRC;
+        script.onload = () => {
+            if (searchInput.value) searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        script.onerror = () => console.error(`[meta] ${MATH_SRC} konnte nicht geladen werden: Eingabehilfe der Menüsuche fehlt`);
+        document.head.appendChild(script);
+    }
+    searchInput.addEventListener('focus', ensureMathNotation, { once: true });
+    searchInput.addEventListener('input', ensureMathNotation, { once: true });
+
     let searchTimeoutId = null;
 
     searchInput.addEventListener('input', () => {

@@ -1,25 +1,41 @@
 // Dev-only Live-Reload: pollt /_devmtime.php alle 2s. Das Script liefert den
 // neuesten mtime über ALLE web-Dateien im dev-Tree → egal welche Datei du
 // änderst, der Browser reloaded. Nur aktiv auf dev.* Hostnames.
+// Fail loud: Fällt der Poll aus, meldet console.error genau einmal je Störung
+// (nicht alle 2 s) und wieder einmal, sobald der Poll zurück ist.
 (function devLiveReload() {
   if (!window.location.hostname.startsWith('dev.')) return;
   let lastStamp = null;
   let initialized = false;
+  let failing = false;
+
+  function fail(reason) {
+    if (failing) return;
+    failing = true;
+    console.error('[live-reload] ausgefallen, Seite lädt nicht mehr automatisch neu: ' + reason);
+  }
+
   async function check() {
     if (document.hidden) return;
     try {
       const res = await fetch('/_devmtime.php?_lr=' + Date.now(), { cache: 'no-store' });
-      if (!res.ok) return;
+      if (!res.ok) { fail('HTTP ' + res.status); return; }
       const stamp = (await res.text()).trim();
-      if (!stamp || stamp === '0') return;
+      if (!stamp || stamp === '0') { fail('leerer Zeitstempel von /_devmtime.php'); return; }
+      if (failing) {
+        failing = false;
+        console.warn('[live-reload] wieder erreichbar');
+      }
       if (initialized && lastStamp !== null && stamp !== lastStamp) {
         console.log('[live-reload] dev file changed → reload');
         location.reload();
         return;
       }
       lastStamp = stamp;
-    } catch (e) {}
-    initialized = true;
+      initialized = true;
+    } catch (e) {
+      fail(String(e));
+    }
   }
   document.addEventListener('visibilitychange', check);
   setInterval(check, 2000);
