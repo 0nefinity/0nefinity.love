@@ -3,7 +3,7 @@
  *
  * Nachrichten an den Worker:
  *   { type: 'init', reference: '3141...' }   Referenz-Anfang (Ziffern inkl. 3, ohne Punkt) zur Selbstprüfung
- *   { type: 'need', total: N }               mindestens N Nachkommastellen liefern
+ *   { type: 'need', total: N }               Front: N Nachkommastellen werden gebraucht, der Worker hält VORRAT mal N bereit
  *
  * Nachrichten vom Worker:
  *   { type: 'digits', from, str }            Nachkommastellen from.. (0 = erste Stelle nach dem Punkt)
@@ -19,6 +19,8 @@ let reference = '';
 let failed = false;
 let busy = false;
 let wanted = 0;
+// Vorrat: der Worker hält mindestens VORRAT mal die gemeldete Front bereit und wächst je Stufe um denselben Faktor.
+const VORRAT = 2;
 
 function bs(a, b) {
     if (b - a === 1n) {
@@ -39,21 +41,24 @@ function bs(a, b) {
     return [P1 * P2, Q1 * Q2, Q2 * T1 + P1 * T2];
 }
 
-// Newton mit Genauigkeitsverdopplung: Wurzel der oberen Hälfte der Bits, ein Newton-Schritt in voller Länge.
-// (Newton von 2^k aus rechnete ~log2(n) volle Divisionen: bei 5e5 Stellen 3,3 s von 4,5 s.)
+// Newton mit Genauigkeitsverdopplung: Wurzel der oberen Hälfte der Bits, dann ein Newton-Schritt in voller Länge.
 function isqrt(n) {
+    return isqrtBits(n, n.toString(2).length);
+}
+
+function isqrtBits(n, bits) {
     if (n < (1n << 52n)) {
         let r = BigInt(Math.floor(Math.sqrt(Number(n))));
         while (r * r > n) r--;
         while ((r + 1n) * (r + 1n) <= n) r++;
         return r;
     }
-    const s = BigInt(n.toString(2).length >> 2);
-    const a = isqrt(n >> (2n * s));
-    const x = (a + 1n) << s;
+    const s = bits >> 2;
+    const a = isqrtBits(n >> BigInt(2 * s), bits - 2 * s);
+    const x = (a + 1n) << BigInt(s);
     let y = (x + n / x) >> 1n;
-    while (y * y > n) y--;
-    while ((y + 1n) * (y + 1n) <= n) y++;
+    let d = n - y * y;
+    while (d < 0n) { d += 2n * y - 1n; y--; }
     return y;
 }
 
@@ -77,7 +82,7 @@ function work() {
     busy = true;
     try {
         while (have < wanted) {
-            const target = Math.max(wanted, have * 2, 2000);
+            const target = Math.max(wanted, have * VORRAT, 2000);
             const s = piDigits(target);
             if (reference) {
                 if (!(s.length >= reference.length ? s.startsWith(reference) : reference.startsWith(s))) {
@@ -101,7 +106,7 @@ onmessage = (ev) => {
     if (m.type === 'init') {
         reference = String(m.reference || '');
     } else if (m.type === 'need') {
-        wanted = Math.max(wanted, Math.floor(m.total) || 0);
+        wanted = Math.max(wanted, VORRAT * (Math.floor(m.total) || 0));
         work();
     }
 };
