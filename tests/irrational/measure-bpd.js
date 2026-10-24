@@ -7,6 +7,7 @@ const IDS = (process.argv[3] || 'pi,e,ln2,sqrt2,phi').split(',');
 (async () => {
     for (const id of IDS) {
         const w = createWorker();
+        w.send({ type: 'test', noReserve: true });
         w.send({ type: 'open', id });
         w.send({ type: 'want', total: N });
         const t0 = Date.now();

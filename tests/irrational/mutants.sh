@@ -18,5 +18,9 @@ m noguard a5 's/if \(z \|\| nine\) throw/if (false) throw/'
 m nohead a5 's/if \(head\[i\] !== h\[i\]\) throw/if (false) throw/'
 m bpd_pi_low a4 's/^    pi: 12,/    pi: 8,/'
 m getstr_signed a1 's/g\.mpz_get_str\(0, 10, r\) >>> 0/g.mpz_get_str(0, 10, r)/'
+m textclass a2 's/^(        )fail\(.irrational-worker: . \+ id \+ . computation failed/\1if (\/Fatal error|Maximum memory\/.test(String(e \&\& e.message))) { limit("device", "text"); return; } fail("irrational-worker: " + id + " computation failed/'
+m noreserve a2 's/if \(!p\) return false; \/\/ MUT:reserve/if (false) return false;/'
+m nocap a2 's/maxBytes\(\) - baseBytes, 2 \*\* 32 - 1/2 ** 32 - 1/'
+m doublecount a2 "s/limit\('device', 'memory\.grow failed/limit(memBytes() + estimateBytes(target) <= maxBytes() ? 'device' : 'engine', 'memory.grow failed/"
 [ $bad = 0 ] && echo "MUTANTS: alle rot" || echo "MUTANTS: FEHLER"
 exit $bad

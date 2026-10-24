@@ -12,7 +12,7 @@
  *   { type: 'open', id, intLen } Konstante waehlen ('pi' | 'e' | 'ln2' | 'sqrt2' | 'phi'), startet das Laden der Engine;
  *                               intLen = Ziffern des Ganzzahlteils im Ergebnis-String (ln2: 0), Quelle: Irrational.constants
  *   { type: 'want', total }     Stellen bis total (Nachkommastellen) anfordern, idempotent, steigend
- *   { type: 'test', ... }       nur Tests (kein Weg fuer Nutzer): maxPages, failAlloc, failOther, ballastBytes, bigintMaxBits
+ *   { type: 'test', ... }       nur Tests (kein Weg fuer Nutzer): maxPages, failReserve, gmpAbort, failOther, ballastBytes, bigintMaxBits, noReserve
  *
  * Nachrichten vom Worker:
  *   { type: 'info', mode: 'wasm'|'bigint', maxPages }
@@ -22,6 +22,10 @@
  *   { type: 'error', message }   jeder andere Fehler (laut), danach liefert der Worker nichts mehr
  *
  * Speicher: das WASM kommt aus tools/vendor/gmp-wasm/gmp-wasm-1.3.2.mini.4gib.umd.min.js (Memory-Maximum 4 GiB, siehe README dort).
+ * Grenzen: Vor jeder WASM-Stufe reserviert der Worker den geschaetzten Speicherbedarf (reserve(): malloc des Bedarfs, sofort frei;
+ * der Linearspeicher wird dabei per memory.grow vergroessert und bleibt fuer die Rechnung erhalten). Liefert malloc 0, hat memory.grow
+ * versagt: nur das ist die Geraetegrenze (kind 'device'). Jede andere Ausnahme, auch ein GMP-Abbruch ("Fatal error in gmp-wasm", das
+ * ist auch die Meldung fuer Division durch 0), ist ein Fehler (type 'error'); der Fehlertext wird nie zur Klassifikation gelesen.
  * Zeiger aus WASM sind bei Speicher > 2 GiB als i32 negativ: immer mit >>> 0 lesen.
  * Lizenz: gmp-wasm / GMP LGPL-3.0, Texte unter /tools/vendor/gmp-wasm/.
  */
@@ -62,9 +66,11 @@ let limited = false;
 let failed = false;
 let head = null;            // erste Stellen der ersten Stufe (Selbstpruefung)
 let maxPtr = 0;
+let baseBytes = 0;          // Linearspeicher nach dem Laden (nicht zurueckgebbar)
 let allocCount = 0;
+let reserveCount = 0;
 let bigFail = Infinity;
-const cfg = { maxPages: MODULE_MAX_PAGES, failAlloc: 0, failOther: false, ballastBytes: 0, bigintMaxBits: 0 };
+const cfg = { maxPages: MODULE_MAX_PAGES, failReserve: 0, gmpAbort: 0, failOther: false, ballastBytes: 0, bigintMaxBits: 0, noReserve: false };
 
 function fail(message) {
     failed = true;
@@ -103,16 +109,26 @@ function estimateBytes(digits) {
     return BYTES_PER_DIGIT[id] * (digits + GUARD) * SAFETY;
 }
 
-function isAllocFailure(e) {
-    const msg = e && e.message ? e.message : String(e);
-    return /Fatal error in gmp-wasm|out of memory|Maximum memory size|memory\.grow|allocation failed|Invalid typed array length/i.test(msg) ||
-        (e instanceof RangeError && !/BigInt/i.test(msg));
+// Speicher fuer die Stufe vorab beschaffen. false = memory.grow ist gescheitert (malloc liefert 0): Geraetegrenze.
+// Angefragt wird hoechstens, was das Modul ueberhaupt halten kann (Maximum minus Grundspeicher), damit die letzte Stufe
+// (Bedarf inkl. Sicherheitsfaktor ~ Maximum) nicht an der Engine-Grenze scheitert, sondern nur, wenn das Geraet nicht genug gibt.
+function reserve(target) {
+    if (cfg.noReserve) return true;
+    const need = Math.min(Math.ceil(estimateBytes(target)), maxBytes() - baseBytes, 2 ** 32 - 1);
+    const p = (cfg.failReserve && ++reserveCount === cfg.failReserve) ? 0 : g.malloc(need) >>> 0;
+    if (!p) return false; // MUT:reserve
+    g.free(p);
+    return true;
 }
 
 // ---------- GMP-Helfer ----------
 
 function newMpz() {
-    if (cfg.failAlloc && ++allocCount === cfg.failAlloc) throw new Error('Fatal error in gmp-wasm (injected by test)');
+    if (cfg.gmpAbort && ++allocCount === cfg.gmpAbort) { // echter GMP-Abbruch (Division durch 0), kein Speichermangel
+        const a = g.mpz_t(), z = g.mpz_t();
+        g.mpz_init(a); g.mpz_init(z);
+        g.mpz_tdiv_q(a, a, z);
+    }
     if (cfg.failOther) throw new Error('injected non-allocation failure (test)');
     const p = g.mpz_t() >>> 0;
     if (p > maxPtr) maxPtr = p;
@@ -509,6 +525,10 @@ function work() {
             }
             let buf;
             if (mode === 'wasm') {
+                if (!reserve(target)) {
+                    limit('device', 'memory.grow failed: the device does not provide about ' + Math.round(estimateBytes(target) / 2 ** 20) + ' MiB for the next stage (currently ' + Math.round(memBytes() / 2 ** 20) + ' MiB)');
+                    break;
+                }
                 buf = stageWasm(target);
             } else {
                 try {
@@ -528,15 +548,7 @@ function work() {
             postMessage({ type: 'digits', from, buf, total: have, memBytes: memBytes(), maxPtr }, [buf.buffer]);
         }
     } catch (e) {
-        if (mode === 'wasm' && isAllocFailure(e)) {
-            const cur = memBytes();
-            const req = estimateBytes(target);
-            const reason = 'allocation failed at ' + Math.round(cur / 2 ** 20) + ' MiB (' + (e && e.message ? e.message : e) + ')';
-            if (cur + req <= maxBytes()) limit('device', reason); // MUT:classify
-            else limit('engine', reason);
-        } else {
-            fail('irrational-worker: ' + id + ' computation failed: ' + (e && e.stack ? e.stack : e));
-        }
+        fail('irrational-worker: ' + id + ' computation failed: ' + (e && e.message ? e.message : String(e)) + (e && e.stack ? '\n' + e.stack : ''));
     } finally {
         busy = false;
     }
@@ -572,6 +584,7 @@ function start() {
         importScripts(BUNDLE);
         self.gmp.init().then((lib) => {
             g = lib.binding;
+            baseBytes = memBytes();
             mode = 'wasm';
             ready = true;
             info('wasm');

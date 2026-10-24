@@ -11,6 +11,7 @@ STUB_ERR = "onmessage=(e)=>{ if(e.data.type==='want') setTimeout(()=>postMessage
 M = {'nopiError_reset': ("      piError = null;\n      driftEl.disabled = false;", "      driftEl.disabled = false;"),
      'nodrift_reset': ("      driftEl.disabled = false;\n", ""),
      'nofehlerclass_reset': ("'warte', 'hinweis', 'fehler');\n      const old", "'warte', 'hinweis');\n      const old")}
+PAGE_RE = re.compile(r'/unfoldingPi(\?.*)?$')  # glob '**/unfoldingPi' greift nicht auf ?c=foo
 R = Res()
 
 
@@ -44,8 +45,8 @@ def check_running(p, name):
 
 def ctx_for(br):
     c = br.new_context(viewport={'width': 1000, 'height': 600})
-    if MUT == 'ident': route_text(c, '**/unfoldingPi', lambda t: t, 'ident')
-    elif MUT in M: mutate(c, '**/unfoldingPi', M[MUT][0], M[MUT][1], MUT)
+    if MUT == 'ident': route_text(c, PAGE_RE, lambda t: t, 'ident')
+    elif MUT in M: mutate(c, PAGE_RE, M[MUT][0], M[MUT][1], MUT)
     return c
 
 
