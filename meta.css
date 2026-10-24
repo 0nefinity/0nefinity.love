@@ -652,6 +652,23 @@ button:focus {
 .menu-search:focus:has(input:disabled) .meta-loupe-handle {
     animation: loupe-stop-handle 1.5s ease both;
 }
+/* Gedrückt halten: zweite Animation (liegt über der Tap-Animation, die darunter weiterläuft)
+   hält das Stoppschild, solange :active gilt. Beim Loslassen fällt sie weg, die Lupe
+   kehrt sofort zurück (ohne Hold-Verzögerung). */
+.menu-search:focus:active:has(input:disabled) .meta-loupe-lens {
+    animation: loupe-stop-lens 1.5s ease both, loupe-hold-lens 1s ease both;
+}
+.menu-search:focus:active:has(input:disabled) .meta-loupe-handle {
+    animation: loupe-stop-handle 1.5s ease both, loupe-hold-handle 1s ease both;
+}
+@keyframes loupe-hold-lens {
+    0% { transform: none; }
+    13%, 100% { transform: translate(134px, 0); }
+}
+@keyframes loupe-hold-handle {
+    0% { transform: translate(386.5px, 356px) rotate(-45deg); }
+    13%, 100% { transform: translate(205.7px, 49.8px) rotate(-45deg); }
+}
 @keyframes loupe-stop-lens {
     0%, 100% { transform: none; }
     9%, 62% { transform: translate(134px, 0); }
