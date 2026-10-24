@@ -147,7 +147,6 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
       curveLabels = { axes: [], ticks: [], lines: [], width: w, height: h };
-      el.canvas.dataset.labels = '';
       const cs = getComputedStyle(el.canvas);
       const col = cs.color;
       const series = [];
@@ -240,26 +239,42 @@
         ctx.stroke();
         if (sel) for (const [t, d] of r.points) { ctx.beginPath(); ctx.arc(X(t), Y(d), 2.2, 0, 7); ctx.fill(); }
       }
-      // Direktbeschriftung am Linienende, gegen Ueberlappung auseinandergeschoben
+      // Direktbeschriftung: rechts neben dem Endpunkt der eigenen Linie, gleiche Hoehe. Nur wer mit einem anderen Label
+      // kollidiert (Boxen ueberlappen in x und y), weicht senkrecht aus; dann zeigt eine duenne Linie zum Endpunkt.
+      ctx.font = (FS + 1) + 'px ' + cs.fontFamily;
       const ends = series.map(({ k, r, sel }) => {
         const [t, d] = r.points[r.points.length - 1];
-        return { k, sel, x: X(t) + 6, y: Y(d) };
-      }).sort((a, b) => a.y - b.y);
+        const tw = ctx.measureText(k.symbol).width;
+        const ex = X(t), ey = Y(d);
+        const x = Math.max(ex + 4, Math.min(ex + 6, w - 2 - tw));
+        return { k, sel, ex, ey, x, y: ey, tw };
+      }).sort((a, b) => a.ey - b.ey);
       const yLo = padT + FS / 2 + 1, yHi = padT + ph - FS / 2;
-      for (let i = 0; i < ends.length; i++) ends[i].y = Math.max(yLo, i ? ends[i - 1].y + LABEL_GAP : yLo, ends[i].y);
-      for (let i = ends.length - 1; i >= 0; i--) ends[i].y = Math.min(yHi, i < ends.length - 1 ? ends[i + 1].y - LABEL_GAP : yHi, ends[i].y);
-      ctx.font = (FS + 1) + 'px ' + cs.fontFamily;
+      const xover = (a, b) => a.x < b.x + b.tw && b.x < a.x + a.tw;
+      for (let i = 0; i < ends.length; i++) {
+        let y = Math.max(yLo, ends[i].y);
+        for (let j = 0; j < i; j++) if (xover(ends[i], ends[j])) y = Math.max(y, ends[j].y + LABEL_GAP);
+        ends[i].y = y;
+      }
+      for (let i = ends.length - 1; i >= 0; i--) {
+        let y = Math.min(yHi, ends[i].y);
+        for (let j = i + 1; j < ends.length; j++) if (xover(ends[i], ends[j])) y = Math.min(y, ends[j].y - LABEL_GAP);
+        ends[i].y = y;
+      }
       for (const e of ends) {
-        const tw = ctx.measureText(e.k.symbol).width;
-        const x = Math.min(e.x, w - 2 - tw);
-        const box = { x0: x, y0: e.y - FS / 2 - 1, x1: x + tw, y1: e.y + FS / 2 + 1 };
-        const l = { text: e.k.symbol, id: e.k.id, x, y: e.y, box, align: 'left' };
+        const color = LINE_COLORS[e.k.id] || col;
+        const box = { x0: e.x, y0: e.y - FS / 2 - 1, x1: e.x + e.tw, y1: e.y + FS / 2 + 1 };
+        const leader = Math.abs(e.y - e.ey) > 3;
+        const l = { text: e.k.symbol, id: e.k.id, x: e.x, y: e.y, box, align: 'left', endX: e.ex, endY: e.ey, leader };
         curveLabels.lines.push(l);
-        ctx.textAlign = 'left'; ctx.fillStyle = LINE_COLORS[e.k.id] || col; ctx.globalAlpha = e.sel ? 1 : 0.8;
+        if (leader) {
+          ctx.strokeStyle = color; ctx.lineWidth = 0.75; ctx.globalAlpha = 0.6;
+          ctx.beginPath(); ctx.moveTo(e.ex, e.ey); ctx.lineTo(e.x - 1, e.y); ctx.stroke();
+        }
+        ctx.textAlign = 'left'; ctx.fillStyle = color; ctx.globalAlpha = e.sel ? 1 : 0.8;
         ctx.fillText(l.text, l.x, l.y);
       }
       ctx.restore();
-      el.canvas.dataset.labels = String(curveLabels.lines.length);
     }
 
     function renderMarks() {

@@ -28,6 +28,7 @@ RewriteRule ^api/csp-report/?$ /api/csp-report.php [L,QSA]
 RewriteCond %{REQUEST_URI} !^/buyPi$
 RewriteRule ^buypi$ https://%{HTTP_HOST}/buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ https://%{HTTP_HOST}/README [R=302,L]
+RewriteRule ^foldingpi/?$ https://%{HTTP_HOST}/unfoldingPi [R=302,L,NC]
 
 # Pi-Quadrat Weiterleitung
 RewriteRule ^piquadrat/?$ https://%{HTTP_HOST}/kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]

@@ -5,7 +5,7 @@
   <script src="/tools/math-notation.js" defer></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>unfoldingPi</title>
+  <title>(un)foldingPi</title>
   <style>
     html, body { height: 100%; overflow: hidden; touch-action: none; }
     .stage {
@@ -185,7 +185,7 @@
       const u = new URL(location.href);
       u.searchParams.set('c', id);
       history.replaceState(null, '', u);
-      document.title = id === 'pi' ? 'unfoldingPi' : 'unfolding ' + symbolOf(id);
+      document.title = id === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(id);
       startWorker();
       view.rewind();
     }
@@ -193,7 +193,7 @@
     // ─── Boot ───
     startChain();
     if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
-    else if (cid !== 'pi') document.title = 'unfolding ' + symbolOf(cid);
+    else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
     panel.addSlider('d', {
       label: 'Verdichtung', min: 0, max: 400, step: 0.5, value: view.state().d, decimals: 1,

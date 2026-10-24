@@ -254,6 +254,8 @@
         L = (W - 3 * w) / 2; X0 = L + d; R = X0 + w + d;
       } else {
         if (wasDefaultD) { d = w; if (opts.onD) opts.onD(d); }
+        const cap = (W - 2 * MARGIN) / 2;
+        if (d > cap) { d = cap; if (opts.onD) opts.onD(d); }   // sonst springt R beim Wiedervergroessern nach aussen
         const dd = deff();
         X0 = L + dd - oldIdx * w;
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
@@ -347,10 +349,21 @@
     }
 
     // ─── Verdichtung ───
+    // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen, nichts springt. Was nicht passt, wird
+    // am Regler begrenzt: Eingerollt hoechstens der halbe Abstand der Enden, sonst auch noch der Platz rechts der 3.
+    // Ist nichts eingerollt, ist L unsichtbar und folgt der 3. Zeigt die Kette an die Front, rueckt nur R nach.
+    function maxD(unrolled) {
+      const cap = (W - 2 * MARGIN) / 2;
+      return Math.max(0, Math.min(cap, unrolled ? Math.min(R - X0, (R - MARGIN) / 2) : (R - L) / 2));
+    }
     function setD(v) {
-      const wasUnrolled = !rolledLeft();
-      d = Math.max(0, v);
-      settle(wasUnrolled ? 'three' : 'x');
+      const unrolled = !rolledLeft();
+      const want = Math.max(0, v);
+      d = Math.min(want, maxD(unrolled));
+      if (unrolled) L = Math.max(MARGIN, X0 - deff());
+      R = Math.min(R, X0 + avail() + deff());
+      dirty = true;
+      if (d !== want && opts.onD) opts.onD(d);   // der Regler springt auf den moeglichen Wert zurueck
     }
     function rewind() {
       X0 = L + deff();

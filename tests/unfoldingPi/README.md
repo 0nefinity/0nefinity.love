@@ -17,6 +17,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_errors.py` | Fehlerpfade mit Worker-Attrappe |
 | `test_restart.py` | Konstantenwechsel nach Fehler (`?c=foo`, Fehler mitten im Lauf): Fehler-/Grenzzustand ist zurueckgesetzt, Kette waechst, Stellen 2.71828 |
 | `test_view_module.py` | Abroll-Modul `tools/unfolding-view.js`: unfoldingPi laedt es; mit fremder Ziffernquelle auf leerer Seite (create, setDigits/appendDigits, nur sichtbares Fenster, DigitError, Sperre, Ziehen); destroy entfernt Listener und Bildschleife |
+| `test_bedienung.py` | Bedienung: Verdichtungs-Regler (P) aendert nur die Stauchzone (Start, eingerollt, d=0, Fenster klein/gross, danach die 3 ziehen) |
 | `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
@@ -47,6 +48,12 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 | view_module | nolistener | `destroy()` entfernt den Zeiger-Listener nicht |
 | view_module | noresize | `destroy()` entfernt den Resize-Listener nicht |
 | view_module | noraf | `destroy()` bricht die Bildschleife nicht ab |
+| bedienung | oldsetd | Regler geht wieder durch `settle()` und schiebt die 3 und L |
+| bedienung | noclamp | d wird nicht auf das Moegliche begrenzt (L springt) |
+| bedienung | nosnap | Regler springt bei zu grossem Wert nicht zurueck |
+| bedienung | nocapresize | Fenster klein: d bleibt ueber der Kappe, R springt beim Vergroessern |
+| bedienung | notitle | Titel wieder "unfoldingPi" |
+| bedienung | text | sichtbarer Text auf der Seite |
 | big | cap | Testhaken `failReserve:3` täuscht Speichermangel vor |
 | limits | textclass | Worker wertet "Fatal error in gmp-wasm" per Fehlertext als Speichermangel (GMP-Abbruch zeigt Hinweis) |
 | limits | noreserve | Worker meldet scheiterndes `memory.grow` nicht |
@@ -54,3 +61,13 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 `test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase im Modul `tools/unfolding-view.js`; sliderpad, sliderleft in der Seite).
 
 Nicht tötbar und deshalb nicht in der Liste: die Zeile `stage.classList.remove('warte', ...)` in `fail()`, weil `toggle('warte', !piError && ...)` dasselbe tut. Ebenso `console.warn` in `irrational.js`, weil der Worker selbst warnt.
+
+## Bedienung
+
+Spec der Bedienung von unfoldingPi (geprueft in `test_bedienung.py`, Gesten in `test_ui.py`):
+
+- Der Verdichtungs-Regler (P, Schluessel `d`) aendert nur die Breite der Stauchzonen an den Enden. Die Enden L und R sowie die Position der Ziffern (die 3) bleiben dabei stehen; nichts springt, auch nicht beim Zurueckdrehen.
+- Nicht jeder Wert passt. Ist nichts eingerollt, passt hoechstens der Platz rechts der 3 (R - X0); eingerollt hoechstens der halbe Abstand der Enden; immer hoechstens die halbe Fensterbreite. Darueber wird d begrenzt und der Regler springt auf den wirklichen Wert zurueck (er zeigt nie etwas anderes als die Ansicht). d = 0 ist erlaubt.
+- Ist nichts eingerollt, ist L unsichtbar und folgt der 3 im Abstand d. Reicht die Kette rechts nicht bis R, rueckt nur R heran, die Ziffern bleiben.
+- Wird das Fenster kleiner, wird d auf die halbe Breite begrenzt (Regler folgt); beim Vergroessern springt R nicht nach aussen.
+- Enden ziehen, die 3 ziehen und Swipen arbeiten unabhaengig vom Regler weiter und nutzen das aktuelle d. Einen Schwung nach dem Swipe gibt es nicht; Dauerlauf (Drift) und Regler stoeren sich nicht, weil der Regler nur d setzt.

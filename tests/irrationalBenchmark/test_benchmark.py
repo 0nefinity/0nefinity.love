@@ -13,6 +13,8 @@ Mutanten (MUT=...) muessen rot werden (Exit 1); Exit 3 = Muster nicht gefunden:
   noheading   Ueberschrift fehlt
   noaxistitle Achsentitel "Stellen" fehlt
   noticks     Zeit-Ticks fehlen
+  labelleft   Label steht links vom Endpunkt seiner Linie
+  noleader    ausgewichenes Label ohne Fuehrungslinie
 Aufruf: BROWSER=chromium|firefox|webkit [MUT=...] python3 tests/irrationalBenchmark/test_benchmark.py"""
 import os, sys, time, urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'unfoldingPi'))
@@ -33,6 +35,8 @@ MUTANTS = {
     'nocurve': ("result.points.push([t, total]);", ""),
     'tailonly': ("view.appendDigits(u8, offset); return true;", "view.appendDigits(u8.subarray(Math.max(0, u8.length - 64)), offset + Math.max(0, u8.length - 64)); return true;"),
     'nospread': ("const LABEL_GAP = 13;", "const LABEL_GAP = 0;"),
+    'labelleft': ("const x = Math.max(ex + 4, Math.min(ex + 6, w - 2 - tw));", "const x = ex - tw - 6;"),
+    'noleader': ("const leader = Math.abs(e.y - e.ey) > 3;", "const leader = false;"),
     'noheading': ("<h1>irrational benchmark</h1>", ""),
     'noaxistitle': ("put('Stellen', 2,", "put('', 2,"),
     'noticks': ("for (let v = step; v <= tMax; v += step) {", "for (let v = step; v <= 0; v += step) {"),
@@ -205,6 +209,8 @@ def chart_checks(p, tag, symbols, width):
     R.check('%s: Ticks liegen in der Flaeche (%d px)' % (tag, W), all(inside(t['box']) and 0 < t['x'] <= W and 0 < t['y'] < H for t in L['ticks']), None)
     got = sorted(l['text'] for l in L['lines'])
     R.check('%s: je Linie ein Label mit Symbol %s' % (tag, symbols), got == sorted(symbols), got)
+    R.check('%s: Label rechts vom Endpunkt der eigenen Linie' % tag, all(l['box']['x0'] >= l['endX'] + 3 for l in L['lines']), [(l['text'], round(l['box']['x0']), round(l['endX'])) for l in L['lines']])
+    R.check('%s: Label auf Hoehe des Endpunkts oder mit Fuehrungslinie' % tag, all(abs(l['y'] - l['endY']) <= 3 or l['leader'] for l in L['lines']), [(l['text'], round(l['y']), round(l['endY']), l['leader']) for l in L['lines']])
     allb = [(l['text'], l['box']) for l in L['lines']] + [(a['text'], a['box']) for a in L['axes']] + [(t['text'], t['box']) for t in L['ticks']]
     clash = [(a[0], b[0]) for i, a in enumerate(allb) for b in allb[i + 1:] if a[1]['x0'] < b[1]['x1'] and b[1]['x0'] < a[1]['x1'] and a[1]['y0'] < b[1]['y1'] and b[1]['y0'] < a[1]['y1']]
     R.check('%s: keine zwei Beschriftungen ueberlappen' % tag, not clash, clash)
