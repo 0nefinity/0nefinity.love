@@ -1,7 +1,7 @@
 #!/bin/bash
 # Komplette unfoldingPi-Suite in chromium, firefox, webkit gegen die Live-Seite, danach die irrational-Tests (B1).
 # test_ui (Touch per CDP) und test_license (Server, nicht Browser) laufen nur in chromium.
-# Aufruf: bash tests/unfoldingPi/run.sh   (BROWSERS="chromium" zum Eingrenzen; SKIP_B1=1 ueberspringt tests/irrational/run.sh)
+# Aufruf: bash tests/unfoldingPi/run.sh   (BROWSERS="chromium" zum Eingrenzen; SKIP_B1=1 ueberspringt tests/irrational/run.sh, SKIP_BENCH=1 tests/irrationalBenchmark/run.sh)
 cd "$(dirname "$0")" || exit 2
 export PYTHONDONTWRITEBYTECODE=1
 BROWSERS=${BROWSERS:-"chromium firefox webkit"}
@@ -15,5 +15,8 @@ for b in $BROWSERS; do
 done
 if [ -z "$SKIP_B1" ]; then
   bash ../irrational/run.sh > /tmp/unfoldingPi-b1.log 2>&1 && echo "ok   irrational/run.sh" || { echo "FAIL irrational/run.sh (Log /tmp/unfoldingPi-b1.log)"; fail=1; }
+fi
+if [ -z "$SKIP_BENCH" ]; then
+  bash ../irrationalBenchmark/run.sh > /tmp/unfoldingPi-bench.log 2>&1 && echo "ok   irrationalBenchmark/run.sh" || { echo "FAIL irrationalBenchmark/run.sh (Log /tmp/unfoldingPi-bench.log)"; fail=1; }
 fi
 exit $fail
