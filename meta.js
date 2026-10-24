@@ -57,7 +57,6 @@ function initMenuSearch(menu, fileList) {
     const searchInput = menuSearch.querySelector('input');
     if (!searchInput) return null;
 
-    menuSearch.removeAttribute('tabindex');
     searchInput.disabled = false;
     searchInput.placeholder = 'type what you want…';
     searchInput.setAttribute('aria-label', 'Menü durchsuchen');
