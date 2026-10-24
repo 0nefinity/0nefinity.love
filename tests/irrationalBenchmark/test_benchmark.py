@@ -6,14 +6,12 @@ Mutanten (MUT=...) muessen rot werden (Exit 1); Exit 3 = Muster nicht gefunden:
   errorlimit  Programmfehler wird als Grenze gezeigt
   nomark      Marken fehlen
   nocurve     Kurve bekommt keine Punkte
-  menu        (kein Seitenmutant) nicht vorhanden
 Aufruf: BROWSER=chromium|firefox|webkit [MUT=...] python3 tests/irrationalBenchmark/test_benchmark.py"""
 import os, sys, time, urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'unfoldingPi'))
 from playwright.sync_api import sync_playwright
-from common import Res, mutate
+from common import HOST, Res, mutate
 
-HOST = os.environ.get('HOST', 'https://dev.0nefinity.love')
 URL = os.environ.get('URL', HOST + '/irrational-benchmark')
 B = os.environ.get('BROWSER', 'chromium')
 MUT = os.environ.get('MUT', '')
