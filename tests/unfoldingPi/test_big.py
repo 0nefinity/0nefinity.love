@@ -1,5 +1,5 @@
 """Grosse Ketten in jedem Browser: >= TARGET Stellen korrekt, kein Fehler, Kette waechst weiter.
-BROWSER=chromium|firefox|webkit [TARGET=300000]   MUT=cap (Testhaken failAlloc:50 simuliert Speichermangel, Test muss rot werden)"""
+BROWSER=chromium|firefox|webkit [TARGET=300000]   MUT=cap (Testhaken failReserve:3 simuliert Speichermangel, Test muss rot werden)"""
 import os, time
 from playwright.sync_api import sync_playwright
 from common import *
@@ -11,7 +11,7 @@ with sync_playwright() as pw:
     br = getattr(pw, B).launch()
     c = br.new_context(viewport={'width': 1000, 'height': 600})
     if os.environ.get('MUT') == 'cap':
-        c.add_init_script('window.unfoldingPiTest={failAlloc:50};')
+        c.add_init_script('window.unfoldingPiTest={failReserve:3};')
     p = c.new_page(); errs = []
     p.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
     p.on('pageerror', lambda e: errs.append(str(e)))

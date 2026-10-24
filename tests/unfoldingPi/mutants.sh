@@ -10,7 +10,7 @@ m() { # browser test mutant
   if [ $rc = 1 ]; then echo "rot   $1 $2 MUT=$3 (wie gewollt)"; else echo "FEHLER $1 $2 MUT=$3 Exit $rc (erwartet 1)"; bad=1; fi
 }
 for b in $BROWSERS; do
-  for mu in invert always; do m $b test_limits $mu; done
+  for mu in invert always textclass noreserve; do m $b test_limits $mu; done
   for mu in norfall nonotice nowarn nohint; do m $b test_nowasm $mu; done
   for mu in notry swallow nopiError; do m $b test_errors $mu; done
   for mu in nopiError_reset nodrift_reset nofehlerclass_reset; do m $b test_restart $mu; done

@@ -101,13 +101,21 @@ mindestens 40 px breit.
   - `engine`: Rechenwerk oder Stringgrenze (4 GiB, Stringlänge, BigInt-Grenze
     der Engine). Auf der Seite steht kein Text, nur `console.warn`; die
     Anzeige bleibt stehen.
-  - `device`: das Gerät gibt keinen Speicher mehr her (Allokation scheitert).
+  - `device`: das Gerät gibt keinen Speicher mehr her. Vor jeder Stufe
+    reserviert der Worker den geschätzten Bedarf (malloc, sofort frei; der
+    Linearspeicher wächst dabei per `memory.grow`), gedeckelt auf Modul-
+    Maximum minus Grundspeicher. Scheitert dieses `memory.grow`, ist das die
+    Gerätegrenze, auch in der letzten Stufe (Bedarf etwa 4 GiB). Die Engine-
+    Grenze meldet nur die Vorabprüfung (nächste Stufe passt nicht unter 4 GiB).
     Die Seite zeigt einen winzigen grauen Hinweis auf Englisch: "use better
     hardware to get access to more digits". Annahme dahinter: ein besseres
     Gerät kommt weiter.
   Stürzt der Tab bei Speichermangel ab, lässt sich das nicht abfangen; dann
   gibt es keinen Hinweis. Alles andere meldet `error` laut (`console.error`,
-  roter Rahmen), nie still. Messung und Tests: `tests/irrational/`,
+  roter Rahmen), nie still. Der Fehlertext wird nie zur Klassifikation
+  gelesen: ein GMP-Abbruch ("Fatal error in gmp-wasm" ist auch die Meldung für
+  Division durch 0) und ein Allokationsfehler mitten in der Rechnung sind
+  Fehler, kein Hinweis. Messung und Tests: `tests/irrational/`,
   `tests/unfoldingPi/`.
 - Stufe 2 (nicht gebaut): Memory64 oder ein eigener GMP-Build ohne 4-GiB-Grenze,
   Out-of-Core über OPFS, Mehrkern, weitere Konstanten (γ, ζ(3), Catalan). Für

@@ -79,26 +79,59 @@ async function a2() {
         check('A2 engine: Maximum gesenkt -> limit kind engine', lim.type === 'limit' && lim.kind === 'engine', JSON.stringify(lim));
         check('A2 engine: digits im Limit == gelieferte Stellen und Stellen stimmen', lim.digits === digs && digs > 0 && w.digits().slice(0, 400000) === ref('pi').slice(0, Math.min(digs, 400000)), 'digits=' + digs);
     }
-    // device: Allokationsfehler injiziert, Groesse + Anforderung unter Maximum
+    // device: memory.grow scheitert (Vorab-Reservierung liefert 0), Bedarf unter dem Maximum
     {
         const w = createWorker();
-        w.send({ type: 'test', failAlloc: 50 });
+        w.send({ type: 'test', failReserve: 2 });
         w.send({ type: 'open', id: 'pi' });
         w.send({ type: 'want', total: 5000 });
+        await w.digitsUpTo(5000);
+        w.send({ type: 'want', total: 20000 });
         const lim = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
-        check('A2 device: injizierter Allokationsfehler unter Maximum -> kind device', lim.type === 'limit' && lim.kind === 'device', JSON.stringify(lim));
+        check('A2 device: grow scheitert in der zweiten Stufe -> kind device mit gelieferten Stellen', lim.type === 'limit' && lim.kind === 'device' && lim.digits > 0, JSON.stringify(lim));
         w.send({ type: 'want', total: 9000 });
         await new Promise((r) => setTimeout(r, 200));
-        check('A2 device: genau ein limit, Instanz verworfen (keine weiteren Nachrichten)', w.messages.filter((m) => m.type === 'limit').length === 1 && !w.messages.some((m) => m.type === 'digits'));
+        check('A2 device: genau ein limit, Instanz verworfen (keine weiteren Nachrichten)', w.messages.filter((m) => m.type === 'limit').length === 1 && w.messages.filter((m) => m.type === 'digits').every((m) => m.total <= lim.digits));
     }
-    // Fehler am Maximum: gleicher injizierter Fehler, aber Groesse + Anforderung > Maximum -> engine
+    // Grenzfaelle: pi-Stufe 1,43e8 (Bedarf ca. 2045 MiB) und letzte Stufe (Bedarf ca. 4 GiB): scheitert grow, ist es immer das Geraet
+    for (const [name, total] of [['pi-Stufe 1,43e8', 143000000], ['letzte Stufe (Bedarf ca. 4 GiB)', 400000000]]) {
+        const w = createWorker();
+        w.send({ type: 'test', failReserve: 1 });
+        w.send({ type: 'open', id: 'pi' });
+        w.send({ type: 'want', total });
+        const lim = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
+        check('A2 device: ' + name + ', grow scheitert -> kind device', lim.type === 'limit' && lim.kind === 'device' && lim.digits === 0, JSON.stringify(lim));
+    }
+    // Reservierung ueber echtes malloc: liefert es 0 (grow scheitert), ist es device; die Anfrage ist nie groesser als Maximum - Grundspeicher
     {
         const w = createWorker();
-        w.send({ type: 'test', failAlloc: 50, maxPages: 258 });
+        w.send({ type: 'open', id: 'pi' });
+        await w.waitFor((m) => m.type === 'info');
+        w.run('globalThis.__asked = []; (function(){ const o = g.malloc; g.malloc = function (n) { __asked.push(n); return n > 1e8 ? 0 : o.call(this, n); }; })()');
+        w.send({ type: 'want', total: 400000000 });
+        const lim = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
+        const asked = w.run('__asked');
+        const cap = w.run('maxBytes() - baseBytes');
+        check('A2 device: echtes malloc liefert 0 -> kind device; Anfrage <= Maximum - Grundspeicher und > 3,5 GiB', lim.kind === 'device' && asked.length === 1 && asked[0] <= cap && asked[0] > 3.5 * 1024 ** 3, JSON.stringify({ lim, asked, cap }));
+    }
+    // GMP-Abbruch ohne Speicherursache (Division durch 0 in GMP, Meldung "Fatal error in gmp-wasm") ist ein Fehler, kein Hinweis
+    {
+        const w = createWorker();
+        w.send({ type: 'test', gmpAbort: 50 });
         w.send({ type: 'open', id: 'pi' });
         w.send({ type: 'want', total: 5000 });
-        const lim = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
-        check('A2 engine nach Allokationsfehler: Groesse + Anforderung > Maximum', lim.type === 'limit' && lim.kind === 'engine', JSON.stringify(lim));
+        const m = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
+        check('A2 GMP-Abbruch (Division durch 0) -> type error, nicht limit', m.type === 'error' && /Fatal error in gmp-wasm/.test(m.message) && !w.messages.some((x) => x.type === 'limit'), JSON.stringify(m).slice(0, 200));
+    }
+    // Allokationsfehler waehrend der Rechnung trotz Vorab-Reservierung: ehrlich laut, kein Hinweis
+    {
+        const w = createWorker();
+        w.send({ type: 'open', id: 'pi' });
+        await w.waitFor((m) => m.type === 'info');
+        w.run('(function(){ const o = g.mpz_ui_pow_ui; g.mpz_ui_pow_ui = function () { throw new RangeError("WebAssembly.Memory.grow(): Maximum memory size exceeded"); }; })()');
+        w.send({ type: 'want', total: 5000 });
+        const m = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
+        check('A2 Allokationsfehler in der Rechnung -> type error, nicht limit', m.type === 'error' && !w.messages.some((x) => x.type === 'limit'), JSON.stringify(m).slice(0, 200));
     }
     // jeder andere Fehler -> error, nie still
     {
@@ -146,6 +179,7 @@ async function a4() {
     const N = 2000000;
     for (const id of IDS) {
         const w = createWorker();
+        w.send({ type: 'test', noReserve: true }); // echter Spitzenverbrauch, nicht die Reservierung
         const bpd = Number(w.run('BYTES_PER_DIGIT.' + id)); // Wert des geladenen Workers (auch bei IRRATIONAL_WORKER=Mutant)
         w.send({ type: 'open', id });
         w.send({ type: 'want', total: N });

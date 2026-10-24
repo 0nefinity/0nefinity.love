@@ -43,5 +43,6 @@ Median alt (`pi-digits-worker.js`) 2,13 s, neu 2,13 s, Verhaeltnis 1,00. Kein Ru
 `IRRATIONAL_WORKER=<Kopie> node tests/irrational/test_engine.js a2`, Kopien per sed aus dem Worker:
 
 - Vorabpruefung umgedreht (`target > fit` -> `target < fit`, Marke `MUT:precheck`): rot, Fall "engine vor dem Rechnen" meldet `error` statt `limit` (es wird gerechnet); der Fall mit 50 Mio. Stellen rechnet danach ohne Ende.
-- Klassifikation umgedreht (`cur + req <= maxBytes()` -> `>`, Marke `MUT:classify`): rot, "device" wird `engine` und umgekehrt (2 FAIL).
+- Reservierung ohne Wirkung (`if (!p) return false` -> `if (false)`, Marke `MUT:reserve`): rot (`noreserve`).
+- Klassifikation per Fehlertext (`textclass`), Anfrage nicht auf Maximum - Grundspeicher gedeckelt (`nocap`), Doppelzaehlung `memBytes() + Bedarf <= Maximum` (`doublecount`): je rot in `a2`; alle vier laufen in `mutants.sh`.
 Der unveraenderte Worker: ALL PASS.

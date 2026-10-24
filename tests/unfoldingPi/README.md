@@ -18,7 +18,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
-Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) wird an `Irrational.open` gereicht, z. B. `{failAlloc:50}` (device) oder `{maxPages:262}` (engine bei etwa 1,14e6 Stellen pi).
+Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) wird an `Irrational.open` gereicht, z. B. `{failReserve:3}` (device: die Vorab-Reservierung der dritten Stufe liefert 0, also scheitert `memory.grow`), `{gmpAbort:50}` (echter GMP-Abbruch durch Division durch 0: muss roten Fehler zeigen, nie den Hinweis) oder `{maxPages:262}` (engine bei etwa 1,14e6 Stellen pi).
 
 ## Mutanten
 
@@ -38,7 +38,9 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 | restart | nopiError_reset | `startWorker()` setzt `piError` nicht zurueck |
 | restart | nodrift_reset | Drift bleibt nach Neustart gesperrt |
 | restart | nofehlerclass_reset | Fehlerrahmen bleibt nach Neustart |
-| big | cap | Testhaken `failAlloc:50` täuscht Speichermangel vor |
+| big | cap | Testhaken `failReserve:3` täuscht Speichermangel vor |
+| limits | textclass | Worker wertet "Fatal error in gmp-wasm" per Fehlertext als Speichermangel (GMP-Abbruch zeigt Hinweis) |
+| limits | noreserve | Worker meldet scheiterndes `memory.grow` nicht |
 
 `test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase, sliderpad, sliderleft).
 
