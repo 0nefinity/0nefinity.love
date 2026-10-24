@@ -627,55 +627,47 @@ button:focus {
 /* Lupen-Teile. Transforms um die jeweilige Glyph-Mitte (fill-box). Die
    Rückweg-Transition ist langsam + mit Delay → nach einem Klick/Tap klingt das
    Stoppschild sichtbar ab (statt nur während des Haltens da zu sein). */
+/* Lupen-Teile. Pose = Funktion von --loupe-on (0 = Lupe, 1 = Stoppschild); die Bewegung
+   ist eine Transition und läuft deshalb immer vom AKTUELLEN Wert weiter (nie ein Sprung,
+   auch nicht bei Tap mitten im Rückweg). */
+@property --loupe-on {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+
 .meta-loupe-lens,
 .meta-loupe-handle {
     transform-box: fill-box;
     transform-origin: center;
-    transition: transform 0.45s ease 0.18s; /* Rückweg: langsam, mit Delay */
+    transition: transform 0.45s ease; /* Rückweg */
 }
 
-/* Ruhezustand: Linse bleibt an Pfadposition; Stiel '1' als Lupengriff. */
+.meta-loupe-lens {
+    transform: translate(calc(134px * var(--loupe-on)), 0);
+}
+
 .meta-loupe-handle {
-    transform: translate(386.5px, 356px) rotate(-45deg);
+    /* Ruhezustand: Stiel '1' als Lupengriff. Stoppschild: STRICH-Mitte der '1' auf
+       Kreis-Mitte der '0' → Schräg-Strich exakt mittig durch den Kreis. */
+    transform: translate(calc(386.5px + (205.7px - 386.5px) * var(--loupe-on)),
+                         calc(356px + (49.8px - 356px) * var(--loupe-on))) rotate(-45deg);
 }
 
-/* ⊘-Stoppschild bei Tap aufs deaktivierte Suchfeld (no-JS), einmalig: rein, kurz halten,
-   zurück zur Lupe. Trigger ist :focus auf dem tabindex-Wrapper (deaktivierte Inputs
-   fokussieren nicht; :active endet beim Loslassen und würde die Animation abbrechen).
-   0 UND 1 konvergieren in die Mitte des Icon-Quadrats; die '1' liegt als −45°-Diagonale
-   exakt mittig durch die '0' (STRICH-Mitte der '1' auf Kreis-Mitte der '0'). Ein weiterer Tap
-   auf den schon fokussierten Wrapper spielt ohne JS nicht neu; nach Tap woanders oder
-   Menü zu/auf wieder. */
-.menu-search:focus:has(input:disabled) .meta-loupe-lens {
-    animation: loupe-stop-lens 1.5s ease both;
+/* ⊘-Stoppschild bei Tap/Halten aufs deaktivierte Suchfeld (no-JS). --loupe-on springt beim
+   Andrücken sofort auf 1 und fällt erst 0.4s NACH dem Loslassen auf 0 zurück (Transition
+   mit Delay auf der Zahl): ein kurzer Tap fährt so komplett hinein, hält kurz und gleitet
+   zurück; Halten hält das Schild; ein neuer Tap fährt von der aktuellen Position erneut hinein. */
+.menu-search {
+    transition: --loupe-on 0s 0.4s;
 }
-.menu-search:focus:has(input:disabled) .meta-loupe-handle {
-    animation: loupe-stop-handle 1.5s ease both;
+.menu-search:has(input:disabled:active) {
+    --loupe-on: 1;
+    transition: --loupe-on 0s 0s;
 }
-/* Gedrückt halten: zweite Animation (liegt über der Tap-Animation, die darunter weiterläuft)
-   hält das Stoppschild, solange :active gilt. Beim Loslassen fällt sie weg, die Lupe
-   kehrt sofort zurück (ohne Hold-Verzögerung). */
-.menu-search:focus:active:has(input:disabled) .meta-loupe-lens {
-    animation: loupe-stop-lens 1.5s ease both, loupe-hold-lens 1s ease both;
-}
-.menu-search:focus:active:has(input:disabled) .meta-loupe-handle {
-    animation: loupe-stop-handle 1.5s ease both, loupe-hold-handle 1s ease both;
-}
-@keyframes loupe-hold-lens {
-    0% { transform: none; }
-    13%, 100% { transform: translate(134px, 0); }
-}
-@keyframes loupe-hold-handle {
-    0% { transform: translate(386.5px, 356px) rotate(-45deg); }
-    13%, 100% { transform: translate(205.7px, 49.8px) rotate(-45deg); }
-}
-@keyframes loupe-stop-lens {
-    0%, 100% { transform: none; }
-    9%, 62% { transform: translate(134px, 0); }
-}
-@keyframes loupe-stop-handle {
-    0%, 100% { transform: translate(386.5px, 356px) rotate(-45deg); }
-    9%, 62% { transform: translate(205.7px, 49.8px) rotate(-45deg); }
+.menu-search:has(input:disabled:active) .meta-loupe-lens,
+.menu-search:has(input:disabled:active) .meta-loupe-handle {
+    transition: transform 0.13s ease;
 }
 
 /* Menü-Such-Lupe: 0+1-Konstrukt (quadratischer viewBox + preserveAspectRatio)
@@ -698,12 +690,7 @@ button:focus {
 }
 
 /* Disabled-Suchfeld: gleiche Optik, kleinere Schrift für längeren Placeholder */
-.menu-search:focus {
-    outline: none;
-}
-
 .menu-search input[type="search"]:disabled {
-    pointer-events: none; /* Tap landet auf dem fokussierbaren Wrapper */
     cursor: not-allowed;
     font-size: 13px;
 }
