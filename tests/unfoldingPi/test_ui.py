@@ -15,11 +15,12 @@ MUTANTS = {
   'sliderpad': ("padding: 1rem 1rem calc(3.5rem + env(safe-area-inset-bottom, 0px));", "padding: 1rem;"),
   'sliderleft': ("@media (min-width: 1200px) {", "@media (min-width: 1200px) { .slider-row { padding-left: 31rem; } "),
 }
+MODULE_MUTANTS = ('revstop', 'nolost', 'norebase')   # der Code liegt in tools/unfolding-view.js, nicht in der Seite
 MUT = os.environ.get('MUT')
 def mk(br, **kw):
     c = br.new_context(**kw)
     if MUT:
-        mutate(c, '**/unfoldingPi', *MUTANTS[MUT], label=MUT)
+        mutate(c, '**/tools/unfolding-view.js' if MUT in MODULE_MUTANTS else '**/unfoldingPi', *MUTANTS[MUT], label=MUT)
     return c
 
 PI = ref('pi')[:3000]

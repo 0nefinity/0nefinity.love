@@ -17,7 +17,7 @@ with sync_playwright() as pw:
     c = br.new_context(viewport={'width': 1000, 'height': 600})
     c.route('**/irrational-worker.js', lambda r: r.fulfill(body=STUB_A4, content_type='application/javascript'))
     if MUT == 'notry':
-        mutate(c, '**/unfoldingPi', ["      try {\n        const have = chain.length - 2;", "      } catch (e) {\n        if (e instanceof RangeError) {"], ["      if (true) {\n        const have = chain.length - 2;", "      } else {\n        if (e instanceof RangeError) {"], 'notry')
+        mutate(c, '**/unfoldingPi', ["      try {\n        view.appendDigits(u8, offset);", "      } catch (e) {\n        if (e instanceof RangeError) {"], ["      if (true) {\n        view.appendDigits(u8, offset);", "      } else {\n        if (e instanceof RangeError) {"], 'notry')
     if MUT == 'swallow':
         mutate(c, '**/unfoldingPi', "fail('Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));", "", 'swallow')
     p = c.new_page(); errs = []

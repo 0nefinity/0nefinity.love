@@ -15,6 +15,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_nowasm.py` | Rückfall auf BigInt ohne WebAssembly: Hinweisrahmen, `console.warn`; Firefox/WebKit enden bei 96000 Stellen als engine-Grenze |
 | `test_errors.py` | Fehlerpfade mit Worker-Attrappe |
 | `test_restart.py` | Konstantenwechsel nach Fehler (`?c=foo`, Fehler mitten im Lauf): Fehler-/Grenzzustand ist zurueckgesetzt, Kette waechst, Stellen 2.71828 |
+| `test_view_module.py` | Abroll-Modul `tools/unfolding-view.js`: unfoldingPi laedt es; mit fremder Ziffernquelle auf leerer Seite (create, setDigits/appendDigits, nur sichtbares Fenster, DigitError, Sperre, Ziehen); destroy entfernt Listener und Bildschleife |
 | `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
@@ -38,10 +39,13 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 | restart | nopiError_reset | `startWorker()` setzt `piError` nicht zurueck |
 | restart | nodrift_reset | Drift bleibt nach Neustart gesperrt |
 | restart | nofehlerclass_reset | Fehlerrahmen bleibt nach Neustart |
+| view_module | nolistener | `destroy()` entfernt den Zeiger-Listener nicht |
+| view_module | noresize | `destroy()` entfernt den Resize-Listener nicht |
+| view_module | noraf | `destroy()` bricht die Bildschleife nicht ab |
 | big | cap | Testhaken `failReserve:3` täuscht Speichermangel vor |
 | limits | textclass | Worker wertet "Fatal error in gmp-wasm" per Fehlertext als Speichermangel (GMP-Abbruch zeigt Hinweis) |
 | limits | noreserve | Worker meldet scheiterndes `memory.grow` nicht |
 
-`test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase, sliderpad, sliderleft).
+`test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase im Modul `tools/unfolding-view.js`; sliderpad, sliderleft in der Seite).
 
 Nicht tötbar und deshalb nicht in der Liste: die Zeile `stage.classList.remove('warte', ...)` in `fail()`, weil `toggle('warte', !piError && ...)` dasselbe tut. Ebenso `console.warn` in `irrational.js`, weil der Worker selbst warnt.
