@@ -472,14 +472,14 @@ button:focus {
     bottom: 0;
     right: var(--menu-effective-width);
     z-index: 0;
-    pointer-events: none; /* Scroll geht durch zum Body; Klick-außerhalb macht JS */
 }
 
-/* Ohne JS schließt das Label den Checkbox-Hack: Klick außerhalb des Menüs genügt */
-@media (scripting: none) {
-    .menu-toggle-input:checked ~ .menu-backdrop {
-        pointer-events: auto;
-    }
+/* Klick-außerhalb schließt über das Label (Checkbox-Hack). Läuft meta.js, setzt es .open
+   und übernimmt das Schließen selbst; dann lässt das Backdrop Scroll/Touch zum Body durch.
+   Nicht über @media (scripting: none) steuern: Chrome meldet "enabled", wenn JS nur per
+   Website-Einstellung blockiert ist. */
+.menu.open .menu-backdrop {
+    pointer-events: none;
 }
 
 /* Wrapper für den Button - erlaubt Text-Selektion */
@@ -639,20 +639,26 @@ button:focus {
     transform: translate(386.5px, 356px) rotate(-45deg);
 }
 
-/* ⊘-Stoppschild bei Klick/Tap aufs deaktivierte Suchfeld (no-JS): 0 UND 1
-   konvergieren in die Mitte des Icon-Quadrats und bilden ein exakt zentriertes
-   Stoppschild — die '1' liegt als −45°-Diagonale exakt mittig durch die '0'.
-   Hinweg schnell, damit auch ein kurzer Tap das Schild voll formt. */
-.menu-search:has(input:disabled:active) .meta-loupe-lens {
-    transform: translate(134px, 0);
-    transition: transform 0.13s ease 0s;
+/* ⊘-Stoppschild bei Tap aufs deaktivierte Suchfeld (no-JS), einmalig: rein, kurz halten,
+   zurück zur Lupe. Trigger ist :focus auf dem tabindex-Wrapper (deaktivierte Inputs
+   fokussieren nicht; :active endet beim Loslassen und würde die Animation abbrechen).
+   0 UND 1 konvergieren in die Mitte des Icon-Quadrats; die '1' liegt als −45°-Diagonale
+   exakt mittig durch die '0' (STRICH-Mitte der '1' auf Kreis-Mitte der '0'). Ein weiterer Tap
+   auf den schon fokussierten Wrapper spielt ohne JS nicht neu; nach Tap woanders oder
+   Menü zu/auf wieder. */
+.menu-search:focus:has(input:disabled) .meta-loupe-lens {
+    animation: loupe-stop-lens 1.5s ease both;
 }
-.menu-search:has(input:disabled:active) .meta-loupe-handle {
-    /* nicht die Bbox-Mitte, sondern die STRICH-Mitte der '1' landet exakt auf
-       der Kreis-Mitte der '0' (die Fahne versetzt die Bbox-Mitte sonst ~50u
-       schräg) → Schräg-Strich genau mittig durch den Kreis. */
-    transform: translate(205.7px, 49.8px) rotate(-45deg);
-    transition: transform 0.13s ease 0s;
+.menu-search:focus:has(input:disabled) .meta-loupe-handle {
+    animation: loupe-stop-handle 1.5s ease both;
+}
+@keyframes loupe-stop-lens {
+    0%, 100% { transform: none; }
+    9%, 62% { transform: translate(134px, 0); }
+}
+@keyframes loupe-stop-handle {
+    0%, 100% { transform: translate(386.5px, 356px) rotate(-45deg); }
+    9%, 62% { transform: translate(205.7px, 49.8px) rotate(-45deg); }
 }
 
 /* Menü-Such-Lupe: 0+1-Konstrukt (quadratischer viewBox + preserveAspectRatio)
@@ -675,7 +681,12 @@ button:focus {
 }
 
 /* Disabled-Suchfeld: gleiche Optik, kleinere Schrift für längeren Placeholder */
+.menu-search:focus {
+    outline: none;
+}
+
 .menu-search input[type="search"]:disabled {
+    pointer-events: none; /* Tap landet auf dem fokussierbaren Wrapper */
     cursor: not-allowed;
     font-size: 13px;
 }
