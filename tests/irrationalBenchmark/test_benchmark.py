@@ -9,6 +9,10 @@ Mutanten (MUT=...) muessen rot werden (Exit 1); Exit 3 = Muster nicht gefunden:
   tailonly    Ansicht bekommt nur den Tail statt aller Stellen
   nocouple    Konstantenwechsel koppelt die Ansicht nicht um
   alliter     Renderer der Ansicht laeuft ueber alle Stellen statt ueber das Fenster (Modul-Mutant)
+  nospread    Linienbeschriftungen weichen einander nicht aus
+  noheading   Ueberschrift fehlt
+  noaxistitle Achsentitel "Stellen" fehlt
+  noticks     Zeit-Ticks fehlen
 Aufruf: BROWSER=chromium|firefox|webkit [MUT=...] python3 tests/irrationalBenchmark/test_benchmark.py"""
 import os, sys, time, urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'unfoldingPi'))
@@ -28,6 +32,10 @@ MUTANTS = {
     'nomark': ("if (!result.marks.some(", "if (false && !result.marks.some("),
     'nocurve': ("result.points.push([t, total]);", ""),
     'tailonly': ("view.appendDigits(u8, offset); return true;", "view.appendDigits(u8.subarray(Math.max(0, u8.length - 64)), offset + Math.max(0, u8.length - 64)); return true;"),
+    'nospread': ("const LABEL_GAP = 13;", "const LABEL_GAP = 0;"),
+    'noheading': ("<h1>irrational benchmark</h1>", ""),
+    'noaxistitle': ("put('Stellen', 2,", "put('', 2,"),
+    'noticks': ("for (let v = step; v <= tMax; v += step) {", "for (let v = step; v <= 0; v += step) {"),
     'nocouple': ("      coupleView(id);\n      result = load(id);", "      result = load(id);"),
 }
 MODULE_MUTANTS = {
@@ -49,8 +57,8 @@ def wait_for(p, cond, timeout):
     return False
 
 
-def page(br, init=None):
-    c = br.new_context(viewport={'width': 1000, 'height': 800})
+def page(br, init=None, width=1000):
+    c = br.new_context(viewport={'width': width, 'height': 800})
     if init:
         c.add_init_script(init)
     if MUT in MUTANTS:
@@ -174,6 +182,68 @@ def run_view(br):
     c.close()
 
 
+def seed(ids):
+    import json
+    pts = [[50 * (i + 1), int(10 ** (1 + i / 2.0))] for i in range(1, 9)]
+    js = ''
+    for i in ids:
+        r = {'constant': i, 'algorithm': 'x', 'digits': pts[-1][1], 'startedAt': '2026-01-01T00:00:00Z', 'elapsedMs': pts[-1][0], 'marks': [], 'points': pts, 'tail': '', 'tailFrom': 0, 'end': 'stopped', 'limit': None, 'error': None}
+        js += "localStorage.setItem('irrationalBenchmark.v1.%s', %s);" % (i, json.dumps(json.dumps(r)))
+    return js
+
+
+def chart_checks(p, tag, symbols, width):
+    L = p.evaluate('window.irrationalBenchmark.labels()')
+    W, H = L['width'], L['height']
+    inside = lambda b: b['x0'] >= 0 and b['y0'] >= 0 and b['x1'] <= W and b['y1'] <= H
+    R.check('%s: Achsentitel Stellen und Zeit' % tag, sorted(a['text'] for a in L['axes']) == ['Stellen', 'Zeit'], L['axes'])
+    xt = [t for t in L['ticks'] if t['axis'] == 'x']
+    yt = [t for t in L['ticks'] if t['axis'] == 'y']
+    R.check('%s: Zeit-Ticks vorhanden, Werte und Lage steigen' % tag, len(xt) >= 1 and all(a['value'] < b['value'] and a['x'] < b['x'] for a, b in zip(xt, xt[1:])), xt)
+    R.check('%s: Stellen-Ticks vorhanden (<= 4), Werte steigen, Lage faellt' % tag, 1 <= len(yt) <= 4 and all(a['value'] < b['value'] and a['y'] > b['y'] for a, b in zip(yt, yt[1:])), yt)
+    R.check('%s: Tick-Text kurz' % tag, all(len(t['text']) <= 7 for t in L['ticks']), [t['text'] for t in L['ticks']])
+    R.check('%s: Ticks liegen in der Flaeche (%d px)' % (tag, W), all(inside(t['box']) and 0 < t['x'] <= W and 0 < t['y'] < H for t in L['ticks']), None)
+    got = sorted(l['text'] for l in L['lines'])
+    R.check('%s: je Linie ein Label mit Symbol %s' % (tag, symbols), got == sorted(symbols), got)
+    allb = [(l['text'], l['box']) for l in L['lines']] + [(a['text'], a['box']) for a in L['axes']] + [(t['text'], t['box']) for t in L['ticks']]
+    clash = [(a[0], b[0]) for i, a in enumerate(allb) for b in allb[i + 1:] if a[1]['x0'] < b[1]['x1'] and b[1]['x0'] < a[1]['x1'] and a[1]['y0'] < b[1]['y1'] and b[1]['y0'] < a[1]['y1']]
+    R.check('%s: keine zwei Beschriftungen ueberlappen' % tag, not clash, clash)
+    R.check('%s: alle Beschriftungen innerhalb des Canvas' % tag, all(inside(b) for _, b in allb), None)
+    sw = p.evaluate('document.documentElement.scrollWidth')
+    R.check('%s: kein Horizontal-Scroll' % tag, sw <= width, sw)
+
+
+def run_chart(br):
+    for width in (1000, 360):
+        c, p, reqs, errs = page(br, seed(['pi', 'e']), width)
+        chart_checks(p, 'chart seed %d px' % width, ['π', 'e'], width)
+        c.close()
+    c, p, reqs, errs = page(br, seed(['pi', 'e', 'ln2', 'sqrt2', 'phi']), 360)
+    chart_checks(p, 'chart 5 Linien 360 px', ['π', 'e', 'ln 2', '√2', 'φ'], 360)
+    c.close()
+    c, p, reqs, errs = page(br, None, 360)
+    run_until(p, 5000)
+    p.click('#consts button[data-id="e"]')
+    run_until(p, 5000)
+    chart_checks(p, 'chart Lauf pi und e 360 px', ['π', 'e'], 360)
+    R.check('chart: keine Konsolenfehler', not errs, errs[:2])
+    c.close()
+
+
+def run_heading(br):
+    c, p, reqs, errs = page(br)
+    h = p.evaluate("(()=>{const h=document.querySelector('h1'); return h?{t:h.innerText,f:getComputedStyle(h).fontFamily,s:getComputedStyle(h).fontSize,v:h.getBoundingClientRect().height>0}:null})()")
+    p.goto(HOST + '/where-is-01')
+    ref_h = p.evaluate("(()=>{const h=document.querySelector('h1'); return {f:getComputedStyle(h).fontFamily,s:getComputedStyle(h).fontSize}})()")
+    R.check('Ueberschrift "irrational benchmark" sichtbar', h is not None and h['t'].strip() == 'irrational benchmark' and h['v'], h)
+    R.check('Ueberschrift im meta.css-Stil (Schriftfamilie wie where-is-01, nicht groesser als dort)', h is not None and h['f'] == ref_h['f'] and float(h['s'][:-2]) <= float(ref_h['s'][:-2]), (h, ref_h))
+    p.goto(HOST + '/unfoldingPi')
+    p.wait_for_timeout(500)
+    n = p.evaluate("[...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(e=>e.getBoundingClientRect().height>0&&e.innerText.trim()).length")
+    R.check('unfoldingPi.html ohne sichtbare Ueberschrift', n == 0, n)
+    c.close()
+
+
 RENDER_PATCH = """(() => {
   if (window.__render) return;
   const cr = CanvasRenderingContext2D.prototype.clearRect, di = CanvasRenderingContext2D.prototype.drawImage;
@@ -269,6 +339,8 @@ with sync_playwright() as pw:
     R.check('Neustart nach Stopp rechnet neu', wait_for(p, lambda s: s['running'] and s['digits'] > 0 and s['digits'] < s1['digits'] + 1 and len(s['marks']) == 0, 30), state(p)['end'])
     p.click('#go')
     c.close()
+    run_heading(br)
+    run_chart(br)
     run_view(br)
     run_frames(br)
     # Grenzen und Fehler

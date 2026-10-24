@@ -2,7 +2,8 @@
 
 Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (Playwright Python, Chromium, Firefox, WebKit). Die Dateien sind sofort live, es gibt keinen Build.
 
-    bash tests/unfoldingPi/run.sh        # alles, danach tests/irrational/run.sh
+    bash tests/unfoldingPi/run.sh        # alles, danach tests/irrational/run.sh und tests/irrationalBenchmark/run.sh
+    SKIP_BENCH=1 bash tests/unfoldingPi/run.sh   # ohne Benchmark-Suite (SKIP_B1=1: ohne tests/irrational)
     BROWSERS=chromium bash tests/unfoldingPi/run.sh
     bash tests/unfoldingPi/mutants.sh    # jeder Mutant muss rot werden
 
@@ -20,6 +21,10 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
 Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) wird an `Irrational.open` gereicht, z. B. `{failReserve:3}` (device: die Vorab-Reservierung der dritten Stufe liefert 0, also scheitert `memory.grow`), `{gmpAbort:50}` (echter GMP-Abbruch durch Division durch 0: muss roten Fehler zeigen, nie den Hinweis) oder `{maxPages:262}` (engine bei etwa 1,14e6 Stellen pi).
+
+## Benchmark-Suite
+
+`run.sh` startet am Ende `tests/irrationalBenchmark/run.sh` (Seite `irrational-benchmark`: Lauf, Ansicht, Diagramm-Beschriftung, Ueberschrift; `unfoldingPi.html` bleibt ohne Ueberschriftentext, geprueft dort). Log: `/tmp/unfoldingPi-bench.log`, Einzellogs `/tmp/irrationalBenchmark-<browser>.log`. Mutanten: `tests/irrationalBenchmark/mutants.sh`.
 
 ## Mutanten
 
