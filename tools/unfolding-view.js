@@ -40,8 +40,22 @@
     const colorEl = opts.colorElement || canvas;
     const decoder = new TextDecoder('latin1');
 
-    // Die Kette ist ein String: Ganzzahl, ".", Nachkommastellen. Index 0 = Ganzzahl.
-    let chain = String(opts.intPart === undefined ? '0' : opts.intPart) + '.' + (opts.decimals || '');
+    // Die Kette liegt als Bytes (ASCII): Ganzzahl, ".", Nachkommastellen. Index 0 = Ganzzahl. Kein String: keine Stringgrenze,
+    // ein Byte je Stelle; chainLen zaehlt die belegten Bytes, buf waechst durch Verdoppeln.
+    let buf = new Uint8Array(64), chainLen = 0;
+    function setChain(intPart, decimals) {
+      const head = String(intPart) + '.' + (decimals || '');
+      if (buf.length < head.length) buf = new Uint8Array(Math.max(head.length, 64));
+      for (let i = 0; i < head.length; i++) buf[i] = head.charCodeAt(i);
+      chainLen = head.length;
+    }
+    function reserve(n) {
+      if (n <= buf.length) return;
+      const nb = new Uint8Array(Math.max(n, buf.length * 2));
+      nb.set(buf.subarray(0, chainLen));
+      buf = nb;
+    }
+    setChain(opts.intPart === undefined ? '0' : opts.intPart, opts.decimals);
     // ─── Zustand ───
     // L, R: Bildschirmpositionen der Enden; X0: lineare Position (linke Kante) von Zeichen 0; d: Verdichtungsdistanz.
     let W = 0, H = 0, dpr = 1, S = 40, w = 24;
@@ -58,7 +72,7 @@
 
     const deff = () => Math.max(0, Math.min(d, (W - 2 * MARGIN) / 2));
     const startIdx = () => (L + deff() - X0) / w;            // Index des ersten linear sichtbaren Zeichens
-    const avail = () => Math.max(0, chain.length - 2) * w;   // Länge aller Nachkommastellen
+    const avail = () => Math.max(0, chainLen - 2) * w;   // Länge aller Nachkommastellen
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
     function refreshColor() {
@@ -68,19 +82,23 @@
 
     // ─── Ziffern ───
     function setDigits(intPart, decimals) {
-      chain = String(intPart) + '.' + (decimals || '');
+      setChain(intPart, decimals);
       dirty = true;
     }
     function appendDigits(u8, offset) {
-      const have = chain.length - 2;
+      if (!(u8 instanceof Uint8Array)) throw new TypeError('appendDigits erwartet ein Uint8Array');
+      const have = chainLen - 2;
       if (offset > have) throw new DigitError('Luecke in den Stellen bei ' + have);
       const skip = have - offset;
       if (skip > 0) {
         const ov = Math.min(skip, u8.length);
-        if (decoder.decode(u8.subarray(0, ov)) !== chain.slice(2 + offset, 2 + offset + ov)) throw new DigitError('Stellen widersprechen den bekannten Stellen');
+        for (let k = 0; k < ov; k++) if (u8[k] !== buf[2 + offset + k]) throw new DigitError('Stellen widersprechen den bekannten Stellen');
       }
       if (skip >= u8.length) return;
-      chain += decoder.decode(u8.subarray(skip));
+      const add = u8.length - skip;
+      reserve(chainLen + add);
+      buf.set(u8.subarray(skip), chainLen);
+      chainLen += add;
       dirty = true;
     }
 
@@ -187,10 +205,10 @@
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
       const K = stackCount(dd);
       const iLo = Math.max(0, iLinLo - 1 - K);
-      const iHi = Math.min(chain.length - 1, iLinHi + 1 + K);
+      const iHi = Math.min(chainLen - 1, iLinHi + 1 + K);
       // Die Ansicht meldet nur die echte Front; den Vorrat darüber legt der Besitzer fest.
       if (opts.onNeedDigits) opts.onNeedDigits(iLinHi + 2 + K + 100);
-      if (opts.onFront) opts.onFront(iLinHi >= chain.length - 3);
+      if (opts.onFront) opts.onFront(iLinHi >= chainLen - 3);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       let n = 0;
@@ -201,7 +219,7 @@
         const dw = Math.max(nat, inkMin);
         let cx = (xa + xb) / 2;
         cx = Math.max(Ld + dw / 2, Math.min(Rd - dw / 2, cx));
-        const g = atlas[chain[i]];
+        const g = atlas[String.fromCharCode(buf[i])];
         if (!g) continue;
         let wDev = dw * dpr, xDev = (cx - dw / 2) * dpr;
         if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
@@ -370,7 +388,7 @@
       setDigits, appendDigits, rewind, setD, destroy, refreshColor,
       setLocked(b) { locked = !!b; },
       invalidate() { dirty = true; },
-      digits() { return chain; },
+      digits() { return decoder.decode(buf.subarray(0, chainLen)); },
       state() {
         const dd = deff();
         const startIndex = Math.max(0, startIdx());
@@ -380,7 +398,7 @@
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,
-          chainLength: chain.length,
+          chainLength: chainLen,
           inkTop: atlas ? inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,   // null bis zum ersten Bild
           inkBottom: atlas ? inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,
           minInk: minInk(),

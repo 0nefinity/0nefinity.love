@@ -145,7 +145,7 @@
       } catch (e) {
         if (e instanceof RangeError) {
           // V8-Stringgrenze: Rechenwerk-Grenze, kein Text, die Anzeige bleibt stehen.
-          const digits = view.digits().length - 2;
+          const digits = view.state().chainLength - 2;
           console.warn('[unfoldingPi] engine limit: string length at ' + digits + ' digits');
           limitState = { kind: 'engine', reason: 'string length', digits };
           stage.classList.remove('warte');
