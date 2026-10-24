@@ -117,9 +117,9 @@ async function a2() {
         const lim = await w.waitFor((m) => m.type === 'limit' || m.type === 'error', 120000);
         const asked = w.run('__asked');
         const cap = MAXP * 65536 - base;
-        check('A2 device: echtes malloc liefert 0 -> kind device; zwei Versuche, beide <= Maximum - Grundspeicher, der erste nahe daran, der zweite kleiner',
-            lim.kind === 'device' && asked.length === 2 && asked[0] <= cap && asked[0] > 0.9 * cap && asked[1] < asked[0], JSON.stringify({ lim, asked, cap }));
-        check('A2 device: Reason nennt die tatsaechlich angefragte Menge (zweiter Versuch)', lim.reason.includes('about ' + Math.round(asked[1] / 2 ** 20) + ' MiB for'), lim.reason);
+        check('A2 device: echtes malloc liefert 0 -> kind device; genau ein Versuch <= Maximum - Grundspeicher, nahe daran',
+            lim.kind === 'device' && asked.length === 1 && asked[0] <= cap && asked[0] > 0.9 * cap, JSON.stringify({ lim, asked, cap }));
+        check('A2 device: Reason nennt die tatsaechlich angefragte Menge ', lim.reason.includes('about ' + Math.round(asked[0] / 2 ** 20) + ' MiB for'), lim.reason);
     }
     // Frischer Worker: die Reservierung fuer die groesste Stufe gelingt mit dem ersten Versuch (kein device-Limit, wenn malloc echt ist);
     // der Grundspeicher fliesst in die Obergrenze ein, sonst wuerde 2^32-1 angefragt und der erste Versuch scheitern
@@ -143,22 +143,23 @@ async function a2() {
         const after = w.run('(function(){ const p = g.malloc(8) >>> 0; g.free(p); return p; })()');
         check('A2 reserve gibt frei: Heap-Anfang nach der Reservierung wie vorher', ok === true && before > 0 && after === before, JSON.stringify({ ok, before, after }));
     }
-    // Zwei Versuche: scheitert nur der erste (mit Sicherheitsfaktor), kommt die Stufe; scheitern beide, ist es device
+    // Gestufter Lauf (e: 1e6, dann 4e6): die Reservierung der zweiten Stufe deckt deren gemessenen Spitzenbedarf (Linearspeicher waechst
+    // waehrend der Stufe nicht mehr als 5 %). Ohne Sicherheitsfaktor in der Schaetzung waechst er hier um ca. 26 %.
     {
         const w = createWorker();
-        w.send({ type: 'test', failReserve: 1, failTries: 1 });
-        w.send({ type: 'open', id: 'pi' });
-        w.send({ type: 'want', total: 5000 });
-        const s = await w.digitsUpTo(5000);
-        check('A2 erster Versuch scheitert, zweiter gelingt -> kein Limit, Stellen kommen', s.slice(0, 5000) === ref('pi').slice(0, 5000) && !w.messages.some((m) => m.type === 'limit' || m.type === 'error'), JSON.stringify(w.messages.find((m) => m.type === 'limit' || m.type === 'error') || ''));
+        w.send({ type: 'open', id: 'e' });
+        await w.waitFor((m) => m.type === 'info');
+        const [reserved, peak] = w.run('(function(){ reserve(1000000); stageWasm(1000000); reserve(4000000); const m0 = memBytes(); stageWasm(4000000); return [m0, memBytes()]; })()');
+        check('A2 gestufte Stufe: reservierter Speicher deckt den Spitzenbedarf der Stufe (Wachstum <= 5 %)', peak <= reserved * 1.05, JSON.stringify({ reserved, peak, growth: +(peak / reserved - 1).toFixed(3) }));
     }
+    // Scheitert die Reservierung (ein Versuch mit Sicherheitsfaktor), ist es device
     {
         const w = createWorker();
         w.send({ type: 'test', failReserve: 1 });
         w.send({ type: 'open', id: 'pi' });
         w.send({ type: 'want', total: 5000 });
         const lim = await w.waitFor((m) => m.type === 'limit' || m.type === 'error');
-        check('A2 beide Versuche scheitern -> device', lim.type === 'limit' && lim.kind === 'device', JSON.stringify(lim));
+        check('A2 Reservierung scheitert -> device', lim.type === 'limit' && lim.kind === 'device', JSON.stringify(lim));
         check('A2 device-Reason kleiner Stufe: sinnvolle Einheit, kein "about 0 MiB"', /about \d+ KiB for/.test(lim.reason) && !/about 0 MiB/.test(lim.reason), lim.reason);
     }
     // GMP-Abbruch ohne Speicherursache (Division durch 0 in GMP, Meldung "Fatal error in gmp-wasm") ist ein Fehler, kein Hinweis

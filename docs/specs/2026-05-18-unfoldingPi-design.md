@@ -104,11 +104,7 @@ mindestens 40 px breit.
   - `device`: das Gerät gibt keinen Speicher mehr her. Vor jeder Stufe
     reserviert der Worker den geschätzten Bedarf (malloc, sofort frei; der
     Linearspeicher wächst dabei per `memory.grow`), gedeckelt auf Modul-
-    Maximum minus Grundspeicher. Zwei Versuche: erst der Bedarf mit
-    Sicherheitsfaktor (etwa das 1,4-fache des gemessenen Spitzenbedarfs), bei
-    Misserfolg der gemessene Bedarf ohne Faktor; gelingt nur der zweite, wird
-    die Stufe gerechnet (scheitert sie dann mittendrin, ist es ein lauter
-    Fehler). Scheitern beide, ist das die Gerätegrenze (der Grund nennt die
+    Maximum minus Grundspeicher. Ein Versuch mit dem Bedarf inklusive Sicherheitsfaktor 1,25 (etwa das 1,4-fache des gemessenen Spitzenbedarfs der einstufigen Messung); die Reservierung rechnet bewusst mit diesem Faktor, weil gestufte Läufe mehr brauchen als die einstufige Messung; der Hinweis kann deshalb eine Stufe zu früh kommen, das ist gewollt, weil ein roter Abbruch mitten in der Stufe schlechter wäre. Scheitert er, ist das die Gerätegrenze (der Grund nennt die
     zuletzt tatsächlich angefragte Menge in KiB oder MiB, nie "0 MiB"),
     auch in der letzten Stufe (Bedarf etwa 4 GiB). Die Engine-Grenze meldet nur die Vorabprüfung (nächste Stufe passt nicht unter 4 GiB).
     Die Seite zeigt einen winzigen grauen Hinweis auf Englisch: "use better

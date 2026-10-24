@@ -12,7 +12,7 @@
  *   { type: 'open', id, intLen } Konstante waehlen ('pi' | 'e' | 'ln2' | 'sqrt2' | 'phi'), startet das Laden der Engine;
  *                               intLen = Ziffern des Ganzzahlteils im Ergebnis-String (ln2: 0), Quelle: Irrational.constants
  *   { type: 'want', total }     Stellen bis total (Nachkommastellen) anfordern, idempotent, steigend
- *   { type: 'test', ... }       nur Tests (kein Weg fuer Nutzer): maxPages, failReserve (Stufe n), failTries (so viele Versuche der Stufe scheitern, Standard 2), gmpAbort, failOther, ballastBytes, bigintMaxBits, noReserve
+ *   { type: 'test', ... }       nur Tests (kein Weg fuer Nutzer): maxPages, failReserve (Stufe n), gmpAbort, failOther, ballastBytes, bigintMaxBits, noReserve
  *
  * Nachrichten vom Worker:
  *   { type: 'info', mode: 'wasm'|'bigint', maxPages }
@@ -22,8 +22,8 @@
  *   { type: 'error', message }   jeder andere Fehler (laut), danach liefert der Worker nichts mehr
  *
  * Speicher: das WASM kommt aus tools/vendor/gmp-wasm/gmp-wasm-1.3.2.mini.4gib.umd.min.js (Memory-Maximum 4 GiB, siehe README dort).
- * Grenzen: Vor jeder WASM-Stufe reserviert der Worker den geschaetzten Speicherbedarf (reserve(): malloc des Bedarfs mit Sicherheitsfaktor, scheitert das, des gemessenen Bedarfs ohne; sofort frei;
- * der Linearspeicher wird dabei per memory.grow vergroessert und bleibt fuer die Rechnung erhalten). Liefert auch der zweite Versuch 0, hat memory.grow
+ * Grenzen: Vor jeder WASM-Stufe reserviert der Worker den geschaetzten Speicherbedarf (reserve(): ein malloc des Bedarfs mit Sicherheitsfaktor, sofort frei;
+ * der Linearspeicher wird dabei per memory.grow vergroessert und bleibt fuer die Rechnung erhalten). Liefert es 0, hat memory.grow
  * versagt: nur das ist die Geraetegrenze (kind 'device'). Jede andere Ausnahme, auch ein GMP-Abbruch ("Fatal error in gmp-wasm", das
  * ist auch die Meldung fuer Division durch 0), ist ein Fehler (type 'error'); der Fehlertext wird nie zur Klassifikation gelesen.
  * Zeiger aus WASM sind bei Speicher > 2 GiB als i32 negativ: immer mit >>> 0 lesen.
@@ -71,7 +71,7 @@ let allocCount = 0;
 let reserveCount = 0;
 let askedBytes = 0;         // zuletzt in reserve() angefragte Menge
 let bigFail = Infinity;
-const cfg = { maxPages: MODULE_MAX_PAGES, failReserve: 0, failTries: 2, gmpAbort: 0, failOther: false, ballastBytes: 0, bigintMaxBits: 0, noReserve: false };
+const cfg = { maxPages: MODULE_MAX_PAGES, failReserve: 0, gmpAbort: 0, failOther: false, ballastBytes: 0, bigintMaxBits: 0, noReserve: false };
 
 function fail(message) {
     failed = true;
@@ -110,33 +110,23 @@ function estimateBytes(digits) {
     return BYTES_PER_DIGIT[id] * (digits + GUARD) * SAFETY;
 }
 
-// malloc und sofort frei: der Linearspeicher wird dabei per memory.grow vergroessert und bleibt fuer die Rechnung erhalten.
-function allocOk(bytes, inject) {
-    const p = inject ? 0 : g.malloc(bytes) >>> 0;
-    if (!p) return false; // MUT:reserve
-    g.free(p);
-    return true;
-}
-
 function fmtBytes(bytes) {
     return bytes >= 2 ** 20 ? Math.round(bytes / 2 ** 20) + ' MiB' : Math.max(1, Math.round(bytes / 1024)) + ' KiB';
 }
 
 // Speicher fuer die Stufe vorab beschaffen. false = memory.grow ist gescheitert (malloc liefert 0): Geraetegrenze.
-// Zwei Versuche: erst der Bedarf mit Sicherheitsfaktor, dann der gemessene Bedarf ohne (ein Geraet zwischen beiden soll nicht zu frueh
-// den Hinweis bekommen). Angefragt wird hoechstens, was das Modul ueberhaupt halten kann (Maximum minus Grundspeicher), damit die letzte
-// Stufe (Bedarf inkl. Sicherheitsfaktor ~ Maximum) nicht an der Engine-Grenze scheitert, sondern nur, wenn das Geraet nicht genug gibt.
+// Bewusst nur ein Versuch mit Sicherheitsfaktor: gestufte Laeufe brauchen mehr als die einstufige Messung, ein Nachversuch ohne Faktor
+// wuerde den echten Bedarf nicht decken. Angefragt wird hoechstens, was das Modul ueberhaupt halten kann (Maximum minus Grundspeicher),
+// damit die letzte Stufe (Bedarf inkl. Sicherheitsfaktor ~ Maximum) nicht an der Engine-Grenze scheitert, sondern nur, wenn das Geraet nicht genug gibt.
 function reserve(target) {
     if (cfg.noReserve) return true;
     const stage = ++reserveCount;
     const cap = Math.min(maxBytes() - baseBytes, 2 ** 32 - 1);
-    const attempts = [estimateBytes(target), BYTES_PER_DIGIT[id] * (target + GUARD)];
-    for (let i = 0; i < attempts.length; i++) {
-        askedBytes = Math.min(Math.ceil(attempts[i]), cap);
-        const injected = cfg.failReserve === stage && i < cfg.failTries;
-        if (allocOk(askedBytes, injected)) return true;
-    }
-    return false;
+    askedBytes = Math.min(Math.ceil(estimateBytes(target)), cap);
+    const p = cfg.failReserve === stage ? 0 : g.malloc(askedBytes) >>> 0;
+    if (!p) return false; // MUT:reserve
+    g.free(p);
+    return true;
 }
 
 // ---------- GMP-Helfer ----------
