@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>irrational benchmark</title>
+  <style>
+    body { background: var(--bg-color); color: var(--text-color); }
+    .bench { box-sizing: border-box; max-width: 38rem; margin: 0 auto; padding: 5rem 1.25rem 4rem; display: flex; flex-direction: column; gap: 1.6rem; }
+    .consts { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+    .consts button, .go {
+      font: inherit; color: var(--text-color); background: transparent;
+      border: 1px solid var(--ui-border); border-radius: 0.5rem; cursor: pointer;
+      min-width: 3.2rem; min-height: 2.75rem; padding: 0 1rem;
+    }
+    .consts button[aria-pressed="true"] { border-color: var(--ui-border-strong); background: var(--ui-border-soft); }
+    .consts button:disabled { cursor: default; opacity: 0.4; }
+    .consts button:hover:not(:disabled), .go:hover { border-color: var(--ui-border-strong); }
+    .consts button:focus-visible, .go:focus-visible { outline: 2px solid var(--ui-border-strong); outline-offset: 2px; }
+    .algo { text-align: center; font-size: 0.8rem; opacity: 0.5; margin: 0; }
+    .count { text-align: center; font-size: clamp(2rem, 9vw, 3.6rem); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; line-height: 1.1; }
+    .count small { display: block; font-size: 0.8rem; opacity: 0.5; letter-spacing: 0; margin-top: 0.4rem; }
+    .time { text-align: center; font-variant-numeric: tabular-nums; opacity: 0.7; margin-top: -1rem; }
+    .go { align-self: center; min-width: 9rem; min-height: 3rem; }
+    canvas { width: 100%; height: 11rem; display: block; border-top: 1px solid var(--ui-border-soft); border-bottom: 1px solid var(--ui-border-soft); }
+    .marks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.4rem 1.5rem; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+    .marks li { display: flex; justify-content: space-between; border-bottom: 1px solid var(--ui-border-soft); padding-bottom: 0.2rem; }
+    .marks li span:first-child { opacity: 0.55; }
+    .limit { text-align: center; font-size: 0.9rem; margin: 0; }
+    .limit small { display: block; margin-top: 0.3rem; font-size: 0.75rem; opacity: 0.5; }
+    .error { text-align: center; font-size: 0.9rem; color: #e5484d; border: 1px solid #e5484d; border-radius: 0.5rem; padding: 0.75rem 1rem; margin: 0; overflow-wrap: anywhere; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="bench" id="bench">
+    <div class="consts" id="consts" role="group" aria-label="Konstante"></div>
+    <p class="algo" id="algo"></p>
+    <div class="count" id="count">0<small>Nachkommastellen</small></div>
+    <div class="time" id="time">0.00 s</div>
+    <button class="go" id="go" type="button">Start</button>
+    <canvas id="curve" aria-label="Stellen über Zeit"></canvas>
+    <ul class="marks" id="marks"></ul>
+    <p class="limit" id="limit" hidden></p>
+    <p class="error" id="error" role="alert" hidden></p>
+  </main>
+
+  <script src="/tools/irrational.js"></script>
+  <script>
+  (() => {
+    'use strict';
+
+    const CONSTS = Irrational.constants;
+    const STORE = 'irrationalBenchmark.v1';
+    const TAIL = 64;
+    const $ = (id) => document.getElementById(id);
+    const el = { consts: $('consts'), algo: $('algo'), count: $('count'), time: $('time'), go: $('go'), canvas: $('curve'), marks: $('marks'), limit: $('limit'), error: $('error') };
+    const ctx = el.canvas.getContext('2d');
+
+    // Ergebnisobjekt: Grundlage fuer eine spaetere serverseitig geprueftes Ranking (Stufe 2); bleibt lokal.
+    // end: 'running' | 'stopped' | 'limit' | 'error'
+    let cid = CONSTS[0].id;
+    let result = null;
+    let handle = null;
+    let t0 = 0;
+    let tail = '';
+    let tailOffset = 0;
+
+    const constOf = (id) => CONSTS.find((k) => k.id === id);
+    const now = () => performance.now() - t0;
+
+    function fmtTime(ms) {
+      const s = ms / 1000;
+      if (s < 60) return s.toFixed(2) + ' s';
+      const m = Math.floor(s / 60), r = Math.floor(s % 60);
+      if (m < 60) return m + ':' + String(r).padStart(2, '0') + ' min';
+      return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') + ':' + String(r).padStart(2, '0') + ' h';
+    }
+    const fmtInt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+    function save(r) {
+      try { localStorage.setItem(STORE + '.' + r.constant, JSON.stringify(r)); }
+      catch (e) { console.warn('[irrationalBenchmark] Ergebnis nicht gespeichert: ' + e.message); }
+    }
+    function load(id) {
+      let raw = null;
+      try { raw = localStorage.getItem(STORE + '.' + id); } catch (e) { console.warn('[irrationalBenchmark] Speicher nicht lesbar: ' + e.message); }
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (e) { console.warn('[irrationalBenchmark] gespeichertes Ergebnis unlesbar: ' + e.message); return null; }
+    }
+
+    function newResult(id) {
+      return { constant: id, algorithm: constOf(id).algorithm, digits: 0, startedAt: new Date().toISOString(), elapsedMs: 0, marks: [], points: [], tail: '', tailFrom: 0, end: 'running', limit: null, error: null };
+    }
+
+    // ─── Zeichnen ───
+    function drawCurve() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = el.canvas.clientWidth, h = el.canvas.clientHeight;
+      if (el.canvas.width !== Math.round(w * dpr)) el.canvas.width = Math.round(w * dpr);
+      if (el.canvas.height !== Math.round(h * dpr)) el.canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const col = getComputedStyle(el.canvas).color;
+      const pts = result ? result.points : [];
+      if (!pts.length) return;
+      const padL = 8, padR = 12, padT = 12, padB = 12;
+      const tMax = Math.max(1, result.end === 'running' ? now() : result.elapsedMs, pts[pts.length - 1][0]);
+      const yMin = Math.log10(Math.max(1, pts[0][1]) / 2), yMax = Math.log10(Math.max(10, pts[pts.length - 1][1])) + 0.15;
+      const X = (t) => padL + (t / tMax) * (w - padL - padR);
+      const Y = (d) => h - padB - ((Math.log10(Math.max(1, d)) - yMin) / (yMax - yMin)) * (h - padT - padB);
+      ctx.save();
+      ctx.strokeStyle = col; ctx.fillStyle = col;
+      ctx.globalAlpha = 0.12; ctx.lineWidth = 1;
+      for (let k = Math.ceil(yMin); k <= yMax; k++) {
+        const y = Math.round(Y(Math.pow(10, k))) + 0.5;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      }
+      ctx.globalAlpha = 0.85; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      pts.forEach(([t, d], i) => { if (i) ctx.lineTo(X(t), Y(d)); else ctx.moveTo(X(t), Y(d)); });
+      ctx.stroke();
+      for (const [t, d] of pts) { ctx.beginPath(); ctx.arc(X(t), Y(d), 2.2, 0, 7); ctx.fill(); }
+      ctx.restore();
+    }
+
+    function renderMarks() {
+      el.marks.textContent = '';
+      for (const m of result ? result.marks : []) {
+        const li = document.createElement('li');
+        const a = document.createElement('span'); a.textContent = '10' + String(m.exp).split('').map((c) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[c]).join('');
+        const b = document.createElement('span'); b.textContent = fmtTime(m.ms);
+        li.append(a, b);
+        el.marks.appendChild(li);
+      }
+    }
+
+    function render() {
+      const running = result && result.end === 'running';
+      for (const b of el.consts.children) { b.setAttribute('aria-pressed', String(b.dataset.id === cid)); b.disabled = !!running; }
+      el.algo.textContent = constOf(cid).algorithm;
+      el.count.firstChild.nodeValue = fmtInt(result ? result.digits : 0);
+      el.time.textContent = fmtTime(result ? (running ? now() : result.elapsedMs) : 0);
+      el.go.textContent = running ? 'Stopp' : 'Start';
+      const lim = result && result.end === 'limit' ? result.limit : null;
+      el.limit.hidden = !lim;
+      if (lim) {
+        el.limit.textContent = '';
+        const main = document.createTextNode(fmtInt(lim.digits) + ' Stellen: ' + (lim.kind === 'device' ? 'Grenze des Geräts (Speicher)' : 'Grenze des Browsers'));
+        const small = document.createElement('small'); small.textContent = lim.reason;
+        el.limit.append(main, small);
+      }
+      el.error.hidden = !(result && result.end === 'error');
+      if (result && result.end === 'error') el.error.textContent = 'Fehler: ' + result.error.split('\n')[0];
+      renderMarks();
+      drawCurve();
+    }
+
+    // ─── Lauf ───
+    function finish(end) {
+      if (!result || result.end !== 'running') return;
+      result.end = end;
+      result.elapsedMs = now();
+      result.tail = tail.slice(-TAIL);
+      result.tailFrom = Math.max(tailOffset, result.digits - result.tail.length);
+      if (handle) { handle.close(); handle = null; }
+      save(result);
+      render();
+    }
+
+    function onDigits(u8, offset) {
+      if (!result || result.end !== 'running') return;
+      const total = offset + u8.length;
+      const keep = u8.subarray(Math.max(0, u8.length - TAIL));
+      tail = new TextDecoder('latin1').decode(keep);
+      tailOffset = total - keep.length;
+      result.digits = total;
+      const t = now();
+      result.points.push([t, total]);
+      for (let exp = 5; Math.pow(10, exp) <= total; exp++) {
+        if (!result.marks.some((m) => m.exp === exp)) result.marks.push({ exp, digits: Math.pow(10, exp), reached: total, ms: t });
+      }
+      render();
+      if (handle) handle.want(total + 1);   // naechste Stufe; der Worker verdoppelt selbst
+    }
+
+    function start() {
+      if (handle) { handle.close(); handle = null; }
+      result = newResult(cid);
+      tail = ''; tailOffset = 0;
+      t0 = performance.now();
+      try {
+        handle = Irrational.open(cid, {
+          onDigits,
+          onLimit: (lim) => { if (result.end === 'running') { result.limit = { kind: lim.kind, reason: lim.reason, digits: lim.digits }; finish('limit'); } },
+          onNotice: (msg) => console.warn('[irrationalBenchmark] ' + msg),
+          onError: (e) => { if (result.end === 'running') { result.error = e.message; finish('error'); } },
+        }, window.irrationalBenchmarkTest);
+      } catch (e) {
+        result.error = e.message; finish('error'); return;
+      }
+      render();
+      handle.want(1);
+    }
+
+    function select(id) {
+      if (result && result.end === 'running') return;
+      cid = id;
+      result = load(id);
+      render();
+    }
+
+    // ─── Boot ───
+    for (const k of CONSTS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.id = k.id; b.textContent = k.symbol; b.title = k.name;
+      b.addEventListener('click', () => select(k.id));
+      el.consts.appendChild(b);
+    }
+    el.go.addEventListener('click', () => { if (result && result.end === 'running') finish('stopped'); else start(); });
+    setInterval(() => { if (result && result.end === 'running') { el.time.textContent = fmtTime(now()); drawCurve(); } }, 250);
+    window.addEventListener('resize', drawCurve);
+    result = load(cid);
+    render();
+
+    // Nur lesende Zustandsabfrage fuer Tests.
+    window.irrationalBenchmark = {
+      state() {
+        return JSON.parse(JSON.stringify({
+          constant: cid, running: !!result && result.end === 'running',
+          end: result ? result.end : 'idle', digits: result ? result.digits : 0,
+          marks: result ? result.marks : [], points: result ? result.points : [],
+          limit: result ? result.limit : null, error: result ? result.error : null,
+          elapsedMs: result ? (result.end === 'running' ? now() : result.elapsedMs) : 0,
+          tail: result ? (result.end === 'running' ? tail.slice(-TAIL) : result.tail) : '',
+        }));
+      },
+    };
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
