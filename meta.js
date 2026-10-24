@@ -57,6 +57,7 @@ function initMenuSearch(menu, fileList) {
     const searchInput = menuSearch.querySelector('input');
     if (!searchInput) return null;
 
+    menuSearch.removeAttribute('tabindex');
     searchInput.disabled = false;
     searchInput.placeholder = 'type what you want…';
     searchInput.setAttribute('aria-label', 'Menü durchsuchen');
@@ -173,18 +174,42 @@ if (menu && menuButton && menuToggle) {
 
     const search = initMenuSearch(menu, fileList);
 
+    // Zurück-Taste schließt das Menü: offen = ein History-Eintrag {menu:true}.
+    // Jedes Schließen ohne Zurück-Taste nimmt den Eintrag per history.back() wieder weg,
+    // damit weder verwaiste Einträge noch Doppel-Zurück entstehen.
+    let pendingBack = false;
+
+    function showMenu(open) {
+        menuToggle.checked = open;
+        menu.classList.toggle('open', open);
+        document.body.classList.toggle('menu-open', open);
+        if (!open && search) search.reset();
+    }
+
     function openMenu() {
-        menuToggle.checked = true;
-        menu.classList.add('open');
-        document.body.classList.add('menu-open');
+        if (pendingBack || menu.classList.contains('open')) return;
+        showMenu(true);
+        history.pushState({ menu: true }, '');
     }
 
     function closeMenu() {
-        menuToggle.checked = false;
-        menu.classList.remove('open');
-        document.body.classList.remove('menu-open');
-        if (search) search.reset();
+        if (!menu.classList.contains('open')) return;
+        showMenu(false);
+        if (history.state && history.state.menu) {
+            pendingBack = true;
+            // Fallback, falls kein popstate kommt (z. B. Eintrag schon weg)
+            setTimeout(() => { pendingBack = false; }, 400);
+            history.back();
+        }
     }
+
+    window.addEventListener('popstate', () => {
+        pendingBack = false;
+        showMenu(!!(history.state && history.state.menu));
+    });
+
+    // Seite kommt mit Menü-Eintrag zurück (Zurück von der Folgeseite, Reload): Zustand angleichen
+    if (history.state && history.state.menu) showMenu(true);
 
     function toggleMenu(focusSearch) {
         if (menu.classList.contains('open')) {
@@ -212,6 +237,10 @@ if (menu && menuButton && menuToggle) {
     }
     document.addEventListener('click', closeMenuIfOutside);
     document.addEventListener('touchend', closeMenuIfOutside);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeMenu();
+    });
 
     window.addEventListener('wheel', (event) => {
         if (event.ctrlKey || event.metaKey) return;
