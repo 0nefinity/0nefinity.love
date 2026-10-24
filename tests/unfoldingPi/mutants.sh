@@ -14,6 +14,7 @@ for b in $BROWSERS; do
   for mu in norfall nonotice nowarn nohint; do m $b test_nowasm $mu; done
   for mu in notry swallow nopiError; do m $b test_errors $mu; done
   for mu in nopiError_reset nodrift_reset nofehlerclass_reset; do m $b test_restart $mu; done
+  for mu in nolistener noresize noraf; do m $b test_view_module $mu; done
   m $b test_big cap
 done
 bash ../irrational/mutants.sh || bad=1
