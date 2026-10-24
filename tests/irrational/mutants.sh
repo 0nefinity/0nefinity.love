@@ -23,8 +23,8 @@ m noreserve a2 's/if \(!p\) return false; \/\/ MUT:reserve/if (false) return fal
 m nocap a2 's/maxBytes\(\) - baseBytes, 2 \*\* 32 - 1/2 ** 32 - 1/'
 m doublecount a2 "s/limit\('device', 'memory\.grow failed/limit(memBytes() + estimateBytes(target) <= maxBytes() ? 'device' : 'engine', 'memory.grow failed/"
 m nobase a2 '/^            baseBytes = memBytes\(\);$/d'
-m nofree a2 '/^function allocOk/,/^}/s/g\.free\(p\);//'
-m noretry a2 's/i < attempts\.length/i < 1/'
+m nofree a2 '/^function reserve/,/^}/s/g\.free\(p\);//'
+m nosafety a2 's/BYTES_PER_DIGIT\[id\] \* \(digits \+ GUARD\) \* SAFETY/BYTES_PER_DIGIT[id] * (digits + GUARD)/'
 m oldreason a2 's/fmtBytes\(askedBytes\)/(Math.round(estimateBytes(target) \/ 2 ** 20) + " MiB")/'
 [ $bad = 0 ] && echo "MUTANTS: alle rot" || echo "MUTANTS: FEHLER"
 exit $bad
