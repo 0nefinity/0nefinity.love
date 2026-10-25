@@ -37,34 +37,58 @@ applyTabTitle();
 
 // ─── Favicon: das rotierende 0 1 ∞ der Startseite ───
 // Geometrie wie drawFrameWithAngle in 0nefinity.js (Radius 30 %, Zeichen 25 %, ≡ 23 % auf den Kanten), weiß auf transparent wie /favicon.ico.
-// Tempo bewusst konstant: die Startseite fährt Auto-Speed-Rampen in °/Frame, die bei 20 fps als Alias nur flackern würden.
-const FAVICON_SIZE = 64;
-const FAVICON_FRAME_MS = 50;
-const FAVICON_DEG_PER_SEC = 60;
-function drawFaviconFrame(ctx, angleDeg) {
-    const radius = FAVICON_SIZE * 0.30;
-    const labels = ['0', '1', '∞'];
-    const vertices = labels.map((_, i) => {
-        const theta = (angleDeg + i * 360 / labels.length) * Math.PI / 180;
-        return { x: radius * Math.cos(theta), y: radius * Math.sin(theta) };
-    });
+// Tempo konstant (°/s aus der verstrichenen Zeit, nicht pro Frame): die Startseite fährt Auto-Speed-Rampen in °/Frame, die im Tab nur flackern würden.
+// 32 px = native Größe eines 16-px-Tab-Icons auf 2x-Displays und ~4x billigeres toDataURL pro Frame als 64 px; das Einlesen des Streams ist der Engpass, nicht das Zeichnen.
+// Test: ?favfps=<1-120> deckelt die Bildrate, ?favspeed=<°/s> ändert das Tempo; beides bleibt im Tab (sessionStorage).
+const FAVICON_SIZE = 32;
+const FAVICON_DEFAULT_DEG_PER_SEC = 60;
+function favParam(name, min, max, fallback) {
+    let raw = null;
+    try {
+        const url = new URL(location.href);
+        const fromUrl = url.searchParams.get(name);
+        if (fromUrl !== null) sessionStorage.setItem(name, fromUrl);
+        raw = sessionStorage.getItem(name);
+    } catch (err) {
+        console.error('meta.js: ' + name + ' nicht aus sessionStorage lesbar/schreibbar', err);
+    }
+    if (raw === null || raw.trim() === '') return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < min || value > max) {
+        console.error('meta.js: ' + name + '=' + raw + ' ungültig (erlaubt ' + min + ' bis ' + max + '), Standard ' + fallback + ' bleibt');
+        return fallback;
+    }
+    return value;
+}
+const FAVICON_LABELS = ['0', '1', '∞'];
+const FAVICON_RADIUS = FAVICON_SIZE * 0.30;
+const FAVICON_FONT_LABEL = `bold ${FAVICON_SIZE * 0.25}px Verdana`;
+const FAVICON_FONT_EDGE = `bold ${FAVICON_SIZE * 0.23}px Verdana`;
+const FAVICON_STEP = 2 * Math.PI / FAVICON_LABELS.length;
+function drawFaviconFrame(ctx, angleRad) {
     ctx.clearRect(0, 0, FAVICON_SIZE, FAVICON_SIZE);
     ctx.save();
     ctx.translate(FAVICON_SIZE / 2, FAVICON_SIZE / 2);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `bold ${FAVICON_SIZE * 0.25}px Verdana`;
-    vertices.forEach((v, i) => ctx.fillText(labels[i], v.x, v.y));
-    ctx.font = `bold ${FAVICON_SIZE * 0.23}px Verdana`;
-    vertices.forEach((v, i) => {
-        const next = vertices[(i + 1) % vertices.length];
+    ctx.font = FAVICON_FONT_LABEL;
+    for (let i = 0; i < 3; i++) {
+        const theta = angleRad + i * FAVICON_STEP;
+        ctx.fillText(FAVICON_LABELS[i], FAVICON_RADIUS * Math.cos(theta), FAVICON_RADIUS * Math.sin(theta));
+    }
+    ctx.font = FAVICON_FONT_EDGE;
+    for (let i = 0; i < 3; i++) {
+        const t0 = angleRad + i * FAVICON_STEP;
+        const t1 = t0 + FAVICON_STEP;
+        const x0 = FAVICON_RADIUS * Math.cos(t0), y0 = FAVICON_RADIUS * Math.sin(t0);
+        const x1 = FAVICON_RADIUS * Math.cos(t1), y1 = FAVICON_RADIUS * Math.sin(t1);
         ctx.save();
-        ctx.translate((v.x + next.x) / 2, (v.y + next.y) / 2);
-        ctx.rotate(Math.atan2(next.y - v.y, next.x - v.x));
+        ctx.translate((x0 + x1) / 2, (y0 + y1) / 2);
+        ctx.rotate(Math.atan2(y1 - y0, x1 - x0));
         ctx.fillText('≡', 0, 0);
         ctx.restore();
-    });
+    }
     ctx.restore();
 }
 function startFaviconAnimation() {
@@ -78,14 +102,19 @@ function startFaviconAnimation() {
         console.error('meta.js: Favicon-Animation nicht möglich, kein 2d-Canvas; statisches Icon bleibt');
         return;
     }
+    const fps = favParam('favfps', 1, 120, 0);
+    const minFrameMs = fps ? 1000 / fps : 0;
+    const radPerMs = favParam('favspeed', -1e6, 1e6, FAVICON_DEFAULT_DEG_PER_SEC) * Math.PI / 180 / 1000;
+    link.type = 'image/png';
+    link.removeAttribute('sizes');
+    let start = null;
     let last = -Infinity;
     function tick(now) {
         requestAnimationFrame(tick);
-        if (now - last < FAVICON_FRAME_MS) return;
+        if (start === null) start = now;
+        if (now - last < minFrameMs - 1) return;
         last = now;
-        drawFaviconFrame(ctx, (now * FAVICON_DEG_PER_SEC / 1000) % 360);
-        link.type = 'image/png';
-        link.removeAttribute('sizes');
+        drawFaviconFrame(ctx, (now - start) * radPerMs);
         link.href = canvas.toDataURL('image/png');
     }
     requestAnimationFrame(tick);
