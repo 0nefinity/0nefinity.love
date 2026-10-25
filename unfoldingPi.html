@@ -23,35 +23,11 @@
     /* Hinweis nur bei Geraetegrenze: klein, gedaempft, ohne Interaktion. */
     .limit-hint { position: absolute; top: 0.75rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; font-size: 0.7rem; color: var(--text-color); opacity: 0.45; pointer-events: none; }
     #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
-    /* Der Daumen sitzt in Ruhe immer in der Bildschirmmitte: Zeile symmetrisch, keine einseitige Einrückung.
-       Das controls.js-Panel (unten links) liegt unter 1200 px in der Slider-Höhe im Weg, deshalb steht die Zeile
-       dort über dem eingeklappten Panel (Mobil: Peek-Leiste 44 px, Desktop: 81 px). */
-    .slider-row {
-      width: 100%; box-sizing: border-box;
-      padding: 1rem 1rem calc(3.5rem + env(safe-area-inset-bottom, 0px));
-      display: flex; justify-content: center;
-    }
-    .slider-row input[type="range"] { flex: 0 1 auto; width: min(28rem, 90vw); }
-    @media (min-width: 769px) and (max-width: 1199px) { .slider-row { padding-bottom: 6.5rem; } }
-    @media (min-width: 1200px) {
-      .slider-row { padding-bottom: 1rem; }
-      .slider-row input[type="range"] { width: min(28rem, calc(100vw - 64rem)); }
-      /* Breites Panel (zwei Reihen nebeneinander) ist breiter als die Mitte: der Regler steht dann wie darunter ueber ihm. */
-      body:has(.ctrl-panel.bar-mode) .slider-row { padding-bottom: 6.5rem; }
-      body:has(.ctrl-panel.bar-mode) .slider-row input[type="range"] { width: min(28rem, 90vw); }
-    }
-    /* Stil aus meta.css (.ctrl-range): ruhiger Track, Thumb in --text-color; hier nur größere Touch-Fläche. */
-    .slider-row .ctrl-range { box-sizing: content-box; padding: 14px 0; background-clip: content-box; }
-    .slider-row .ctrl-range::-webkit-slider-thumb { width: 24px; height: 24px; }
-    .slider-row .ctrl-range::-moz-range-thumb { width: 24px; height: 24px; }
   </style>
 </head>
 <body>
   <div class="stage _018" id="stage">
     <canvas id="pi"></canvas>
-    <div class="slider-row">
-      <input type="range" class="ctrl-range" min="-1" max="1" step="any" value="0" id="drift" aria-label="Drift">
-    </div>
   </div>
 
   <script src="/tools/irrational.js"></script>
@@ -96,15 +72,31 @@
 
     const stage  = document.getElementById('stage');
     const canvas = document.getElementById('pi');
-    const driftEl = document.getElementById('drift');
-    let panel = null;   // Verdichtungs-Regler (tools/controls.js), im Boot angelegt
+    let panel = null;   // Regler (tools/controls.js): Sausen, Verdichtung, Konstante; im Boot angelegt
+    let driftEl = null, driftValue = 0;   // Sausen in Stellen/s: negativ = Regler links = vorwaerts
+    // Standardgrenze des Sausens: bei voller Auslenkung hoechstens eine halbe Stelle je Bild (60 Hz), kein Springen.
+    // Im Popup (min/max) beliebig weit verstellbar; die Kennlinie bleibt logarithmisch zwischen 0 und der Grenze.
+    const DRIFT_MAX = 30;
+    const driftTransform = {
+      toSliderValue(v, cfg) {
+        const lim = (v > 0 ? cfg.max : -cfg.min);
+        if (!v || !(lim > 0)) return 0;
+        return Math.sign(v) * lim * Math.log1p(Math.min(Math.abs(v), lim)) / Math.log1p(lim);
+      },
+      fromSliderValue(s, cfg) {
+        const lim = (s > 0 ? cfg.max : -cfg.min);
+        if (!(lim > 0) || Math.abs(s) < 0.02 * lim) return 0;   // Totzone um die Mitte: kein Kriechen
+        return Math.sign(s) * Math.expm1(Math.min(1, Math.abs(s) / lim) * Math.log1p(lim));
+      },
+      formatDisplayValue(v) { return Math.abs(v) >= 1e4 ? Number(v).toExponential(1) : null; }
+    };
 
     // ─── Ansicht ───
     const [intPart0, decimals0] = chainStart();
     const view = UnfoldingView.create(canvas, {
       intPart: intPart0, decimals: decimals0,   // schon beim ersten Layout da: die Grenzen richten sich nach der Kettenlaenge
       colorElement: stage,
-      drift: () => driftEl.value,
+      rate: () => -driftValue,
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
       onNeedDigits: (total) => requestDigits(total),
       onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && !file && atFront),
@@ -119,7 +111,8 @@
       stage.classList.remove('warte', 'hinweis');
       stage.classList.add('fehler');
       driftEl.disabled = true;
-      driftEl.value = 0;
+      driftValue = 0;
+      panel.set('drift', 0);
       view.setLocked(true);
       view.invalidate();
     }
@@ -211,10 +204,14 @@
     }
 
     // ─── Boot ───
-    startChain();
-    if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
-    else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
+    panel.addSlider('drift', {
+      label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 0.1, value: 0, decimals: 1, transform: driftTransform,
+      onChange: (v) => { driftValue = +v || 0; }
+    });
+    driftEl = panel.bodyEl.querySelector('.ctrl-row[data-key="drift"] .ctrl-range');
+    driftEl.id = 'drift';
+    driftEl.setAttribute('aria-label', 'Sausen');
     panel.addSlider('d', {
       label: 'Verdichtung', min: 0, max: 400, step: 0.5, value: view.state().d, decimals: 1,
       onChange: (v) => view.setD(v)
@@ -224,6 +221,9 @@
       options: CONSTS.map((k) => ({ value: k.id, label: k.symbol })),
       onChange: setConstant
     });
+    startChain();
+    if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
+    else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
     if (!piError) startWorker();
 
     // Nur lesende Zustandsabfrage für Tests.
@@ -238,7 +238,8 @@
       shown() { return view.shown(); },
       file() { return file ? Object.assign(file.stats(), { length: file.length }) : null; },
       fileAt(i) { return file ? file.at(i) : null; },
-      fileWant(lo, hi) { if (file) file.want(lo, hi, 0); }
+      fileWant(lo, hi) { if (file) file.want(lo, hi, 0); },
+      controls: panel
     };
   })();
   </script>

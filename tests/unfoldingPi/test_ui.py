@@ -12,8 +12,6 @@ MUTANTS = {
   'revstop':  ("if (rate < 0) X0 = Math.min(X0, Math.max(prev, L + deff()));", "if (false) X0 = Math.min(X0, Math.max(prev, L + deff()));"),
   'nolost':   ("canvas.addEventListener('lostpointercapture', endDrag);", ""),
   'norebase': ("if (drag) drag.rebase = true;", ""),
-  'sliderpad': ("padding: 1rem 1rem calc(3.5rem + env(safe-area-inset-bottom, 0px));", "padding: 1rem;"),
-  'sliderleft': ("@media (min-width: 1200px) {", "@media (min-width: 1200px) { .slider-row { padding-left: 31rem; } "),
 }
 MODULE_MUTANTS = ('revstop', 'nolost', 'norebase')   # der Code liegt in tools/unfolding-view.js, nicht in der Seite
 MUT = os.environ.get('MUT')
@@ -42,24 +40,6 @@ COLPROBE = """
 }
 """
 
-WPROBE = """
-(side) => {
-  const s = window.unfoldingPi.state();
-  const g = document.getElementById('pi').getContext('2d');
-  const dpr = s.dpr;
-  const top = Math.ceil(s.inkTop * dpr), bot = Math.floor(s.inkBottom * dpr);
-  const x0 = side === 'R' ? Math.round(s.R * dpr) - 1 : Math.round(s.L * dpr);
-  let n = 0;
-  for (let k = 0; k < 40; k++) {
-    const x = side === 'R' ? x0 - k : x0 + k;
-    const d = g.getImageData(x, top, 1, bot - top + 1).data;
-    let sum = 0;
-    for (let i = 3; i < d.length; i += 4) sum += d[i];
-    if (sum / (d.length / 4) / 255 >= 0.9) n++; else break;
-  }
-  return { cols: n, minInk: s.minInk * dpr };
-}
-"""
 OX = [0, 0]
 def mouse_drag(p, x0, y, x1, steps=20):
     x0 += OX[0]; x1 += OX[0]; y += OX[1]
@@ -85,9 +65,7 @@ with sync_playwright() as pw:
     check('1a start: 3 allein, nichts eingerollt', s['startIndex'] == 0 and s['visibleCount'] == 1 and abs(s['R'] - s['L'] - 3 * s['w']) < 0.01, s)
     check('1b start: Gruppe mittig', abs((s['L'] + s['R']) / 2 - s['W'] / 2) < 1, (s['L'], s['R'], s['W']))
     pr = page.evaluate(COLPROBE, 'R')
-    check('2a Pixeltest rechte Linie (mean>=0.9,min>=0.6)', pr['mean'] >= 0.9 and pr['min'] >= 0.6, pr)
-    wr = page.evaluate(WPROBE, 'R')
-    check('2a2 rechte Linie >= 2 Geraetepx breit mit Deckung>=0.9', wr['cols'] >= 2, wr)
+    check('2a rechte Kante traegt Tinte (verdichtete Ziffern)', pr['mean'] >= 0.05, pr)
     check('2b links nichts eingerollt: keine Linie', st(page)['startIndex'] == 0 and page.evaluate(COLPROBE, 'L')['mean'] < 0.1, page.evaluate(COLPROBE, 'L'))
 
     # 3a: rechtes Ende ziehen
@@ -112,10 +90,8 @@ with sync_playwright() as pw:
     check('3c swipe links: L,R stehen, startIndex waechst, 3 verschwindet', s3['L'] == s2b['L'] and s3['R'] == s2b['R'] and s3['startIndex'] > s2b['startIndex'] + 5, (s2b['startIndex'], s3['startIndex']))
     page.screenshot(path=OUT + 'beide-linien.png')
     pl = page.evaluate(COLPROBE, 'L'); pr2 = page.evaluate(COLPROBE, 'R')
-    check('2c Pixeltest linke Linie nach Swipe', pl['mean'] >= 0.9 and pl['min'] >= 0.6, pl)
-    wl = page.evaluate(WPROBE, 'L')
-    check('2c2 linke Linie >= 2 Geraetepx breit mit Deckung>=0.9', wl['cols'] >= 2, wl)
-    check('2d Pixeltest rechte Linie nach Swipe', pr2['mean'] >= 0.9 and pr2['min'] >= 0.6, pr2)
+    check('2c linke Kante traegt Tinte nach Swipe', pl['mean'] >= 0.05, pl)
+    check('2d rechte Kante traegt Tinte nach Swipe', pr2['mean'] >= 0.05, pr2)
     # 3d: linke Linie ziehen (nach links: Stellen kommen heraus), X0 gleich
     mouse_drag(page, s3['L'], y, s3['L'] - 40)
     s4 = st(page)
@@ -151,38 +127,33 @@ with sync_playwright() as pw:
     check('3f2 Swipe rechts zurueck: 3 vorn, Fenster ohne Spalt', sm['startIndex'] > 20 and s7b['startIndex'] == 0 and abs(s7b['X0'] - (s7b['L'] + s7b['dEff'])) < 1e-6, (sm['startIndex'], s7b['startIndex']))
 
     # Slider
-    sl = page.locator('#drift')
+    sl = lambda v: page.evaluate(DRIFT, v)
     s8 = st(page)
-    sl.fill('-0.35'); page.wait_for_timeout(1500)
+    sl(-0.35); page.wait_for_timeout(1500)
     a = st(page)
     page.wait_for_timeout(1500)
     b = st(page)
     check('3g Slider links: startIndex waechst ueber Zeit', a['startIndex'] > s8['startIndex'] and b['startIndex'] > a['startIndex'] and b['velocity'] > 0, (s8['startIndex'], a['startIndex'], b['startIndex'], b['velocity']))
-    sl.fill('0'); page.wait_for_timeout(300)
+    sl(0); page.wait_for_timeout(300)
     c1 = st(page); page.wait_for_timeout(500); c2 = st(page)
     check('3h Slider Mitte: Stillstand', c1['startIndex'] == c2['startIndex'], (c1['startIndex'], c2['startIndex']))
-    sl.fill('-0.35'); page.wait_for_timeout(600); sl.fill('0.01')
-    z1 = st(page); page.wait_for_timeout(600); z2 = st(page)
-    check('3h2 Totzone: Slider 0.01 -> Kette steht', z1['startIndex'] == z2['startIndex'] and z2['startIndex'] > 0, (z1['startIndex'], z2['startIndex']))
-    sl.fill('-0.03'); z3 = st(page); page.wait_for_timeout(600); z4 = st(page)
-    check('3h3 ausserhalb Totzone (0.03) laeuft', z4['startIndex'] > z3['startIndex'], (z3['startIndex'], z4['startIndex']))
-    sl.fill('0'); page.wait_for_timeout(200)
-    sl.fill('0.4'); page.wait_for_timeout(3000)
+    sl(0); page.wait_for_timeout(200)
+    sl(0.4); page.wait_for_timeout(3000)
     e = st(page)
     check('3i Slider rechts: sinkt und stoppt bei 0', e['startIndex'] < c2['startIndex'] and e['startIndex'] == 0, (c2['startIndex'], e['startIndex']))
     # 3i2: Rueckwaertsstopp an der 3 auf frischer Seite (R mit Luft), danach stehen X0 und L ueber mehrere Frames
     sp = page.context.new_page(); sp.goto(URL, wait_until='networkidle'); sp.wait_for_timeout(800)
     L_start = st(sp)['L']
-    sp.locator('#drift').fill('-0.35'); sp.wait_for_timeout(1200)
-    sp.locator('#drift').fill('0.4'); sp.wait_for_timeout(3000)
+    sp.evaluate(DRIFT, -0.35); sp.wait_for_timeout(1200)
+    sp.evaluate(DRIFT, 0.4); sp.wait_for_timeout(3000)
     e2 = st(sp); sp.wait_for_timeout(800); e3 = st(sp)
     check('3i2 Rueckwaertsstopp an der 3: X0 und L stehen (Frames danach gleich)', e2['startIndex'] == 0 and e3['X0'] == e2['X0'] and e3['L'] == e2['L'] == L_start and abs(e3['X0'] - (e3['L'] + e3['dEff'])) < 1e-6, (L_start, e2['X0'], e3['X0'], e2['L'], e3['L']))
     sp.close()
-    sl.fill('-1'); page.wait_for_timeout(2500)
+    sl(-1); page.wait_for_timeout(2500)
     f = st(page)
     check('3j Slider Anschlag links: laeuft schnell, Rechengrenze, kein Fehler', f['startIndex'] > 1000 and f['error'] is None, (f['startIndex'], f['chainLength']))
-    sl.fill('0.8'); page.wait_for_timeout(2500)
-    sl.fill('0')
+    sl(0.8); page.wait_for_timeout(2500)
+    sl(0)
     page.wait_for_timeout(300)
 
     # Touch (CDP -> Pointer Events mit pointerType touch)
@@ -207,7 +178,7 @@ with sync_playwright() as pw:
     check('3l Touch swipe: startIndex waechst', t2['startIndex'] > t1['startIndex'], (t1['startIndex'], t2['startIndex']))
 
     # 3m: lostpointercapture beendet den Zug wie pointercancel
-    sl.fill('0'); page.wait_for_timeout(200)
+    sl(0); page.wait_for_timeout(200)
     m0 = st(page)
     page.mouse.move(m0['R'] + OX[0], y + OX[1]); page.mouse.down(); page.mouse.move(m0['R'] + OX[0] + 30, y + OX[1], steps=5)
     m1 = st(page)
@@ -242,8 +213,7 @@ with sync_playwright() as pw:
 
     # Dark/Light
     page.evaluate("document.documentElement.style.setProperty('--bg-color','white'); document.documentElement.style.setProperty('--text-color','black')")
-    sl.fill('0'); page.wait_for_timeout(200)
-    page.evaluate("document.getElementById('drift').dispatchEvent(new Event('input'))")
+    sl(0); page.wait_for_timeout(200)
     # Zeichnen erzwingen: kleiner Swipe
     tl = st(page)
     mid = (tl['L'] + tl['R']) / 2
@@ -252,7 +222,7 @@ with sync_playwright() as pw:
     page.screenshot(path=OUT + 'light.png')
     tl2 = st(page)
     pr3 = page.evaluate(COLPROBE, 'R')
-    check('5a Light: Textfarbe dunkel, Linie satt', tl2['color'] == 'rgb(0, 0, 0)' and pr3['mean'] >= 0.9 and pr3['min'] >= 0.6, (tl2['color'], pr3))
+    check('5a Light: Textfarbe dunkel, Kante traegt Tinte', tl2['color'] == 'rgb(0, 0, 0)' and pr3['mean'] >= 0.05, (tl2['color'], pr3))
     page.evaluate("document.documentElement.style.removeProperty('--bg-color'); document.documentElement.style.removeProperty('--text-color')")
 
     ext = [u for u in reqs if urlparse(u).netloc not in (urlparse(HOST).netloc,) and not u.startswith('data:') and not u.startswith('blob:')]
@@ -271,36 +241,11 @@ with sync_playwright() as pw:
     p2.close()
     ctx.close()
 
-    # 7a Slider/Panel: ueberlappen nie, Daumenflaeche trifft #drift, Daumen mittig - ueber alle Breiten und Panel-Zustaende
-    RJS = """(() => { const q = s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
-      const s = q('#drift'); const bad = []; let n = 0;
-      for (let fx = 0.02; fx <= 0.981; fx += 0.1) for (let fy = 0.02; fy <= 0.98; fy += 0.12) {
-        const x = s[0] + (s[2] - s[0]) * fx, y = s[1] + (s[3] - s[1]) * fy; n++;
-        const el = document.elementFromPoint(Math.min(x, innerWidth - 0.5), y);
-        if (!el || el.id !== 'drift') bad.push([Math.round(x), Math.round(y), el ? (el.id || el.className) : null]);
-      }
-      return { slider: s, panel: q('.ctrl-panel'), bad: bad.slice(0, 3), nbad: bad.length, n, W: innerWidth }; })()"""
-    for (vw, vh) in [(320, 640), (390, 844), (768, 1000), (769, 900), (1024, 768), (1199, 800), (1200, 800), (1440, 900), (1440, 1100)]:
-        mob = vw <= 768
-        c7 = mk(br, viewport={'width': vw, 'height': vh}, device_scale_factor=2, has_touch=mob, is_mobile=mob)
-        q7 = c7.new_page(); q7.goto(URL, wait_until='networkidle'); q7.wait_for_timeout(800)
-        states = ['eingeklappt']
-        tg = q7.query_selector('.ctrl-layout-toggle')
-        if tg and tg.is_visible(): states.append('breit')
-        for stt in states:
-            if stt == 'breit': tg.click(); q7.wait_for_timeout(400)
-            r7 = q7.evaluate(RJS)
-            sa_, pa_ = r7['slider'], r7['panel']
-            disjoint = sa_[2] <= pa_[0] or pa_[2] <= sa_[0] or sa_[3] <= pa_[1] or pa_[3] <= sa_[1]
-            check('7a %dx%d %s: Slider/Panel ueberlappen nicht, Daumenflaeche trifft #drift (%d/%d)' % (vw, vh, stt, r7['n'] - r7['nbad'], r7['n']), disjoint and r7['nbad'] == 0, r7)
-            check('7a2 %dx%d %s: Daumen in Ruhe mittig' % (vw, vh, stt), abs((sa_[0] + sa_[2]) / 2 - vw / 2) <= 1, (sa_, vw))
-        c7.close()
-
     # 7 Hit-Test: naechster Griff gewinnt; Hell = Dunkel
     d7 = mk(br, viewport={'width': 1440, 'height': 1100}, device_scale_factor=1)
     p7 = d7.new_page()
     p7.goto(URL, wait_until='networkidle'); p7.wait_for_timeout(800)
-    p7.evaluate("""(() => { const i = document.querySelector('.ctrl-panel input[type=range]'); i.value = 2; i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); })()""")
+    p7.evaluate("""(() => { const i = document.querySelector('.ctrl-row[data-key="d"] input[type=range]'); i.value = 2; i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); })()""")
     p7.wait_for_timeout(200)
     h0 = st(p7)
     check('7b0 Verdichtung klein gesetzt', h0['dEff'] < 5, h0['dEff'])
@@ -336,7 +281,7 @@ with sync_playwright() as pw:
     ms = st(mp)
     mp.screenshot(path=OUT + 'v2-mobil.png')
     mpr = mp.evaluate(COLPROBE, 'R')
-    check('6 Mobil 390x844: Startzustand, Linie satt, in Bild', ms['L'] >= 8 and ms['R'] <= 390 - 8 and mpr['mean'] >= 0.9 and not merr, (ms['L'], ms['R'], mpr, merr[:2]))
+    check('6 Mobil 390x844: Startzustand, Kante mit Tinte, in Bild', ms['L'] >= 8 and ms['R'] <= 390 - 8 and mpr['mean'] >= 0.05 and not merr, (ms['L'], ms['R'], mpr, merr[:2]))
     mctx.close()
     br.close()
 

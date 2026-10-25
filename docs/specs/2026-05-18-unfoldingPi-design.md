@@ -31,18 +31,21 @@ Abstand stauchen gemeinsam). Der Zeichenvorrat liegt als x-Mipmap-Atlas vor.
 
 ### Linie aus Verdichtung
 
-Die Linie wird nicht gemalt. Ein Zeichen wird horizontal höchstens bis auf die
-Strichstärke der Schrift gestaucht (Mindest-Tintenbreite
-`max(2 Gerätepixel, 0,08 * font-size)`, Courier-Strich ca. 0,08 em); der
-Vorschub geht weiter gegen 0. Unter dieser Breite wird das Zeichen als
-Silhouette gezeichnet (je Zeile die stärkste Tinte, eine Spalte breit, auf
-Strichbreite gezogen), sodass schon wenige Stellen eine geschlossene Zeile
-ergeben. Die Zeichen liegen zu vielen im selben Streifen; Source-over-Alpha
-sättigt es zusätzlich, pro Rand werden so viele weitere Zeichen gezeichnet,
-bis die Spalte gesättigt ist (`160 + d/w*ln(d*dpr)`, höchstens 4000). Ergebnis:
-ein satter Strich so dick wie ein Ziffernstrich und so hoch wie die Ziffern.
-Farbe aus
-`meta.css` (`--text-color`), dunkel und hell lesbar.
+Die Linie wird nicht gemalt, sie besteht aus Ziffern. Jede Ziffer wird mit
+der lokalen Ableitung gestaucht, ohne Mindestbreite; sie wird stetig
+schmaler, auch unter 1 Gerätepixel. Ab dort wird sie nicht mehr einzeln
+gezeichnet, sondern flächentreu aggregiert: Jede Gerätespalte bekommt die
+nach überdeckter Breite gewichtete Summe der Zeilenprofile (`rowMean` je
+Zeichen im Atlas, also die mittlere Tinte je Zeile) aller Ziffern, die in ihr
+liegen. Pro Stauchzone wird das Ergebnis einmal per `ImageData` auf eine
+Offscreen-Canvas geschrieben und mit einem `drawImage` gezeichnet. Keine
+Rechtecke, keine Pfade, keine Silhouette, keine Sättigung durch
+Übereinanderlegen. Ergebnis: Die Kante ist so hell wie die mittlere Deckung
+der Ziffern; wo viele Ziffern in eine Spalte fallen, ist sie bis auf die
+Deckung 1 gekappt. Was man sieht, ist genau die Tinte der Ziffern, die dort
+liegen. Noch nicht geladene Stellen (blasser Balken) blenden aus, sobald sie
+schmaler als 1 Pixel werden. Farbe aus `meta.css` (`--text-color`), dunkel
+und hell lesbar.
 
 Voreinstellung `d = w`: Verdichtung nur innerhalb der letzten Zeichenzelle.
 Einstellbar über `tools/controls.js` (Regler "Verdichtung", 0 erlaubt, nach
@@ -53,9 +56,15 @@ oben offen).
 - Solange links nichts eingerollt ist, IST die `3` das linke Ende.
 - Die `3` ziehen trägt die Kette (rechtes Ende bleibt); eine Linie ziehen
   bewegt nur das Ende, die Kette steht.
-- Slider nach links: Kette läuft nach links in die vordere Linie; nach rechts:
-  rückwärts, Halt, sobald die `3` wieder vorn steht. Der Slider federt nicht
-  zurück.
+- Sausen-Regler (im Panel von `tools/controls.js`, Schlüssel `drift`; das
+  Panel ist beim Laden offen, auch auf dem Handy) nach links: Kette läuft nach
+  links in die vordere Linie; nach rechts: rückwärts, Halt, sobald die `3`
+  wieder vorn steht. Der Regler federt nicht zurück. Kennlinie logarithmisch,
+  Mitte = Stopp (Totzone 2 %). Standardgrenzen -30..30 Stellen/s, bei voller
+  Auslenkung etwa 0,5 Stellen je Bild: flüssig, kein Springen. Die Grenzen
+  sind im ⋮-Popup (min/max) frei einstellbar, ohne Obergrenze.
+- Die Enden lassen sich auch während des Sausens ziehen; zieht man R am
+  Datenende nach vorn, rückt die Kette nach.
 - Der Dezimalpunkt gehört zur Kette (Index 1).
 - Startzustand: `3` plus genau eine Zelle, in der sich ".14159..." verdichtet,
   Gruppe mittig.
@@ -70,7 +79,7 @@ oben offen).
 | `3` ziehen (nichts links eingerollt) | `X0` und linkes Ende wandern, `R` bleibt |
 | Linke Linie ziehen (links eingerollt) | `L` bewegt sich, Kette steht; erreicht sie die `3`, geht es nahtlos in "3 ziehen" über |
 | Wischen auf der Kette | Kette folgt dem Finger, `L` und `R` stehen; erreicht die `3` die Front, folgt das linke Ende der `3` |
-| Slider unten (Mitte = Stopp) | exponentielle Kennlinie, nach oben offen; Maximum ist die Rechen- und Zeichengeschwindigkeit, die Kette wartet am Rechenlimit |
+| Sausen-Regler im Panel (Mitte = Stopp) | logarithmische Kennlinie, Standard ±30 Stellen/s, Grenzen im Popup nach oben offen; die Kette wartet am Rechenlimit |
 | Fenstergröße | Enden bleiben im Bild |
 
 Pointer Events, `touch-action: none`, `setPointerCapture`, Trefferflächen
@@ -78,7 +87,7 @@ mindestens 40 px breit.
 
 ## Architektur
 
-- Eine DPR-scharfe Canvas, ein Slider, sonst kein DOM.
+- Eine DPR-scharfe Canvas plus das Panel von `tools/controls.js` (Verdichtung, Sausen, Konstante), sonst kein DOM.
 - Stellen: gemeinsames Modul `tools/irrational.js` (global `Irrational`) mit
   Worker `tools/workers/irrational-worker.js`. Es rechnet pi, e, ln 2, √2 und
   φ; die Seite wählt per `panel.addSelect` (oder `?c=`), ein Wechsel startet
@@ -154,16 +163,21 @@ Prüfbar per Playwright gegen `https://dev.0nefinity.love/unfoldingPi` über
 `window.unfoldingPi.state()` (Pixelprobe per `getImageData` auf der Canvas).
 
 1. Start: `startIndex 0`, `visibleCount 1`, Gruppe mittig.
-2. Pixeltest: Randspalte über Ziffernhöhe mit Mittelwert >= 0.9 und Minimum
-   >= 0.6 der Textfarbe, rechts im Start, beide Seiten nach Wischen mit
-   vielen eingerollten Stellen, auch im hellen Thema; links ohne Einrollung
-   keine Linie.
-3. Rechte Linie, `3`, linke Linie, Wischen, Slider links (startIndex wächst),
-   Slider Mitte (steht), Slider rechts (sinkt, Halt bei 0) verändern den
-   Zustand wie in der Tabelle; Maus und Touch.
+2. Stauchzone aus Ziffern (`tests/unfoldingPi/test_sausen.py`): keine
+   Rechteck- oder Pfad-Aufrufe auf `#pi`, gezeichnete Breite je Bild nicht
+   größer als das Bild, Helligkeit an der Kante 0,4 bis 1,5 der mittleren
+   Ziffern-Deckung, Tinte bis an R ohne Sprünge. Rand trägt Tinte rechts im
+   Start, beide Seiten nach Wischen, auch im hellen Thema; links ohne
+   Einrollung keine Linie.
+3. Rechte Linie, `3`, linke Linie, Wischen, Regler links (startIndex wächst),
+   Regler Mitte (steht), Regler rechts (sinkt, Halt bei 0) verändern den
+   Zustand wie in der Tabelle; Maus und Touch. Enden ziehen während des
+   Sausens (auch am Datenende). Regler beim Laden sichtbar; volle Auslenkung
+   im Standard höchstens 1 Stelle je Bild; Popup-Grenzen (min -1e6, max 5000)
+   wirken.
 4. Die ersten 3000 Stellen des Workers stimmen mit einer unabhängigen
    Referenz (Machin) überein; die Reserve ebenso. Stellen 99.991-100.000 =
    5493624646 und 999.991-1.000.000 = 5779458151 (gegen mpmath geprüft).
 5. Keine Konsolenfehler, alle Requests same-origin, Fehlerpfad zeigt
    `error`, `console.error` und roten Rahmen.
-6. Mobil (390x844): Startzustand im Bild, Linie satt.
+6. Mobil (390x844): Startzustand im Bild, Kante trägt Tinte, Regler sichtbar.

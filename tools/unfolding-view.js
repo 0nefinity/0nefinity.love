@@ -3,7 +3,8 @@
  * Klassisches Script, kein Build, same-origin. Setzt das Global `UnfoldingView`.
  *
  *   const view = UnfoldingView.create(canvas, {
- *     drift()           // optional: Reglerwert -1..1 (0 = Stillstand), je Bild gelesen
+ *     rate()            // optional: Stellen/s (positiv = vorwaerts, 0 = Stillstand), je Bild gelesen; hat Vorrang vor drift()
+ *     drift()           // optional: Reglerwert -1..1 (0 = Stillstand), exponentielle Kennlinie bis 1e10 Stellen/s
  *     onNeedDigits(n)   // optional: die Ansicht braucht Nachkommastellen bis n (Vorrat); der Besitzer rechnet/laedt nach
  *     onFront(atFront)  // optional: je Bild, true = sichtbares Fenster reicht an die letzte bekannte Stelle
  *     onD(d)            // optional: die Ansicht hat die Verdichtung selbst geaendert (Fensterwechsel)
@@ -66,12 +67,16 @@
     let W = 0, H = 0, dpr = 1, S = 40, w = 24;
     let L = 0, R = 0, X0 = 0, d = 24;
     let color = '#fff';
-    let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0;
+    let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0, atlasRgb = [0, 0, 0];
+    // Unter einem Geraetepixel Breite: Deckung je Geraetespalte und Zeichen (acc[c * 11 + t]), einmal je Bild ausgegeben.
+    const NG = GLYPHS.length;
+    let acc = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
+    const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
     let dirty = true;
     let velocity = 0, drawnCount = 0;
     let locked = false;
     let drag = null;
-    let last = 0;
+    let last = 0, curRate = 0;
     let rafId = 0;
     let destroyed = false;
     let remote = null;
@@ -124,9 +129,6 @@
     function stackCount(dd) {
       return Math.min(4000, Math.ceil((dd / w) * Math.log(Math.max(dd * dpr, 1))) + 160);
     }
-
-    // Strichstärke der Schrift (Courier ca. 0,08 em), mindestens 2 Geräte-Pixel: so schmal werden Zeichen höchstens.
-    const minInk = () => Math.max(2 / dpr, S * 0.08);
 
     function settle(mode) {
       const dd = deff();
@@ -193,8 +195,17 @@
           bd.data[y * 4] = br; bd.data[y * 4 + 1] = bgc; bd.data[y * 4 + 2] = bb; bd.data[y * 4 + 3] = rowMax[y];
         }
         bg.putImageData(bd, 0, 0);
-        atlas[ch] = { levels, wd, hd, bar, rowMax };
+        // Mittlere Deckung je Zeile ueber die volle Zeichenbreite: so viel Tinte traegt eine Geraetespalte, wenn das Zeichen
+        // auf die Breite b < 1 gestaucht ist, mal b (flaechentreu, siehe accumulate).
+        const d0 = g.getImageData(0, 0, cw0, hd).data, rowMean = new Float32Array(hd);
+        for (let y = 0; y < hd; y++) {
+          let s = 0;
+          for (let x = 0; x < cw0; x++) s += d0[(y * cw0 + x) * 4 + 3];
+          rowMean[y] = s / (cw0 * 255);
+        }
+        atlas[ch] = { levels, wd, hd, bar, rowMax, rowMean, t: GLYPHS.indexOf(ch) };
       }
+      atlasRgb = [rgb[0], rgb[1], rgb[2]];
       let top = -1, bot = -1;
       atlas['8'].rowMax.forEach((m, y) => { if (m > 40) { if (top < 0) top = y; bot = y; } });
       inkTop = top; inkBottom = bot;
@@ -209,9 +220,6 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = true;
       const dd = deff();
-      const px = 1 / dpr;
-      const inkMin = minInk();
-      const Ld = Math.round(L * dpr) * px, Rd = Math.round(R * dpr) * px;
       const iLinLo = Math.ceil((L + dd - X0) / w - 1e-9);
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
       const K = stackCount(dd);
@@ -223,6 +231,8 @@
       if (remote) remote.want(iLo, iHi, step);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
+      const mid = (L + R) / 2;
+      if (accCols !== canvas.width) { accCols = canvas.width; acc = new Float32Array(accCols * NG); }
       let n = 0;
       if (shownCodes.length < iHi - iLo + 1) { shownCodes = new Uint8Array(Math.max(iHi - iLo + 1, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
       shownMark.fill(0, 0, iHi - iLo + 1);
@@ -237,19 +247,20 @@
           const pa = X0 + i * w;
           const xa = warp(pa, dd), xb = warp(pa + w, dd);
           const nat = xb - xa;
-          const dw = Math.max(nat, inkMin);
-          let cx = (xa + xb) / 2;
-          cx = Math.max(Ld + dw / 2, Math.min(Rd - dw / 2, cx));
           const fromRemote = i >= chainLen;
           const code = fromRemote ? (remote ? remote.at(i) : 0) : buf[i];
           if (pass === 0) shownCodes[i - iLo] = code;
-          let wDev = dw * dpr, xDev = (cx - dw / 2 + off) * dpr;
+          let wDev = nat * dpr, xDev = (xa + off) * dpr;
           if (!code) {
             if (fromRemote && remote) {
-              ctx.globalAlpha = PENDING_ALPHA * mul;
               if (pass === 0) shownMark[i - iLo] = Math.round(PENDING_ALPHA * 100);
-              ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
-              ctx.globalAlpha = 1;
+              // Platzhalter verblasst, bevor die Stelle schmaler als eine halbe Ziffer wird: keine Linie aus Platzhaltern.
+              const fade = Math.max(0, Math.min(1, (nat / w - 0.5) / 0.5));
+              if (fade > 0) {
+                ctx.globalAlpha = PENDING_ALPHA * mul * fade;
+                ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
+                ctx.globalAlpha = 1;
+              }
             }
             continue;
           }
@@ -257,17 +268,60 @@
           if (!g) continue;
           if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
           const al = (fromRemote ? FILE_ALPHA : 1) * mul;
-          ctx.globalAlpha = al;
           if (pass === 0) shownMark[i - iLo] = Math.round(al * 100);
-          // Unter Strichstärke: die Silhouette-Spalte auf Strichbreite ziehen.
-          if (nat < inkMin) { ctx.drawImage(g.bar, xDev, y0, wDev, hd); n++; continue; }
+          n++;
+          // Schmaler als ein Geraetepixel: die Ziffer selbst, flaechentreu in ihre Spalte(n) gerechnet (kein Mindestmass).
+          if (wDev < 1) { accumulate(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); continue; }
+          ctx.globalAlpha = al;
           const k = Math.max(0, Math.min(g.levels.length - 1, Math.floor(Math.log2(wd / wDev))));
           ctx.drawImage(g.levels[k], xDev, y0, wDev, hd);
-          n++;
         }
       }
       ctx.globalAlpha = 1;
+      flush(zoneL, y0, hd);
+      flush(zoneR, y0, hd);
       drawnCount = n;
+    }
+
+    // Ziffer t mit Breite wDev (< 1 Geraetepixel) ab xDev: Anteil je ueberdeckter Spalte (hoechstens zwei) mal Deckkraft.
+    function accumulate(zone, t, xDev, wDev, al) {
+      const end = xDev + wDev;
+      for (let c = Math.floor(xDev); c < end; c++) {
+        if (c < 0 || c >= accCols) continue;
+        const part = Math.min(c + 1, end) - Math.max(c, xDev);
+        if (part <= 0) continue;
+        acc[c * NG + t] += part * al;
+        if (c < zone.lo) zone.lo = c;
+        if (c > zone.hi) zone.hi = c;
+      }
+    }
+    // Je Spalte und Zeile: Summe der Ziffernprofile (rowMean) nach ihrem Breitenanteil. Die Ziffern kacheln die Spalte,
+    // deshalb ist die Summe die Deckung, die die echten, so schmal gezeichneten Ziffern dort haetten.
+    function flush(zone, y0, hd) {
+      if (zone.hi < zone.lo) { zone.lo = Infinity; zone.hi = -1; return; }
+      const lo = zone.lo, cw = zone.hi - lo + 1;
+      if (!flushCanvas) { flushCanvas = document.createElement('canvas'); flushCtx = flushCanvas.getContext('2d'); }
+      if (flushCanvas.width < cw || flushCanvas.height !== hd) { flushCanvas.width = Math.max(cw, flushCanvas.width); flushCanvas.height = hd; }
+      const img = flushCtx.createImageData(cw, hd), px = img.data;
+      const [r, gc, b] = atlasRgb;
+      const prof = [];
+      for (let t = 0; t < NG; t++) prof.push(atlas[GLYPHS[t]].rowMean);
+      const colA = new Float32Array(hd);
+      for (let x = 0; x < cw; x++) {
+        const base = (lo + x) * NG;
+        colA.fill(0);
+        for (let t = 0; t < NG; t++) {
+          const a = acc[base + t];
+          if (!a) continue;
+          const pr = prof[t];
+          for (let y = 0; y < hd; y++) colA[y] += a * pr[y];
+        }
+        for (let y = 0; y < hd; y++) { const o = (y * cw + x) * 4; px[o] = r; px[o + 1] = gc; px[o + 2] = b; px[o + 3] = colA[y] * 255; }   // Uint8Clamped kappt bei 255
+        acc.fill(0, base, base + NG);
+      }
+      flushCtx.putImageData(img, 0, 0);
+      ctx.drawImage(flushCanvas, 0, 0, cw, hd, lo, y0, cw, hd);
+      zone.lo = Infinity; zone.hi = -1;
     }
 
     // ─── Layout ───
@@ -335,6 +389,9 @@
       let mode = 'x';
       if (drag.mode === 'R') {
         R = Math.max(L + 2 * dd, Math.min(W - MARGIN, drag.R + dx));
+        // Am Datenende (Sausen holt es schnell ein) deckelt settle R auf X0 + avail() + dd: die Kette rueckt nach, R folgt dem Zeiger.
+        const end = X0 + avail() + dd;
+        if (R > end) X0 = R - dd - avail();
       } else if (drag.mode === 'three') {
         X0 = drag.X0 + dx;
         mode = 'three';
@@ -371,7 +428,8 @@
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
       const sv = opts.drift ? (parseFloat(opts.drift()) || 0) : 0;
-      const rate = locked || Math.abs(sv) < DEAD_ZONE ? 0 : rateOf(-sv);
+      const rate = locked ? 0 : (opts.rate ? (+opts.rate() || 0) : (Math.abs(sv) < DEAD_ZONE ? 0 : rateOf(-sv)));
+      curRate = rate;
       const before = startIdx();
       let dtEff = dt;
       if (remote) {
@@ -487,7 +545,7 @@
           chainLength: chainLen, totalLength: total(), step, blur, sausen,
           inkTop: atlas ? inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,   // null bis zum ersten Bild
           inkBottom: atlas ? inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,
-          minInk: minInk(),
+          rate: curRate,
           color
         };
       }

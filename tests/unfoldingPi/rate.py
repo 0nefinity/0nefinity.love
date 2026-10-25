@@ -1,10 +1,11 @@
 import sys, time
 from playwright.sync_api import sync_playwright
+from common import KICK
 with sync_playwright() as pw:
     for name in ['chromium','firefox','webkit']:
         b = getattr(pw,name).launch(); p=b.new_page(viewport={'width':1000,'height':600})
         p.goto('https://dev.0nefinity.love/unfoldingPi'); p.wait_for_function('window.unfoldingPi')
-        p.evaluate("(()=>{const d=document.getElementById('drift'); d.value=-1; d.dispatchEvent(new Event('input',{bubbles:true}));})()")
+        p.evaluate(KICK)
         t0=time.time(); marks={}
         while time.time()-t0<100 and 1000000 not in marks:
             n=p.evaluate('window.unfoldingPi.state().chainLength')-2

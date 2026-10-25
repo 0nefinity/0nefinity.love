@@ -29,9 +29,9 @@ PAGE_MUTANTS = ('notitle', 'text')
 R = Res()
 check = R.check
 OX = 32
-SET = """(v) => { const i = document.querySelector('.ctrl-panel input[type=range]'); i.value = v;
+SET = """(v) => { const i = document.querySelector('.ctrl-row[data-key="d"] input[type=range]'); i.value = v;
   i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); }"""
-GET = "() => parseFloat(document.querySelector('.ctrl-panel input[type=range]').value)"
+GET = """() => parseFloat(document.querySelector('.ctrl-row[data-key="d"] input[type=range]').value)"""
 Y = 360
 
 

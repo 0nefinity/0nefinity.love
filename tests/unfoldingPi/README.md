@@ -21,6 +21,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_bedienung.py` | Bedienung: Verdichtungs-Regler (P) aendert nur die Stauchzone (Start, eingerollt, d=0, Fenster klein/gross, danach die 3 ziehen) |
 | `test_file.py` | Pi-Stellendatei `/pi-daten/pi-1e9.b196` (Range-Lesen, Naht Geraet/Datei, Fehlerwege e1-e8 inkl. Blockwert und Kopf, Block-Cache, Ehrlichkeit bei Hoechsttempo samt KB/s, Abbruch verlassener Fenster) |
 | `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
+| `test_sausen.py` | Stauchzone aus Ziffern (kein Ersatzstrich: keine Rechteck-/Pfad-Aufrufe auf `#pi`, Kante so hell wie die mittlere Ziffern-Deckung, ohne Spruenge), Enden ziehen waehrend des Sausens (Maus; Touch ausser Firefox), Sausen-Regler im Panel beim Laden sichtbar, Standard +-30 Stellen/s fluessig, Grenzen per Popup (alle Browser) |
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
 Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) wird an `Irrational.open` gereicht, z. B. `{failReserve:3}` (device: die Vorab-Reservierung der dritten Stufe liefert 0, also scheitert `memory.grow`), `{gmpAbort:50}` (echter GMP-Abbruch durch Division durch 0: muss roten Fehler zeigen, nie den Hinweis) oder `{maxPages:262}` (engine bei etwa 1,14e6 Stellen pi).
@@ -59,8 +60,16 @@ Testhaken: `window.unfoldingPiTest` (per `add_init_script`, nie über die URL) w
 | big | cap | Testhaken `failReserve:3` täuscht Speichermangel vor |
 | limits | textclass | Worker wertet "Fatal error in gmp-wasm" per Fehlertext als Speichermangel (GMP-Abbruch zeigt Hinweis) |
 | limits | noreserve | Worker meldet scheiterndes `memory.grow` nicht |
+| sausen | fillstrich | ein Rechteck je aggregierter Spalte (Ersatzstrich durch die Hintertuer) |
+| sausen | oldbar | unter 1 Geraetepixel wieder die Silhouette auf Mindestbreite |
+| sausen | noendfollow | beim Ziehen von R nach vorn folgt das Datenende nicht (R klemmt) |
+| sausen | peekpanel | Panel startet auf dem Handy nur angedeutet |
+| sausen | olddefault | Standardgrenze wieder 1e10 Stellen/s |
+| sausen | fixgrenze | feste Grenze trotz Popup-Einstellung |
 
-`test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase im Modul `tools/unfolding-view.js`; sliderpad, sliderleft in der Seite).
+`test_ui.py` hat eigene Mutanten über `MUT` (revstop, nolost, norebase im Modul `tools/unfolding-view.js`).
+
+Regler in Tests: `common.DRIFT(v)` stellt den Panel-Regler `drift` auf der alten Skala -1..1 (Rate 10^(10|v|)-1 Stellen/s, negativ = vorwaerts) und hebt dafuer die Grenzen an; `common.KICK` ist `DRIFT(-1)`. Die Skalenwerte unten (-0,18, -0,43, -0,8) meinen diese Skala.
 
 Nicht tötbar und deshalb nicht in der Liste: die Zeile `stage.classList.remove('warte', ...)` in `fail()`, weil `toggle('warte', !piError && ...)` dasselbe tut. Ebenso `console.warn` in `irrational.js`, weil der Worker selbst warnt.
 
@@ -72,6 +81,9 @@ Spec der Bedienung von unfoldingPi (geprueft in `test_bedienung.py`, Gesten in `
 - Nicht jeder Wert passt. Ist nichts eingerollt, passt hoechstens der Platz rechts der 3 (R - X0); eingerollt hoechstens der halbe Abstand der Enden; immer hoechstens die halbe Fensterbreite. Darueber wird d begrenzt und der Regler springt auf den wirklichen Wert zurueck (er zeigt nie etwas anderes als die Ansicht). d = 0 ist erlaubt.
 - Ist nichts eingerollt, ist L unsichtbar und folgt der 3 im Abstand d. Reicht die Kette rechts nicht bis R, rueckt nur R heran, die Ziffern bleiben.
 - Wird das Fenster kleiner, wird d auf die halbe Breite begrenzt (Regler folgt); beim Vergroessern springt R nicht nach aussen.
+- Sausen-Regler (Schluessel `drift`) sitzt im Panel von `tools/controls.js`; das Panel ist beim Laden offen, auch auf dem Handy. Mitte = Stopp, links vorwaerts, rechts rueckwaerts, logarithmisch. Standardgrenzen -30..30 Stellen/s (bei voller Auslenkung etwa 0,5 Stellen je Bild, kein Springen). Die Grenzen sind im Popup (min/max) frei einstellbar, ohne Obergrenze.
+- Enden lassen sich auch waehrend des Sausens ziehen (Maus und Touch); am Datenende rueckt die Kette beim Ziehen von R nach.
+- Stauchzone: Ziffern werden stetig schmaler; unter 1 Geraetepixel werden sie flaechentreu je Spalte aufsummiert (gewichtete Summe ihrer Profile). Kein gezeichneter Strich, die Kante hat die mittlere Deckung der Ziffern.
 - Enden ziehen, die 3 ziehen und Swipen arbeiten unabhaengig vom Regler weiter und nutzen das aktuelle d. Einen Schwung nach dem Swipe gibt es nicht; Dauerlauf (Drift) und Regler stoeren sich nicht, weil der Regler nur d setzt.
 
 ## Pi-Datei (virtualisiertes Pi)
