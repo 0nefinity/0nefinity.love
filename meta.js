@@ -167,8 +167,7 @@ function initMenuSearch(menu, fileList) {
 
     // Güte eines Begriffs in einem Eintrag: kleiner ist besser, null = kein Treffer.
     // Wortanfang 0, innerhalb 10, Tippfehler 20; +feld-Strafe (Pfad), +2 je Alias, +5 ohne Pfad-Wortanfang.
-    // Der Ordnerpfad zaehlt nur ab 2 Zeichen und nur am Wortanfang (kein "0" in Jahreszahlen,
-    // kein Teilstueck/Tippfehler im Pfad); ein einzelnes Zeichen trifft nirgends mitten im Wort.
+    // Der Ordnerpfad zaehlt nur am Wortanfang (kein Teilstueck/Tippfehler im Pfad).
     // Liefert [Güte, nurPfad]: nurPfad = der beste Treffer kam aus dem Ordnerpfad.
     function termScore(alts, entry, fuzzy) {
         let best = null, viaPath = false;
@@ -177,11 +176,10 @@ function initMenuSearch(menu, fileList) {
             if (!t) continue;
             for (const f of entry.fields) {
                 const isPath = f.pen > 0;
-                if (isPath && t.length < 2) continue;
                 let s = null;
                 if (f.c.startsWith(t)) s = f.c === t ? -3 : 0;
                 else if (f.b.some(p => f.c.startsWith(t, p))) s = 1;
-                else if (!isPath && t.length >= 2 && f.c.includes(t)) s = 10;
+                else if (!isPath && f.c.includes(t)) s = 10;
                 else if (!isPath && fuzzy && t.length >= 4) {
                     const max = t.length >= 8 ? 2 : 1;
                     if (f.fuz.length >= t.length - max && fuzzyDist(phon(t), f.fuz) <= max) s = 20;
