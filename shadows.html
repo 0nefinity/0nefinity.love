@@ -34,562 +34,10 @@
       justify-content: center;
     }
 
-    #shadows-controls {
-      position: fixed;
-      top: 4.375rem;
-      right: 1rem;
-      padding: 0.75rem 1rem;
-      background: rgba(0, 0, 0, 0.85);
-      color: var(--text-color, #ffffff);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      max-width: 320px;
-      z-index: 10;
-      border-radius: 12px;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    }
-
-    #shadows-controls .drag-handle {
-      display: none;
-    }
-
-    #shadows-controls .controls-content {
-      max-height: calc(100vh - 7rem);
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-
-    /* meta.css setzt white-space: pre-wrap auf alles: die Zeilenumbrueche zwischen den Reihen wuerden sonst leere Zeilen erzeugen */
-    #shadows-controls {
-      white-space: normal;
-    }
-    #shadows-controls * {
-      white-space: normal;
-    }
-
-    #shadows-controls .row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-      min-height: 32px;
-    }
-
-    #shadows-controls label {
-      flex: 0 0 80px;
-      font-size: 13px;
-      opacity: 0.8;
-    }
-
-    #shadows-controls .slider-container {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    #shadows-controls input[type='range'] {
-      flex: 1;
-      height: 6px;
-      -webkit-appearance: none;
-      appearance: none;
-      background: rgba(255,255,255,0.2);
-      border-radius: 3px;
-      outline: none;
-      cursor: pointer;
-    }
-
-    #shadows-controls input[type='range']::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 18px;
-      height: 18px;
-      background: var(--text-color);
-      border-radius: 50%;
-      cursor: pointer;
-      transition: transform 0.1s ease;
-    }
-
-    #shadows-controls input[type='range']::-webkit-slider-thumb:hover {
-      transform: scale(1.15);
-    }
-
-    #shadows-controls input[type='range']::-moz-range-thumb {
-      width: 18px;
-      height: 18px;
-      background: var(--text-color);
-      border-radius: 50%;
-      cursor: pointer;
-      border: none;
-    }
-
-    #shadows-controls .value-display {
-      min-width: 40px;
-      text-align: right;
-      font-size: 12px;
-      font-variant-numeric: tabular-nums;
-      opacity: 0.7;
-    }
-
-    #shadows-controls input[type='number'] {
-      flex: 1 1 auto;
-      width: 100%;
-    }
-
-    #shadows-controls input[type='text'] {
-      flex: 1;
-      min-width: 80px;
-      height: 32px;
-      text-align: center;
-      font-size: 16px;
-      background: var(--bg-color);
-      color: var(--text-color);
-      border-radius: 9999px;
-      padding: 0 0.5rem;
-      font-weight: 500;
-    }
-
-    #shadows-controls input[type='text']:focus {
-      outline: none;
-      box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
-    }
-
-    #shadows-controls .geb-row {
-      display: flex;
-      max-height: 0;
-      overflow: hidden;
-      opacity: 0;
-      margin: 0;
-      padding: 0;
-      transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
-    }
-    #shadows-controls .geb-row.visible {
-      max-height: 60px;
-      opacity: 1;
-      margin: 0.5rem 0;
-    }
-
-    #shadows-controls .segmented-control {
-      display: flex;
-      flex: 1;
-      gap: 6px;
-    }
-
-    #shadows-controls .segmented-control button {
-      flex: 1;
-      padding: 0.5rem 0.75rem;
-      font-size: 13px;
-      background: var(--bg-color);
-      color: var(--text-color);
-      border: 2px solid var(--text-color);
-      border-radius: 9999px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    #shadows-controls .segmented-control button:hover {
-      background: var(--text-color);
-      color: var(--bg-color);
-    }
-
-    #shadows-controls .segmented-control button.active {
-      background: var(--text-color);
-      color: var(--bg-color);
-    }
-
-    #shadows-controls .toggle-row {
-      justify-content: space-between;
-    }
-
-    #shadows-controls .toggle-row input[type='checkbox'] {
-      width: 20px;
-      height: 20px;
-      cursor: pointer;
-      accent-color: var(--text-color);
-    }
-
-    #shadows-controls .section-divider {
-      height: 1px;
-      background: rgba(255,255,255,0.15);
-      margin: 0.75rem 0;
-    }
-
-    #shadows-controls .stepper-container {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    #shadows-controls .value-input-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 0;
-    }
-    #shadows-controls .value-input {
-      background: transparent;
-      border: none;
-      color: var(--text-color);
-      font-size: inherit;
-      font-family: inherit;
-      font-variant-numeric: tabular-nums;
-      text-align: right;
-      width: 4.5em;
-      padding: 0.2em 0.1em;
-      outline: none;
-      transition: border-color 0.15s ease, background 0.15s ease;
-    }
-    #shadows-controls .value-input:hover {
-      border-bottom-color: rgba(255,255,255,0.3);
-    }
-    #shadows-controls .value-input:focus {
-      border-bottom-color: rgba(255,255,255,0.6);
-      background: rgba(255,255,255,0.05);
-    }
-    #shadows-controls .value-suffix {
-      opacity: 0.6;
-      font-size: 0.9em;
-      margin-left: 1px;
-      pointer-events: none;
-    }
-    #shadows-controls .stepper-btn {
-      width: 36px;
-      height: 36px;
-      border: none;
-      background: transparent;
-      color: var(--text-color);
-      font-size: 1.4rem;
-      font-weight: 300;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: opacity 0.15s ease, transform 0.1s ease;
-      user-select: none;
-      -webkit-user-select: none;
-      outline: none;
-      opacity: 0.7;
-    }
-    #shadows-controls .stepper-btn:focus {
-      outline: none;
-    }
-    #shadows-controls .stepper-btn:hover {
-      opacity: 1;
-    }
-    #shadows-controls .stepper-btn:active {
-      transform: scale(0.85);
-      opacity: 1;
-    }
-    @media (max-width: 768px) {
-      #shadows-controls .stepper-btn {
-        width: 44px;
-        height: 44px;
-        font-size: 1.6rem;
-      }
-    }
-
-    @media (max-width: 768px) {
-      #shadows-controls {
-        position: fixed;
-        top: auto;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        max-width: 100%;
-        width: 100%;
-        border-radius: 20px 20px 0 0;
-        padding: 0;
-        max-height: 50vh;
-        font-size: 14px;
-        will-change: transform;
-      }
-
-      #shadows-root {
-        will-change: transform;
-      }
-
-      #shadows-controls .drag-handle {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 12px;
-        cursor: grab;
-        touch-action: none;
-      }
-
-      #shadows-controls .drag-handle::before {
-        content: '';
-        width: 40px;
-        height: 4px;
-        background: rgba(255,255,255,0.4);
-        border-radius: 2px;
-      }
-
-      #shadows-controls .drag-handle-label {
-        position: absolute;
-        font-size: 12px;
-        opacity: 0.6;
-      }
-
-      #shadows-controls .controls-content {
-        max-height: calc(50vh - 56px);
-        overflow-y: auto;
-        overflow-x: hidden;
-        padding: 0 1rem 1.5rem;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      #shadows-controls .row {
-        min-height: 48px;
-        gap: 0.75rem;
-        margin-bottom: 0.25rem;
-      }
-
-      #shadows-controls label {
-        flex: 0 0 90px;
-        font-size: 14px;
-      }
-
-      #shadows-controls input[type='range'] {
-        height: 6px;
-      }
-
-      #shadows-controls input[type='range']::-webkit-slider-thumb {
-        width: 24px;
-        height: 24px;
-      }
-
-      #shadows-controls input[type='range']::-moz-range-thumb {
-        width: 24px;
-        height: 24px;
-      }
-
-      #shadows-controls .value-display {
-        min-width: 44px;
-        font-size: 14px;
-      }
-
-      #shadows-controls .segmented-control {
-        gap: 8px;
-      }
-
-      #shadows-controls .segmented-control button {
-        min-height: 44px;
-        font-size: 16px;
-        font-weight: 500;
-      }
-
-      #shadows-controls .toggle-row input[type='checkbox'] {
-        width: 28px;
-        height: 28px;
-      }
-
-      #shadows-controls .section-divider {
-        margin: 0.8rem 0;
-      }
-
-      #shadows-controls input[type='text'] {
-        min-width: 100px;
-        height: 44px;
-        font-size: 18px;
-      }
-
-      #shadows-controls input[type='number'] {
-        min-height: 44px;
-        font-size: 16px;
-        border-radius: 8px;
-        padding: 0 0.75rem;
-      }
-    }
-
-    @media (max-width: 380px) {
-      #shadows-controls label {
-        flex: 0 0 70px;
-        font-size: 13px;
-      }
-    }
   </style>
 </head>
 <body>
   <div class="_018-canvas" id="shadows-root"></div>
-  <div id="shadows-controls">
-    <div class="drag-handle" id="dragHandle">
-      <span class="drag-handle-label"></span>
-    </div>
-
-    <div class="controls-content">
-      <div class="row" style="justify-content: center; margin-bottom: 0.75rem;">
-        <button id="resetParams" style="
-          background: transparent;
-          border: 1px solid rgba(255,255,255,0.3);
-          color: var(--text-color);
-          padding: 0.4rem 1.2rem;
-          border-radius: 9999px;
-          font-size: 13px;
-          cursor: pointer;
-          opacity: 0.8;
-          transition: opacity 0.2s ease, background 0.2s ease;
-        " onmouseover="this.style.opacity='1'; this.style.background='rgba(255,255,255,0.1)';" onmouseout="this.style.opacity='0.8'; this.style.background='transparent';">Reset</button>
-      </div>
-
-      <div class="row toggle-row">
-        <label for="gebMode">GEB-Modus</label>
-        <input id="gebMode" type="checkbox">
-      </div>
-
-      <div class="row">
-        <label>Brightness</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="brightness">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="brightnessValue" data-param="brightness" value="80">
-          </div>
-          <button class="stepper-btn plus" data-param="brightness">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Ambient</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="ambientIntensity">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="ambientValue" data-param="ambientIntensity" value="0.5">
-          </div>
-          <button class="stepper-btn plus" data-param="ambientIntensity">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Decay</label>
-        <div class="segmented-control" id="decayControl">
-          <button data-value="0" class="active">0</button>
-          <button data-value="1">1</button>
-          <button data-value="2">2</button>
-        </div>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <div class="row">
-        <label>Radius</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="sphereRadius">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="radiusValue" data-param="sphereRadius" value="1">
-          </div>
-          <button class="stepper-btn plus" data-param="sphereRadius">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Distance</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="wallDistance">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="distValue" data-param="wallDistance" value="14">
-          </div>
-          <button class="stepper-btn plus" data-param="wallDistance">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Light Dist</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="lightDistance">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="lightDistanceValue" data-param="lightDistance" value="15">
-          </div>
-          <button class="stepper-btn plus" data-param="lightDistance">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Spot Angle</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="spotAngle">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="spotAngleValue" data-param="spotAngle" value="15">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="spotAngle">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Lamp Size</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="lampScale">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="lampScaleValue" data-param="lampScale" value="5">
-          </div>
-          <button class="stepper-btn plus" data-param="lampScale">+</button>
-        </div>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <div class="row toggle-row">
-        <label for="showLamps">Show Lamps</label>
-        <input id="showLamps" type="checkbox" checked>
-      </div>
-      <!-- 018 Mode ist jetzt immer aktiv -->
-
-      <div class="row">
-        <label>Glyph Size</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphSize">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphSizeValue" data-param="glyphSize" value="4">
-          </div>
-          <button class="stepper-btn plus" data-param="glyphSize">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>0</label>
-        <input id="glyphChar0" type="text" value="0">
-      </div>
-      <div class="row">
-        <label>1</label>
-        <input id="glyphChar1" type="text" value="1">
-      </div>
-      <div class="row">
-        <label>∞</label>
-        <input id="glyphCharInf" type="text" value="∞">
-      </div>
-      <div class="row">
-        <label>Rot 0</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphRot0">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphRot0Value" data-param="glyphRot0" value="0">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="glyphRot0">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Rot 1</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphRot1">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphRot1Value" data-param="glyphRot1" value="0">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="glyphRot1">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Rot ∞</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphRotInf">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphRotInfValue" data-param="glyphRotInf" value="315">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="glyphRotInf">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Font</label>
-        <select id="glyphFontSelect" style="flex:1; height:32px; border-radius:9999px; padding:0 0.5rem; background:var(--bg-color); color:var(--text-color); border:2px solid var(--text-color); cursor:pointer;"></select>
-      </div>
-    </div>
-    
-  <!-- maybe better a cube instead of a sphere. Spheres tend to create artifacts in 3 dimansional space. The .141592... -->
-  </div>
 
   <script type="module">
   import * as THREE from 'three';
@@ -640,6 +88,8 @@
   // 5-Lampen-GEB (Vergleichsvariante, Lichtabstand 15) behält die Bodenlampe über der oberen Kugel: näher am Stapel
   // verzerren die Perspektiven der zwei Kugeln das Boden-∞.
   function floorLampY() { return (gebFiveLamps ? upperSphereY() : stackMidY()) + params.lightDistance; }
+  // Bodenhöhe: Abstand wallDistance unter der Stapelmitte, damit Boden-Scheibe und Wand-Scheiben in beiden Modi gleich zur Kugelmitte stehen.
+  function floorY() { return stackMidY() - params.wallDistance; }
   function wallLampY() { return dualMode && !gebFiveLamps ? stackMidY() : upperSphereY(); }
   // 3-lamp GEB: the wall lamp sits between the spheres, so its cone has to reach the far edge of both.
   // The penumbra eats the outer ~30% of the cone, hence the widening.
@@ -731,7 +181,7 @@
     lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 0, dynamicStep: true },
 
     // Spotlight-Parameter
-    spotAngle:        { id: 'spotAngle',            urlKey: 'angle',     min: 0,     max: 180,    step: 1,    default: 15,   decimals: 4, dynamicStep: true },
+    spotAngle:        { id: 'spotAngle',            urlKey: 'angle',     min: 0,     max: 180,    step: 1,    default: 16,   decimals: 4, dynamicStep: true },
     spotPenumbra:     { id: 'spotPenumbra',         urlKey: 'pen',       min: 0,     max: 1,      step: 0.05, default: 0.5,  decimals: 2, dynamicStep: true },
     spotDecay:        { id: 'spotDecay',            urlKey: 'decay',     min: 0,     max: 2,      step: 1,    default: 0,    decimals: 0, isSegmented: true },
     spotRange:        { id: 'spotRange',            urlKey: 'range',     min: 0,     max: 10000,  step: 1,    default: 10000, decimals: 0, dynamicStep: true },
@@ -878,7 +328,7 @@
   function calcConeRadius(spotPos, wallDist, axis) {
     // Abstand vom Spotlight zur Wand
     let dist;
-    if (axis === 'y') dist = Math.abs(spotPos.y - (-wallDist));
+    if (axis === 'y') dist = Math.abs(spotPos.y - floorY());
     else if (axis === 'z') dist = Math.abs(spotPos.z - (-wallDist));
     else if (axis === 'x') dist = Math.abs(spotPos.x - (-wallDist));
     else dist = wallDist;
@@ -897,7 +347,7 @@
     const w = params.wallDistance;
     const yW = wallLampY();
     spotFloor.position.set(0, floorLampY(), 0);
-    spotFloor.target.position.set(0, -w, 0);
+    spotFloor.target.position.set(0, floorY(), 0);
     spotBack.position.set(0, yW, d);
     spotBack.target.position.set(0, yW, -w);
     spotSide.position.set(d, yW, 0);
@@ -932,12 +382,12 @@
 
     if (typeof params.wallDistance === 'number') {
       const d = -params.wallDistance;
-      if (floor) floor.position.y = d;
+      if (floor) floor.position.y = floorY();
       if (backWall) backWall.position.z = d;
       if (sideWall) sideWall.position.x = d;
 
       // Hit-Layer synchronisieren
-      if (hitLayerFloor) hitLayerFloor.position.y = d;
+      if (hitLayerFloor) hitLayerFloor.position.y = floorY();
       if (hitLayerBack) hitLayerBack.position.z = d;
       if (hitLayerSide) hitLayerSide.position.x = d;
 
@@ -2375,616 +1825,217 @@
     return value.toFixed(decimals);
   }
 
-  function updateValueDisplay(inputId, value, suffix = '') {
-    const display = document.getElementById(inputId + 'Value');
-    if (display) {
-      const num = typeof value === 'number' ? value : parseFloat(value);
-      const formatted = formatValueUnlimited(num);
-      // Für inputs: nur value setzen (kein suffix im value)
-      if (display.tagName === 'INPUT') {
-        display.value = formatted;
-      } else {
-        display.textContent = formatted + suffix;
-      }
-    }
+  // === Einstellungs-Panel (gemeinsame Komponente tools/controls.js) ===
+  let panel = null;
+  const ROT_PARAMS = ['glyphRotInf', 'glyphRot0', 'glyphRot1'];
+  const GLYPH_PARAMS = ['glyphSize', ...ROT_PARAMS];
+  const GLYPH_PANEL_KEYS = { glyph0: 'left', glyph1: 'right', glyphInf: 'floor' };
+
+  // key = params-Schluessel, sliderMin/Max = sichtbarer Regler-Bereich (Eingabe und URL duerfen bis PARAMS_CONFIG.min/max)
+  const PANEL_SLIDERS = [
+    { key: 'brightness',       label: 'Brightness',  sliderMin: 0,   sliderMax: 500, step: 1,   decimals: 0 },
+    { key: 'ambientIntensity', label: 'Ambient',     sliderMin: 0,   sliderMax: 10,  step: 0.1, decimals: 1 },
+    'decay',
+    '---',
+    { key: 'sphereRadius',     label: 'Radius',      sliderMin: 0,   sliderMax: 20,  step: 0.1, decimals: 1 },
+    { key: 'wallDistance',     label: 'Distance',    sliderMin: -20, sliderMax: 100, step: 0.1, decimals: 1 },
+    { key: 'lightDistance',    label: 'Light Dist',  sliderMin: 0,   sliderMax: 200, step: 0.1, decimals: 1 },
+    { key: 'spotAngle',        label: 'Spot Angle',  sliderMin: 0,   sliderMax: 90,  step: 0.1, decimals: 1 },
+    { key: 'lampScale',        label: 'Lamp Size',   sliderMin: 0,   sliderMax: 50,  step: 1,   decimals: 0 },
+    '---',
+    'showLamps',
+    { key: 'glyphSize',        label: 'Glyph Size',  sliderMin: 0,   sliderMax: 50,  step: 0.1, decimals: 1 },
+    'glyphTexts',
+    { key: 'glyphRot0',        label: 'Rot 0',       sliderMin: 0,   sliderMax: 360, step: 1,   decimals: 0 },
+    { key: 'glyphRot1',        label: 'Rot 1',       sliderMin: 0,   sliderMax: 360, step: 1,   decimals: 0 },
+    { key: 'glyphRotInf',      label: 'Rot ∞',       sliderMin: 0,   sliderMax: 360, step: 1,   decimals: 0 },
+    'font',
+  ];
+
+  // Panel-Anzeige komplett aus params/glyphChars/currentFontKey neu setzen (nach Drag, Mausrad, Reset).
+  function syncPanelFromParams() {
+    if (!panel) return;
+    PANEL_SLIDERS.forEach((spec) => {
+      if (typeof spec === 'object') panel.set(spec.key, params[spec.key]);
+    });
+    panel.set('spotDecay', params.spotDecay);
+    panel.set('gebMode', dualMode);
+    Object.entries(GLYPH_PANEL_KEYS).forEach(([panelKey, charKey]) => panel.set(panelKey, glyphChars[charKey] ?? ''));
+    panel.set('fontKey', currentFontKey);
   }
 
-  function setupUI() {
-    const rotParams = ['glyphRotInf', 'glyphRot0', 'glyphRot1'];
+  function applyLampVisibility() {
+    const visible = !panel || panel.params.showLamps !== false;
+    [lampFloor, lampBack, lampSide, lampBackB, lampSideB,
+     lightConeFloor, lightConeBack, lightConeSide, lightConeBackB, lightConeSideB]
+      .forEach(o => { if (o) o.visible = visible; });
+  }
 
-    const controlsPanel = document.getElementById('shadows-controls');
-    const dragHandle = document.getElementById('dragHandle');
+  function applyParamChange(key) {
+    updateLightingFromParams();
+    updateGeometryFromParams();
+    needsUniformUpdate = true;
+    if (GLYPH_PARAMS.includes(key)) updateGlyphTextures();
+    scheduleURLUpdate();
+  }
 
-    if (controlsPanel && dragHandle) {
-      let isDragging = false;
-      let startY = 0;
-      let currentPanelY = 0; // Aktuelle Panel-Position (0 = voll offen, max = collapsed)
-      const canvas = document.getElementById('shadows-root');
+  function onSliderInput(key, rawValue) {
+    const cfg = PARAMS_CONFIG[key];
+    let val = Number(rawValue);
+    if (!Number.isFinite(val)) return;
+    val = ROT_PARAMS.includes(key)
+      ? ((val % 360) + 360) % 360
+      : Math.max(cfg.min, Math.min(cfg.max, val));
+    if (val !== Number(rawValue)) panel.set(key, val);
+    params[key] = val;
+    applyParamChange(key);
+  }
 
-      const isMobile = () => window.innerWidth <= 768;
-      const getMaxY = () => controlsPanel.offsetHeight - INTERACTION_CONFIG.collapsedHandleHeight;
-      const getMinY = () => 0; // Voll geöffnet
+  let brightnessAnimation = null;
+  // Decay-Wechsel haelt die sichtbare Helligkeit auf der Nebelebene konstant (Brightness animiert nachgefuehrt).
+  function onDecayChange(newDecay) {
+    const oldDecay = params.spotDecay ?? 0;
+    if (newDecay === oldDecay) return;
 
-      // Canvas proportional verschieben
-      const updateCanvasPosition = (panelY) => {
-        if (!canvas || !isMobile()) return;
-        const maxY = getMaxY();
-        const openRatio = 1 - (panelY / maxY); // 0 = closed, 1 = fully open
-        const canvasOffset = openRatio * -INTERACTION_CONFIG.canvasOffsetMax;
-        canvas.style.transform = `translateY(${canvasOffset}vh)`;
-      };
+    const effectiveDist = (params.lightDistance ?? 15) + (params.wallDistance ?? 5);
+    const startBrightness = params.brightness ?? 80;
+    const targetBrightness = Math.round(startBrightness * Math.pow(effectiveDist, newDecay - oldDecay));
 
-      // Panel-Position setzen
-      const setPanelPosition = (y, animate = false) => {
-        const maxY = getMaxY();
-        currentPanelY = Math.max(getMinY(), Math.min(maxY, y));
+    params.spotDecay = newDecay;
+    needsUniformUpdate = true;
 
-        if (animate) {
-          controlsPanel.style.transition = 'transform 0.25s ease-out';
-          canvas.style.transition = 'transform 0.25s ease-out';
-        } else {
-          controlsPanel.style.transition = 'none';
-          canvas.style.transition = 'none';
-        }
+    if (brightnessAnimation) cancelAnimationFrame(brightnessAnimation);
+    const duration = 500;
+    const startTime = performance.now();
 
-        controlsPanel.style.transform = `translateY(${currentPanelY}px)`;
-        updateCanvasPosition(currentPanelY);
-      };
-
-      // Initial: collapsed
-      if (isMobile()) {
-        currentPanelY = getMaxY();
-        controlsPanel.style.transform = `translateY(${currentPanelY}px)`;
-      }
-
-      // Toggle on tap (zwischen 3 Stufen: closed → half → full → closed)
-      dragHandle.addEventListener('click', (e) => {
-        if (isDragging || !isMobile()) return;
-
-        const maxY = getMaxY();
-        const halfY = maxY * 0.5;
-
-        // Snap zu nächster Stufe
-        if (currentPanelY > halfY) {
-          // Von closed → half open
-          setPanelPosition(halfY, true);
-        } else if (currentPanelY > 10) {
-          // Von half → full open
-          setPanelPosition(0, true);
-        } else {
-          // Von full → closed
-          setPanelPosition(maxY, true);
-        }
-      });
-
-      // Drag start
-      dragHandle.addEventListener('touchstart', (e) => {
-        if (!isMobile()) return;
-        isDragging = false;
-        startY = e.touches[0].clientY;
-        controlsPanel.style.transition = 'none';
-        canvas.style.transition = 'none';
-      }, { passive: true });
-
-      // Drag move - stufenlos!
-      dragHandle.addEventListener('touchmove', (e) => {
-        if (!isMobile()) return;
-        isDragging = true;
-        const deltaY = e.touches[0].clientY - startY;
-        const newY = currentPanelY + deltaY;
-
-        // Clamp und setzen (ohne Animation)
-        const clampedY = Math.max(getMinY(), Math.min(getMaxY(), newY));
-        controlsPanel.style.transform = `translateY(${clampedY}px)`;
-        updateCanvasPosition(clampedY);
-      }, { passive: true });
-
-      // Drag end - Position speichern, kein Snap!
-      dragHandle.addEventListener('touchend', (e) => {
-        if (!isMobile()) return;
-
-        if (isDragging) {
-          const endY = e.changedTouches[0].clientY;
-          const deltaY = endY - startY;
-          currentPanelY = Math.max(getMinY(), Math.min(getMaxY(), currentPanelY + deltaY));
-        }
-        isDragging = false;
-      });
-
-      // Bei Resize neu berechnen
-      window.addEventListener('resize', () => {
-        if (!isMobile()) {
-          controlsPanel.style.transform = '';
-          canvas.style.transform = '';
-        }
-      });
-    }
-
-    // Initial value displays
-    updateValueDisplay('brightness', params.brightness);
-    updateValueDisplay('ambient', params.ambientIntensity);
-    updateValueDisplay('radius', params.sphereRadius);
-    updateValueDisplay('dist', params.wallDistance);
-    updateValueDisplay('lightDistance', params.lightDistance);
-    updateValueDisplay('spotAngle', params.spotAngle, '°');
-    updateValueDisplay('lampScale', params.lampScale);
-    updateValueDisplay('glyphSize', params.glyphSize);
-    updateValueDisplay('glyphRot0', params.glyphRot0, '°');
-    updateValueDisplay('glyphRot1', params.glyphRot1, '°');
-    updateValueDisplay('glyphRotInf', params.glyphRotInf, '°');
-
-    // Stepper-Button Handler mit Hold-Repeat
-    document.querySelectorAll('.stepper-btn').forEach(btn => {
-      const paramKey = btn.dataset.param;
-      const cfg = PARAMS_CONFIG[paramKey];
-      if (!cfg) return;
-
-      let holdInterval = null;
-      let holdTimeout = null;
-
-      const doStep = () => {
-        const isPlus = btn.classList.contains('plus');
-        const currentVal = params[paramKey] ?? cfg.default;
-
-        // Dynamischer Step oder aus Config (mit Richtung)
-        const step = cfg.dynamicStep ? getDynamicStepForValue(currentVal, isPlus, cfg) : cfg.step;
-
-        let newVal = isPlus ? currentVal + step : currentVal - step;
-
-        // Rotation Wraparound: 360° → 0°, -1° → 359°
-        if (rotParams.includes(paramKey)) {
-          newVal = ((newVal % 360) + 360) % 360;
-        } else {
-          newVal = Math.max(cfg.min, Math.min(cfg.max, newVal));
-        }
-
-        // Rundungsfehler vermeiden
-        newVal = parseFloat(newVal.toPrecision(10));
-
-        params[paramKey] = newVal;
-
-        // Display aktualisieren
-        const suffix = paramKey === 'spotAngle' || rotParams.includes(paramKey) ? '°' : '';
-        const displayVal = cfg.dynamicStep ? formatValueUnlimited(newVal) : newVal;
-        updateValueDisplay(cfg.id, displayVal, suffix);
-
-        updateLightingFromParams();
-        updateGeometryFromParams();
-        needsUniformUpdate = true;
-
-        // Glyph-Parameter: Texturen sofort updaten
-        const glyphParams = ['glyphSize', ...rotParams];
-        if (glyphParams.includes(paramKey)) {
-          updateGlyphTextures();
-        }
-      };
-
-      const stopHold = () => {
-        if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
-        if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
-        updateURLFromParams();
-      };
-
-      // Pointer events für Hold-Funktion (funktioniert für Mouse + Touch)
-      btn.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        doStep();
-        // Nach 400ms Start mit Repeat alle 80ms
-        holdTimeout = setTimeout(() => {
-          holdInterval = setInterval(doStep, 80);
-        }, 400);
-      });
-
-      btn.addEventListener('pointerup', stopHold);
-      btn.addEventListener('pointerleave', stopHold);
-      btn.addEventListener('pointercancel', stopHold);
-    });
-
-    document.querySelectorAll('.value-input').forEach(input => {
-      const paramKey = input.dataset.param;
-      const cfg = PARAMS_CONFIG[paramKey];
-      if (!cfg) return;
-
-      let originalValue = params[paramKey] ?? cfg.default;
-
-      // Bei Focus: Wert merken für Escape
-      input.addEventListener('focus', () => {
-        originalValue = params[paramKey] ?? cfg.default;
-        input.select(); // Text selektieren
-      });
-
-      // ECHTZEIT: Bei jeder Eingabe sofort anwenden (ohne URL-Update für Performance)
-      input.addEventListener('input', () => {
-        applyInputValueLive(input, paramKey, cfg);
-      });
-
-      // Bei Blur: Wert finalisieren (mit URL-Update und Formatierung)
-      input.addEventListener('blur', () => {
-        applyInputValue(input, paramKey, cfg);
-      });
-
-      // Bei Enter: Wert übernehmen und Fokus verlieren
-      // Bei Escape: Originalwert wiederherstellen
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          applyInputValue(input, paramKey, cfg);
-          input.blur();
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          params[paramKey] = originalValue;
-          input.value = formatValueUnlimited(originalValue);
-          input.blur();
-        }
-      });
-    });
-
-    // Live-Update während der Eingabe (ohne Formatierung/URL für Performance)
-    function applyInputValueLive(input, paramKey, cfg) {
-      const inputVal = input.value.replace(',', '.');
-      let val = parseFloat(inputVal);
-
-      // Bei ungültiger Eingabe: nichts tun (warten auf weitere Eingabe)
-      if (isNaN(val)) return;
-
-      // Clampen auf min/max
-      val = Math.max(cfg.min, Math.min(cfg.max, val));
-
-      // Rotation Wraparound
-      if (rotParams.includes(paramKey)) {
-        val = ((val % 360) + 360) % 360;
-      }
-
-      params[paramKey] = val;
-
-      updateLightingFromParams();
-      updateGeometryFromParams();
+    function animateBrightness(now) {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      params.brightness = Math.round(startBrightness + (targetBrightness - startBrightness) * eased);
+      panel.set('brightness', params.brightness);
       needsUniformUpdate = true;
-
-      // Glyph-Parameter: Texturen updaten
-      if (['glyphSize', ...rotParams].includes(paramKey)) {
-        updateGlyphTextures();
-      }
-    }
-
-    // Finales Update bei Blur (mit Formatierung und URL)
-    function applyInputValue(input, paramKey, cfg) {
-      // Komma als Dezimaltrennzeichen erlauben (z.B. "1,5" → "1.5")
-      const inputVal = input.value.replace(',', '.');
-      let val = parseFloat(inputVal);
-
-      // Ungültige Eingabe: Originalwert wiederherstellen
-      if (isNaN(val)) {
-        val = params[paramKey] ?? cfg.default;
-      }
-
-      // Clampen auf min/max
-      val = Math.max(cfg.min, Math.min(cfg.max, val));
-
-      // Rotation Wraparound
-      if (rotParams.includes(paramKey)) {
-        val = ((val % 360) + 360) % 360;
-      }
-
-      params[paramKey] = val;
-      input.value = formatValueUnlimited(val);
-
-      updateLightingFromParams();
-      updateGeometryFromParams();
-      needsUniformUpdate = true;
-
-      // Glyph-Parameter: Texturen updaten
-      if (['glyphSize', ...rotParams].includes(paramKey)) {
-        updateGlyphTextures();
-      }
-
-      updateURLFromParams();
-    }
-
-    Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => {
-      const el = document.getElementById(cfg.id);
-      if (!el) return;
-
-      const isSelect = cfg.isSelect || el.tagName === 'SELECT';
-
-      // Alle Inputs (Range + Number) bekommen min/max/step aus Config
-      if (!isSelect) {
-        el.min = cfg.min;
-        el.max = cfg.max;
-        el.step = cfg.step;
-      }
-      el.value = params[key];
-
-      // Select: 'change', Input: 'input'
-      el.addEventListener(isSelect ? 'change' : 'input', () => {
-        let val = parseFloat(el.value);
-
-        // Rotation Wraparound (0-360)
-        if (rotParams.includes(key)) {
-          val = ((val % 360) + 360) % 360;
-          el.value = val;
-        }
-
-        params[key] = val;
-
-        // Value Display aktualisieren
-        const suffix = rotParams.includes(key) || key === 'spotAngle' ? '°' : '';
-        updateValueDisplay(cfg.id, val, suffix);
-
-        updateLightingFromParams();
-        updateGeometryFromParams();
-
-        // Glyph-Parameter: Texturen sofort updaten
-        const glyphParams = ['glyphSize', ...rotParams];
-        if (glyphParams.includes(key)) {
-          updateGlyphTextures();
-          needsUniformUpdate = true;
-        }
-
-        // Shader-Parameter: Uniforms updaten (Kugel + Fog)
-        const shaderParams = ['brightness', 'spotAngle', 'spotPenumbra', 'spotDecay', 'sphereRadius', 'lightDistance', 'ambientIntensity'];
-        if (shaderParams.includes(key)) {
-          needsUniformUpdate = true;
-        }
-
+      if (progress < 1) {
+        brightnessAnimation = requestAnimationFrame(animateBrightness);
+      } else {
+        brightnessAnimation = null;
         updateURLFromParams();
-      });
-    });
-		
-    // Checkbox für Lampen + Lichtkegel zusammen
-    const lampsEl = document.getElementById('showLamps');
-    if (lampsEl) {
-      const applyLampVisibility = () => {
-        const visible = lampsEl.checked;
-        // Lampen-Geometrien
-        if (lampFloor) lampFloor.visible = visible;
-        if (lampBack)  lampBack.visible  = visible;
-        if (lampSide)  lampSide.visible  = visible;
-        // GEB-Mode: Lampen der zweiten Kugel folgen demselben Master-Toggle
-        if (lampBackB) lampBackB.visible = visible;
-        if (lampSideB) lampSideB.visible = visible;
-        // Lichtkegel mit Lampen zusammen
-        if (lightConeFloor) lightConeFloor.visible = visible;
-        if (lightConeBack)  lightConeBack.visible  = visible;
-        if (lightConeSide)  lightConeSide.visible  = visible;
-        if (lightConeBackB) lightConeBackB.visible = visible;
-        if (lightConeSideB) lightConeSideB.visible = visible;
-      };
-      lampsEl.addEventListener('change', applyLampVisibility);
-      applyLampVisibility(); // Initialzustand
+      }
     }
+    brightnessAnimation = requestAnimationFrame(animateBrightness);
+  }
 
-    // GEB-Modus Toggle: baut Kugeln und Lampen im laufenden Betrieb um (kein Reload, Kamerawinkel bleiben).
-    // Beide Modi teilen dieselben Einstellungen: der Toggle aendert nur 1 vs. 2 Kugeln, keinen Slider-Wert.
-    const gebEl = document.getElementById('gebMode');
-    if (gebEl) {
-      gebEl.checked = dualMode;
-      gebEl.addEventListener('change', (e) => {
-        const on = e.target.checked;
-        if (on === dualMode) return;
-        syncCameraParamsFromControls();
-        dualMode = on;
-        gebFiveLamps = false;
-        // 5-Lampen-Zusatzspots (nur ?geb=5) entfernen
-        [spotBackB, spotSideB].forEach(sp => { if (sp) { scene.remove(sp.target); scene.remove(sp); } });
-        [lampBackB, lampSideB, lightConeBackB, lightConeSideB].forEach(o => { if (o) scene.remove(o); });
-        spotBackB = spotSideB = lampBackB = lampSideB = lightConeBackB = lightConeSideB = null;
+  // GEB-Modus: baut Kugeln und Lampen im laufenden Betrieb um (kein Reload, Kamerawinkel bleiben).
+  // Beide Modi teilen dieselben Einstellungen: der Toggle aendert nur 1 vs. 2 Kugeln, keinen Slider-Wert.
+  function onGebToggle(on) {
+    if (on === dualMode) return;
+    syncCameraParamsFromControls();
+    dualMode = on;
+    gebFiveLamps = false;
+    // 5-Lampen-Zusatzspots (nur ?geb=5) entfernen
+    [spotBackB, spotSideB].forEach(sp => { if (sp) { scene.remove(sp.target); scene.remove(sp); } });
+    [lampBackB, lampSideB, lightConeBackB, lightConeSideB].forEach(o => { if (o) scene.remove(o); });
+    spotBackB = spotSideB = lampBackB = lampSideB = lightConeBackB = lightConeSideB = null;
 
-        buildSphereWithShader();
-        updateLightingFromParams();
-        updateGeometryFromParams();
-        updateFogUniforms();
-        updateLampVisuals();
-        applyCameraFromParams();
-        controls.update();
-        needsUniformUpdate = true;
-        updateURLFromParams();
-      });
-    }
+    buildSphereWithShader();
+    updateLightingFromParams();
+    updateGeometryFromParams();
+    updateFogUniforms();
+    updateLampVisuals();
+    applyCameraFromParams();
+    controls.update();
+    needsUniformUpdate = true;
+    updateURLFromParams();
+  }
 
-    // Decay Segmented Control mit animierter Brightness-Anpassung
-    const decayControl = document.getElementById('decayControl');
-    if (decayControl) {
-      const buttons = decayControl.querySelectorAll('button');
-      const brightnessInput = document.getElementById('brightnessValue');  // FIX: Korrekte ID
+  function resetAll() {
+    Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => { params[key] = cfg.default; });
 
-      // Aktiven Button basierend auf params setzen
-      buttons.forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.value) === params.spotDecay);
-      });
+    invertMode = false;  // per Klick auf die Kugel gesteuert
+    glyphChars = { ...DEFAULT_GLYPH_CHARS };
+    currentFontKey = DEFAULT_FONT_KEY;
+    syncPanelFromParams();
+    panel.set('showLamps', true);
+    applyLampVisibility();
 
-      let brightnessAnimation = null;
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const newDecay = parseInt(btn.dataset.value);
-          const oldDecay = params.spotDecay ?? 0;
-
-          if (newDecay === oldDecay) return;
-
-          // Aktiven Button wechseln
-          buttons.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-
-          // Brightness-Kompensation berechnen
-          // Die echte Distanz zur Fog-Ebene ist lightDistance + wallDistance
-          const lightDist = params.lightDistance ?? 15;
-          const wallDist = params.wallDistance ?? 5;
-          const effectiveDist = lightDist + wallDist;  // ≈ 20 bei Standard-Settings
-          const currentBrightness = params.brightness ?? 80;
-
-          // Ziel-Brightness: gleiche visuelle Helligkeit auf der Fog-Ebene
-          // decay=0: light = brightness
-          // decay=1: light = brightness / dist
-          // decay=2: light = brightness / dist²
-          // Um gleiche Helligkeit zu behalten: brightness_new = brightness_old * dist^(new-old)
-          const factor = Math.pow(effectiveDist, newDecay - oldDecay);
-          const targetBrightness = Math.round(currentBrightness * factor);
-
-          // Sofort Decay setzen
-          params.spotDecay = newDecay;
-          needsUniformUpdate = true;
-
-          // Animation stoppen falls noch läuft
-          if (brightnessAnimation) cancelAnimationFrame(brightnessAnimation);
-
-          // Brightness animiert anpassen
-          const startBrightness = currentBrightness;
-          const duration = 500; // ms
-          const startTime = performance.now();
-
-          function animateBrightness(now) {
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-
-            // Easing: ease-out
-            const eased = 1 - Math.pow(1 - progress, 3);
-
-            const newBrightness = Math.round(startBrightness + (targetBrightness - startBrightness) * eased);
-            params.brightness = newBrightness;
-            // FIX: Input-Feld korrekt aktualisieren (ist jetzt ein Input, nicht span)
-            if (brightnessInput) brightnessInput.value = formatValueUnlimited(newBrightness);
-            needsUniformUpdate = true;
-
-            if (progress < 1) {
-              brightnessAnimation = requestAnimationFrame(animateBrightness);
-            } else {
-              brightnessAnimation = null;
-              updateURLFromParams();
-            }
-          }
-
-          brightnessAnimation = requestAnimationFrame(animateBrightness);
-        });
-      });
-    }
-
-    // Reset-Button
-    const resetBtn = document.getElementById('resetParams');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        // Alle Parameter auf Defaults setzen
-        Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => {
-          params[key] = cfg.default;
-          const el = document.getElementById(cfg.id);
-          if (el) el.value = cfg.default;
-        });
-
-        // Value Displays aktualisieren
-        updateValueDisplay('brightness', params.brightness);
-        updateValueDisplay('ambient', params.ambientIntensity);
-        updateValueDisplay('radius', params.sphereRadius);
-        updateValueDisplay('dist', params.wallDistance);
-        updateValueDisplay('lightDistance', params.lightDistance);
-        updateValueDisplay('spotAngle', params.spotAngle, '°');
-        updateValueDisplay('lampScale', params.lampScale);
-        updateValueDisplay('glyphSize', params.glyphSize);
-        updateValueDisplay('glyphRot0', params.glyphRot0, '°');
-        updateValueDisplay('glyphRot1', params.glyphRot1, '°');
-        updateValueDisplay('glyphRotInf', params.glyphRotInf, '°');
-
-        // Decay Segmented Control aktualisieren
-        const decayButtons = document.querySelectorAll('#decayControl button');
-        decayButtons.forEach(btn => {
-          btn.classList.toggle('active', parseInt(btn.dataset.value) === params.spotDecay);
-        });
-
-        // Checkboxen zurücksetzen
-        const lampsEl = document.getElementById('showLamps');
-        if (lampsEl) {
-          lampsEl.checked = true;
-          lampsEl.dispatchEvent(new Event('change'));
-        }
-
-        // Invert-Mode zurücksetzen (per Klick auf Kugel gesteuert)
-        invertMode = false;
-        needsUniformUpdate = true;
-
-        // Glyph-Zeichen zurücksetzen
-        glyphChars = { ...DEFAULT_GLYPH_CHARS };
-        const infEl = document.getElementById('glyphCharInf');
-        const zeroEl = document.getElementById('glyphChar0');
-        const oneEl = document.getElementById('glyphChar1');
-        if (infEl) infEl.value = DEFAULT_GLYPH_CHARS.floor;
-        if (zeroEl) zeroEl.value = DEFAULT_GLYPH_CHARS.left;
-        if (oneEl) oneEl.value = DEFAULT_GLYPH_CHARS.right;
-
-        // Font zurücksetzen
-        currentFontKey = DEFAULT_FONT_KEY;
-        const fontSelectEl = document.getElementById('glyphFontSelect');
-        if (fontSelectEl) fontSelectEl.value = DEFAULT_FONT_KEY;
-
-        // Kamera zurücksetzen (aus Config-Defaults)
-        if (camera && controls) {
-          controls.target.set(0, orbitTargetY(), 0);
-          applyCameraFromParams();  // Nutzt die soeben gesetzten Default-Werte
-        }
-
-        // Alles aktualisieren
-        updateLightingFromParams();
-        updateGeometryFromParams();
-        updateGlyphTextures();
-        needsUniformUpdate = true;
-
-        // URL leeren (keine Parameter = Defaults)
-        history.replaceState(null, '', window.location.pathname);
-      });
+    if (camera && controls) {
+      controls.target.set(0, orbitTargetY(), 0);
+      applyCameraFromParams();
     }
 
     updateLightingFromParams();
     updateGeometryFromParams();
+    updateGlyphTextures();
+    needsUniformUpdate = true;
+
+    // URL leeren (keine Parameter = Defaults)
+    history.replaceState(null, '', window.location.pathname);
   }
 
-  function setupGlyphUI() {
-    const infEl = document.getElementById('glyphCharInf');
-    const zeroEl = document.getElementById('glyphChar0');
-    const oneEl = document.getElementById('glyphChar1');
+  function setupUI() {
+    panel = Controls.createPanel({
+      id: 'shadows-controls',
+      position: 'left',
+      mobileContentElement: document.getElementById('shadows-root'),
+    });
+    panel.addResetButton({ title: 'Reset', onClick: resetAll });
 
-    // Eingabefelder initial aus glyphChars befüllen (ohne Fallback - leer = leer)
-    if (infEl)  infEl.value  = glyphChars.floor ?? '';
-    if (zeroEl) zeroEl.value = glyphChars.left  ?? '';
-    if (oneEl)  oneEl.value  = glyphChars.right ?? '';
+    panel.addToggle('gebMode', { label: 'GEB-Modus', value: dualMode, onChange: onGebToggle });
+    panel.addDivider();
 
-    // Invert-Mode wird jetzt per Klick auf die Kugel gesteuert (siehe onPointerUp)
+    PANEL_SLIDERS.forEach((spec) => {
+      if (spec === '---') { panel.addDivider(); return; }
+      if (spec === 'decay') {
+        panel.addSelect('spotDecay', {
+          label: 'Decay',
+          options: [0, 1, 2],
+          value: params.spotDecay,
+          onChange: (v) => onDecayChange(Number(v)),
+        });
+      } else if (spec === 'showLamps') {
+        panel.addToggle('showLamps', { label: 'Show Lamps', value: true, onChange: applyLampVisibility });
+      } else if (spec === 'glyphTexts') {
+        [['glyph0', '0', 'left'], ['glyph1', '1', 'right'], ['glyphInf', '∞', 'floor']].forEach(([panelKey, label, charKey]) => {
+          panel.addInput(panelKey, {
+            label,
+            value: glyphChars[charKey] ?? '',
+            // Leere Eingabe = nichts auf der Kugel (kein Fallback)
+            onChange: (v) => {
+              glyphChars[charKey] = v;
+              updateURLFromParams();
+              updateGlyphTextures();
+              needsUniformUpdate = true;
+            },
+          });
+        });
+      } else if (spec === 'font') {
+        panel.addSelect('fontKey', {
+          label: 'Font',
+          options: Object.keys(FONT_OPTIONS),
+          value: currentFontKey,
+          onChange: (v) => {
+            currentFontKey = v;
+            updateGlyphTextures();
+            needsUniformUpdate = true;
+            updateURLFromParams();
+          },
+        });
+      } else {
+        panel.addSlider(spec.key, {
+          label: spec.label,
+          min: spec.sliderMin,
+          max: Math.max(spec.sliderMax, params[spec.key]),
+          step: spec.step,
+          decimals: spec.decimals,
+          value: params[spec.key],
+          onChange: (v) => onSliderInput(spec.key, v),
+        });
+      }
+    });
 
-    // Text-Änderungen: Texturen sofort updaten (instant, kein Debounce nötig!)
-    // Keine Fallbacks: Leere Eingabe = nichts auf der Kugel
-    function handleCharChange() {
-      if (infEl)  glyphChars.floor = infEl.value;
-      if (zeroEl) glyphChars.left  = zeroEl.value;
-      if (oneEl)  glyphChars.right = oneEl.value;
-      updateURLFromParams();
-      updateGlyphTextures();
-      needsUniformUpdate = true;  // FIX: Fog-Uniforms müssen auch aktualisiert werden!
-    }
-
-    if (infEl)  infEl.addEventListener('input', handleCharChange);
-    if (zeroEl) zeroEl.addEventListener('input', handleCharChange);
-    if (oneEl)  oneEl.addEventListener('input', handleCharChange);
-
-    // Font-Dropdown initialisieren
-    const fontSelectEl = document.getElementById('glyphFontSelect');
-    if (fontSelectEl) {
-      fontSelectEl.innerHTML = '';
-      Object.keys(FONT_OPTIONS).forEach(key => {
-        const opt = document.createElement('option');
-        opt.value = key;
-        opt.textContent = key;
-        if (key === currentFontKey) opt.selected = true;
-        fontSelectEl.appendChild(opt);
-      });
-
-      fontSelectEl.addEventListener('change', () => {
-        currentFontKey = fontSelectEl.value;
-        updateGlyphTextures();
-        needsUniformUpdate = true;
-        updateURLFromParams();
-      });
-    }
-
+    applyLampVisibility();
+    updateLightingFromParams();
+    updateGeometryFromParams();
   }
-
-
 
 
   function init() {
@@ -3207,7 +2258,7 @@
 	    spotFloor = addSpot(
 	      initialSpotIntensity,
 	      0, floorLampY(), 0,
-	      0, -params.wallDistance, 0
+	      0, floorY(), 0
 	    );
 	    // Auf die Rückwand (Licht entlang -Z-Achse)
 	    spotBack = addSpot(
@@ -3275,7 +2326,7 @@
     fogMaterials.push(floorFogMat);
     floor = new THREE.Mesh(createFogDisc(floorRadius), floorFogMat);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -params.wallDistance;
+    floor.position.y = floorY();
     scene.add(floor);
 
     const backRadius = calcConeRadius(spotBack.position, params.wallDistance, 'z');
@@ -3303,7 +2354,7 @@
     // Floor Hit-Layer (Y-Achse)
     hitLayerFloor = new THREE.Mesh(new THREE.CircleGeometry(floorRadius, 32), hitLayerMat.clone());
     hitLayerFloor.rotation.x = -Math.PI / 2;
-    hitLayerFloor.position.y = -params.wallDistance;
+    hitLayerFloor.position.y = floorY();
     hitLayerFloor.userData.axis = 'y';
     hitLayerFloor.userData.normal = new THREE.Vector3(0, 1, 0);
     scene.add(hitLayerFloor);
@@ -3341,7 +2392,7 @@
     // Fog-Outlines (Ringe)
     outlineFloor = new THREE.Mesh(createRingOutline(floorRadius, outlineThickness), outlineMat.clone());
     outlineFloor.rotation.x = -Math.PI / 2;
-    outlineFloor.position.y = -params.wallDistance + 0.01;
+    outlineFloor.position.y = floorY() + 0.01;
     outlineFloor.visible = false;
     scene.add(outlineFloor);
 
@@ -3456,7 +2507,6 @@
   updateFogUniforms();
   updateLampVisuals();  // Lampen-Visuals basierend auf lampStates initialisieren
   setupUI();
-  setupGlyphUI();
   updateURLFromParams();
 
   const raycaster = new THREE.Raycaster();
@@ -3513,7 +2563,7 @@
 
     if (obj === hitLayerFloor) {
       glyphTarget = 'floor';
-      centerOnPlane.set(0, -params.wallDistance, 0);
+      centerOnPlane.set(0, floorY(), 0);
     } else if (obj === hitLayerBack) {
       glyphTarget = 'left';
       centerOnPlane.set(0, 0, -params.wallDistance);
@@ -3803,13 +2853,10 @@
 
     if (dragType === 'fog') {
       params.wallDistance = roundedDist;
-      const distInput = document.getElementById('dist');
-      if (distInput) distInput.value = roundedDist;
     } else {
       params.lightDistance = roundedDist;
-      const lightDistInput = document.getElementById('lightDistance');
-      if (lightDistInput) lightDistInput.value = roundedDist;
     }
+    syncPanelFromParams();
 
     // Geometrie und Uniforms sofort aktualisieren
     updateGeometryFromParams();
@@ -3940,10 +2987,7 @@
       // Rundungsfehler vermeiden
       newAngle = parseFloat(newAngle.toPrecision(10));
       params.spotAngle = newAngle;
-
-      // Display aktualisieren
-      const displayVal = cfg.dynamicStep ? formatValueUnlimited(newAngle) : newAngle;
-      updateValueDisplay('spotAngle', displayVal, '°');
+      syncPanelFromParams();
     } else if (type === 'lamp') {
       // Lamp Size ändern + Brightness proportional koppeln
       const cfg = PARAMS_CONFIG.lampScale;
@@ -3960,11 +3004,10 @@
         let newBrightness = (params.brightness ?? cfgBright.default) * scaleFactor;
         newBrightness = Math.max(cfgBright.min, Math.min(cfgBright.max, newBrightness));
         params.brightness = Math.round(newBrightness);
-        updateValueDisplay('brightness', params.brightness);
         updateLightingFromParams();
       }
 
-      updateValueDisplay('lampScale', params.lampScale);
+      syncPanelFromParams();
     } else if (type === 'sphere') {
       // Sphere Radius ändern
       const cfg = PARAMS_CONFIG.sphereRadius;
@@ -3974,9 +3017,7 @@
       const factor = Math.pow(10, cfg.decimals);
       params.sphereRadius = Math.round(newRadius * factor) / factor;
 
-      updateValueDisplay('radius', params.sphereRadius);
-      const input = document.getElementById('radius');
-      if (input) input.value = params.sphereRadius;
+      syncPanelFromParams();
     }
 
     updateGeometryFromParams();
@@ -4117,7 +3158,7 @@
         glyphChars[activeGlyphTarget] = currentText.slice(0, -1);
         updateGlyphTextures();
         needsUniformUpdate = true;
-        syncGlyphInputs();
+        syncPanelFromParams();
         updateURLFromParams();
       }
       return;
@@ -4129,7 +3170,7 @@
       glyphChars[activeGlyphTarget] = '';
       updateGlyphTextures();
       needsUniformUpdate = true;
-      syncGlyphInputs();
+      syncPanelFromParams();
       updateURLFromParams();
       return;
     }
@@ -4146,21 +3187,11 @@
       glyphChars[activeGlyphTarget] = (glyphChars[activeGlyphTarget] || '') + e.key;
       updateGlyphTextures();
       needsUniformUpdate = true;
-      syncGlyphInputs();
+      syncPanelFromParams();
       updateURLFromParams();
     }
   }
 
-  // Synchronisiert die Glyph-Input-Felder im Panel mit glyphChars
-  function syncGlyphInputs() {
-    const char0Input = document.getElementById('char0');
-    const char1Input = document.getElementById('char1');
-    const charInfInput = document.getElementById('charInf');
-
-    if (char0Input) char0Input.value = glyphChars.left || '';
-    if (char1Input) char1Input.value = glyphChars.right || '';
-    if (charInfInput) charInfInput.value = glyphChars.floor || '';
-  }
 
   document.addEventListener('keydown', onKeyDown);
 
