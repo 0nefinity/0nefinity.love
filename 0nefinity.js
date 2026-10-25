@@ -3,118 +3,6 @@
   function injectStyles() {
     const css = `
 
-header.controls {
-  position: fixed;
-  top: 0;
-  left: 70px;
-  right: 70px;
-  height: auto;
-  z-index: 999;
-  color: var(--text-color);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 2px 4px;
-  box-sizing: border-box;
-  padding: 3px 5px;
-  background: transparent;
-  transition: all 0.3s ease;
-  max-height: none;
-  overflow: visible;
-  font-size: 11px;
-  user-select: none;
-  -webkit-user-select: none;
-}
-header.controls input {
-  user-select: auto;
-  -webkit-user-select: auto;
-}
-
-/* Collapsed State */
-header.controls.collapsed {
-  max-height: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  border: none !important;
-}
-
-/* Desktop mit hochauflösendem Display */
-@media (min-width: 769px) and (min-resolution: 2dppx) {
-  header.controls {
-    left: 88px;
-    right: 88px;
-  }
-}
-
-/* Mobile: Controls ausblenden */
-@media (max-width: 768px) {
-  header.controls {
-    display: none !important;
-  }
-}
-
-header.controls label {
-  white-space: nowrap;
-  margin: 1px 2px;
-  font-size: 10px;
-}
-header.controls input[type="number"],
-header.controls input[type="text"] {
-  margin-left: 2px;
-  padding: 1px 3px;
-  font-size: 10px;
-  background: var(--bg-color);
-  color: var(--text-color);
-  box-sizing: content-box;
-  border: 1px solid var(--text-color);
-  border-radius: 2px;
-  width: 45px;
-  -moz-appearance: textfield;
-}
-header.controls input[type="number"]::-webkit-inner-spin-button,
-header.controls input[type="number"]::-webkit-outer-spin-button {
-  opacity: 0;
-  width: 12px;
-  height: 14px;
-  transition: opacity 0.2s;
-}
-header.controls input[type="number"]:hover::-webkit-inner-spin-button,
-header.controls input[type="number"]:hover::-webkit-outer-spin-button {
-  opacity: 1;
-}
-header.controls input[type="number"]::-moz-inner-spin-button,
-header.controls input[type="number"]::-moz-outer-spin-button {
-  opacity: 0;
-  width: 12px;
-  height: 14px;
-  transition: opacity 0.2s;
-}
-header.controls input[type="number"]:hover::-moz-inner-spin-button,
-header.controls input[type="number"]:hover::-moz-outer-spin-button {
-  opacity: 1;
-}
-header.controls input#rotationSpeed {
-  width: 50px;
-}
-header.controls input[type="checkbox"] {
-  margin-left: 2px;
-  box-sizing: content-box;
-  width: 12px;
-  height: 12px;
-}
-header.controls button {
-  margin: 1px 2px;
-  padding: 1px 6px;
-  font-size: 10px;
-  background: var(--bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--text-color);
-  border-radius: 2px;
-  cursor: pointer;
-}
 .symbol-container {
   position: relative;
   margin-top: 40px;
@@ -146,46 +34,65 @@ canvas {
   display: block;
 }
 
-/* Info Popup Stil */
-.info-popup {
-  position: relative;
-  display: inline-block;
-  margin-left: 6px;
-  vertical-align: middle;
+/* Info-Hinweis neben dem Screenshot-Button (Popup per JS positioniert, damit das Panel es nicht abschneidet) */
+.symbol-info-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-.info-popup .info-icon {
+.symbol-info-row .ctrl-button {
+  flex: 0 0 auto;
+}
+.symbol-info-icon {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
+  border: 1px solid var(--text-color);
   color: var(--text-color);
-  font-size: 12px;
-  font-weight: bold;
+  background: transparent;
+  font: bold 11px/1 inherit;
+  padding: 0;
   cursor: help;
 }
-.info-popup .info-text {
-  visibility: hidden;
-  position: absolute;
-  top: -5px;
-  left: 100%;
-  width: 300px;
+.symbol-info-text {
+  position: fixed;
+  z-index: 100000;
+  width: min(300px, calc(100vw - 24px));
   background: var(--bg-color);
   color: var(--text-color);
   border: 1px solid var(--text-color);
   border-radius: 4px;
   padding: 8px;
   font-size: 12px;
-  z-index: 100;
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
-.info-popup:hover .info-text {
+.symbol-info-text.visible {
   visibility: visible;
   opacity: 1;
+}
+.symbol-gif-error {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 100001;
+  max-width: min(560px, calc(100vw - 24px));
+  background: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid #ff5a5a;
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  cursor: pointer;
 }
 
 /* Styles für die editierbaren Fotos */
@@ -263,86 +170,6 @@ canvas {
 .editable-photo.selected .rotation-line {
   visibility: visible;
 }
-.symbol-list-dropdown {
-  display: flex;
-  flex-direction: column;
-  background: transparent;
-  padding: 0;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 5px;
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 2000;
-}
-.symbol-list-dropdown.open {
-  max-height: 500px;
-  opacity: 1;
-  pointer-events: auto;
-  overflow-y: auto;
-}
-.symbol-list-table {
-  border-collapse: collapse;
-  width: auto;
-  position: relative;
-}
-.symbol-list-table thead {
-  display: table-header-group;
-}
-.symbol-list-table th,
-.symbol-list-table td {
-  padding: 2px 5px;
-  text-align: center;
-  border-right: 1px solid var(--text-color);
-}
-.symbol-list-table th:last-child,
-.symbol-list-table td:last-child {
-  border-right: none;
-}
-.symbol-list-table tbody.symbol-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  background: var(--bg-color, #1a1a2e);
-  border: 1px solid var(--text-color);
-  z-index: 100;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-  width: max-content;
-}
-.symbol-list-table tbody.symbol-dropdown.open {
-  display: table-row-group;
-}
-.symbol-list-table input {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(128,128,128,0.1);
-  border: none;
-  border-bottom: 1px solid rgba(128,128,128,0.5);
-  color: inherit;
-}
-.symbol-list-table input:focus {
-  outline: none;
-  border-bottom-color: var(--text-color);
-}
-.symbol-list-table tbody {
-  display: none;
-}
-.symbol-list-table tbody.open {
-  display: table-row-group;
-}
-
-/* Temporär: immer sichtbar zum Testen */
-/* 
-.symbol-list-table tbody.open {
-  display: table-row-group;
-}
-*/
     `;
     const styleEl = document.createElement('style');
     styleEl.textContent = css;
@@ -351,11 +178,6 @@ canvas {
 
   // Hauptfunktion zum Erstellen der Grafik
   function createGraphic() {
-    // Erstelle die Steuerungsleiste
-    const controls = document.createElement('header');
-    controls.className = 'controls';
-    controls.id = 'controls';
-
     // Wichtige Layout-Elemente vorab deklarieren
     const symbolContainer = document.createElement('div');
     symbolContainer.className = 'symbol-container';
@@ -364,164 +186,32 @@ canvas {
     let logicalCanvasSize = 400;
     const photoCanvas = document.createElement('canvas');
     photoCanvas.style.display = 'none';
-    controls.innerHTML = `
-      <label title="Speed-Anzeige über Symbol an/aus">Speed-Anz: <input type="checkbox" id="speedDisplayCheckbox" checked></label>
-      <label title="Vertikaler Abstand der Speed-Anzeige zum Symbol (px)">Pos: <input type="number" id="speedDisplayOffset" value="22" step="1"></label>
-      <label>auto <input type="checkbox" id="autoSpeedCheckbox" checked></label>
-      <label>Geschw: <input type="number" id="rotationSpeed" value="0" step="0.1" min="0"></label>
-      <label title="°/Kreis (Konvention: 360). Bei Änderung dreht das Symbol visuell identisch, nur die Speed-Zahl rechnet um.">°/Kreis: <input type="number" id="degPerCircle" value="360" step="1" min="1"></label>
-      <label title="Logische Frames pro Sekunde. Über Bildschirm-Hz hinaus = simuliert." style="position:relative;">fps: <input type="number" id="fps" value="60" step="1" min="0"><span id="fpsHint" style="position:absolute; top:100%; left:0; font-size:0.7em; opacity:0.6; white-space:nowrap; pointer-events:none;"></span></label>
-      <label title="Ausrichtung der Zeichen am Radius">Rotation: <input type="checkbox" id="rotateCheckbox"></label>
-      <div style="display:flex; gap:4px; align-items:center;">
-        <label>Gr. Z(%): <input type="number" id="textSize" value="25" step="1" min="0"></label>
-        <label title="Radius des Symbol-Kreises (kann auch negativ sein)">Tr.(%): <input type="number" id="triangleSize" value="30" step="1"></label>
-      </div>
-      <div style="display:flex; gap:4px; align-items:center;">
-        <label>≡G(%): <input type="number" id="equivSize" value="23" step="1" min="0"></label>
-        <label>≡L(%): <input type="number" id="equivLength" value="100" step="1" min="0"></label>
-        <label title="Trennzeichen duplizieren">Dupl.: <input type="checkbox" id="duplicateIdentisch"></label>
-        <label id="duplicateSpacingLabel" title="Abstand zwischen duplizierten Trennzeichen (Faktor von ≡-Größe)" style="display:none;">Abst: <input type="number" id="duplicateSpacing" value="1.2" step="0.1" min="0"></label>
-      </div>
 
-      <div id="symbolSettingsGroup" style="display:flex; flex-direction:column; align-items:stretch; position: relative; margin-left: 5px;">
-        <table class="symbol-list-table">
-          <thead>
-            <tr>
-              <th>Anz: <input type="number" id="symbolCountInput" value="3" min="0" step="1"></th>
-              <th>Sync: <input type="checkbox" id="syncEquivCheckbox" checked></th>
-            </tr>
-          </thead>
-          <tbody id="symbolInputsContainer" class="symbol-dropdown"></tbody>
-        </table>
-      </div>
+    // Einstellungen: Quelle der Wahrheit fuer Zeichnen und Animation.
+    // Das Panel (tools/controls.js, siehe buildSettingsPanel) schreibt hierher.
+    const cfg = {
+      speedDisplay: true,
+      speedOffset: 22,
+      auto: true,
+      speed: 0,
+      degPerCircle: 360,
+      fps: 60,
+      rotate: false,
+      textSize: 25,
+      triangleSize: 30,
+      equivSize: 23,
+      equivLength: 100,
+      duplicate: false,
+      duplicateSpacing: 1.2,
+      symbolCount: 3,
+      sync: true,
+      labels: ['0', '1', '∞'],
+      equivs: ['≡'],
+      gifFrames: 3,
+      gifInfinite: false,
+      debug: false
+    };
 
-      <button id="takePhotoButton">Foto machen</button>
-      <div class="info-popup">
-        <div class="info-icon">i</div>
-        <div class="info-text">Diese Muster, die das Teil augenscheinlich formt, resultieren nur aus der Bewegung. Zu jedem einzelnen Zeitpunkt ist das ursprüngliche Objekt nur genau einmal in seiner ursprünglichen Form (lediglich anders gedreht) sichtbar. Ein Foto vermag das Muster deshalb nicht einzufangen und wird immer nur das ursprüngliche Objekt in einer Ruheposition zeigen.</div>
-      </div>
-	      <label title="Anzahl Frames für GIF-Export">GIF Frames: <input type="number" id="gifFrameCount" value="3" min="0" step="1"></label>
-	      <label>∞: <input type="checkbox" id="gifInfinite"></label>
-      <button id="createGifButton">GIF erstellen</button>
-      <label>debug (buggy): <input type="checkbox" id="debugHitbox"></label>
-    `;
-    document.body.insertBefore(controls, document.body.firstChild);
-
-    function updateSymbolInputs(autoOpen = false) {
-      const container = document.getElementById('symbolInputsContainer');
-      const dropdown = document.getElementById('symbolInputsContainer');
-      if (!container || !dropdown) return;
-      
-      const count = parseInt(document.getElementById('symbolCountInput').value) || 0;
-      const sync = document.getElementById('syncEquivCheckbox').checked;
-
-      if (autoOpen) {
-          dropdown.classList.add('open');
-      }
-
-      // Aktuelle Werte sichern, um sie beim Neuerstellen wiederherzustellen
-      const prevLabels = Array.from(container.querySelectorAll('.symbol-label-input')).map(i => i.value);
-      const prevEquivs = Array.from(container.querySelectorAll('.equiv-symbol-input')).map(i => i.value);
-
-      container.innerHTML = '';
-
-      for (let i = 0; i < count; i++) {
-        const row = document.createElement('tr');
-
-        const labelInput = document.createElement('input');
-        labelInput.type = 'text';
-        labelInput.className = 'symbol-label-input';
-        
-        // Initialwerte setzen
-        if (i < prevLabels.length) {
-          labelInput.value = prevLabels[i];
-        } else {
-          const defaults = ['0', '1', '∞'];
-          labelInput.value = defaults[i % 3];
-        }
-
-        const labelCell = document.createElement('td');
-        labelCell.appendChild(labelInput);
-        row.appendChild(labelCell);
-
-        // Trennzeichen-Eingabe
-        if (!sync || i === 0) {
-           const equivInput = document.createElement('input');
-           equivInput.type = 'text';
-           equivInput.className = 'equiv-symbol-input';
-           if (i < prevEquivs.length && prevEquivs[i]) {
-             equivInput.value = prevEquivs[i];
-           } else {
-             equivInput.value = (prevEquivs[0] || '≡');
-           }
-           if (sync) {
-               equivInput.id = 'globalEquivInput';
-               equivInput.title = 'Globales Trennzeichen (Sync)';
-           } else {
-               equivInput.title = `Trennzeichen nach Symbol ${i + 1}`;
-           }
-           const equivCell = document.createElement('td');
-           equivCell.appendChild(equivInput);
-           row.appendChild(equivCell);
-        } else {
-           const emptyCell = document.createElement('td');
-           row.appendChild(emptyCell);
-        }
-
-        container.appendChild(row);
-      }
-    }
-
-    // Dropdown-Logik
-    const container = document.getElementById('symbolInputsContainer');
-    const table = document.querySelector('.symbol-list-table');
-    const thead = document.querySelector('.symbol-list-table thead');
-    
-    function openDropdown() {
-        container.classList.add('open');
-    }
-    
-    function closeDropdown() {
-        container.classList.remove('open');
-    }
-    
-    function toggleDropdown() {
-        container.classList.toggle('open');
-    }
-    
-    // Auto-Close bei Klick außerhalb
-    document.addEventListener('click', (e) => {
-        const symbolSettingsGroup = document.getElementById('symbolSettingsGroup');
-        if (symbolSettingsGroup && !symbolSettingsGroup.contains(e.target)) {
-            closeDropdown();
-        }
-    });
-    
-    // Öffnen bei Klick auf den gesamten Header
-    if (thead) {
-        thead.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (e.target.closest('input, select, label')) return;
-            toggleDropdown();
-        });
-        thead.style.cursor = 'pointer';
-    }
-    
-    // Öffnen bei Anz-Änderung
-    document.getElementById('symbolCountInput').addEventListener('input', () => {
-        updateSymbolInputs(true);
-        openDropdown();
-    });
-    
-    // Öffnen bei Sync-Änderung
-    document.getElementById('syncEquivCheckbox').addEventListener('change', () => {
-        updateSymbolInputs(true);
-        openDropdown();
-    });
-
-    // Initialer Aufruf zur Generierung der Standardfelder
-    updateSymbolInputs();
-    
     // Symbol-Container Konfiguration
 
     symbolContainer.style.position = 'relative';
@@ -603,7 +293,19 @@ canvas {
     interactionLayer.addEventListener('mouseleave', () => { interactionLayer.style.cursor = 'grab'; });
 
     // Klick aufs Symbol togglet Sichtbarkeit der Controls-Leiste (Drag/Zoom > 5px = kein Toggle)
-    let speedDisplayVisible = true; // wird via Checkbox in Controls gesteuert
+    let panelHiddenByTap = window.innerWidth <= 768; // Mobil startet das Panel versteckt
+    let panelHiddenByScroll = false;
+    let settingsPanel = null;
+    function applyPanelVisibility() {
+      if (!settingsPanel) return;
+      settingsPanel.el.style.display = (panelHiddenByTap || panelHiddenByScroll) ? 'none' : '';
+    }
+    // Desktop: Panel beim Scrollen ausblenden
+    window.addEventListener('scroll', () => {
+      if (window.innerWidth <= 768) return;
+      panelHiddenByScroll = window.scrollY !== 0;
+      applyPanelVisibility();
+    });
     let pointerDownX = null, pointerDownY = null;
     interactionLayer.addEventListener('pointerdown', (e) => {
       pointerDownX = e.clientX;
@@ -617,9 +319,8 @@ canvas {
       pointerDownY = null;
       if (dx * dx + dy * dy > 25) return;
       if (isPointInsideSymbolHitArea(e.clientX, e.clientY)) {
-        // !important via setProperty, damit Mobile-CSS (display: none !important) überstimmt wird
-        const isHidden = window.getComputedStyle(controls).display === 'none';
-        controls.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
+        panelHiddenByTap = !panelHiddenByTap;
+        applyPanelVisibility();
       } else {
         // Tap außerhalb Symbol: fullscreen-Layer schluckt sonst Klicks auf Seiteninhalt
         // (Links/Buttons unterm Symbol). Klick ans darunterliegende Element durchreichen.
@@ -770,11 +471,7 @@ canvas {
     if (!symbolContainer.contains(canvas)) symbolContainer.appendChild(canvas);
     if (!symbolContainer.contains(interactionLayer)) symbolContainer.appendChild(interactionLayer);
 
-    if (controls.nextSibling) {
-      document.body.insertBefore(symbolContainer, controls.nextSibling);
-    } else {
-      document.body.appendChild(symbolContainer);
-    }
+    document.body.insertBefore(symbolContainer, document.body.firstChild);
 
     document.body.appendChild(photoCanvas);
 
@@ -793,7 +490,7 @@ canvas {
     });
 
     // Erstelle ein editierbares Foto-Element
-    function createEditablePhoto(mediaUrl, originalWidth, originalHeight, isGif = false) {
+    function createEditablePhoto(mediaUrl, originalWidth, originalHeight) {
       const photo = document.createElement('div');
       photo.className = 'editable-photo';
       photo.id = 'editable-photo-' + photoCounter++;
@@ -808,42 +505,19 @@ canvas {
       photo.style.transform = 'rotate(0deg)'; // Keine Skalierung, um Originalgröße zu behalten
       photo.dataset.rotation = '0';
 
-      // Erstelle entweder ein Bild oder ein Video-Element
-      let mediaElement;
-      if (isGif) {
-        mediaElement = document.createElement('video');
-        mediaElement.src = mediaUrl;
-        mediaElement.autoplay = true;
-        mediaElement.loop = true;
-        mediaElement.muted = true;
-        mediaElement.playbackRate = 1.0;
-        mediaElement.setAttribute('playsinline', '');
-        mediaElement.preload = 'auto';
-        mediaElement.addEventListener('loadeddata', () => { try { mediaElement.play(); } catch (e) { } });
-        // Merke die Blob-URL für späteres Aufräumen
-        photo.dataset.objectUrl = mediaUrl;
-      } else {
-        mediaElement = document.createElement('img');
-        mediaElement.src = mediaUrl;
-      }
+      const mediaElement = document.createElement('img');
+      mediaElement.src = mediaUrl;
+      if (mediaUrl.startsWith('blob:')) photo.dataset.objectUrl = mediaUrl;
 
       mediaElement.onload = function () {
         addControlPoints(photo, originalWidth, originalHeight);
       };
-
-      if (isGif) {
-        mediaElement.onloadedmetadata = function () {
-          addControlPoints(photo, originalWidth, originalHeight);
-        };
-      }
 
       const closeBtn = document.createElement('button');
       closeBtn.className = 'close-btn';
       closeBtn.innerHTML = '×';
       closeBtn.title = 'Entfernen';
       closeBtn.addEventListener('click', () => {
-        const vid = photo.querySelector('video');
-        if (vid) { try { vid.pause(); } catch (e) { } }
         const url = photo.dataset.objectUrl;
         if (url) {
           try { URL.revokeObjectURL(url); } catch (e) { }
@@ -1070,121 +744,202 @@ canvas {
       element.addEventListener('pointercancel', stopRotation);
     }
 
-    // Implementierung der Foto-Funktion
-    document.getElementById('takePhotoButton').addEventListener('click', () => {
-      const photoCtx = photoCanvas.getContext('2d');
+    // === Screenshot (PNG) und GIF (offline gerendert, eigener Encoder) ===
+    const GIF_MAX_FRAMES = 200;
+    let gifBusy = false;
+    let gifCapture = null;
 
-      // Erstelle ein Foto mit transparentem Hintergrund
-      photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+    function showSymbolError(message, err) {
+      console.error('[0nefinity symbol] ' + message, err || '');
+      const old = document.querySelector('.symbol-gif-error');
+      if (old) old.remove();
+      const el = document.createElement('div');
+      el.className = 'symbol-gif-error';
+      el.setAttribute('role', 'alert');
+      el.textContent = message + ' (click to dismiss)';
+      el.addEventListener('click', () => el.remove());
+      document.body.appendChild(el);
+    }
 
-      // Zeichne die aktuelle Animation auf das photoCanvas
-      drawTriangleOnCanvas(photoCtx, photoCanvas, true);
+    function downloadUrl(url, filename) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
 
-      // Schneide das Bild zu, um unnötige transparente Flächen zu entfernen
-      const { dataURL, width, height } = trimTransparentEdges(photoCanvas);
+    function exportStamp() {
+      return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    }
 
-      // Erstelle ein haftendes Foto-Element mit dem zugeschnittenen Bild
-      createEditablePhoto(dataURL, width, height);
-    });
+    function nextTick() {
+      return new Promise(resolve => setTimeout(resolve, 0));
+    }
 
-    // GIF-Erstellungsfunktion
-    // GIF-/Video-Erstellung mit EXAKTER Frame-Anzahl (0, 1, ∞ unterstützt)
-    document.getElementById('createGifButton').addEventListener('click', async (ev) => {
-      const btn = ev.currentTarget;
-      const framesInput = document.getElementById('gifFrameCount');
-      const raw = framesInput && String(framesInput.value).trim();
-      const infinite = document.getElementById('gifInfinite')?.checked || raw === '∞' || raw.toLowerCase() === 'infinity';
-      let frameCount = infinite ? Infinity : Math.max(0, parseInt(raw, 10) || 0);
+    function takeScreenshot() {
+      try {
+        const photoCtx = photoCanvas.getContext('2d');
+        photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+        drawTriangleOnCanvas(photoCtx, photoCanvas, true);
+        const { dataURL, width, height } = trimTransparentEdges(photoCanvas);
+        createEditablePhoto(dataURL, width, height);
+        downloadUrl(dataURL, `0nefinity-screenshot-${exportStamp()}.png`);
+      } catch (err) {
+        showSymbolError('Screenshot failed: ' + (err && err.message || err), err);
+      }
+    }
 
-      const width = canvas.width;
-      const height = canvas.height;
+    function loadGifEncoder() {
+      if (window.GifEncoder) return Promise.resolve(window.GifEncoder);
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/tools/gif-encoder.js';
+        s.onload = () => (window.GifEncoder ? resolve(window.GifEncoder) : reject(new Error('gif-encoder.js loaded but GifEncoder is missing')));
+        s.onerror = () => reject(new Error('could not load /tools/gif-encoder.js'));
+        document.head.appendChild(s);
+      });
+    }
 
-      // 0 Frames: unsichtbares, verschiebbares Objekt erzeugen
-      if (frameCount === 0) {
-        const phCanvas = document.createElement('canvas');
-        phCanvas.width = width;
-        phCanvas.height = height;
-        const placeholderUrl = phCanvas.toDataURL('image/png');
-        createEditablePhoto(placeholderUrl, width, height, false);
+    function cssColorToRgb(color) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 1;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.fillStyle = color;
+      g.fillRect(0, 0, 1, 1);
+      const d = g.getImageData(0, 0, 1, 1).data;
+      return [d[0], d[1], d[2]];
+    }
+
+    // Ein Frame = Alpha-Kanal des transparent gerenderten Symbols (Zeichenfarbe ist einfarbig,
+    // deshalb reicht Alpha: Palettenindex = Deckkraft zwischen Hintergrund- und Textfarbe).
+    function renderAlphaFrame(ang) {
+      const w = photoCanvas.width, h = photoCanvas.height;
+      const pctx = photoCanvas.getContext('2d', { willReadFrequently: true });
+      pctx.clearRect(0, 0, w, h);
+      drawFrameWithAngle(pctx, photoCanvas, ang, true);
+      const rgba = pctx.getImageData(0, 0, w, h).data;
+      const alpha = new Uint8Array(w * h);
+      for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = rgba[j];
+      return { alpha, w, h };
+    }
+
+    async function encodeGif(frames, delayCs) {
+      const Enc = await loadGifEncoder();
+      const { w, h } = frames[0];
+      let minX = w, minY = h, maxX = -1, maxY = -1;
+      for (const f of frames) {
+        const a = f.alpha;
+        for (let y = 0; y < h; y++) {
+          const row = y * w;
+          for (let x = 0; x < w; x++) {
+            if (a[row + x]) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        await nextTick();
+      }
+      if (maxX < 0) throw new Error('nothing to draw (symbol is empty)');
+      const pad = Math.max(2, Math.floor(w * 0.01));
+      minX = Math.max(0, minX - pad);
+      minY = Math.max(0, minY - pad);
+      maxX = Math.min(w - 1, maxX + pad);
+      maxY = Math.min(h - 1, maxY + pad);
+      const cw = maxX - minX + 1, ch = maxY - minY + 1;
+
+      const style = getComputedStyle(document.documentElement);
+      const bg = cssColorToRgb(style.getPropertyValue('--bg-color').trim() || '#000');
+      const fg = cssColorToRgb(style.getPropertyValue('--text-color').trim() || '#fff');
+      const palette = new Uint8Array(768);
+      for (let i = 0; i < 256; i++) {
+        for (let c = 0; c < 3; c++) palette[i * 3 + c] = Math.round(bg[c] + (fg[c] - bg[c]) * i / 255);
+      }
+
+      const enc = new Enc(cw, ch, palette, { loop: 0 });
+      for (const f of frames) {
+        const idx = new Uint8Array(cw * ch);
+        for (let y = 0; y < ch; y++) {
+          const src = (y + minY) * w + minX;
+          idx.set(f.alpha.subarray(src, src + cw), y * cw);
+        }
+        enc.addFrame(idx, delayCs);
+        await nextTick();
+      }
+      return { blob: enc.finish(), width: cw, height: ch };
+    }
+
+    function setGifButtonLabel(text) {
+      const b = settingsPanel && settingsPanel.bodyEl.querySelector('[data-key="createGif"] button');
+      if (b) b.textContent = text;
+    }
+
+    // Live-Aufnahme bei "infinite": animate() liefert Frames, bis Stop gedrueckt oder das Limit erreicht ist
+    function captureLiveFrames() {
+      return new Promise((resolve, reject) => {
+        const cap = {
+          frames: [],
+          finish: () => { gifCapture = null; resolve(cap.frames); },
+          fail: (err) => { gifCapture = null; reject(err); }
+        };
+        gifCapture = cap;
+        setGifButtonLabel('Stop');
+      });
+    }
+
+    async function createGif() {
+      if (gifBusy) {
+        if (gifCapture) gifCapture.finish();
         return;
       }
-
-      if (typeof MediaRecorder === 'undefined') {
-        alert('MediaRecorder wird von diesem Browser nicht unterstützt.');
+      const infinite = cfg.gifInfinite;
+      const n = Math.max(0, Math.floor(cfg.gifFrames) || 0);
+      if (!infinite && n === 0) {
+        // 0 Frames: unsichtbares, verschiebbares Objekt
+        const ph = document.createElement('canvas');
+        ph.width = photoCanvas.width;
+        ph.height = photoCanvas.height;
+        createEditablePhoto(ph.toDataURL('image/png'), ph.width, ph.height);
         return;
       }
-
-      // Aufnahme direkt vom sichtbaren Canvas (exaktes Live-Bild)
-      const stream = canvas.captureStream(); // ohne Vorgabe: Frames immer wenn Canvas aktualisiert wird
-
-
-      // MIME-Type wählen mit Fallback
-      let mimeType = 'video/webm;codecs=vp9';
-      if (!MediaRecorder.isTypeSupported || !MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm;codecs=vp8';
-        if (!MediaRecorder.isTypeSupported || !MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
+      if (!infinite && n > GIF_MAX_FRAMES) {
+        showSymbolError(`GIF creation failed: at most ${GIF_MAX_FRAMES} frames (asked for ${n})`);
+        return;
+      }
+      gifBusy = true;
+      try {
+        let frames;
+        if (infinite) {
+          frames = await captureLiveFrames();
+        } else {
+          frames = [];
+          let a = angle;
+          setGifButtonLabel('Rendering...');
+          for (let k = 0; k < n; k++) {
+            frames.push(renderAlphaFrame(a));
+            a = (a + rotationSpeed) % 360;
+            if (k % 4 === 3) await nextTick();
+          }
         }
+        if (!frames.length) throw new Error('no frames captured');
+        setGifButtonLabel('Encoding...');
+        const delayCs = Math.round(100 / Math.max(1, Math.min(cfg.fps || 60, 50)));
+        const { blob, width, height } = await encodeGif(frames, delayCs);
+        const url = URL.createObjectURL(blob);
+        createEditablePhoto(url, width, height);
+        downloadUrl(url, `0nefinity-${exportStamp()}.gif`);
+      } catch (err) {
+        showSymbolError('GIF creation failed: ' + (err && err.message || err), err);
+      } finally {
+        gifBusy = false;
+        gifCapture = null;
+        setGifButtonLabel('Create GIF');
       }
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks = [];
-      recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-
-      let resolveStopped;
-      const stopped = new Promise((resolve) => { resolveStopped = resolve; });
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        resolveStopped(blob);
-      };
-
-      // Button toggelt Aufnahme bei ∞
-      let stopRequested = false;
-      function handleToggle() {
-        stopRequested = true;
-        btn.textContent = 'GIF erstellen';
-        btn.removeEventListener('click', handleToggle);
-      }
-
-      if (frameCount === Infinity) {
-        btn.textContent = 'Stop';
-        btn.addEventListener('click', handleToggle);
-      }
-
-      // Aufnahme-Kontext registrieren, damit animate() exakte Frame-Zählung hat
-      currentRecording = {
-        recorder,
-        infinite: frameCount === Infinity,
-        targetFrameCount: frameCount === Infinity ? Number.POSITIVE_INFINITY : frameCount,
-        framesCaptured: 0,
-        stopRequested: false,
-        cleanup: () => { currentRecording = null; }
-      };
-
-
-      // Start mit kleinem timeslice generiert regelmäßige Blobs
-      recorder.start(100);
-
-      // rAF-Schleife nur für den ∞-Stop-Button
-      function step() {
-        if (stopRequested) {
-          try { recorder.stop(); } catch (e) { }
-          return;
-        }
-        requestAnimationFrame(step);
-      }
-      if (frameCount === Infinity) requestAnimationFrame(step);
-
-      const videoBlob = await stopped;
-
-      // Button zurücksetzen (falls ∞)
-      btn.textContent = 'GIF erstellen';
-      btn.removeEventListener('click', handleToggle);
-
-      const videoUrl = URL.createObjectURL(videoBlob);
-      createEditablePhoto(videoUrl, width, height, true);
-    });
-
+    }
 
     // Funktion zum Zeichnen eines einzelnen Frames mit einem bestimmten Winkel
     function drawFrameWithAngle(context, targetCanvas, frameAngle, forExport = false) {
@@ -1215,17 +970,17 @@ canvas {
         : logicalCanvasSize;
 
       // Parameter abrufen, bei 0 nicht zeichnen
-      const textSizePercentage = parseFloat(document.getElementById('textSize').value) || 0;
-      const triangleSize = parseFloat(document.getElementById('triangleSize').value) || 0;
-      const equivSize = parseFloat(document.getElementById('equivSize').value) || 0;
-      const equivLength = parseFloat(document.getElementById('equivLength').value) || 0;
+      const textSizePercentage = cfg.textSize;
+      const triangleSize = cfg.triangleSize;
+      const equivSize = cfg.equivSize;
+      const equivLength = cfg.equivLength;
 
       // Größen berechnen
       const labelFontSize = minDim * (textSizePercentage / 100);
       const equivFontSize = minDim * (equivSize / 100);
       const radius = minDim * (triangleSize / 100);
 
-      const symbolCount = parseInt(document.getElementById('symbolCountInput').value) || 0;
+      const symbolCount = cfg.symbolCount;
       if (symbolCount <= 0) {
         context.restore();
         return;
@@ -1242,17 +997,13 @@ canvas {
         vertices.push({ x, y, thetaRad });
       }
 
-      const labelInputs = document.querySelectorAll('.symbol-label-input');
-      const labels = Array.from(labelInputs).map(input => input.value || "");
+      const labels = cfg.labels.slice(0, symbolCount).map(v => v || "");
 
-      const syncEquiv = document.getElementById('syncEquivCheckbox').checked;
-      const equivInputs = document.querySelectorAll('.equiv-symbol-input');
-      const globalEquivInput = document.getElementById('globalEquivInput');
-      const equivSymbols = syncEquiv 
-        ? new Array(symbolCount).fill(globalEquivInput ? globalEquivInput.value : "≡")
-        : Array.from(equivInputs).map(input => input.value || "");
+      const equivSymbols = cfg.sync
+        ? new Array(symbolCount).fill(cfg.equivs[0] ?? "≡")
+        : cfg.equivs.slice(0, symbolCount).map(v => v || "");
 
-      const tangentialMode = document.getElementById('rotateCheckbox').checked;
+      const tangentialMode = cfg.rotate;
 
       // Zeichne Symbole an den Ecken nur wenn textSize > 0
       if (textSizePercentage > 0) {
@@ -1277,9 +1028,9 @@ canvas {
       // Bei degPerCircle=360 (default): 720°/frame ≡ 0°/frame; 370°/frame ≡ 10°/frame
       // Bei degPerCircle=361: 722°/frame ≡ 0°/frame; 371°/frame ≡ 10°/frame
       // Nur für Live-Animation, nicht im Foto/GIF-Export
-      if (!forExport && targetCanvas === canvas && speedDisplayVisible) {
+      if (!forExport && targetCanvas === canvas && cfg.speedDisplay) {
         const speedFontSize = Math.max(minDim * 0.025, labelFontSize * 0.12);
-        const yPos = -radius - speedFontSize * 4 - speedDisplayOffset;
+        const yPos = -radius - speedFontSize * 4 - cfg.speedOffset;
         const speedDisplayed = toUser(rotationSpeed);
         const speedRawInt = Math.round(speedDisplayed);
         const dpcStr = String(degPerCircle);
@@ -1394,12 +1145,12 @@ canvas {
           context.textAlign = "center";
           context.textBaseline = "middle";
 
-          const duplicateEnabled = document.getElementById('duplicateIdentisch').checked;
+          const duplicateEnabled = cfg.duplicate;
           const currentEquiv = equivSymbols[i] || "";
           
           if (duplicateEnabled) {
             const originalText = currentEquiv;
-            const duplicateSpacingFactor = parseFloat(document.getElementById('duplicateSpacing').value);
+            const duplicateSpacingFactor = cfg.duplicateSpacing;
             const spacingFactor = isNaN(duplicateSpacingFactor) ? 1.2 : duplicateSpacingFactor;
             const desiredSpacing = equivFontSize * spacingFactor;
             const offset = desiredSpacing / (equivLength / 100);
@@ -1484,121 +1235,208 @@ canvas {
     };
 
     // Animationsparameter initialisieren
-    let textSizePercentage = parseFloat(document.getElementById('textSize').value) || 25;
-    let triangleSize = parseFloat(document.getElementById('triangleSize').value) || 30;
-    let equivSize = parseFloat(document.getElementById('equivSize').value) || 25;
-    let equivLength = parseFloat(document.getElementById('equivLength').value) || 100;
     // degPerCircle: nur Display-Konvention. Intern bleibt rotationSpeed in echten 360°-Grad/Frame.
-    // Input-Feld zeigt user-units = rotationSpeed * degPerCircle / 360.
-    let degPerCircle = parseFloat(document.getElementById('degPerCircle').value) || 360;
-    if (degPerCircle <= 0) degPerCircle = 360;
+    // Das Speed-Feld zeigt user-units = rotationSpeed * degPerCircle / 360.
+    let degPerCircle = cfg.degPerCircle > 0 ? cfg.degPerCircle : 360;
     const toReal = v => v * 360 / degPerCircle;
     const toUser = v => v * degPerCircle / 360;
-    let manualSpeed = toReal(parseFloat(document.getElementById('rotationSpeed').value) || 0);
+    let manualSpeed = toReal(cfg.speed);
     let rotationSpeed = manualSpeed;
-    let autoSpeedEnabled = document.getElementById('autoSpeedCheckbox').checked;
+    let autoSpeedEnabled = cfg.auto;
     let autoOffset = 0;
 
-    // Time-Warp Modell: fps verändert nicht die Bewegung pro Frame, sondern wie schnell
+    // Time-Warp Modell: fps veraendert nicht die Bewegung pro Frame, sondern wie schnell
     // der Cycle progressiert. speed-Wert pro Frame ist konstant, fps streckt/staucht Cycle-Zeit.
-    // → Gleicher speed-Wert ergibt immer gleiches Muster. Alias-Punkt bei speed=360 immer.
-    let fps = parseFloat(document.getElementById('fps').value) || 60;
+    let fps = cfg.fps;
     let detectedHz = 60;
     let userChangedFps = false;
     let dtSamples = [];
     let detectionDone = false;
 
-
-
-    // Event-Listener für die Steuerelemente
-    document.getElementById('textSize').addEventListener('input', () => {
-      textSizePercentage = parseFloat(document.getElementById('textSize').value) || 0;
-      resizeCanvasToFitContent();
-    });
-    document.getElementById('triangleSize').addEventListener('input', () => {
-      triangleSize = parseFloat(document.getElementById('triangleSize').value) || 0;
-      resizeCanvasToFitContent();
-    });
-    document.getElementById('equivSize').addEventListener('input', () => {
-      equivSize = parseFloat(document.getElementById('equivSize').value) || 0;
-      resizeCanvasToFitContent();
-    });
-    document.getElementById('equivLength').addEventListener('input', () => {
-      equivLength = parseFloat(document.getElementById('equivLength').value) || 0;
-      resizeCanvasToFitContent();
-    });
-
     function updateFpsHint() {
-      const hint = document.getElementById('fpsHint');
-      if (!hint) return;
-      hint.textContent = (detectionDone && fps > detectedHz) ? '(simuliert)' : '';
+      const label = settingsPanel && settingsPanel.bodyEl.querySelector('[data-key="fps"] .ctrl-label');
+      if (label) label.textContent = (detectionDone && fps > detectedHz) ? 'FPS (simulated)' : 'FPS';
     }
-
-    document.getElementById('speedDisplayCheckbox').addEventListener('change', e => {
-      speedDisplayVisible = e.target.checked;
-    });
-
-    // Abst-Input für Dupl nur anzeigen wenn Dupl aktiv
-    function updateDuplicateSpacingVisibility() {
-      const enabled = document.getElementById('duplicateIdentisch').checked;
-      document.getElementById('duplicateSpacingLabel').style.display = enabled ? '' : 'none';
-    }
-    document.getElementById('duplicateIdentisch').addEventListener('change', updateDuplicateSpacingVisibility);
-    updateDuplicateSpacingVisibility();
 
     // Speed-Display Vertikal-Offset, persistiert via localStorage
     const SPEED_OFFSET_KEY = '0nefinity-symbol-speedOffset';
     const storedOffset = localStorage.getItem(SPEED_OFFSET_KEY);
     if (storedOffset !== null && !isNaN(parseFloat(storedOffset))) {
-      document.getElementById('speedDisplayOffset').value = storedOffset;
+      cfg.speedOffset = parseFloat(storedOffset);
     }
-    let speedDisplayOffset = parseFloat(document.getElementById('speedDisplayOffset').value) || 0;
-    document.getElementById('speedDisplayOffset').addEventListener('input', () => {
-      speedDisplayOffset = parseFloat(document.getElementById('speedDisplayOffset').value) || 0;
-      try { localStorage.setItem(SPEED_OFFSET_KEY, String(speedDisplayOffset)); } catch (e) {}
-    });
 
-    document.getElementById('fps').addEventListener('input', () => {
-      fps = parseFloat(document.getElementById('fps').value) || 0;
-      userChangedFps = true;
-      // Fixe Referenz 60: factor = fps / 60. So koppelt jede fps-Änderung (manuell ODER auto-detect)
-      // direkt an die Cycle-Geschwindigkeit. Ohne fixe Referenz würde auto-detect 60→89
-      // factor=1 lassen → keine sichtbare Animation-Änderung trotz fps-Display-Sprung.
-      const newFactor = fps / 60;
-      updateSnapshotFactor(newFactor);
-      updateFpsHint();
-    });
+    function showInfoText(icon, text) {
+      const r = icon.getBoundingClientRect();
+      text.classList.add('visible');
+      const narrow = window.innerWidth <= 768;
+      const w = text.offsetWidth, h = text.offsetHeight;
+      let left = narrow ? 12 : r.right + 10;
+      let top = narrow ? r.top - h - 8 : r.top - 4;
+      left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+      text.style.left = left + 'px';
+      text.style.top = top + 'px';
+    }
 
-    document.getElementById('degPerCircle').addEventListener('input', () => {
-      const newDpc = parseFloat(document.getElementById('degPerCircle').value);
-      if (!Number.isFinite(newDpc) || newDpc <= 0) return;
-      // rotationSpeed bleibt intern in echten Grad → visuelle Drehung unverändert.
-      // Nur das Input-Feld zeigt jetzt einen neuen Display-Wert.
-      degPerCircle = newDpc;
-      document.getElementById('rotationSpeed').value = toUser(rotationSpeed).toFixed(1);
-    });
+    // Info-"i" direkt neben dem Screenshot-Button (gleiche Zeile)
+    function addInfoIcon(row) {
+      row.classList.add('symbol-info-row');
+      const icon = document.createElement('button');
+      icon.type = 'button';
+      icon.className = 'symbol-info-icon';
+      icon.textContent = 'i';
+      icon.setAttribute('aria-label', 'Info');
+      const text = document.createElement('div');
+      text.className = 'symbol-info-text';
+      text.textContent = 'Diese Muster, die das Teil augenscheinlich formt, resultieren nur aus der Bewegung. Zu jedem einzelnen Zeitpunkt ist das ursprüngliche Objekt nur genau einmal in seiner ursprünglichen Form (lediglich anders gedreht) sichtbar. Ein Screenshot vermag das Muster deshalb nicht einzufangen und wird immer nur das ursprüngliche Objekt in einer Ruheposition zeigen.';
+      document.body.appendChild(text);
+      icon.addEventListener('mouseenter', () => showInfoText(icon, text));
+      icon.addEventListener('mouseleave', () => text.classList.remove('visible'));
+      icon.addEventListener('focus', () => showInfoText(icon, text));
+      icon.addEventListener('blur', () => text.classList.remove('visible'));
+      icon.addEventListener('click', () => {
+        if (text.classList.contains('visible')) text.classList.remove('visible');
+        else showInfoText(icon, text);
+      });
+      row.appendChild(icon);
+    }
 
-    document.getElementById('rotationSpeed').addEventListener('input', () => {
-      manualSpeed = toReal(parseFloat(document.getElementById('rotationSpeed').value) || 0);
-      if (!autoSpeedEnabled) {
-        rotationSpeed = manualSpeed;
-      } else {
-        const currentCycleSpeed = computeAutoSpeed(getWarpedElapsed());
-        autoOffset = manualSpeed - currentCycleSpeed;
-        rotationSpeed = currentCycleSpeed + autoOffset;
+    function buildSettingsPanel() {
+      if (!window.Controls) {
+        showSymbolError('Settings panel unavailable: tools/controls.js did not load');
+        return;
       }
-    });
+      const panel = Controls.createPanel({ id: 'symbol-controls', position: 'left' });
+      settingsPanel = panel;
+      applyPanelVisibility();
+      const num = (v, fallback = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : fallback; };
 
-    document.getElementById('autoSpeedCheckbox').addEventListener('change', e => {
-      autoSpeedEnabled = e.target.checked;
-      if (autoSpeedEnabled) {
-        manualSpeed = toReal(parseFloat(document.getElementById('rotationSpeed').value) || 0);
-        autoOffset = 0;
-        resetSnapshot();
-        rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.startSpeed + autoOffset;
-        document.getElementById('rotationSpeed').value = toUser(rotationSpeed).toFixed(1);
+      panel.beginSection('speed')
+        .addToggle('speedDisplay', { label: 'Speed display', value: cfg.speedDisplay, onChange: v => { cfg.speedDisplay = !!v; } })
+        .addSlider('speedOffset', {
+          label: 'Display offset', min: -100, max: 200, step: 1, decimals: 0, value: cfg.speedOffset,
+          onChange: v => {
+            cfg.speedOffset = num(v);
+            try { localStorage.setItem(SPEED_OFFSET_KEY, String(cfg.speedOffset)); } catch (e) { }
+          }
+        })
+        .addToggle('auto', {
+          label: 'Auto speed', value: cfg.auto,
+          onChange: v => {
+            cfg.auto = !!v;
+            autoSpeedEnabled = cfg.auto;
+            if (autoSpeedEnabled) {
+              manualSpeed = toReal(num(panel.get('speed')));
+              autoOffset = 0;
+              resetSnapshot();
+              rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.startSpeed + autoOffset;
+              panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+            }
+          }
+        })
+        .addSlider('speed', {
+          label: 'Speed', min: 0, max: 1440, step: 0.1, decimals: 1, value: cfg.speed,
+          onChange: v => {
+            cfg.speed = num(v);
+            manualSpeed = toReal(cfg.speed);
+            if (!autoSpeedEnabled) {
+              rotationSpeed = manualSpeed;
+            } else {
+              const currentCycleSpeed = computeAutoSpeed(getWarpedElapsed());
+              autoOffset = manualSpeed - currentCycleSpeed;
+              rotationSpeed = currentCycleSpeed + autoOffset;
+            }
+          }
+        })
+        .addSlider('degPerCircle', {
+          label: 'Deg / circle', min: 1, max: 720, step: 1, decimals: 0, value: cfg.degPerCircle,
+          onChange: v => {
+            const d = num(v, NaN);
+            if (!Number.isFinite(d) || d <= 0) return;
+            cfg.degPerCircle = d;
+            degPerCircle = d;
+            panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+          }
+        })
+        .addSlider('fps', {
+          label: 'FPS', min: 0, max: 240, step: 1, decimals: 0, value: cfg.fps,
+          onChange: v => {
+            fps = num(v);
+            cfg.fps = fps;
+            userChangedFps = true;
+            updateSnapshotFactor(fps / 60);
+            updateFpsHint();
+          }
+        })
+        .endSection();
+
+      panel.addDivider();
+      panel.beginSection('shape')
+        .addToggle('rotate', { label: 'Rotate glyphs', value: cfg.rotate, onChange: v => { cfg.rotate = !!v; } })
+        .addSlider('textSize', { label: 'Text size %', min: 0, max: 100, step: 1, decimals: 0, value: cfg.textSize, onChange: v => { cfg.textSize = num(v); resizeCanvasToFitContent(); } })
+        .addSlider('triangleSize', { label: 'Radius %', min: -100, max: 100, step: 1, decimals: 0, value: cfg.triangleSize, onChange: v => { cfg.triangleSize = num(v); resizeCanvasToFitContent(); } })
+        .addSlider('equivSize', { label: 'Separator size %', min: 0, max: 100, step: 1, decimals: 0, value: cfg.equivSize, onChange: v => { cfg.equivSize = num(v); resizeCanvasToFitContent(); } })
+        .addSlider('equivLength', { label: 'Separator length %', min: 0, max: 300, step: 1, decimals: 0, value: cfg.equivLength, onChange: v => { cfg.equivLength = num(v); resizeCanvasToFitContent(); } })
+        .addToggle('duplicate', { label: 'Duplicate separator', value: cfg.duplicate, onChange: v => { cfg.duplicate = !!v; updateDuplicateSpacingVisibility(); } })
+        .addSlider('duplicateSpacing', { label: 'Spacing', min: 0, max: 5, step: 0.1, decimals: 1, value: cfg.duplicateSpacing, onChange: v => { cfg.duplicateSpacing = num(v); } })
+        .endSection();
+
+      function updateDuplicateSpacingVisibility() {
+        const row = panel.bodyEl.querySelector('[data-key="duplicateSpacing"]');
+        if (row) row.style.display = cfg.duplicate ? '' : 'none';
       }
-    });
+      updateDuplicateSpacingVisibility();
+
+      panel.addDivider();
+      panel.beginSection('symbols')
+        .addSlider('symbolCount', {
+          label: 'Count', min: 0, max: 12, step: 1, decimals: 0, value: cfg.symbolCount,
+          onChange: v => { cfg.symbolCount = Math.max(0, Math.floor(num(v))); rebuildSymbolRows(); }
+        })
+        .addToggle('sync', { label: 'Sync separator', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } })
+        .endSection();
+      panel.beginSection('symrows').endSection();
+
+      function rebuildSymbolRows() {
+        const n = cfg.symbolCount;
+        const defaults = ['0', '1', '∞'];
+        while (cfg.labels.length < n) cfg.labels.push(defaults[cfg.labels.length % 3]);
+        cfg.labels.length = n;
+        const firstEquiv = cfg.equivs[0] || '≡';
+        if (cfg.sync) {
+          cfg.equivs = [firstEquiv];
+        } else {
+          while (cfg.equivs.length < n) cfg.equivs.push(firstEquiv);
+          cfg.equivs.length = n;
+        }
+
+        panel.removeSection('symrows');
+        panel.beginSection('symrows');
+        const sec = panel.bodyEl.querySelector('#symbol-controls-section-symrows');
+        panel.bodyEl.querySelector('#symbol-controls-section-symbols').after(sec);
+        if (n > 0 && cfg.sync) {
+          panel.addInput('equiv0', { label: 'Separator', value: cfg.equivs[0], onChange: v => { cfg.equivs[0] = v; } });
+        }
+        for (let i = 0; i < n; i++) {
+          panel.addInput('label' + i, { label: 'Symbol ' + (i + 1), value: cfg.labels[i], onChange: v => { cfg.labels[i] = v; } });
+          if (!cfg.sync) {
+            panel.addInput('equiv' + i, { label: 'Separator ' + (i + 1), value: cfg.equivs[i], onChange: v => { cfg.equivs[i] = v; } });
+          }
+        }
+        panel.endSection();
+      }
+      rebuildSymbolRows();
+
+      panel.addDivider();
+      panel.beginSection('export')
+        .addButton('screenshot', { label: 'Screenshot', onClick: takeScreenshot })
+        .addSlider('gifFrames', { label: 'GIF frames', min: 0, max: 60, step: 1, decimals: 0, value: cfg.gifFrames, onChange: v => { cfg.gifFrames = Math.max(0, Math.floor(num(v))); } })
+        .addToggle('gifInfinite', { label: 'GIF infinite (live, Stop)', value: cfg.gifInfinite, onChange: v => { cfg.gifInfinite = !!v; } })
+        .addButton('createGif', { label: 'Create GIF', onClick: createGif })
+        .addToggle('debug', { label: 'Debug (buggy)', value: cfg.debug, onChange: v => { cfg.debug = !!v; } })
+        .endSection();
+      addInfoIcon(panel.bodyEl.querySelector('[data-key="screenshot"]'));
+    }
 
     // Time-Warp Snapshot: { realTimestamp ms, warpedSeconds, factor }
     // warped elapsed = warpedSeconds + (Date.now() - realTimestamp)/1000 * factor
@@ -1655,9 +1493,6 @@ canvas {
       snapshot = { realTimestamp: Date.now(), warpedSeconds: 0, factor: 1 };
       saveSnapshot();
     }
-
-    // Aufnahme-Steuerung (global innerhalb createGraphic)
-    let currentRecording = null;
 
     function computeAutoSpeed(elapsed) {
       const sp = AUTO_SPEED_CONFIG.START_PHASE;
@@ -1798,6 +1633,7 @@ canvas {
     }
 
     // Animationsschleife
+    let lastSpeedUiUpdate = 0;
     function animate(timestamp) {
       if (!lastTimestamp) lastTimestamp = timestamp;
       const dt = (timestamp - lastTimestamp) / 1000;
@@ -1813,7 +1649,8 @@ canvas {
           detectedHz = Math.max(1, Math.round(1 / median));
           if (!userChangedFps) {
             fps = detectedHz;
-            document.getElementById('fps').value = String(detectedHz);
+            cfg.fps = fps;
+            if (settingsPanel) settingsPanel.set('fps', detectedHz);
           }
           updateSnapshotFactor(fps / 60);
           detectionDone = true;
@@ -1834,16 +1671,9 @@ canvas {
       if (autoSpeedEnabled) {
         const elapsed = getWarpedElapsed();
         rotationSpeed = computeAutoSpeed(elapsed) + autoOffset;
-        document.getElementById('rotationSpeed').value = toUser(rotationSpeed).toFixed(1);
-
-        // Recording: nur in Hold-Phase Frames zählen (konstante Speed = sauber für GIF)
-        if (computeIsInHoldPhase(elapsed) && currentRecording && !currentRecording.stopRequested) {
-          currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-          if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-            try { currentRecording.recorder.stop(); } catch (e) { }
-            if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch (e) { } }
-            currentRecording.stopRequested = true;
-          }
+        if (settingsPanel && timestamp - lastSpeedUiUpdate > 80) {
+          lastSpeedUiUpdate = timestamp;
+          settingsPanel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
         }
       }
       // Time-Warp Modell: Bewegung pro echtem Frame = rotationSpeed direkt.
@@ -1856,13 +1686,13 @@ canvas {
       // Zeichne das Dreieck auf den Hauptcanvas
       drawTriangleOnCanvas(ctx, canvas);
 
-      // Aufnahme-Frame zählen nach dem Zeichnen
-      if (currentRecording && !currentRecording.stopRequested) {
-        currentRecording.framesCaptured = (currentRecording.framesCaptured || 0) + 1;
-        if (!currentRecording.infinite && currentRecording.framesCaptured >= currentRecording.targetFrameCount) {
-          try { currentRecording.recorder.stop(); } catch (e) { }
-          if (currentRecording.cleanup) { try { currentRecording.cleanup(); } catch (e) { } }
-          currentRecording.stopRequested = true;
+      // Live-Aufnahme (GIF infinite): jedes gezeichnete Bild mitnehmen
+      if (gifCapture) {
+        try {
+          gifCapture.frames.push(renderAlphaFrame(angle));
+          if (gifCapture.frames.length >= GIF_MAX_FRAMES) gifCapture.finish();
+        } catch (err) {
+          gifCapture.fail(err);
         }
       }
 
@@ -1874,19 +1704,19 @@ canvas {
         interactionCenterY = zoomState.offsetY;
 
         const minDim = logicalCanvasSize;
-        const triSize = parseFloat(document.getElementById('triangleSize').value) || 0;
-        const textSize = parseFloat(document.getElementById('textSize').value) || 0;
+        const triSize = cfg.triangleSize;
+        const textSize = cfg.textSize;
         // Exakter visueller Radius: Dreieck-Radius + Label-Überhang (Labels sitzen zentriert auf den Vertices)
         const triangleRadius = minDim * (triSize / 100);
         const labelOverhang = minDim * (textSize / 100) * 0.6; // 0.6 ≈ halbe Texthöhe + Puffer für breite Zeichen
         const baseRadius = (triangleRadius + labelOverhang) * zoomState.scale;
 
         interactionHitRadius = Math.max(48, baseRadius); // 48px Minimum (Touch-Ziel)
-        const symbolCountForHit = parseInt(document.getElementById('symbolCountInput').value) || 0;
+        const symbolCountForHit = cfg.symbolCount;
         interactionLayerVisible = symbolCountForHit > 0;
 
         // Debug: Hitbox-Kreis zeichnen
-        if (document.getElementById('debugHitbox').checked) {
+        if (cfg.debug) {
           ctx.save();
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.beginPath();
@@ -1923,27 +1753,14 @@ canvas {
       requestAnimationFrame(animate);
     }
 
+    buildSettingsPanel();
+
     // Starte mit einer passenderen Größe
     resizeCanvasToFitContent();
 
     // Starte die Animation
     requestAnimationFrame(animate);
   }
-
-  // Event-Listener für das Verstecken der Steuerungen beim Scrollen (nur Desktop)
-  window.addEventListener('scroll', () => {
-    const controls = document.getElementById('controls');
-
-    // Nur auf Desktop ausblenden beim Scrollen
-    if (window.innerWidth > 768) {
-      if (window.scrollY === 0) {
-        controls.style.display = 'flex';
-      } else {
-        controls.style.display = 'none';
-      }
-    }
-  });
-
 
   // Starte alles, wenn das Dokument geladen ist
   document.addEventListener('DOMContentLoaded', () => {
