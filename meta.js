@@ -35,6 +35,63 @@ function applyTabTitle() {
 }
 applyTabTitle();
 
+// ─── Favicon: das rotierende 0 1 ∞ der Startseite ───
+// Geometrie wie drawFrameWithAngle in 0nefinity.js (Radius 30 %, Zeichen 25 %, ≡ 23 % auf den Kanten), weiß auf transparent wie /favicon.ico.
+// Tempo bewusst konstant: die Startseite fährt Auto-Speed-Rampen in °/Frame, die bei 20 fps als Alias nur flackern würden.
+const FAVICON_SIZE = 64;
+const FAVICON_FRAME_MS = 50;
+const FAVICON_DEG_PER_SEC = 60;
+function drawFaviconFrame(ctx, angleDeg) {
+    const radius = FAVICON_SIZE * 0.30;
+    const labels = ['0', '1', '∞'];
+    const vertices = labels.map((_, i) => {
+        const theta = (angleDeg + i * 360 / labels.length) * Math.PI / 180;
+        return { x: radius * Math.cos(theta), y: radius * Math.sin(theta) };
+    });
+    ctx.clearRect(0, 0, FAVICON_SIZE, FAVICON_SIZE);
+    ctx.save();
+    ctx.translate(FAVICON_SIZE / 2, FAVICON_SIZE / 2);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${FAVICON_SIZE * 0.25}px Verdana`;
+    vertices.forEach((v, i) => ctx.fillText(labels[i], v.x, v.y));
+    ctx.font = `bold ${FAVICON_SIZE * 0.23}px Verdana`;
+    vertices.forEach((v, i) => {
+        const next = vertices[(i + 1) % vertices.length];
+        ctx.save();
+        ctx.translate((v.x + next.x) / 2, (v.y + next.y) / 2);
+        ctx.rotate(Math.atan2(next.y - v.y, next.x - v.x));
+        ctx.fillText('≡', 0, 0);
+        ctx.restore();
+    });
+    ctx.restore();
+}
+function startFaviconAnimation() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const link = document.querySelector('link[rel~="icon"]');
+    if (!link || !/\/favicon\.ico$/.test(new URL(link.href, location.href).pathname)) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = FAVICON_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        console.error('meta.js: Favicon-Animation nicht möglich, kein 2d-Canvas; statisches Icon bleibt');
+        return;
+    }
+    let last = -Infinity;
+    function tick(now) {
+        requestAnimationFrame(tick);
+        if (now - last < FAVICON_FRAME_MS) return;
+        last = now;
+        drawFaviconFrame(ctx, (now * FAVICON_DEG_PER_SEC / 1000) % 360);
+        link.type = 'image/png';
+        link.removeAttribute('sizes');
+        link.href = canvas.toDataURL('image/png');
+    }
+    requestAnimationFrame(tick);
+}
+try { startFaviconAnimation(); } catch (err) { console.error('meta.js: Favicon-Animation fehlgeschlagen; statisches Icon bleibt', err); }
+
 // DOM-Manipulation erst wenn Body existiert
 document.addEventListener('DOMContentLoaded', () => {
 
