@@ -7,7 +7,9 @@
  *     drift()           // optional: Reglerwert -1..1 (0 = Stillstand), exponentielle Kennlinie bis 1e10 Stellen/s
  *     onNeedDigits(n)   // optional: die Ansicht braucht Nachkommastellen bis n (Vorrat); der Besitzer rechnet/laedt nach
  *     onFront(atFront)  // optional: je Bild, true = sichtbares Fenster reicht an die letzte bekannte Stelle
- *     factor            // optional: Verdichtungsfaktor 0..0.5 (Standard DEFAULT_FACTOR), siehe Auto-Verdichtung unten
+ *     factor            // optional: Verdichtungsfaktor 0..1 (Standard DEFAULT_FACTOR), siehe Auto-Verdichtung unten
+ *     onPointerInfo(i)  // optional: Ziffer/Zone unter Zeiger oder Tap geaendert: null, {kind:'digit', index}, {kind:'left', hi},
+ *                       // {kind:'right', lo} (bis zur letzten Stelle und darueber hinaus) oder {kind:'all'} (nichts lesbar)
  *     intPart, decimals // optional: Anfangskette (Ganzzahl, Nachkommastellen), schon beim ersten Layout da (sonst '0.')
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
  *   });
@@ -19,18 +21,25 @@
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
  *                                       // Ziffern aus r (Index >= Kettenlaenge) sind dezent gedaempft, noch fehlende ein ruhiger Strich
  *                                       // (gestaucht zaehlen sie wie Ziffern mittlerer Tinte).
- *   view.state()  view.digits()  view.shown()   // nur lesend (Tests)
+ *   view.setHover(x)                    // Zeigerposition (CSS-px im Canvas) oder null; Maus und Tap setzen sie selbst
+ *   view.state()  view.digits()  view.shown()  view.columns()  view.glyphInk()   // nur lesend (Tests)
  *   view.destroy()                      // Listener, Beobachter und Bildschleife weg
  *
  * Fehler werfen: appendDigits wirft UnfoldingView.DigitError bei Luecke/Widerspruch (Meldung ist fertig lesbar), sonst die
  * urspruengliche Ausnahme (z. B. RangeError an der Stringgrenze). Kein stilles Verschlucken; der Besitzer entscheidet.
- * Gerendert wird nur das sichtbare Fenster (iLo..iHi); Atlas je Zeichen/Farbe/Groesse einmal.
+ * Einzeln gezeichnet werden nur Ziffern ab 1 Geraetepixel Breite; Atlas je Zeichen/Farbe/Groesse einmal.
  * Stauchzone: Tinte bleibt erhalten. Eine gestauchte Ziffer gibt ihre ganze Tinte (Flaeche der Glyphe) an die Spalten ab,
  * die sie ueberdeckt; je Geraetepixel addiert sich die Tinte zur Deckkraft (hoechstens 1). So wird die Zone schmaler und
  * satter, nie blasser, und bleibt bis zuletzt eine Haarlinie, solange dort Ziffern liegen (auch bei d = 0).
  * Auto-Verdichtung: die Zonenbreite d folgt dem Abstand der Enden D = R - L, d = f * max(0, D - w) (hoechstens D/2). Beim
  * Laden liegen die Enden eine Ziffer weit auseinander: nur die Ganzzahl ist lesbar, d = 0, der Rest liegt als Haarlinie an
  * der Kommaposition. Je weiter die Enden auseinander, desto breiter die Zone; zusammengeschoben geht d stetig auf 0.
+ * Faktor ueber 0,5: d bleibt bei f = 0,5, dazu mischt lambda = 2f - 1 die Gleichverteilung aller vorhandenen Stellen
+ * zwischen L und R hinein (pos = M + lambda (U - M)). Bei f = 1 ist jede Stelle (R - L) / N breit: ein satter Balken.
+ * Stauchzonen unter 1 Geraetepixel je Ziffer entstehen spaltenweise aus gezaehlten Ziffern: je Spalte die Zahl jedes
+ * Ziffernwerts (Kette: Praefixsummen; Quelle: r.count(lo, hi, out)), mal der Zeilentinte seiner Glyphe. Annahmen, im Code
+ * markiert: noch nicht geladene Stellen zaehlen mit der mittleren Tinte aller Glyphen; hinter der letzten Stelle
+ * (Unendlich) liegt eine satte Spalte mittlerer Tinte.
  */
 (() => {
   'use strict';
@@ -45,11 +54,11 @@
   const rateOf = (s) => Math.sign(s) * (Math.pow(10, 10 * Math.abs(s)) - 1);
 
   class DigitError extends Error {}
-  // Ueber 0.5 waere die Zone breiter als der halbe Abstand der Enden; keine Zahl ist ein Fehler des Besitzers.
+  // 0..1 (ueber 0,5 mischt sich die Gleichverteilung hinein); keine Zahl ist ein Fehler des Besitzers.
   function clampFactor(f) {
     const v = +f;
     if (!Number.isFinite(v)) throw new TypeError('UnfoldingView: factor muss eine Zahl sein, war ' + f);
-    return Math.max(0, Math.min(0.5, v));
+    return Math.max(0, Math.min(1, v));
   }
 
   function create(canvas, opts) {
@@ -63,11 +72,13 @@
     // Die Kette liegt als Bytes (ASCII): Ganzzahl, ".", Nachkommastellen. Index 0 = Ganzzahl. Kein String: keine Stringgrenze,
     // ein Byte je Stelle; chainLen zaehlt die belegten Bytes, buf waechst durch Verdoppeln.
     let buf = new Uint8Array(64), chainLen = 0;
+    let cpre = new Uint32Array(0), cpreN = 0;   // Praefixsummen der Kette je Zeichen, siehe chainPre
     function setChain(intPart, decimals) {
       const head = String(intPart) + '.' + (decimals || '');
       if (buf.length < head.length) buf = new Uint8Array(Math.max(head.length, 64));
       for (let i = 0; i < head.length; i++) buf[i] = head.charCodeAt(i);
       chainLen = head.length;
+      cpreN = 0;
     }
     function reserve(n) {
       if (n <= buf.length) return;
@@ -149,7 +160,7 @@
     // Zonenbreite aus dem Abstand der Enden. Eingerollt ist L ein echtes Ende; offen folgt L der 3 (L = X0 - d), dann ist
     // D = R - X0 + d, nach d aufgeloest d = f (R - X0 - w) / (1 - f). Beide Formeln stimmen am Uebergang ueberein: kein Sprung.
     function autoD(unrolled) {
-      const f = factor;
+      const f = Math.min(factor, 0.5);
       d = unrolled ? Math.min(f * Math.max(0, R - X0 - w) / (1 - f), Math.max(0, R - X0))
                    : Math.min(f * Math.max(0, R - L - w), Math.max(0, (R - L) / 2));
     }
@@ -219,11 +230,17 @@
         cums.push(cum);
         atlas[ch] = { img: c, bar, rowMax, cum, t: GLYPHS.indexOf(ch) };
       }
-      // Noch fehlende Stelle, gestaucht: die mittlere Tinte der zehn Ziffern.
+      // ANNAHME (nicht gezaehlt): eine noch fehlende Stelle und Unendlich tragen die mittlere Tinte der zehn Ziffern.
       const avg = new Float32Array((wd + 1) * hd);
       for (let k = 0; k < 10; k++) { const cu = cums[k]; for (let i = 0; i < avg.length; i++) avg[i] += cu[i] / 10; }
       cums.push(avg);
       atlas.cums = cums;
+      // Unterstrich der Stellenanzeige: ein Pixel in Textfarbe, gestreckt gezeichnet (kein fillRect).
+      const ul = document.createElement('canvas'); ul.width = 1; ul.height = 1;
+      const ug = ul.getContext('2d'), ud = ug.createImageData(1, 1);
+      ud.data[0] = rgb[0]; ud.data[1] = rgb[1]; ud.data[2] = rgb[2]; ud.data[3] = 255;
+      ug.putImageData(ud, 0, 0);
+      atlas.ul = ul;
       atlasRgb = [rgb[0], rgb[1], rgb[2]];
       gw = wd; gh = hd;
       let top = -1, bot = -1;
@@ -232,23 +249,162 @@
       atlasKey = color + '|' + S + '|' + dpr + '|' + w;
     }
 
-    // ─── Rendern (nur das sichtbare Fenster iLo..iHi) ───
+    // ─── Lage der Ziffern: Auto-Verdichtung gemischt mit der Gleichverteilung ───
+    // M(i) = warp(X0 + i w): Ziffern in Lesebreite, verdichtet an den Enden (Faktor bis 0,5). Ueber 0,5 mischt lambda = 2f - 1
+    // die Gleichverteilung U(i) aller vorhandenen Stellen zwischen L und R hinein: pos(i) = M(i) + lambda (U(i) - M(i)).
+    // Beide steigen mit i, also auch die Mischung; bei f = 1 liegt jede Stelle gleich breit zwischen L und R.
+    let pDd = 0, pLam = 0, pN = 1;
+    function prep() { pDd = deff(); pLam = Math.max(0, 2 * factor - 1); pN = Math.max(1, total()); }
+    function posOf(i) {
+      const m = warp(X0 + i * w, pDd);
+      if (!pLam) return m;
+      const u = L + (R - L) * Math.min(Math.max(i, 0), pN) / pN;
+      return m + pLam * (u - m);
+    }
+    // Stetige Umkehrung: Index (mit Anteil) an der Stelle x, gesucht in [i0, i1].
+    function inv(x, i0, i1) {
+      let lo = i0, hi = i1;
+      while (hi - lo > 1) { const m = Math.floor((lo + hi) / 2); if (posOf(m) <= x) lo = m; else hi = m; }
+      const a = posOf(lo), b = posOf(lo + 1);
+      return b > a ? lo + Math.min(1, Math.max(0, (x - a) / (b - a))) : lo + 1;
+    }
+    // Ziffern mit Breite >= th: die Breiten steigen bis zur Mitte und fallen danach, also ein zusammenhaengender Bereich.
+    function span(th) {
+      const N = pN, wid = (i) => posOf(i + 1) - posOf(i);
+      const ip = Math.min(N - 1, Math.max(0, Math.floor(((L + R) / 2 - X0) / w)));
+      if (!(wid(ip) >= th)) return null;
+      let lo = 0, hi = ip;
+      while (lo < hi) { const m = Math.floor((lo + hi) / 2); if (wid(m) >= th) hi = m; else lo = m + 1; }
+      const a = lo;
+      lo = ip; hi = N - 1;
+      while (lo < hi) { const m = Math.ceil((lo + hi) / 2); if (wid(m) >= th) lo = m; else hi = m - 1; }
+      return [a, lo];
+    }
+
+    // ─── Gezaehlte Haeufigkeit je Zeichen (Stauchzone) ───
+    // Kette: Praefix je Block von CB Zeichen (lazy, gilt bis setChain). Quelle: remote.count (gezaehlt aus den geladenen Gruppen).
+    const TYPE = new Uint8Array(256).fill(255);
+    for (let k = 0; k < 10; k++) TYPE[48 + k] = k;
+    TYPE[46] = 10;
+    const CB = 64;
+    // cpre[b * NG + t]: Zahl der Zeichen t in buf[0, b * CB) (oben bei buf angelegt, setChain leert es)
+    function chainPre(x, s, out) {
+      const blk = Math.floor(x / CB);
+      if (blk >= cpreN) {
+        if (cpre.length < (blk + 1) * NG) { const nb = new Uint32Array(Math.max((blk + 1) * NG, cpre.length * 2)); nb.set(cpre.subarray(0, cpreN * NG)); cpre = nb; }
+        if (cpreN === 0) { cpre.fill(0, 0, NG); cpreN = 1; }
+        for (; cpreN <= blk; cpreN++) {
+          const o = cpreN * NG, p = o - NG;
+          for (let t = 0; t < NG; t++) cpre[o + t] = cpre[p + t];
+          for (let i = (cpreN - 1) * CB; i < cpreN * CB; i++) { const t = TYPE[buf[i]]; if (t < NG) cpre[o + t]++; }
+        }
+      }
+      const o = blk * NG;
+      for (let t = 0; t < NG; t++) out[t] += s * cpre[o + t];
+      for (let i = blk * CB; i < x; i++) { const t = TYPE[buf[i]]; if (t < NG) out[t] += s; }
+    }
+    const cntC = new Float64Array(NG), cntF = new Float64Array(10);
+    let cntMiss = 0;
+    function addOne(k, q) {
+      if (!(q > 0) || k < 0 || k >= pN) return;
+      if (k < chainLen) { const t = TYPE[buf[k]]; if (t < NG) cntC[t] += q; return; }
+      const c = remote ? remote.at(k) : 0;
+      if (c) cntF[c - 48] += q; else cntMiss += q;
+    }
+    // Kettenindizes [a, b), reell: die Randziffern zaehlen anteilig, alles dazwischen ganz.
+    function addRange(a, b) {
+      const ka = Math.ceil(a), kb = Math.floor(b);
+      if (kb < ka) { addOne(Math.floor(a), b - a); return; }
+      addOne(ka - 1, ka - a);
+      if (kb > ka) {
+        const c1 = Math.min(kb, chainLen);
+        if (c1 > ka) { chainPre(c1, 1, cntC); chainPre(ka, -1, cntC); }
+        const r0 = Math.max(ka, chainLen);
+        if (kb > r0) { const got = remote ? remote.count(r0, kb, cntF) : 0; cntMiss += kb - r0 - got; }
+      }
+      addOne(kb, b - kb);
+    }
+    // Stellen [i0, i1) spaltenweise: je Geraetepixel die gezaehlten Ziffern, ihre Tinte legt flush darauf (Summe der Profile).
+    let colLog = null, depLog = null, drawLog = null;
+    function region(i0, i1, zone) {
+      if (!(i1 > i0)) return;
+      const x0 = posOf(i0) * dpr, x1 = posOf(i1) * dpr;
+      let c0 = Math.floor(x0), c1 = Math.ceil(x1) - 1;
+      if (c1 < c0) { if (zone === zoneR) c0 = c1; else c1 = c0; }
+      let a = i0;
+      for (let c = c0; c <= c1; c++) {
+        const b = c === c1 ? i1 : Math.max(a, inv((c + 1) / dpr, Math.floor(a), i1));
+        if (c >= 0 && c < accCols) {
+          cntC.fill(0); cntF.fill(0); cntMiss = 0;
+          addRange(a, b);
+          const o = c * NGA;
+          for (let t = 0; t < 10; t++) acc[o + t] += cntC[t] + FILE_ALPHA * cntF[t];
+          acc[o + 10] += cntC[10];
+          acc[o + AVG] += FILE_ALPHA * cntMiss;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
+          mark(zone, c);
+          if (colLog) colLog.set(c, { c, a, b, zone: zone === zoneL ? 'L' : 'R', cntC: Array.from(cntC), cntF: Array.from(cntF), miss: cntMiss, inf: 0 });
+        }
+        a = b;
+      }
+    }
+    // Unendlich: hinter der letzten vorhandenen Stelle geht die Zahl weiter. ANNAHME (nicht gezaehlt): mittlere Tinte, so viel,
+    // dass die Spalte an der letzten Stelle satt ist; sie markiert das Ende der Daten als Haarlinie.
+    const INF_INK = 1e4;
+    function infinity() {
+      const c = Math.ceil(posOf(pN) * dpr) - 1;
+      if (c < 0 || c >= accCols) return;
+      acc[c * NGA + AVG] += INF_INK;
+      mark(zoneR, c);
+      if (colLog) { const r = colLog.get(c) || { c, a: pN, b: pN, zone: 'R', cntC: new Array(NG).fill(0), cntF: new Array(10).fill(0), miss: 0, inf: 0 }; r.inf = INF_INK; colLog.set(c, r); }
+    }
+
+    // ─── Stellenanzeige: Ziffer oder Zone unter dem Zeiger ───
+    let hoverX = null, info = null, infoKey = 'null';
+    function pointerInfo() {
+      if (hoverX === null) return null;
+      const x = hoverX, N = pN;
+      if (x < L - 6 || x > R + 6) return null;
+      const rs = span(0.5 * w);
+      if (!rs) return { kind: 'all' };
+      const ra = rs[0], rb = rs[1];
+      if (ra > 0 && x < posOf(ra) + 2) return { kind: 'left', hi: ra - 1 };
+      if (rb < N - 1 && x >= posOf(rb + 1) - 2) return { kind: 'right', lo: rb + 1 };
+      const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
+      return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
+    }
+    function underline(y0) {
+      if (!info || info.kind !== 'digit') return;
+      const xa = info.x0 * dpr, wd = (info.x1 - info.x0) * dpr;
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(atlas.ul, xa + wd * 0.15, y0 + inkBottom + Math.round(4 * dpr), wd * 0.7, Math.max(1, Math.round(dpr)));
+      if (drawLog) drawLog.push([xa + wd * 0.15, wd * 0.7]);
+      ctx.globalAlpha = 1;
+    }
+
+    // ─── Rendern (lesbare Ziffern einzeln, die Stauchzonen spaltenweise aus gezaehlten Ziffern) ───
+    let ja = 0, jb = -1, renderMs = 0;
     function render() {
+      const tStart = performance.now();
       dirty = false;
       if (!atlas || atlasKey !== color + '|' + S + '|' + dpr + '|' + w) buildAtlas();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = true;
-      const dd = deff();
+      prep();
+      const dd = pDd, N = total();
       const iLinLo = Math.ceil((L + dd - X0) / w - 1e-9);
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
       const K = stackCount(dd);
       const iLo = Math.max(0, iLinLo - 1 - K);
-      const iHi = Math.min(total() - 1, iLinHi + 1 + K);
+      const iHi = Math.min(N - 1, iLinHi + 1 + K);
       // Die Ansicht meldet nur die echte Front; den Vorrat darüber legt der Besitzer fest.
       if (opts.onNeedDigits) opts.onNeedDigits(iLinHi + 2 + K + 100);
-      if (opts.onFront) opts.onFront(iLinHi >= total() - 3);
-      if (remote) remote.want(iLo, iHi, step);
+      if (opts.onFront) opts.onFront(iLinHi >= N - 3);
+      // Einzeln gezeichnet wird, was mindestens ein Geraetepixel breit ist (ja..jb); alles andere zaehlt region().
+      const sp = span(1 / dpr);
+      if (sp) { ja = sp[0]; jb = sp[1]; } else { ja = 0; jb = -1; }
+      const sLo = sp ? Math.min(iLo, ja) : iLo, sHi = sp ? Math.max(iHi, jb) : iHi;
+      if (remote) remote.want(sLo, sHi, step);
       const wd = gw, hd = gh;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       const mid = (L + R) / 2;
@@ -256,39 +412,47 @@
         accCols = canvas.width; acc = new Float32Array(accCols * NGA); ink = new Float32Array(accCols * hd);
       }
       let n = 0;
-      if (shownCodes.length < iHi - iLo + 1) { shownCodes = new Uint8Array(Math.max(iHi - iLo + 1, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
-      shownMark.fill(0, 0, iHi - iLo + 1);
-      shownLo = iLo; shownN = Math.max(0, iHi - iLo + 1);
+      const sN = Math.max(0, sHi - sLo + 1);
+      if (shownCodes.length < sN) { shownCodes = new Uint8Array(Math.max(sN, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
+      shownMark.fill(0, 0, sN);
+      shownLo = sLo; shownN = sN;
       // Schleier in Fahrtrichtung: Abbilder hinter der Bewegung (Kette laeuft nach links bei step > 0, die Abbilder liegen rechts davon).
       // Nur lesbare Ziffern bekommen Abbilder, beschnitten auf die lineare Zone: versetzt abgelegte Stauchtinte wuerde wieder
       // satt und ergaebe je Abbild einen eigenen Strich (frueher vier Striche, teils jenseits der Enden).
       const passes = blur > 0 ? 4 : 1;
-      const gLo = (L + dd) * dpr, gHi = (R - dd) * dpr;
+      const gLo = posOf(Math.max(iLinLo, ja)) * dpr, gHi = posOf(Math.min(iLinHi, jb) + 1) * dpr;
       for (let pass = passes - 1; pass >= 0; pass--) {
         const off = pass === 0 ? 0 : Math.sign(step) * blur * pass / (passes - 1);
         const mul = pass === 0 ? 1 : 0.22 / pass;
         n = 0;
-        for (let i = iLo; i <= iHi; i++) {
-          const pa = X0 + i * w;
-          const xa = warp(pa, dd), xb = warp(pa + w, dd);
-          const nat = xb - xa;
+        for (let i = sLo; i <= sHi; i++) {
           const fromRemote = i >= chainLen;
           const code = fromRemote ? (remote ? remote.at(i) : 0) : buf[i];
-          if (pass === 0) shownCodes[i - iLo] = code;
+          if (i < ja || i > jb) {
+            // gestaucht unter einem Geraetepixel: nur festhalten, die Tinte kommt aus der Zaehlung (region)
+            if (pass !== 0) continue;
+            shownCodes[i - sLo] = code;
+            if (code) { shownMark[i - sLo] = Math.round((fromRemote ? FILE_ALPHA : 1) * 100); n++; }
+            else if (fromRemote && remote) shownMark[i - sLo] = Math.round(PENDING_ALPHA * 100);
+            continue;
+          }
+          const xa = posOf(i), xb = posOf(i + 1);
+          const nat = xb - xa;
+          if (pass === 0) shownCodes[i - sLo] = code;
           let wDev = nat * dpr, xDev = (xa + off) * dpr;
           if (!code) {
             if (fromRemote && remote) {
-              if (pass === 0) shownMark[i - iLo] = Math.round(PENDING_ALPHA * 100);
+              if (pass === 0) shownMark[i - sLo] = Math.round(PENDING_ALPHA * 100);
               // Die Stelle kommt sicher: lesbar ein ruhiger Strich, gestaucht geht er stetig in die mittlere Tinte einer
               // Ziffer ueber (ab halber Breite ganz), damit die Stauchzone beim Nachladen nicht ausduennt.
               const fade = Math.max(0, Math.min(1, (nat / w - 0.5) / 0.5));
               if (fade > 0) {
                 ctx.globalAlpha = PENDING_ALPHA * mul * fade;
-                if (pass === 0) ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
+                if (pass === 0) { ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd); if (drawLog) drawLog.push([xDev + wDev * 0.4, Math.max(1, wDev * 0.2)]); }
                 else drawCropped(atlas['0'].bar, xDev + wDev * 0.4, Math.max(1, wDev * 0.2), y0, hd, gLo, gHi);
                 ctx.globalAlpha = 1;
               }
-              if (fade < 1 && pass === 0) deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade));
+              if (fade < 1 && pass === 0) { if (depLog) depLog.push({ i, code: 0, x: xDev, w: wDev, al: FILE_ALPHA * mul * (1 - fade) }); deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade)); }
             }
             continue;
           }
@@ -296,52 +460,46 @@
           if (!g) continue;
           if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
           const al = (fromRemote ? FILE_ALPHA : 1) * mul;
-          if (pass === 0) shownMark[i - iLo] = Math.round(al * 100);
+          if (pass === 0) shownMark[i - sLo] = Math.round(al * 100);
           n++;
           // Gestaucht: die ganze Tinte der Ziffer in ihre Spalten (Tinte bleibt erhalten, kein Mindestmass).
-          if (wDev < wd * 0.999) { if (pass === 0) deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); continue; }
+          if (wDev < wd * 0.999) {
+            if (pass === 0) { if (depLog) depLog.push({ i, code, x: xDev, w: wDev, al }); deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); }
+            continue;
+          }
           ctx.globalAlpha = al;
-          if (pass === 0) ctx.drawImage(g.img, xDev, y0, wDev, hd);
+          if (pass === 0) { ctx.drawImage(g.img, xDev, y0, wDev, hd); if (drawLog) drawLog.push([xDev, wDev]); }
           else drawCropped(g.img, xDev, wDev, y0, hd, gLo, gHi);
         }
       }
       ctx.globalAlpha = 1;
+      if (sp) { region(0, ja, zoneL); region(jb + 1, N, zoneR); }
+      else region(0, N, zoneR);
+      infinity();
       flush(zoneL, y0, hd);
       flush(zoneR, y0, hd);
+      const ni = pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') : 'null';
+      info = ni;
+      underline(y0);
+      if (nk !== infoKey) { infoKey = nk; if (opts.onPointerInfo) opts.onPointerInfo(ni); }
       drawnCount = n;
+      renderMs = performance.now() - tStart;
     }
 
     // Bild (Breite wDev ab xDev) nur im Bereich [lo, hi) zeichnen: Quellausschnitt statt Clip-Pfad.
     function drawCropped(img, xDev, wDev, y0, hd, lo, hi) {
       const a = Math.max(xDev, lo), b = Math.min(xDev + wDev, hi);
       if (!(b > a) || !(wDev > 0)) return;
+      if (drawLog) drawLog.push([a, b - a]);
       const k = img.width / wDev;
       ctx.drawImage(img, (a - xDev) * k, 0, (b - a) * k, img.height, a, y0, b - a, hd);
     }
-    // Ziffer t (Breite wDev Geraetepixel, ab xDev, Deckkraft al) gibt ihre ganze Tinte an die ueberdeckten Spalten ab.
     function mark(zone, c) { if (c < zone.lo) zone.lo = c; if (c > zone.hi) zone.hi = c; }
+    // Ziffer t (Breite wDev >= 1 Geraetepixel ab xDev, Deckkraft al) gibt ihre ganze Tinte an die ueberdeckten Spalten ab:
+    // auf Spalte c fallen die Quellspalten [u0, u1); ihre mittlere Deckung mal gw / wDev Quellspalten je Geraetepixel ist
+    // ihre volle Tinte (Summe ueber u, nicht Mittel). Schmalere Ziffern zaehlt region().
     function deposit(zone, t, xDev, wDev, al) {
-      if (wDev <= 1e-9) {
-        // ohne Breite (d = 0 oder Ende der Zone): alles in die Spalte an der Kante, innen
-        const c = zone === zoneR ? Math.ceil(xDev) - 1 : Math.floor(xDev);
-        if (c >= 0 && c < accCols) { acc[c * NGA + t] += al; mark(zone, c); }
-        return;
-      }
       const end = xDev + wDev;
-      if (wDev < 1) {
-        // unter 1 Geraetepixel: Anteil der Ziffer je Spalte; flush legt die Zeilentinte der Ziffer darauf
-        for (let c = Math.floor(xDev); c < end; c++) {
-          if (c < 0 || c >= accCols) continue;
-          const part = Math.min(c + 1, end) - Math.max(c, xDev);
-          if (part <= 0) continue;
-          acc[c * NGA + t] += al * part / wDev;
-          if (c < zone.lo) zone.lo = c;
-          if (c > zone.hi) zone.hi = c;
-        }
-        return;
-      }
-      // breiter: auf Spalte c fallen die Quellspalten [u0, u1); ihre mittlere Deckung mal gw / wDev Quellspalten je
-      // Geraetepixel ist ihre volle Tinte (Summe ueber u, nicht Mittel)
       const cum = atlas.cums[t], hd = gh;
       const gain = al * gw / wDev;
       for (let c = Math.floor(xDev); c < end; c++) {
@@ -359,7 +517,7 @@
         mark(zone, c);
       }
     }
-    // Je Spalte und Zeile: Tinte der breiteren Ziffern plus Zeilentinte (cum der vollen Breite) mal Anteil der schmalen,
+    // Je Spalte und Zeile: Tinte der breiteren Ziffern plus Zeilentinte (cum der vollen Breite) mal gezaehlter Haeufigkeit,
     // als Deckkraft min(1, Summe). Nichts wird gemittelt: mehr Ziffern je Spalte, mehr Tinte.
     function flush(zone, y0, hd) {
       if (zone.hi < zone.lo) { zone.lo = Infinity; zone.hi = -1; return; }
@@ -371,12 +529,15 @@
       const off = gw * hd, cums = atlas.cums;
       for (let x = 0; x < cw; x++) {
         const c = lo + x, base = c * NGA, o = c * hd;
+        const rec = colLog ? colLog.get(c) : null;
+        if (rec) { let s = 0; for (let y = 0; y < hd; y++) s += ink[o + y]; rec.pure = s === 0; }
         for (let t = 0; t < NGA; t++) {
           const a = acc[base + t];
           if (!a) continue;
           const cu = cums[t];
           for (let y = 0; y < hd; y++) ink[o + y] += a * cu[off + y];
         }
+        if (rec) { let s = 0, m = 0; for (let y = 0; y < hd; y++) { s += ink[o + y]; if (ink[o + y] > m) m = ink[o + y]; } rec.raw = s; rec.max = m; rec.y0 = y0; rec.rows = Array.from(ink.subarray(o, o + hd)); }
         for (let y = 0; y < hd; y++) { const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = ink[o + y] * 255; }   // Uint8Clamped kappt bei 255
         acc.fill(0, base, base + NGA);
         ink.fill(0, o, o + hd);
@@ -419,7 +580,8 @@
     function hitTest(x) {
       const rolled = rolledLeft();
       const cands = [];
-      if (!rolled && x >= X0 - HIT && x <= X0 + w) cands.push(['three', Math.abs(x - (X0 + w / 2))]);
+      const t0 = posOf(0), t1 = Math.max(posOf(1), t0);
+      if (!rolled && x >= t0 - HIT && x <= t1) cands.push(['three', Math.abs(x - (t0 + t1) / 2)]);
       if (Math.abs(x - R) <= HIT) cands.push(['R', Math.abs(x - R)]);
       if (rolled && Math.abs(x - L) <= HIT) cands.push(['L', Math.abs(x - L)]);
       // Zusammengeschoben liegen L und R aufeinander: die Seite des Zeigers entscheidet, sonst liesse sich L nie mehr greifen.
@@ -428,22 +590,34 @@
       if (cands.length) return cands.reduce((a, c) => (c[1] < a[1] ? c : a))[0];
       return x > L && x < R ? 'swipe' : null;
     }
+    // Tap: Touch/Stift, hoechstens TAP_SLOP px Weg und TAP_MS lang. Erst jenseits von TAP_SLOP beginnt das Ziehen.
+    const TAP_SLOP = 8, TAP_MS = 500;
+    let tap = null;
+    function setHover(x) {
+      const v = x === null || x === undefined ? null : +x;
+      if (v !== null && !Number.isFinite(v)) throw new TypeError('setHover: x muss eine Zahl oder null sein, war ' + x);
+      if (v !== hoverX) { hoverX = v; dirty = true; }
+    }
     function onDown(e) {
-      if (drag || locked) return;
       const x = e.clientX - rect().left;
+      if (e.pointerType !== 'mouse') tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
+      if (drag || locked) return;
       const mode = hitTest(x);
       if (!mode) return;
-      drag = { id: e.pointerId, mode, x0: x, X0, L, R };
+      drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse' };
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     }
     function onMove(e) {
       const x = e.clientX - rect().left;
+      if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
+      if (e.pointerType === 'mouse') setHover(x);
       if (!drag || drag.id !== e.pointerId) {
         const h = hitTest(x);
         canvas.style.cursor = h === 'swipe' ? 'grab' : (h ? 'ew-resize' : 'default');
         return;
       }
+      if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; }
       if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = x; }
       const dx = x - drag.x0, dd = deff();
       let mode = 'x';
@@ -459,7 +633,7 @@
       } else if (drag.mode === 'L') {
         const Lt = Math.max(MARGIN, Math.min(R, drag.L + dx));
         // Zone fuer das neue L (sie waechst mit dem Abstand): erreicht ihr Rand die 3, zieht L die 3 mit (X0 = L + d).
-        const dL = Math.max(0, Math.min(factor * Math.max(0, R - Lt - w), (R - Lt) / 2, (W - 2 * MARGIN) / 2));
+        const dL = Math.max(0, Math.min(Math.min(factor, 0.5) * Math.max(0, R - Lt - w), (R - Lt) / 2, (W - 2 * MARGIN) / 2));
         if (Lt + dL <= X0) { L = Lt; X0 = Lt + dL; mode = 'three'; }
         else L = Lt;
       } else {
@@ -469,6 +643,17 @@
       settle(mode);
       e.preventDefault();
     }
+    function onUp(e) {
+      if (tap && tap.id === e.pointerId) {
+        const ok = performance.now() - tap.t < TAP_MS;
+        const x = tap.x;
+        tap = null;
+        if (ok) setHover(x);
+      }
+      endDrag(e);
+    }
+    function onLeave(e) { if (e.pointerType === 'mouse') setHover(null); }
+    function onCancel(e) { tap = null; endDrag(e); }
     function endDrag(e) {
       if (!drag || drag.id !== e.pointerId) return;
       drag = null;
@@ -477,8 +662,9 @@
     }
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
-    canvas.addEventListener('pointerup', endDrag);
-    canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onCancel);
+    canvas.addEventListener('pointerleave', onLeave);
     canvas.addEventListener('lostpointercapture', endDrag);
 
     // ─── Drift: Mitte = Stillstand, exponentielle Kennlinie, nach oben offen ───
@@ -567,16 +753,47 @@
       scheme.removeEventListener('change', refreshColor);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
-      canvas.removeEventListener('pointerup', endDrag);
-      canvas.removeEventListener('pointercancel', endDrag);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onCancel);
+      canvas.removeEventListener('pointerleave', onLeave);
       canvas.removeEventListener('lostpointercapture', endDrag);
       canvas.style.cursor = '';
       drag = null;
     }
 
+    function renderLog() {
+      colLog = new Map(); depLog = []; drawLog = [];
+      try {
+        render();
+        return { cols: Array.from(colLog.values()).sort((p, q) => p.c - q.c), deps: depLog, draws: drawLog };
+      } finally { colLog = null; depLog = null; drawLog = null; }
+    }
+
     return {
       setDigits, appendDigits, rewind, setFactor, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
+      setHover,
+      // Testhaken: ein Bild rendern und je Stauchspalte festhalten, was dort gezaehlt wurde (Kettenbereich a..b, Zahl je Zeichen
+      // aus Kette und Quelle, fehlende Stellen, Unendlich) und welche Tinte die Spalte vor der Kappung traegt (raw: Summe ueber
+      // die Zeilen, max: staerkste Zeile; pure: nur gezaehlte Tinte, keine breitere Ziffer).
+      columns() { return renderLog().cols; },
+      // Testhaken: wie columns(), dazu jede abgelegte Ziffer der Stauchzone (Kettenindex i, Zeichencode, Lage x/w in
+      // Geraetepixeln, Deckkraft al; code 0 = fehlende Stelle) und jedes einzeln gezeichnete Bild ([x, w]).
+      renderLog,
+      // Deckung jedes Zeichenbilds im Atlas (GLYPHS-Reihenfolge), je Bild gw x gh Alphawerte zeilenweise, aus den Bildern selbst
+      glyphAlpha() {
+        if (!atlas) return null;
+        return Array.from(GLYPHS, (ch) => {
+          const d = atlas[ch].img.getContext('2d').getImageData(0, 0, gw, gh).data, a = new Array(gw * gh);
+          for (let k = 0; k < a.length; k++) a[k] = d[k * 4 + 3];
+          return a;
+        });
+      },
+      // Zeilentinte je Zeichen t (GLYPHS, dann t = 11 mittlere Tinte): Summe der Deckung jeder Zeile in Geraetepixeln
+      glyphInk() {
+        if (!atlas) return null;
+        return { glyphs: GLYPHS, rows: atlas.cums.map((cu) => Array.from(cu.subarray(gw * gh, gw * gh + gh))), gw, gh, dpr };
+      },
       invalidate() { dirty = true; },
       digits() { return decoder.decode(buf.subarray(0, chainLen)); },
       // Was das letzte Bild an Ziffern zeigte: ab Kettenindex lo, ASCII ('0' = nicht geladen), fromRemote = erster Index aus der Quelle
@@ -594,6 +811,9 @@
           inkTop: atlas ? inkTop / dpr + (H / 2 - gh / dpr / 2) : null,   // null bis zum ersten Bild
           inkBottom: atlas ? inkBottom / dpr + (H / 2 - gh / dpr / 2) : null,
           rate: curRate,
+          lambda: Math.max(0, 2 * factor - 1), ja, jb, renderMs,
+          hover: info ? Object.assign({}, info) : null,
+          hoverX,
           color
         };
       }
