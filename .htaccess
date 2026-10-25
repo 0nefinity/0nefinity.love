@@ -3,6 +3,9 @@ RewriteEngine On
 # Heikle Dot-Ordner direkt blocken, bevor andere Rewrite-Regeln greifen
 RewriteRule "(^|/)\.(git|ssh|vscode)(/|$)" - [F,L,NC]
 
+# Ein Favicon fuer alles: /favicon.ico im Wurzelverzeichnis. Alte Icon-Pfade zeigen darauf.
+RewriteRule ^(favicon\.(png|svg)|apple-touch-icon(-precomposed)?\.png|profilbilder/favicon/index/.+)$ /favicon.ico [L]
+
 # HTTPS erzwingen (funktioniert sowohl nativ als auch hinter nginx-Proxy)
 RewriteCond %{HTTPS} off
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
