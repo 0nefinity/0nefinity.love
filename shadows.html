@@ -634,10 +634,6 @@
   let glyphChars = { ...DEFAULT_GLYPH_CHARS };
 
   const DUAL_GAP = 3.5; // center-to-center Y distance in sphere radii (lower sphere at y=0, primary above)
-  const DUAL_DEFAULT_RADIUS = 2.5; // GEB-Mode-Default ohne URL-r: groß genug für lesbare Wand-Glyphen
-  // GEB-Mode-Default ohne URL-ldist: weit weg, damit die Strahlen fast parallel laufen und die
-  // Schatten nahe Kugelgröße bleiben (Vergrößerung = (L + dist) / L) - sonst wachsen die zwei Glyphen je Wand ineinander.
-  const DUAL_DEFAULT_LIGHT_DISTANCE = 60;
   function upperSphereY() { return dualMode ? DUAL_GAP * (params.sphereRadius || 1) : 0; }
   // Mitte des Kugelstapels; alle Lampen sitzen im Abstand lightDistance von hier (Boden: darüber, Wände: seitlich).
   function stackMidY() { return upperSphereY() / 2; }
@@ -710,7 +706,7 @@
 
   const PARAMS_CONFIG = {
     // Kamera
-    cameraDistance:   {                             urlKey: 'zoom',      min: 0,     max: 10000,  step: 1,    default: 45,  decimals: 0, dynamicStep: true },
+    cameraDistance:   {                             urlKey: 'zoom',      min: 0,     max: 10000,  step: 1,    default: 100,  decimals: 0, dynamicStep: true },
     cameraAzimuth:    {                             urlKey: 'az',        min: -180,  max: 180,    step: 1,    default: 45,  decimals: 0, dynamicStep: true },
     cameraElevation:  {                             urlKey: 'el',        min: -89,   max: 89,     step: 1,    default: 35,  decimals: 0, dynamicStep: true },
 
@@ -721,7 +717,7 @@
 
     // Geometrie
     wallDistance:     { id: 'dist',                 urlKey: 'dist',      min: -100,  max: 1000,    step: 0.1,  default: 14,   decimals: 1, dynamicStep: true },
-    sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 1,    decimals: 1, dynamicStep: true },
+    sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 2.5,    decimals: 1, dynamicStep: true },
     glyphSize:        { id: 'glyphSize',            urlKey: 'gsize',     min: 0,     max: 500,     step: 0.1,  default: 4,    decimals: 1, dynamicStep: true },
     wallSize:         { id: 'wallSize',             urlKey: 'wsize',     min: 0,     max: 200,    step: 1,    default: 25,   decimals: 0, dynamicStep: true },
 
@@ -731,7 +727,7 @@
     glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 0, dynamicStep: true },
 
     // Licht-Position
-    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.1,  default: 15,   decimals: 1, dynamicStep: true },
+    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.1,  default: 40,   decimals: 1, dynamicStep: true },
     lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 0, dynamicStep: true },
 
     // Spotlight-Parameter
@@ -789,27 +785,6 @@
     if (gebFromUrl === '1' || gebFromUrl === '5') {
       dualMode = true;
       gebFiveLamps = gebFromUrl === '5';
-    }
-
-    // GEB-Mode Default-Radius: Bei r=1 sind die zwei Kugeln so klein, dass die
-    // Wand-Glyphen zu unlesbaren Flecken werden. Wenn der User keinen eigenen
-    // Radius gesetzt hat (kein 'r' in der URL), auf einen größeren Wert anheben,
-    // damit der GEB-Effekt sofort lesbar ist. Einzel-Modus bleibt unberührt,
-    // ein explizites ?r=... wird respektiert.
-    if (dualMode && !urlParams.has(PARAMS_CONFIG.sphereRadius.urlKey)) {
-      params.sphereRadius = DUAL_DEFAULT_RADIUS;
-    }
-
-    // Nicht im 5-Lampen-Modus: dort würden die breiten Kegel der zwei Wandlampen ineinanderlaufen und die Glyphen füllen.
-    if (dualMode && !gebFiveLamps && !urlParams.has(PARAMS_CONFIG.lightDistance.urlKey)) {
-      params.lightDistance = DUAL_DEFAULT_LIGHT_DISTANCE;
-    }
-
-    // Der GEB-Aufbau ist höher: ohne eigenes 'zoom' weiter heraus, damit beide Kugeln und die Scheiben
-    // ins Bild passen. Lampen weiter weg als 15 bleiben bewusst außerhalb des Bildes.
-    if (dualMode && !urlParams.has(PARAMS_CONFIG.cameraDistance.urlKey)) {
-      params.cameraDistance = Math.max(params.cameraDistance,
-        1.55 * (upperSphereY() + Math.min(params.lightDistance, 15) + params.wallDistance));
     }
 
     // Lampen-Zustände aus URL laden (z.B. lights=110 → floor=1, back=1, side=0)
@@ -2780,38 +2755,16 @@
     }
 
     // GEB-Modus Toggle: baut Kugeln und Lampen im laufenden Betrieb um (kein Reload, Kamerawinkel bleiben).
-    // An = 3-Lampen-Variante (?geb=1). Die beim Einschalten angehobenen Werte (r, ldist, zoom) werden
-    // beim Ausschalten zurueckgesetzt, sofern der User sie nicht selbst verstellt hat.
+    // Beide Modi teilen dieselben Einstellungen: der Toggle aendert nur 1 vs. 2 Kugeln, keinen Slider-Wert.
     const gebEl = document.getElementById('gebMode');
     if (gebEl) {
       gebEl.checked = dualMode;
-      let singleSaved = null;
-      let gebApplied = null;
       gebEl.addEventListener('change', (e) => {
         const on = e.target.checked;
         if (on === dualMode) return;
         syncCameraParamsFromControls();
-        const keys = ['sphereRadius', 'lightDistance', 'cameraDistance'];
-        if (on) {
-          singleSaved = {};
-          keys.forEach(k => { singleSaved[k] = params[k]; });
-          dualMode = true;
-          gebFiveLamps = false;
-          params.sphereRadius = DUAL_DEFAULT_RADIUS;
-          params.lightDistance = DUAL_DEFAULT_LIGHT_DISTANCE;
-          params.cameraDistance = Math.max(params.cameraDistance,
-            1.55 * (upperSphereY() + Math.min(params.lightDistance, 15) + params.wallDistance));
-          gebApplied = {};
-          keys.forEach(k => { gebApplied[k] = params[k]; });
-        } else {
-          dualMode = false;
-          gebFiveLamps = false;
-          keys.forEach(k => {
-            const untouched = gebApplied && Math.abs(params[k] - gebApplied[k]) <= 0.01 * Math.abs(gebApplied[k]);
-            if (untouched || !gebApplied) params[k] = singleSaved ? singleSaved[k] : PARAMS_CONFIG[k].default;
-          });
-          gebApplied = null;
-        }
+        dualMode = on;
+        gebFiveLamps = false;
         // 5-Lampen-Zusatzspots (nur ?geb=5) entfernen
         [spotBackB, spotSideB].forEach(sp => { if (sp) { scene.remove(sp.target); scene.remove(sp); } });
         [lampBackB, lampSideB, lightConeBackB, lightConeSideB].forEach(o => { if (o) scene.remove(o); });
@@ -2825,10 +2778,6 @@
         applyCameraFromParams();
         controls.update();
         needsUniformUpdate = true;
-        ['sphereRadius', 'lightDistance', 'cameraDistance'].forEach(k => {
-          const c = PARAMS_CONFIG[k];
-          if (c.id) updateValueDisplay(c.id, params[k]);
-        });
         updateURLFromParams();
       });
     }
