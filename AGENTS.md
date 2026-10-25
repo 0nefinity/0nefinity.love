@@ -12,7 +12,7 @@ This repository is a creative and philosophical project centered on "0nefinity" 
 ## Build, Test, and Development Commands
 There is no formal build system (no `npm` or `package.json`).
 - **Live Preview**: Development is optimized for **Five Server** (VS Code extension), as evidenced by [./fiveserver.config.js](./fiveserver.config.js).
-- **Utility Scripts**: Occasional Python ([./py.py](./py.py), [./errorpages/err.py](./errorpages/err.py)) and PHP ([./tools/generate-structure.php](./tools/generate-structure.php)) scripts are used for content generation or server-side tasks.
+- **Utility Scripts**: Occasional Python ([./errorpages/err.py](./errorpages/err.py)) and PHP ([./tools/generate-structure.php](./tools/generate-structure.php)) scripts are used for content generation or server-side tasks.
 
 ## Coding Style & Naming Conventions
 The codebase is informal and experimental. AI agents should adhere to the following rules:
