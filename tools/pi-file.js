@@ -9,6 +9,8 @@
  *   f.length            // Kettenlaenge wie in UnfoldingView: Index 0 = "3", 1 = ".", 2.. = Nachkommastellen
  *   f.at(i)             // ASCII-Code der Stelle an Kettenindex i, 0 solange die Gruppe noch nicht da ist
  *   f.want(lo, hi, step)// sichtbares Fenster (Kettenindizes) und Versatz je Bild; holt Fenster entlang der Bahn gebuendelt vor
+ *   f.count(lo, hi, out)// Haeufigkeit der geladenen Ziffern 0..9 im Bereich [lo, hi) (Kettenindizes, ganzzahlig): addiert in
+ *                       // out[0..9] (gezaehlt, nicht geschaetzt), gibt die Zahl der geladenen Stellen zurueck; der Rest fehlt noch
  *   f.stats()  f.close()
  *   PiFile.decodeGroup(bytes, nblocks, valid)  // Decoder: 8 Bloecke (196 Byte) -> 472 ASCII-Codes
  *
@@ -62,7 +64,8 @@
     const nGroups = Math.ceil(nBlocks / GB);
     const bytes = HEADER + Math.ceil(nBlocks * BITS / 8);
     const length = digits + 2;        // "3." + Nachkommastellen
-    const cache = new Map();          // Gruppe -> { data, use }
+    const cache = new Map();          // Gruppe -> { data, cnt, use }; cnt[k * 10 + t] = Ziffern t in data[0..k)
+    let cacheVer = 0, snapVer = -1, snapIds = null, snapPre = null;   // sortierte Gruppen mit Praefix-Haeufigkeit (fuer count)
     const inflight = [];              // { ctrl, blocks:Set }
     let keep = new Set(), near = new Set();
     let tick = 0, closed = false, failed = null, ready = false, headCtrl = null;
@@ -162,7 +165,7 @@
       const arr = [...cache.entries()].sort((x, y) => x[1].use - y[1].use);
       for (const [b] of arr) {
         if (cache.size <= MAX_BLOCKS) break;
-        cache.delete(b);
+        cache.delete(b); cacheVer++;
         if (b === lastBlk) { lastBlk = -1; lastData = null; }
       }
     }
@@ -286,7 +289,9 @@
           const data = decodeGroup(p.data.subarray(o, o + GBYTES), nb, Math.min(GD, digits - b * GD), b);
           st.blocksLoaded++;
           if (!keep.has(b)) continue;   // Fenster inzwischen verlassen
-          cache.set(b, { data, use: tick });
+          const valid = Math.min(GD, digits - b * GD), cnt = new Uint16Array((valid + 1) * 10);
+          for (let k = 0; k < valid; k++) { const o = k * 10; for (let t = 0; t < 10; t++) cnt[o + 10 + t] = cnt[o + t]; cnt[o + 10 + data[k] - 48]++; }
+          cache.set(b, { data, cnt, use: tick }); cacheVer++;
         }
       }
       if (cache.size > MAX_BLOCKS) evict();
@@ -297,12 +302,45 @@
       for (const r of inflight) r.ctrl.abort();
       if (headCtrl) headCtrl.abort();
       inflight.length = 0;
-      cache.clear(); lastBlk = -1; lastData = null;
+      cache.clear(); cacheVer++; lastBlk = -1; lastData = null;
+    }
+
+    // Haeufigkeit je Ziffer im Bereich: Randgruppen ueber ihre Praefixe, ganze Gruppen dazwischen ueber den Schnappschuss
+    // (sortierte Gruppen-IDs, Praefixsumme ihrer Haeufigkeiten). Millionen Stellen je Aufruf kosten so zwei Binaersuchen.
+    function snapshot() {
+      snapVer = cacheVer;
+      snapIds = Float64Array.from(cache.keys()).sort();
+      snapPre = new Float64Array((snapIds.length + 1) * 10);
+      for (let n = 0; n < snapIds.length; n++) {
+        const cnt = cache.get(snapIds[n]).cnt, top = (cnt.length / 10 - 1) * 10, o = n * 10;
+        for (let t = 0; t < 10; t++) snapPre[o + 10 + t] = snapPre[o + t] + cnt[top + t];
+      }
+    }
+    const lowerBound = (x) => { let a = 0, b = snapIds.length; while (a < b) { const m = (a + b) >> 1; if (snapIds[m] < x) a = m + 1; else b = m; } return a; };
+    function partial(b, k0, k1, out) {   // Gruppe b, Stellen k0..k1 (innerhalb der Gruppe)
+      const e = cache.get(b);
+      if (!e || k1 <= k0) return 0;
+      const cnt = e.cnt;
+      for (let t = 0; t < 10; t++) out[t] += cnt[k1 * 10 + t] - cnt[k0 * 10 + t];
+      return k1 - k0;
+    }
+    function count(lo, hi, out) {
+      const ja = Math.max(0, lo - 2), jb = Math.min(digits, hi - 2);
+      if (!(jb > ja) || closed) return 0;
+      const bA = Math.floor(ja / GD), bB = Math.floor((jb - 1) / GD);
+      if (bA === bB) return partial(bA, ja - bA * GD, jb - bA * GD, out);
+      let got = partial(bA, ja - bA * GD, Math.min(GD, digits - bA * GD), out) + partial(bB, 0, jb - bB * GD, out);
+      if (bB > bA + 1) {
+        if (snapVer !== cacheVer) snapshot();
+        const n0 = lowerBound(bA + 1), n1 = lowerBound(bB);
+        for (let t = 0; t < 10; t++) { const c = snapPre[n1 * 10 + t] - snapPre[n0 * 10 + t]; out[t] += c; got += c; }
+      }
+      return got;
     }
 
     loadHeader();
     return {
-      length, at, want, close,
+      length, at, want, close, count,
       stats() { return Object.assign({ cached: cache.size, inflight: inflight.length, maxBlocks: MAX_BLOCKS, failed: failed ? failed.message : null }, st); }
     };
   }
