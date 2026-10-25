@@ -240,6 +240,25 @@
         return parseNumericValue(value);
     }
 
+    // Popup-Felder (min/max/step): opt-in-Hooks transform.formatConfigValue / parseConfigValue, sonst wie bisher.
+    function formatConfigFieldValue(cfg, type) {
+        const transform = getSliderTransform(cfg);
+        if (typeof transform?.formatConfigValue === 'function') {
+            const formattedValue = transform.formatConfigValue(cfg[type], type, cfg);
+            if (formattedValue != null) return String(formattedValue);
+        }
+        return String(cfg[type] ?? '');
+    }
+
+    function parseConfigFieldValue(cfg, text) {
+        const transform = getSliderTransform(cfg);
+        if (typeof transform?.parseConfigValue === 'function') {
+            const parsedValue = Number(transform.parseConfigValue(text, cfg));
+            if (!Number.isNaN(parsedValue)) return parsedValue;
+        }
+        return parseNumericValue(text);
+    }
+
     function scaleStepLogarithmically(step, direction) {
         return preciseScaleByTen(step, direction);
     }
@@ -961,7 +980,7 @@
                     <span class="ctrl-config-label">Min</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="down" aria-label="Min verringern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="min" value="${cfg.min}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                        <input type="text" class="ctrl-config-input" data-config="min" value="${formatConfigFieldValue(cfg, 'min')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="up" aria-label="Min erhöhen">&#9652;</button>
                     </div>
                 </div>
@@ -969,7 +988,7 @@
                     <span class="ctrl-config-label">Max</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="down" aria-label="Max verringern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="max" value="${cfg.max}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                        <input type="text" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="up" aria-label="Max erhöhen">&#9652;</button>
                     </div>
                 </div>
@@ -977,7 +996,7 @@
                     <span class="ctrl-config-label">Step</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="down" aria-label="Step verkleinern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="step" value="${cfg.step}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                        <input type="text" class="ctrl-config-input" data-config="step" value="${formatConfigFieldValue(cfg, 'step')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
@@ -986,7 +1005,7 @@
 
             const syncConfigInputs = () => {
                 popup.querySelectorAll('.ctrl-config-input').forEach((inputEl) => {
-                    inputEl.value = String(cfg[inputEl.dataset.config] ?? '');
+                    inputEl.value = formatConfigFieldValue(cfg, inputEl.dataset.config);
                 });
             };
 
@@ -1015,10 +1034,10 @@
             popup.querySelectorAll('.ctrl-config-input').forEach(input => {
                 const commitInputValue = () => {
                     const configType = input.dataset.config;
-                    const newVal = parseNumericValue(input.value);
+                    const newVal = parseConfigFieldValue(cfg, input.value);
 
                     if (Number.isNaN(newVal)) {
-                        input.value = String(cfg[configType] ?? '');
+                        input.value = formatConfigFieldValue(cfg, configType);
                         return;
                     }
 
@@ -1037,7 +1056,7 @@
                         input.blur();
                     } else if (e.key === 'Escape') {
                         e.preventDefault();
-                        input.value = String(cfg[input.dataset.config] ?? '');
+                        input.value = formatConfigFieldValue(cfg, input.dataset.config);
                         input.blur();
                     }
                 });
@@ -1481,7 +1500,13 @@
 
         _getMobileNaturalBodyHeight() {
             if (!this.bodyEl) return 0;
-            return Math.max(this.bodyEl.scrollHeight || 0, this.bodyEl.clientHeight || 0, 0);
+            // Ohne die selbst gesetzte Hoehe messen: clientHeight traegt sonst die letzte Sheet-Hoehe mit, die Hoehe
+            // schrumpft erst ueber mehrere Bilder auf den Inhalt und ein kurzes Panel startet zugeklappt.
+            const s = this.bodyEl.style, h = s.height, mh = s.maxHeight;
+            s.height = 'auto'; s.maxHeight = 'none';
+            const natural = this.bodyEl.scrollHeight || 0;
+            s.height = h; s.maxHeight = mh;
+            return Math.max(natural, 0);
         }
 
         _getMobileExpandedPanelHeight() {
