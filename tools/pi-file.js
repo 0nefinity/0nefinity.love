@@ -61,8 +61,7 @@
     const nBlocks = Math.ceil(digits / D);
     const nGroups = Math.ceil(nBlocks / GB);
     const bytes = HEADER + Math.ceil(nBlocks * BITS / 8);
-    const count = digits;             // Nachkommastellen
-    const length = count + 2;
+    const length = digits + 2;        // "3." + Nachkommastellen
     const cache = new Map();          // Gruppe -> { data, use }
     const inflight = [];              // { ctrl, blocks:Set }
     let keep = new Set(), near = new Set();
@@ -76,18 +75,14 @@
     function fail(e) {
       if (failed) return;
       failed = e instanceof Error ? e : new PiFileError(String(e));
-      closed = true;
-      for (const r of inflight) r.ctrl.abort();
-      if (headCtrl) headCtrl.abort();
-      inflight.length = 0;
-      cache.clear(); lastBlk = -1; lastData = null;
+      close();
       console.error('[PiFile] ' + failed.message);
       if (opts.onError) opts.onError(failed);
     }
 
     function at(i) {
       const j = i - 2;
-      if (j < 0 || j >= count) return 0;
+      if (j < 0 || j >= digits) return 0;
       const b = Math.floor(j / GD);
       let data;
       if (b === lastBlk) data = lastData;
@@ -208,7 +203,7 @@
         if (res.status !== 206) { ctrl.abort(); throw new PiFileError('Pi-Datei: Antwort ' + res.status + ' statt 206 (' + url + ')'); }
         const body = new Uint8Array(await res.arrayBuffer());
         st.bytesIn += body.length;
-        const parts = spans.length === 1 ? [singlePart(res, body, spans[0])] : multiParts(res, body);
+        const parts = spans.length === 1 ? [singlePart(res, body)] : multiParts(res, body);
         verify(parts, spans);
         const n = inflight.indexOf(req);
         if (n < 0) return;   // inzwischen abgebrochen: Antwort verwerfen

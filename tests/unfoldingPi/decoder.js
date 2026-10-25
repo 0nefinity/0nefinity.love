@@ -156,7 +156,7 @@ function read(f, lo, n) { let s = ''; for (let i = lo; i < lo + n; i++) { const 
     }
     // letzter Block: 32 echte Ziffern, Fuellung 0 (Dateiende)
     const lastG = 16949152 >> 3;
-    const out = PiFile.decodeGroup(rd(32 + 196 * lastG, total - 32 - 196 * lastG), 1, 472 - 0 === 0 ? 0 : 32 - 0, lastG);
+    const out = PiFile.decodeGroup(rd(32 + 196 * lastG, total - 32 - 196 * lastG), 1, 32, lastG);
     check('f2 letzter Block: 32 Ziffern + 27 Nullen Fuellung', String.fromCharCode(...out.subarray(0, 32)) === REF[REF.length - 1].digits.slice(-32) && out.subarray(32, 59).every((c) => c === 48), '');
     check('f2 Dateigroesse = 32 + ceil(16949153*196/8)', total === 415254281, total);
     // Leser gegen echte Datei im Browser-Pfad (Attrappen-Server liefert Bytes der echten Datei, nur Anfang+Ende)
