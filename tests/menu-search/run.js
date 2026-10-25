@@ -120,7 +120,7 @@ async function visibleResults(page) {
         await page.waitForTimeout(250);
         const res = await visibleResults(page);
         await input.press('ArrowDown');
-        await Promise.all([page.waitForURL('**' + encodeURI((res[1] || { href: '/__fehlt__' }).href), { timeout: 3000 }), input.press('Enter')]).then(
+        await Promise.all([page.waitForURL(u => decodeURI(u.pathname).startsWith((res[1] || { href: '/__fehlt__' }).href.replace(/\.html$/, '')), { timeout: 3000 }), input.press('Enter')]).then(
             () => report(true, 'ArrowDown + Enter oeffnet zweiten Treffer'),
             e => report(false, 'ArrowDown + Enter oeffnet zweiten Treffer', e.message.split('\n')[0]));
     }
