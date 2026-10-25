@@ -180,7 +180,7 @@ function initMenuSearch(menu, fileList) {
                 if (f.c.startsWith(t)) s = f.c === t ? -3 : 0;
                 else if (f.b.some(p => f.c.startsWith(t, p))) s = 1;
                 else if (!isPath && f.c.includes(t)) s = 10;
-                else if (!isPath && fuzzy && t.length >= 4) {
+                else if (!isPath && fuzzy && t.length >= 5) {
                     const max = t.length >= 8 ? 2 : 1;
                     if (f.fuz.length >= t.length - max && fuzzyDist(phon(t), f.fuz) <= max) s = 20;
                 }
