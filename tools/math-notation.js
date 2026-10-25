@@ -1,5 +1,5 @@
 // math-notation.js — pi(n)/e(n)-Ersetzung und π/∞-Vorschläge in Eingabefeldern.
-// Seiten mit Eingabefeldern laden diese Datei (defer); die Menüsuche lädt sie bei Bedarf nach. Statischen Text fasst sie nicht an.
+// Seiten mit Eingabefeldern laden diese Datei (defer); die Menüsuche braucht sie nicht (sie verdichtet π/∞ selbst). Statischen Text fasst sie nicht an.
 
 // ─── Math-Notation Auto-Replace ───────────────────────────────────────────
 // Modul 1: pi() / pi(n) — in Inputs/Textarea/contenteditable
