@@ -1,7 +1,44 @@
 // meta.js — Suche, Menü-Komfort, Viewport-Sync, Pre-Fitting. Menü, Back-Button, Fonts kommen aus den SSI-Includes; Dialog, Live-Reload, Math-Notation liegen in tools/.
 
+// ─── Tab-Titel: "<label>/<pfad>" ───
+// Label = Domain, über die der Besucher ursprünglich kam (nginx leitet 018.bio per ?von= um); bleibt im Tab erhalten.
+const TAB_LABELS = { '018bio': '018.BIO', '0nefinity018bio': '0nefinity.018.BIO' };
+function resolveTabLabel() {
+    let label = null;
+    try {
+        const url = new URL(location.href);
+        const von = url.searchParams.get('von');
+        if (von !== null) {
+            url.searchParams.delete('von');
+            history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+            if (Object.prototype.hasOwnProperty.call(TAB_LABELS, von)) {
+                label = TAB_LABELS[von];
+                sessionStorage.setItem('tabLabel', label);
+            }
+        }
+        if (!label) label = sessionStorage.getItem('tabLabel');
+        return label || location.hostname;
+    } catch (err) {
+        console.error('meta.js: Tab-Label nicht aus sessionStorage lesbar/schreibbar', err);
+        return label || location.hostname;
+    }
+}
+function tabPath() {
+    let path = location.pathname.replace(/^\/+/, '');
+    try { path = decodeURIComponent(path); } catch (err) { console.error('meta.js: Pfad nicht dekodierbar', err); }
+    return path.replace(/(^|\/)index(\.html)?$/, '').replace(/\.html$/, '').replace(/\/$/, '');
+}
+const tabLabel = resolveTabLabel();
+function applyTabTitle() {
+    const path = tabPath();
+    document.title = path ? `${tabLabel}/${path}` : tabLabel;
+}
+applyTabTitle();
+
 // DOM-Manipulation erst wenn Body existiert
 document.addEventListener('DOMContentLoaded', () => {
+
+applyTabTitle();
 
 // ─── Viewport-Sync ───
 function syncVisibleViewport() {
