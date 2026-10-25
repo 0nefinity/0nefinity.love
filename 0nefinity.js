@@ -1850,6 +1850,8 @@ canvas {
       // fps wirkt nicht hier, sondern auf Cycle-Progressionsgeschwindigkeit (via getWarpedElapsed).
       // Pattern bei gleichem speed-Wert immer identisch. Alias bei speed=360 immer.
       angle = (angle + rotationSpeed) % 360;
+      window.__symbolAngle = angle; // meta.js spiegelt ihn ins Favicon
+      window.__symbolAngleT = timestamp;
 
       // Zeichne das Dreieck auf den Hauptcanvas
       drawTriangleOnCanvas(ctx, canvas);
