@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
 """
 Statisches Menü-HTML generieren für SSI-Include.
-Gleiche Datei-Walk-Logik wie generate-sitemap.py.
+Quelle: git ls-files, ohne Entwickler-Material (siehe EXCLUDE_*).
 """
 
 import os
-import locale
+import subprocess
 from html import escape
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_FILE = os.path.join(ROOT_DIR, 'includes', 'something-in-the-body.html')
 
+# Das Menue listet nur, was git verfolgt (git ls-files) und ein Besucher
+# aufrufen kann. Entwickler-Material bleibt draussen.
 EXCLUDE_DIRS = {
-    '.git', '.ssh', '.vscode', '00_Archiv', '__pycache__', 'includes',
-    'fonts',                          # top-level /fonts and nested .../fonts/...
-    '!!DANGER!!-un0nefinity-fonts-!!DANGER!!',  # belt-and-suspenders for the font pack dir name
-    'node_modules', '.superpowers', '.gitnexus', '.kilocode',
-    '.auth', '.php_tmp', 'test-results',
+    '00_Archiv', '__pycache__', 'includes',
+    'fonts', 'node_modules', 'test-results', 'profilbilder',
+    'tests',        # Testsuiten und Mutationsskripte
+    'docs',         # interne Specs, Plaene, Reviews
+    'tools',        # Skripte, Vendor-Bibliotheken, Worker
+    'api',          # Endpunkte, keine Seiten
+    'errorpages',   # Fehlerseiten-Vorlagen
 }
-EXCLUDE_FILES = {'meta.json'}
+EXCLUDE_FILES = {'meta.json', 'robots.txt', 'AGENTS.md', 'CLAUDE.md'}
+EXCLUDE_EXTS = {
+    '.js', '.css', '.py', '.sh', '.json', '.xml', '.sql', '.pdn', '.ico',
+    '.hmtl', '.idea', '.before-gitnexus', '.woff2', '.map', '.config',
+}
 
 # Gleiche Priority-Items wie in meta.js
 PRIORITY_ITEMS = [
@@ -40,48 +48,43 @@ def should_include(name):
     return True
 
 
+def is_page(rel_path):
+    """True, wenn der getrackte Pfad ins Menue gehoert."""
+    parts = rel_path.split('/')
+    if any(not should_include(p) for p in parts):
+        return False
+    if any(d in EXCLUDE_DIRS for d in parts[:-1]):
+        return False
+    return os.path.splitext(parts[-1])[1].lower() not in EXCLUDE_EXTS
+
+
+def tracked_files():
+    """Alle von git verfolgten Pfade (bricht laut ab, wenn git fehlt)."""
+    out = subprocess.run(
+        ['git', 'ls-files', '-z'], cwd=ROOT_DIR, check=True,
+        stdout=subprocess.PIPE).stdout.decode('utf-8')
+    return [p for p in out.split('\0') if p]
+
+
 def collect_structure():
     """Sammelt Dateien/Ordner in hierarchische Struktur."""
     structure = {'folders': {}, 'files': []}
 
-    for dirpath, dirnames, filenames in os.walk(ROOT_DIR):
-        # Ordner nach derselben Regel filtern wie Dateien: "." und "_" raus.
-        # Vorher galt "_" nur fuer Dateien, ein "_scratch"-Ordner landete also
-        # samt Inhalt im Menue.
-        dirnames[:] = sorted(
-            [d for d in dirnames if should_include(d) and d not in EXCLUDE_DIRS],
-            key=lambda x: x.lower()
-        )
-
-        rel_dir = os.path.relpath(dirpath, ROOT_DIR)
-        if rel_dir == '.':
-            rel_dir = ''
-
-        for filename in sorted(filenames, key=lambda x: x.lower()):
-            if not should_include(filename):
-                continue
-
-            rel_path = os.path.join(rel_dir, filename).replace(os.sep, '/') if rel_dir else filename
-
-            parts = rel_path.split('/')
-            if len(parts) == 1:
-                # Root-Datei
-                if filename not in EXCLUDE_FROM_LIST:
-                    name = filename
-                    dot = name.rfind('.')
-                    display = name[:dot] if dot > 0 else name
-                    structure['files'].append({'name': filename, 'path': rel_path, 'display': display})
-            else:
-                # In Ordner
-                current = structure
-                for folder in parts[:-1]:
-                    if folder not in current['folders']:
-                        current['folders'][folder] = {'folders': {}, 'files': []}
-                    current = current['folders'][folder]
-                name = parts[-1]
-                dot = name.rfind('.')
-                display = name[:dot] if dot > 0 else name
-                current['files'].append({'name': filename, 'path': rel_path, 'display': display})
+    for rel_path in sorted(tracked_files(), key=lambda x: x.lower()):
+        if not is_page(rel_path):
+            continue
+        if not os.path.isfile(os.path.join(ROOT_DIR, rel_path)):
+            continue  # getrackt, aber lokal geloescht
+        parts = rel_path.split('/')
+        filename = parts[-1]
+        current = structure
+        for folder in parts[:-1]:
+            current = current['folders'].setdefault(folder, {'folders': {}, 'files': []})
+        if len(parts) == 1 and filename in EXCLUDE_FROM_LIST:
+            continue
+        dot = filename.rfind('.')
+        display = filename[:dot] if dot > 0 else filename
+        current['files'].append({'name': filename, 'path': rel_path, 'display': display})
 
     return structure
 

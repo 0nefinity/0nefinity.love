@@ -24,6 +24,7 @@ const CASES = [
     ['(un)folding', '/unfoldingPi.html', 1],
     ['unfoldnigpi', '/unfoldingPi.html', 3],
     ['unfoldingpi.html', '/unfoldingPi.html', 1],
+    ['unfoldingpi', '/unfoldingPi.html', 1],
     ['koordinaten', '/co0rdinates.html', 8],
     ['co0rdinates', '/co0rdinates.html', 2],
     ['coordinates', '/co0rdinates.html', 8],
@@ -90,6 +91,15 @@ async function visibleResults(page) {
         report(rank >= 1 && rank <= top, `"${q}" -> ${href} (Rang <= ${top})`,
             `Rang ${rank || 'nicht gefunden'} von ${res.length}; Top3: ${res.slice(0, 3).map(r => r.text).join(' | ')}`);
     }
+
+    // Pfad-Treffer fluten nicht: nur ueber den Ordnernamen gefunden -> hoechstens 5 Treffer
+    const flood = await search('kuriositaeten');
+    report(flood.length >= 1 && flood.length <= 5, 'Ordnername allein: hoechstens 5 Treffer', `${flood.length} Treffer`);
+
+    // Einzelzeichen: nur Wortanfaenge, kein Pfad, keine Ziffer mitten im Wort/Datum
+    const one = await search('0');
+    const bad = one.filter(r => !/(^|[^a-z0-9])(0|null|zero)/i.test(r.text.replace(/([a-z])([A-Z])/g, '$1 $2')));
+    report(one.length > 0 && bad.length === 0, '"0": nur Wortanfang-Treffer', `${bad.length} Fremdtreffer, z.B. ${bad.slice(0, 3).map(r => r.href).join(' | ')}`);
 
     // Leerzustand
     await search(EMPTY_QUERY);
