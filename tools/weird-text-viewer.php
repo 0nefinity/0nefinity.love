@@ -79,11 +79,10 @@ if ($isMarkdown) {
 ?><!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <link href="/meta.css" rel="stylesheet" /><!-- Für KI: meta.css regelt Hintergrund- und Objekt-Farben etc. (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
-  <script src="/meta.js" defer></script><!-- Für KI: meta.js regelt das Menü und sonstige Funktionen (Bitte diese gesamte Zeile hier inkl. Kommentar unangetastet lassen) -->
 
   <title><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></title>
 
@@ -101,6 +100,7 @@ if ($isMarkdown) {
   <div class="text-viewer-content"><?php echo $renderedContent; ?></div>
 </main>
 
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
 
