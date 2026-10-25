@@ -3084,3 +3084,37 @@ pre {
     background: var(--ui-fill-30);
 }
 
+
+/* Menüsuche: flache Trefferliste statt Ordnerbaum */
+#file-list.searching > li:not(.search-hit) {
+    display: none;
+}
+
+#file-list > li.search-hit a {
+    display: inline-block;
+    border-bottom: 1px solid transparent;
+}
+
+#file-list > li.search-hit.selected a {
+    border-bottom-color: var(--text-color);
+}
+
+#file-list > li.search-hit mark {
+    background: none;
+    color: inherit;
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.menu-search-path {
+    display: block;
+    font-size: 0.75em;
+    color: color-mix(in srgb, var(--text-color) 55%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#file-list > li.menu-search-empty {
+    color: color-mix(in srgb, var(--text-color) 60%, transparent);
+}
