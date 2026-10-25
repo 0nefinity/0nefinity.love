@@ -71,7 +71,7 @@ Flache Sammlung selbst-enthaltener HTML-Seiten. Die gemeinsame Infrastruktur:
 | `tools/tools/pixi.js` | PixiJS (WebGL-Rendering) für grafikintensive Seiten |
 
 **Favicon:** genau eine Datei, `/favicon.ico` im Wurzelverzeichnis (weisser Punkt); der Browser holt sie fuer jede Seite von selbst, auch PHP-, .md-Viewer- und Fehlerseiten. Das Head-Include verlinkt nur sie, Seiten bekommen keine eigenen Icon-Tags, und `.htaccess` leitet alte Icon-Pfade (`/favicon.png`, `/profilbilder/favicon/...`) auf sie um.
-Einzige Ausnahme: `why-coordinatesystem-is-chicken.html` behaelt ihr eigenes Huhn-Icon (`profilbilder/favicon/chicken/`). Icon aendern = diese eine Datei ersetzen.
+Einzige Ausnahme: `why-coordinatesystem-is-chicken.html` behaelt ihr eigenes Huhn-Icon (`profilbilder/favicon/chicken/`). Icon aendern = diese eine Datei ersetzen. Test: `meta.js` ersetzt auf Seiten mit `/favicon.ico`-Link den Icon-href per Canvas durch das rotierende 0 1 ∞ (20 fps, aus bei `prefers-reduced-motion`; `/favicon.ico` bleibt Fallback).
 
 **Einstiegspunkte:** `index.html` (Manifest + Navigation), `README.html` (Doku)
 **Archiv:** `00_Archiv/` — nur zum Nachschlagen, nicht anfassen
