@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <script src="/tools/math-notation.js" defer></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Isochronic Tone Generator</title>
 
-  <link href="/meta.css" rel="stylesheet" />
-  <script src="/meta.js"></script>
-  <script src="/tools/controls.js"></script>
 
   <style>
     html, body {
@@ -288,5 +287,6 @@
       onChange: (v) => generator.setVolume(v)
     });
   </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>

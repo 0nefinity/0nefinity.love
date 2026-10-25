@@ -3,11 +3,10 @@
 <html lang="de">
 
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-  <link href="/meta.css" rel="stylesheet" />
-  <script src="/meta.js"></script>
 
   <style>
     html,
@@ -29,25 +28,10 @@
       height: 10rem;
       pointer-events: none;
       z-index: 2000;
-      /* Für stufenlosen Zoom */
+      /* Für stufenlosen Zoom; Origin = Linsenmitte im SVG, folgt dem Cursor */
       --scale: 1;
-      transform: translate(-75%, -85%) scale(var(--scale));
-      transform-origin: 75% 85%;
-    }
-
-    .cursor-loupe::before {
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 8rem;
-    }
-
-    .cursor-loupe::after {
-      top: 85%;
-      left: 67%;
-      transform-origin: center left;
-      transform: translate(-50%, -50%) rotate(-45deg);
-      font-size: 6rem;
+      transform: translate(-36%, -31%) scale(var(--scale));
+      transform-origin: 36% 31%;
     }
   </style>
 </head>
@@ -57,11 +41,11 @@
   <p>can you find it in the infinite?</p>
   <p>maybe the magnifying glass will help you</p>
 
-  <script src="tools/zoom.js"></script>
   <script>
     (function () {
       const loupe = document.createElement('div');
       loupe.className = 'cursor-loupe';
+      loupe.innerHTML = '<svg class="meta-loupe" viewBox="-79 -498 946 946" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false"><path class="meta-loupe-lens" d="M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z"/><g class="meta-loupe-handle"><path d="M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z"/></g></svg>';
       document.body.appendChild(loupe);
 
       const zoom = Zoom2D.createZoom2D({
@@ -82,6 +66,7 @@
       });
     })();
   </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 
 </html>
