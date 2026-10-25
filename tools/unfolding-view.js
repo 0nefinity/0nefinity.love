@@ -34,6 +34,11 @@
  * Auto-Verdichtung: die Zonenbreite d folgt dem Abstand der Enden D = R - L, d = f * max(0, D - w) (hoechstens D/2). Beim
  * Laden liegen die Enden eine Ziffer weit auseinander: nur die Ganzzahl ist lesbar, d = 0, der Rest liegt als Haarlinie an
  * der Kommaposition. Je weiter die Enden auseinander, desto breiter die Zone; zusammengeschoben geht d stetig auf 0.
+ * Die Enden sind ungleich: rechts liegt der unendliche Rest (Zone d, satt), links liegen genau die hineingeschobenen Stellen.
+ * Ihre Zone ist dL = d (1 - e^(-u/d)) breit (u = Laenge der hineingeschobenen Stellen), die 3 liegt immer genau auf L:
+ * nichts hineingeschoben, kein linker Strich (offen ist L = X0); je mehr hinein, desto breiter und satter.
+ * Gestauchte Ziffern geben ihre Seitenraender ab (Fenster auf die Tinte der Glyphe), damit kein Spalt vor den Enden bleibt.
+ * Mausrad und Trackpad schieben die Kette (runter/rechts = weiter, wie Lesen), die Seite scrollt dabei nicht.
  * Faktor ueber 0,5: d bleibt bei f = 0,5, dazu mischt lambda = 2f - 1 die Gleichverteilung aller vorhandenen Stellen
  * zwischen L und R hinein (pos = M + lambda (U - M)). Bei f = 1 ist jede Stelle (R - L) / N breit: ein satter Balken.
  * Stauchzonen unter 1 Geraetepixel je Ziffer entstehen spaltenweise aus gezaehlten Ziffern: je Spalte die Zahl jedes
@@ -113,7 +118,22 @@
     let shownLo = 0, shownCodes = new Uint8Array(0), shownMark = new Uint8Array(0), shownN = 0;
 
     const deff = () => Math.max(0, Math.min(d, (W - 2 * MARGIN) / 2));
-    const startIdx = () => (L + deff() - X0) / w;            // Index des ersten linear sichtbaren Zeichens
+    // Linkes Ende: h = L - X0 ist die Strecke, um die die Kette links hinter L steht. Hineingeschoben ist die Laenge u mit
+    // h = u - dd (1 - e^(-u/dd)): die linke Zone ist dann dL = u - h breit und die 3 liegt genau auf L.
+    let uKey = '', uVal = 0;
+    function leftU(dd) {
+      const h = L - X0;
+      if (!(h > 0)) return 0;
+      if (!(dd > 0)) return h;
+      const key = L + '|' + X0 + '|' + dd;
+      if (key === uKey) return uVal;
+      let lo = h, hi = h + dd;
+      for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (m - dd * (1 - Math.exp(-m / dd)) < h) lo = m; else hi = m; }
+      uKey = key; uVal = (lo + hi) / 2;
+      return uVal;
+    }
+    const hOf = (u, dd) => (dd > 0 ? u - dd * (1 - Math.exp(-u / dd)) : u);
+    const startIdx = () => leftU(deff()) / w;                 // Index des ersten linear sichtbaren Zeichens
     const total = () => remote ? Math.max(chainLen, remote.length) : chainLen;
     const avail = () => Math.max(0, total() - 2) * w;   // Länge aller Nachkommastellen
 
@@ -146,10 +166,13 @@
     }
 
     // ─── Geometrie ───
+    // Rechts: unendlich viele Stellen in der Zone d vor R. Links: nur die hineingeschobenen, ihre Zone endet bei
+    // lzB = X0 + u; dieselbe Exponentialkurve, so verschoben, dass Zeichen 0 genau auf L liegt.
     function warp(p, dd) {
       if (dd <= 0) return p < L ? L : (p > R ? R : p);
       if (p > R - dd) return R - dd * Math.exp(-(p - (R - dd)) / dd);
-      if (p < L + dd) return L + dd * Math.exp((p - (L + dd)) / dd);
+      const lzB = X0 + leftU(dd);
+      if (p < lzB) return lzB - dd + dd * Math.exp((p - lzB) / dd);
       return p;
     }
     // Anzahl zusätzlicher Zeichen jenseits der linearen Zone, bis die Deckung gesättigt ist.
@@ -157,26 +180,23 @@
       return Math.min(4000, Math.ceil((dd / w) * Math.log(Math.max(dd * dpr, 1))) + 160);
     }
 
-    // Zonenbreite aus dem Abstand der Enden. Eingerollt ist L ein echtes Ende; offen folgt L der 3 (L = X0 - d), dann ist
-    // D = R - X0 + d, nach d aufgeloest d = f (R - X0 - w) / (1 - f). Beide Formeln stimmen am Uebergang ueberein: kein Sprung.
-    function autoD(unrolled) {
+    // Zonenbreite aus dem Abstand der Enden; offen folgt L der 3 (L = X0), eingerollt ist L ein echtes Ende.
+    function autoD() {
       const f = Math.min(factor, 0.5);
-      d = unrolled ? Math.min(f * Math.max(0, R - X0 - w) / (1 - f), Math.max(0, R - X0))
-                   : Math.min(f * Math.max(0, R - L - w), Math.max(0, (R - L) / 2));
+      d = Math.min(f * Math.max(0, R - L - w), Math.max(0, (R - L) / 2));
     }
     function settle(mode) {
-      let unrolled = mode === 'three';
-      if (!unrolled) { autoD(false); unrolled = X0 > L + deff(); }
-      if (unrolled) autoD(true);
+      if (mode === 'three') L = Math.max(MARGIN, Math.min(X0, R));
+      else if (X0 > L) L = X0;
+      autoD();
       const dd = deff();
       R = Math.min(R, X0 + Math.max(w, avail()) + dd, W - MARGIN);   // die Ganzzahl bleibt sichtbar; sonst X0 >= R - dd - avail()
       if (mode === 'three') {
         X0 = Math.min(X0, R - dd);
-        L = Math.max(MARGIN, X0 - dd);
+        L = Math.max(MARGIN, X0);
       } else {
-        if (X0 > L + dd) L = X0 - dd;
         L = Math.max(MARGIN, Math.min(L, R - 2 * dd));
-        if (X0 > L + dd) X0 = L + dd;
+        if (X0 > L) X0 = L;
       }
       R = Math.max(R, L + 2 * dd);
       dirty = true;
@@ -184,7 +204,7 @@
 
     function clampX0() { X0 = Math.max(X0, R - deff() - avail()); }
 
-    function rolledLeft() { return X0 < L + deff() - 0.5; }
+    function rolledLeft() { return X0 < L - 0.5; }
 
     // ─── Atlas: je Zeichen das Bild, die Silhouette und die Tinte je Spalte ───
     function rowMaxAlpha(data, width, height) {
@@ -204,7 +224,7 @@
       const probe = document.createElement('canvas').getContext('2d');
       probe.fillStyle = color; probe.fillRect(0, 0, 1, 1);
       const rgb = probe.getImageData(0, 0, 1, 1).data;
-      const cums = [];
+      const cums = [], exts = [];
       for (const ch of GLYPHS) {
         const c = document.createElement('canvas'); c.width = wd; c.height = hd;
         const g = c.getContext('2d');
@@ -228,6 +248,11 @@
           for (let y = 0; y < hd; y++) cum[(s + 1) * hd + y] = cum[s * hd + y] + data[(y * wd + s) * 4 + 3] / 255;
         }
         cums.push(cum);
+        // Tintenausdehnung: erste und letzte Spalte mit Deckung (Seitenraender liegen davor und dahinter).
+        let e0 = wd, e1 = 0;
+        for (let s = 0; s < wd; s++) for (let y = 0; y < hd; y++) if (data[(y * wd + s) * 4 + 3]) { if (s < e0) e0 = s; if (s + 1 > e1) e1 = s + 1; break; }
+        if (e1 <= e0) { e0 = 0; e1 = wd; }
+        exts.push([e0, e1]);
         atlas[ch] = { img: c, bar, rowMax, cum, t: GLYPHS.indexOf(ch) };
       }
       // ANNAHME (nicht gezaehlt): eine noch fehlende Stelle und Unendlich tragen die mittlere Tinte der zehn Ziffern.
@@ -235,6 +260,8 @@
       for (let k = 0; k < 10; k++) { const cu = cums[k]; for (let i = 0; i < avg.length; i++) avg[i] += cu[i] / 10; }
       cums.push(avg);
       atlas.cums = cums;
+      exts.push([Math.min(...exts.slice(0, 10).map((e) => e[0])), Math.max(...exts.slice(0, 10).map((e) => e[1]))]);
+      atlas.exts = exts;
       // Unterstrich der Stellenanzeige: ein Pixel in Textfarbe, gestreckt gezeichnet (kein fillRect).
       const ul = document.createElement('canvas'); ul.width = 1; ul.height = 1;
       const ug = ul.getContext('2d'), ud = ug.createImageData(1, 1);
@@ -363,7 +390,9 @@
     function pointerInfo() {
       if (hoverX === null) return null;
       const x = hoverX, N = pN;
-      if (x < L - 6 || x > R + 6) return null;
+      // Zusammengeschoben ist der Strich kaum breiter als eine Linie: dann gilt die Greifweite HIT, sonst trifft man ihn nicht.
+      const tol = R - L < 2 * HIT ? HIT : 6;
+      if (x < L - tol || x > R + tol) return null;
       const rs = span(0.5 * w);
       if (!rs) return { kind: 'all' };
       const ra = rs[0], rb = rs[1];
@@ -392,7 +421,7 @@
       ctx.imageSmoothingEnabled = true;
       prep();
       const dd = pDd, N = total();
-      const iLinLo = Math.ceil((L + dd - X0) / w - 1e-9);
+      const iLinLo = Math.ceil(leftU(dd) / w - 1e-9);
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
       const K = stackCount(dd);
       const iLo = Math.max(0, iLinLo - 1 - K);
@@ -496,23 +525,26 @@
     }
     function mark(zone, c) { if (c < zone.lo) zone.lo = c; if (c > zone.hi) zone.hi = c; }
     // Ziffer t (Breite wDev >= 1 Geraetepixel ab xDev, Deckkraft al) gibt ihre ganze Tinte an die ueberdeckten Spalten ab:
-    // auf Spalte c fallen die Quellspalten [u0, u1); ihre mittlere Deckung mal gw / wDev Quellspalten je Geraetepixel ist
-    // ihre volle Tinte (Summe ueber u, nicht Mittel). Schmalere Ziffern zaehlt region().
+    // auf Spalte c fallen die Quellspalten [u0, u1) aus dem Fenster [s0, s1), ihre Summe mal al. Das Fenster ist bei voller
+    // Breite die ganze Glyphe und schrumpft bis 0,85 Breite auf die Tinte: gestauchte Ziffern geben ihre Seitenraender ab,
+    // sonst bliebe vor jedem Ende eine leere Spalte. Schmalere Ziffern zaehlt region().
     function deposit(zone, t, xDev, wDev, al) {
       const end = xDev + wDev;
-      const cum = atlas.cums[t], hd = gh;
-      const gain = al * gw / wDev;
+      const cum = atlas.cums[t], hd = gh, ex = atlas.exts[t];
+      const k = Math.max(0, Math.min(1, (wDev / gw - 0.85) / 0.15));
+      const s0 = ex[0] * (1 - k), s1 = gw - (gw - ex[1]) * (1 - k), sc = (s1 - s0) / wDev;
+      if (depLog) { const e = depLog[depLog.length - 1]; if (e && e.x === xDev && e.w === wDev) { e.s0 = s0; e.s1 = s1; } }
       for (let c = Math.floor(xDev); c < end; c++) {
         if (c < 0 || c >= accCols) continue;
         const part = Math.min(c + 1, end) - Math.max(c, xDev);
-        const u0 = (Math.max(c, xDev) - xDev) * gw / wDev, u1 = u0 + part * gw / wDev;
         if (part <= 0) continue;
+        const u0 = s0 + (Math.max(c, xDev) - xDev) * sc, u1 = Math.min(s1, u0 + part * sc);
         const i0 = Math.min(gw - 1, Math.floor(u0)), f0 = u0 - i0, i1 = Math.min(gw - 1, Math.floor(u1)), f1 = u1 - i1;
-        const a0 = i0 * hd, a1 = i1 * hd, o = c * hd, k = gain * part / (u1 - u0);
+        const a0 = i0 * hd, a1 = i1 * hd, o = c * hd;
         for (let y = 0; y < hd; y++) {
           const p0 = cum[a0 + y] + f0 * (cum[a0 + hd + y] - cum[a0 + y]);
           const p1 = cum[a1 + y] + f1 * (cum[a1 + hd + y] - cum[a1 + y]);
-          ink[o + y] += (p1 - p0) * k;
+          ink[o + y] += (p1 - p0) * al;
         }
         mark(zone, c);
       }
@@ -566,8 +598,7 @@
       if (first) {
         X0 = Math.round((W - w) / 2); L = X0; R = X0 + w;
       } else {
-        const dd = deff();
-        X0 = L + dd - oldIdx * w;
+        X0 = L - hOf(oldIdx * w, deff());
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
@@ -605,13 +636,14 @@
       const mode = hitTest(x);
       if (!mode) return;
       drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse' };
+      setHover(x);   // Greifen zeigt die Stelle unter dem Finger, auch auf dem Handy
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     }
     function onMove(e) {
       const x = e.clientX - rect().left;
       if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
-      if (e.pointerType === 'mouse') setHover(x);
+      if (e.pointerType === 'mouse' || (drag && drag.id === e.pointerId)) setHover(x);
       if (!drag || drag.id !== e.pointerId) {
         const h = hitTest(x);
         canvas.style.cursor = h === 'swipe' ? 'grab' : (h ? 'ew-resize' : 'default');
@@ -632,9 +664,8 @@
         mode = 'three';
       } else if (drag.mode === 'L') {
         const Lt = Math.max(MARGIN, Math.min(R, drag.L + dx));
-        // Zone fuer das neue L (sie waechst mit dem Abstand): erreicht ihr Rand die 3, zieht L die 3 mit (X0 = L + d).
-        const dL = Math.max(0, Math.min(Math.min(factor, 0.5) * Math.max(0, R - Lt - w), (R - Lt) / 2, (W - 2 * MARGIN) / 2));
-        if (Lt + dL <= X0) { L = Lt; X0 = Lt + dL; mode = 'three'; }
+        // Erreicht L die 3, zieht L die 3 mit (offen: X0 = L).
+        if (Lt <= X0) { L = Lt; X0 = Lt; mode = 'three'; }
         else L = Lt;
       } else {
         X0 = drag.X0 + dx;
@@ -666,6 +697,21 @@
     canvas.addEventListener('pointercancel', onCancel);
     canvas.addEventListener('pointerleave', onLeave);
     canvas.addEventListener('lostpointercapture', endDrag);
+    // Mausrad und Trackpad: runter (oder rechts) schiebt die Kette weiter, wie beim Lesen nach unten; hoch schiebt zurueck bis
+    // die 3 wieder vorn steht. Die Seite scrollt dabei nicht (passive: false, preventDefault).
+    function onWheel(e) {
+      e.preventDefault();
+      if (locked) return;
+      const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? W : 1);
+      const delta = (e.deltaY + e.deltaX) * unit;
+      if (!delta) return;
+      const prev = X0;
+      X0 -= delta;
+      if (delta < 0) X0 = Math.min(X0, Math.max(prev, L));
+      clampX0();
+      settle('x');
+    }
+    canvas.addEventListener('wheel', onWheel, { passive: false });
 
     // ─── Drift: Mitte = Stillstand, exponentielle Kennlinie, nach oben offen ───
     function frame(now) {
@@ -689,7 +735,7 @@
         // Sausen: rueckt die Kette je Bild weiter als das Fenster breit ist, liegen die Fenster auseinander. Dann haengt der
         // Versatz am Bildtakt (ganze Takte), nicht an der Bilddauer: die Fenster liegen auf einem festen Raster und lassen sich
         // vorausholen, auch wenn ein Bild ausfaellt.
-        const visW = Math.max(1, (R - L - 2 * deff()) / w);
+        const visW = Math.max(1, (R - deff() - X0 - leftU(deff())) / w);
         const adv = Math.abs(rate) * dt;
         const wasBlur = blur;
         sausen = rate !== 0 && dt > 0 && adv > visW;
@@ -706,7 +752,7 @@
       if (rate !== 0 && dt > 0) {
         const prev = X0;
         X0 -= rate * w * dtEff;   // links (rate > 0): Kette läuft nach links
-        if (rate < 0) X0 = Math.min(X0, Math.max(prev, L + deff()));   // rückwärts: stoppt, wenn die 3 vorn ist
+        if (rate < 0) X0 = Math.min(X0, Math.max(prev, L));   // rückwärts: stoppt, wenn die 3 vorn ist
         clampX0();
         settle(drag && drag.mode === 'three' ? 'three' : 'x');
       }
@@ -729,7 +775,7 @@
       settle(rolledLeft() ? 'x' : 'three');
     }
     function rewind() {
-      X0 = L + deff();
+      X0 = L;
       settle('three');
     }
 
@@ -757,6 +803,7 @@
       canvas.removeEventListener('pointercancel', onCancel);
       canvas.removeEventListener('pointerleave', onLeave);
       canvas.removeEventListener('lostpointercapture', endDrag);
+      canvas.removeEventListener('wheel', onWheel, { passive: false });
       canvas.style.cursor = '';
       drag = null;
     }
@@ -803,7 +850,7 @@
         const startIndex = Math.max(0, startIdx());
         const endIndex = Math.max(0, (R - dd - X0) / w);
         return {
-          L, R, X0, d, dEff: dd, factor, w, W, H, dpr,
+          L, R, X0, d, dEff: dd, factor, w, W, H, dpr, uLeft: leftU(dd),
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,

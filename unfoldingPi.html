@@ -28,7 +28,7 @@
     .limit-hint { position: absolute; top: 0.75rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; font-size: 0.7rem; color: var(--text-color); opacity: 0.45; pointer-events: none; }
     #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
     /* Stellenanzeige: feste Stelle unter der Zeile, nur der Text wechselt */
-    .stellen { position: absolute; left: 0; right: 0; top: calc(50% + 3.5rem); text-align: center; font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--text-color); opacity: 0.55; pointer-events: none; white-space: nowrap; }
+    .stellen { position: absolute; left: 0; right: 0; top: 68%; text-align: center; font-size: 1.25rem; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--text-color); pointer-events: none; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -140,7 +140,7 @@
       if (!info) return '\u00a0';
       const name = cid === 'pi' ? 'pi' : symbolOf(cid);
       const n = (i) => fmtDE(placeNumber(i), 0) + '.';
-      if (info.kind === 'digit') return info.index === 1 ? 'decimal point of ' + name : n(info.index) + ' digit of ' + name;
+      if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
       if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
       if (info.kind === 'right') return n(info.lo) + '-every digit of ' + name;
       return n(0) + '-every digit of ' + name;
