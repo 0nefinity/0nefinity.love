@@ -55,8 +55,17 @@
     }
 
     #shadows-controls .controls-content {
-      max-height: none;
-      overflow: visible;
+      max-height: calc(100vh - 7rem);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* meta.css setzt white-space: pre-wrap auf alles: die Zeilenumbrueche zwischen den Reihen wuerden sonst leere Zeilen erzeugen */
+    #shadows-controls {
+      white-space: normal;
+    }
+    #shadows-controls * {
+      white-space: normal;
     }
 
     #shadows-controls .row {
@@ -422,6 +431,11 @@
         " onmouseover="this.style.opacity='1'; this.style.background='rgba(255,255,255,0.1)';" onmouseout="this.style.opacity='0.8'; this.style.background='transparent';">Reset</button>
       </div>
 
+      <div class="row toggle-row">
+        <label for="gebMode">GEB-Modus</label>
+        <input id="gebMode" type="checkbox">
+      </div>
+
       <div class="row">
         <label>Brightness</label>
         <div class="stepper-container">
@@ -510,10 +524,6 @@
       <div class="row toggle-row">
         <label for="showLamps">Show Lamps</label>
         <input id="showLamps" type="checkbox" checked>
-      </div>
-      <div class="row toggle-row">
-        <label for="gebMode">GEB-Mode</label>
-        <input id="gebMode" type="checkbox">
       </div>
       <!-- 018 Mode ist jetzt immer aktiv -->
 
@@ -2132,6 +2142,10 @@
         }
       } else {
         mat.uniforms.uSphere2Active.value = 0.0;
+        mat.uniforms.uSphere2Series.value = 0.0;
+        mat.uniforms.uTest1LampShift.value.set(0, 0, 0);
+        mat.uniforms.uTest2LampShift.value.set(0, 0, 0);
+        mat.uniforms.uTest2PointShift.value.set(0, 0, 0);
       }
     });
   }
@@ -2765,21 +2779,57 @@
       applyLampVisibility(); // Initialzustand
     }
 
-    // GEB-Mode Toggle: struktureller Moduswechsel (1 vs 2 Kugeln); an = 3-Lampen-Variante (?geb=1)
-    // -> URL anpassen + neu laden, damit init() sauber neu aufbaut. Andere Params bleiben erhalten.
+    // GEB-Modus Toggle: baut Kugeln und Lampen im laufenden Betrieb um (kein Reload, Kamerawinkel bleiben).
+    // An = 3-Lampen-Variante (?geb=1). Die beim Einschalten angehobenen Werte (r, ldist, zoom) werden
+    // beim Ausschalten zurueckgesetzt, sofern der User sie nicht selbst verstellt hat.
     const gebEl = document.getElementById('gebMode');
     if (gebEl) {
       gebEl.checked = dualMode;
+      let singleSaved = null;
+      let gebApplied = null;
       gebEl.addEventListener('change', (e) => {
-        dualMode = e.target.checked;
-        const urlParams = new URLSearchParams(window.location.search);
-        if (dualMode) {
-          urlParams.set('geb', '1');
+        const on = e.target.checked;
+        if (on === dualMode) return;
+        syncCameraParamsFromControls();
+        const keys = ['sphereRadius', 'lightDistance', 'cameraDistance'];
+        if (on) {
+          singleSaved = {};
+          keys.forEach(k => { singleSaved[k] = params[k]; });
+          dualMode = true;
+          gebFiveLamps = false;
+          params.sphereRadius = DUAL_DEFAULT_RADIUS;
+          params.lightDistance = DUAL_DEFAULT_LIGHT_DISTANCE;
+          params.cameraDistance = Math.max(params.cameraDistance,
+            1.55 * (upperSphereY() + Math.min(params.lightDistance, 15) + params.wallDistance));
+          gebApplied = {};
+          keys.forEach(k => { gebApplied[k] = params[k]; });
         } else {
-          urlParams.delete('geb');
+          dualMode = false;
+          gebFiveLamps = false;
+          keys.forEach(k => {
+            const untouched = gebApplied && Math.abs(params[k] - gebApplied[k]) <= 0.01 * Math.abs(gebApplied[k]);
+            if (untouched || !gebApplied) params[k] = singleSaved ? singleSaved[k] : PARAMS_CONFIG[k].default;
+          });
+          gebApplied = null;
         }
-        const qs = urlParams.toString();
-        window.location.search = qs ? '?' + qs : '';
+        // 5-Lampen-Zusatzspots (nur ?geb=5) entfernen
+        [spotBackB, spotSideB].forEach(sp => { if (sp) { scene.remove(sp.target); scene.remove(sp); } });
+        [lampBackB, lampSideB, lightConeBackB, lightConeSideB].forEach(o => { if (o) scene.remove(o); });
+        spotBackB = spotSideB = lampBackB = lampSideB = lightConeBackB = lightConeSideB = null;
+
+        buildSphereWithShader();
+        updateLightingFromParams();
+        updateGeometryFromParams();
+        updateFogUniforms();
+        updateLampVisuals();
+        applyCameraFromParams();
+        controls.update();
+        needsUniformUpdate = true;
+        ['sphereRadius', 'lightDistance', 'cameraDistance'].forEach(k => {
+          const c = PARAMS_CONFIG[k];
+          if (c.id) updateValueDisplay(c.id, params[k]);
+        });
+        updateURLFromParams();
       });
     }
 
