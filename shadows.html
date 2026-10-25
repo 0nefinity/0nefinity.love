@@ -24,6 +24,11 @@
   </script>
 
   <style>
+    #shadows-controls .glyph-row { display: flex; align-items: center; gap: 6px; }
+    #shadows-controls .glyph-row > :first-child { flex: 0 0 auto; min-width: 1.2em; }
+    #shadows-controls .glyph-row input[type=text], #shadows-controls .glyph-row input:not([type]) { width: 3.2em; flex: 0 0 auto; }
+    #shadows-controls .glyph-rot { margin-left: auto; flex: 0 0 auto; }
+    #shadows-controls .glyph-rot .ctrl-range, #shadows-controls .glyph-rot .ctrl-config-trigger { display: none; }
     body {
       margin: 0; overflow: hidden;
     }
@@ -34,562 +39,10 @@
       justify-content: center;
     }
 
-    #shadows-controls {
-      position: fixed;
-      top: 4.375rem;
-      right: 1rem;
-      padding: 0.75rem 1rem;
-      background: rgba(0, 0, 0, 0.85);
-      color: var(--text-color, #ffffff);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      max-width: 320px;
-      z-index: 10;
-      border-radius: 12px;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    }
-
-    #shadows-controls .drag-handle {
-      display: none;
-    }
-
-    #shadows-controls .controls-content {
-      max-height: calc(100vh - 7rem);
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-
-    /* meta.css setzt white-space: pre-wrap auf alles: die Zeilenumbrueche zwischen den Reihen wuerden sonst leere Zeilen erzeugen */
-    #shadows-controls {
-      white-space: normal;
-    }
-    #shadows-controls * {
-      white-space: normal;
-    }
-
-    #shadows-controls .row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-      min-height: 32px;
-    }
-
-    #shadows-controls label {
-      flex: 0 0 80px;
-      font-size: 13px;
-      opacity: 0.8;
-    }
-
-    #shadows-controls .slider-container {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    #shadows-controls input[type='range'] {
-      flex: 1;
-      height: 6px;
-      -webkit-appearance: none;
-      appearance: none;
-      background: rgba(255,255,255,0.2);
-      border-radius: 3px;
-      outline: none;
-      cursor: pointer;
-    }
-
-    #shadows-controls input[type='range']::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 18px;
-      height: 18px;
-      background: var(--text-color);
-      border-radius: 50%;
-      cursor: pointer;
-      transition: transform 0.1s ease;
-    }
-
-    #shadows-controls input[type='range']::-webkit-slider-thumb:hover {
-      transform: scale(1.15);
-    }
-
-    #shadows-controls input[type='range']::-moz-range-thumb {
-      width: 18px;
-      height: 18px;
-      background: var(--text-color);
-      border-radius: 50%;
-      cursor: pointer;
-      border: none;
-    }
-
-    #shadows-controls .value-display {
-      min-width: 40px;
-      text-align: right;
-      font-size: 12px;
-      font-variant-numeric: tabular-nums;
-      opacity: 0.7;
-    }
-
-    #shadows-controls input[type='number'] {
-      flex: 1 1 auto;
-      width: 100%;
-    }
-
-    #shadows-controls input[type='text'] {
-      flex: 1;
-      min-width: 80px;
-      height: 32px;
-      text-align: center;
-      font-size: 16px;
-      background: var(--bg-color);
-      color: var(--text-color);
-      border-radius: 9999px;
-      padding: 0 0.5rem;
-      font-weight: 500;
-    }
-
-    #shadows-controls input[type='text']:focus {
-      outline: none;
-      box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
-    }
-
-    #shadows-controls .geb-row {
-      display: flex;
-      max-height: 0;
-      overflow: hidden;
-      opacity: 0;
-      margin: 0;
-      padding: 0;
-      transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
-    }
-    #shadows-controls .geb-row.visible {
-      max-height: 60px;
-      opacity: 1;
-      margin: 0.5rem 0;
-    }
-
-    #shadows-controls .segmented-control {
-      display: flex;
-      flex: 1;
-      gap: 6px;
-    }
-
-    #shadows-controls .segmented-control button {
-      flex: 1;
-      padding: 0.5rem 0.75rem;
-      font-size: 13px;
-      background: var(--bg-color);
-      color: var(--text-color);
-      border: 2px solid var(--text-color);
-      border-radius: 9999px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    #shadows-controls .segmented-control button:hover {
-      background: var(--text-color);
-      color: var(--bg-color);
-    }
-
-    #shadows-controls .segmented-control button.active {
-      background: var(--text-color);
-      color: var(--bg-color);
-    }
-
-    #shadows-controls .toggle-row {
-      justify-content: space-between;
-    }
-
-    #shadows-controls .toggle-row input[type='checkbox'] {
-      width: 20px;
-      height: 20px;
-      cursor: pointer;
-      accent-color: var(--text-color);
-    }
-
-    #shadows-controls .section-divider {
-      height: 1px;
-      background: rgba(255,255,255,0.15);
-      margin: 0.75rem 0;
-    }
-
-    #shadows-controls .stepper-container {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    #shadows-controls .value-input-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 0;
-    }
-    #shadows-controls .value-input {
-      background: transparent;
-      border: none;
-      color: var(--text-color);
-      font-size: inherit;
-      font-family: inherit;
-      font-variant-numeric: tabular-nums;
-      text-align: right;
-      width: 4.5em;
-      padding: 0.2em 0.1em;
-      outline: none;
-      transition: border-color 0.15s ease, background 0.15s ease;
-    }
-    #shadows-controls .value-input:hover {
-      border-bottom-color: rgba(255,255,255,0.3);
-    }
-    #shadows-controls .value-input:focus {
-      border-bottom-color: rgba(255,255,255,0.6);
-      background: rgba(255,255,255,0.05);
-    }
-    #shadows-controls .value-suffix {
-      opacity: 0.6;
-      font-size: 0.9em;
-      margin-left: 1px;
-      pointer-events: none;
-    }
-    #shadows-controls .stepper-btn {
-      width: 36px;
-      height: 36px;
-      border: none;
-      background: transparent;
-      color: var(--text-color);
-      font-size: 1.4rem;
-      font-weight: 300;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: opacity 0.15s ease, transform 0.1s ease;
-      user-select: none;
-      -webkit-user-select: none;
-      outline: none;
-      opacity: 0.7;
-    }
-    #shadows-controls .stepper-btn:focus {
-      outline: none;
-    }
-    #shadows-controls .stepper-btn:hover {
-      opacity: 1;
-    }
-    #shadows-controls .stepper-btn:active {
-      transform: scale(0.85);
-      opacity: 1;
-    }
-    @media (max-width: 768px) {
-      #shadows-controls .stepper-btn {
-        width: 44px;
-        height: 44px;
-        font-size: 1.6rem;
-      }
-    }
-
-    @media (max-width: 768px) {
-      #shadows-controls {
-        position: fixed;
-        top: auto;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        max-width: 100%;
-        width: 100%;
-        border-radius: 20px 20px 0 0;
-        padding: 0;
-        max-height: 50vh;
-        font-size: 14px;
-        will-change: transform;
-      }
-
-      #shadows-root {
-        will-change: transform;
-      }
-
-      #shadows-controls .drag-handle {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 12px;
-        cursor: grab;
-        touch-action: none;
-      }
-
-      #shadows-controls .drag-handle::before {
-        content: '';
-        width: 40px;
-        height: 4px;
-        background: rgba(255,255,255,0.4);
-        border-radius: 2px;
-      }
-
-      #shadows-controls .drag-handle-label {
-        position: absolute;
-        font-size: 12px;
-        opacity: 0.6;
-      }
-
-      #shadows-controls .controls-content {
-        max-height: calc(50vh - 56px);
-        overflow-y: auto;
-        overflow-x: hidden;
-        padding: 0 1rem 1.5rem;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      #shadows-controls .row {
-        min-height: 48px;
-        gap: 0.75rem;
-        margin-bottom: 0.25rem;
-      }
-
-      #shadows-controls label {
-        flex: 0 0 90px;
-        font-size: 14px;
-      }
-
-      #shadows-controls input[type='range'] {
-        height: 6px;
-      }
-
-      #shadows-controls input[type='range']::-webkit-slider-thumb {
-        width: 24px;
-        height: 24px;
-      }
-
-      #shadows-controls input[type='range']::-moz-range-thumb {
-        width: 24px;
-        height: 24px;
-      }
-
-      #shadows-controls .value-display {
-        min-width: 44px;
-        font-size: 14px;
-      }
-
-      #shadows-controls .segmented-control {
-        gap: 8px;
-      }
-
-      #shadows-controls .segmented-control button {
-        min-height: 44px;
-        font-size: 16px;
-        font-weight: 500;
-      }
-
-      #shadows-controls .toggle-row input[type='checkbox'] {
-        width: 28px;
-        height: 28px;
-      }
-
-      #shadows-controls .section-divider {
-        margin: 0.8rem 0;
-      }
-
-      #shadows-controls input[type='text'] {
-        min-width: 100px;
-        height: 44px;
-        font-size: 18px;
-      }
-
-      #shadows-controls input[type='number'] {
-        min-height: 44px;
-        font-size: 16px;
-        border-radius: 8px;
-        padding: 0 0.75rem;
-      }
-    }
-
-    @media (max-width: 380px) {
-      #shadows-controls label {
-        flex: 0 0 70px;
-        font-size: 13px;
-      }
-    }
   </style>
 </head>
 <body>
   <div class="_018-canvas" id="shadows-root"></div>
-  <div id="shadows-controls">
-    <div class="drag-handle" id="dragHandle">
-      <span class="drag-handle-label"></span>
-    </div>
-
-    <div class="controls-content">
-      <div class="row" style="justify-content: center; margin-bottom: 0.75rem;">
-        <button id="resetParams" style="
-          background: transparent;
-          border: 1px solid rgba(255,255,255,0.3);
-          color: var(--text-color);
-          padding: 0.4rem 1.2rem;
-          border-radius: 9999px;
-          font-size: 13px;
-          cursor: pointer;
-          opacity: 0.8;
-          transition: opacity 0.2s ease, background 0.2s ease;
-        " onmouseover="this.style.opacity='1'; this.style.background='rgba(255,255,255,0.1)';" onmouseout="this.style.opacity='0.8'; this.style.background='transparent';">Reset</button>
-      </div>
-
-      <div class="row toggle-row">
-        <label for="gebMode">GEB-Modus</label>
-        <input id="gebMode" type="checkbox">
-      </div>
-
-      <div class="row">
-        <label>Brightness</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="brightness">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="brightnessValue" data-param="brightness" value="80">
-          </div>
-          <button class="stepper-btn plus" data-param="brightness">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Ambient</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="ambientIntensity">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="ambientValue" data-param="ambientIntensity" value="0.5">
-          </div>
-          <button class="stepper-btn plus" data-param="ambientIntensity">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Decay</label>
-        <div class="segmented-control" id="decayControl">
-          <button data-value="0" class="active">0</button>
-          <button data-value="1">1</button>
-          <button data-value="2">2</button>
-        </div>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <div class="row">
-        <label>Radius</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="sphereRadius">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="radiusValue" data-param="sphereRadius" value="1">
-          </div>
-          <button class="stepper-btn plus" data-param="sphereRadius">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Distance</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="wallDistance">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="distValue" data-param="wallDistance" value="14">
-          </div>
-          <button class="stepper-btn plus" data-param="wallDistance">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Light Dist</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="lightDistance">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="lightDistanceValue" data-param="lightDistance" value="15">
-          </div>
-          <button class="stepper-btn plus" data-param="lightDistance">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Spot Angle</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="spotAngle">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="spotAngleValue" data-param="spotAngle" value="15">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="spotAngle">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Lamp Size</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="lampScale">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="lampScaleValue" data-param="lampScale" value="5">
-          </div>
-          <button class="stepper-btn plus" data-param="lampScale">+</button>
-        </div>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <div class="row toggle-row">
-        <label for="showLamps">Show Lamps</label>
-        <input id="showLamps" type="checkbox" checked>
-      </div>
-      <!-- 018 Mode ist jetzt immer aktiv -->
-
-      <div class="row">
-        <label>Glyph Size</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphSize">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphSizeValue" data-param="glyphSize" value="4">
-          </div>
-          <button class="stepper-btn plus" data-param="glyphSize">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>0</label>
-        <input id="glyphChar0" type="text" value="0">
-      </div>
-      <div class="row">
-        <label>1</label>
-        <input id="glyphChar1" type="text" value="1">
-      </div>
-      <div class="row">
-        <label>∞</label>
-        <input id="glyphCharInf" type="text" value="∞">
-      </div>
-      <div class="row">
-        <label>Rot 0</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphRot0">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphRot0Value" data-param="glyphRot0" value="0">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="glyphRot0">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Rot 1</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphRot1">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphRot1Value" data-param="glyphRot1" value="0">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="glyphRot1">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Rot ∞</label>
-        <div class="stepper-container">
-          <button class="stepper-btn minus" data-param="glyphRotInf">−</button>
-          <div class="value-input-wrapper">
-            <input type="text" class="value-input" id="glyphRotInfValue" data-param="glyphRotInf" value="315">
-            <span class="value-suffix">°</span>
-          </div>
-          <button class="stepper-btn plus" data-param="glyphRotInf">+</button>
-        </div>
-      </div>
-      <div class="row">
-        <label>Font</label>
-        <select id="glyphFontSelect" style="flex:1; height:32px; border-radius:9999px; padding:0 0.5rem; background:var(--bg-color); color:var(--text-color); border:2px solid var(--text-color); cursor:pointer;"></select>
-      </div>
-    </div>
-    
-  <!-- maybe better a cube instead of a sphere. Spheres tend to create artifacts in 3 dimansional space. The .141592... -->
-  </div>
 
   <script type="module">
   import * as THREE from 'three';
@@ -620,6 +73,7 @@
 
   let gebEnabled = true;  // 018 Mode ist immer aktiv
   let invertMode = false;
+  let shapeCube = false;   // Form: false = Kugel, true = Wuerfel (?form=wuerfel)
   let dualMode = false;   // GEB-Mode (Hofstadter): 2 stacked spheres. NOT gebEnabled (that is the glyph-cutout flag).
   let gebFiveLamps = false;  // ?geb=5: one wall lamp pair per sphere. Default (?geb=1): 3 lamps, wall lamps between the spheres.
 
@@ -634,16 +88,14 @@
   let glyphChars = { ...DEFAULT_GLYPH_CHARS };
 
   const DUAL_GAP = 3.5; // center-to-center Y distance in sphere radii (lower sphere at y=0, primary above)
-  const DUAL_DEFAULT_RADIUS = 2.5; // GEB-Mode-Default ohne URL-r: groß genug für lesbare Wand-Glyphen
-  // GEB-Mode-Default ohne URL-ldist: weit weg, damit die Strahlen fast parallel laufen und die
-  // Schatten nahe Kugelgröße bleiben (Vergrößerung = (L + dist) / L) - sonst wachsen die zwei Glyphen je Wand ineinander.
-  const DUAL_DEFAULT_LIGHT_DISTANCE = 60;
   function upperSphereY() { return dualMode ? DUAL_GAP * (params.sphereRadius || 1) : 0; }
   // Mitte des Kugelstapels; alle Lampen sitzen im Abstand lightDistance von hier (Boden: darüber, Wände: seitlich).
   function stackMidY() { return upperSphereY() / 2; }
   // 5-Lampen-GEB (Vergleichsvariante, Lichtabstand 15) behält die Bodenlampe über der oberen Kugel: näher am Stapel
   // verzerren die Perspektiven der zwei Kugeln das Boden-∞.
   function floorLampY() { return (gebFiveLamps ? upperSphereY() : stackMidY()) + params.lightDistance; }
+  // Bodenhöhe: Abstand wallDistance unter der Stapelmitte, damit Boden-Scheibe und Wand-Scheiben in beiden Modi gleich zur Kugelmitte stehen.
+  function floorY() { return stackMidY() - params.wallDistance; }
   function wallLampY() { return dualMode && !gebFiveLamps ? stackMidY() : upperSphereY(); }
   // 3-lamp GEB: the wall lamp sits between the spheres, so its cone has to reach the far edge of both.
   // The penumbra eats the outer ~30% of the cone, hence the widening.
@@ -710,35 +162,35 @@
 
   const PARAMS_CONFIG = {
     // Kamera
-    cameraDistance:   {                             urlKey: 'zoom',      min: 0,     max: 10000,  step: 1,    default: 45,  decimals: 0, dynamicStep: true },
-    cameraAzimuth:    {                             urlKey: 'az',        min: -180,  max: 180,    step: 1,    default: 45,  decimals: 0, dynamicStep: true },
-    cameraElevation:  {                             urlKey: 'el',        min: -89,   max: 89,     step: 1,    default: 35,  decimals: 0, dynamicStep: true },
+    cameraDistance:   {                             urlKey: 'zoom',      min: 0,     max: 10000,  step: 1,    default: 100,  decimals: 2, dynamicStep: true },
+    cameraAzimuth:    {                             urlKey: 'az',        min: -180,  max: 180,    step: 1,    default: 45,  decimals: 2, dynamicStep: true },
+    cameraElevation:  {                             urlKey: 'el',        min: -89,   max: 89,     step: 1,    default: 35,  decimals: 2, dynamicStep: true },
 
     // Beleuchtung
-    wallBrightness:   {                             urlKey: 'fog',       min: 0,     max: 1,      step: 0.1,  default: 1,    decimals: 1, dynamicStep: true },
-    ambientIntensity: { id: 'ambient',              urlKey: 'ambient',   min: 0,     max: 10,     step: 0.1,  default: 0.5,  decimals: 1, dynamicStep: true },
-    brightness:       { id: 'brightness',           urlKey: 'bright',    min: 0,     max: 100000,  step: 1,    default: 80,   decimals: 0, dynamicStep: true },
+    wallBrightness:   {                             urlKey: 'fog',       min: 0,     max: 1,      step: 0.1,  default: 1,    decimals: 2, dynamicStep: true },
+    ambientIntensity: { id: 'ambient',              urlKey: 'ambient',   min: 0,     max: 10,     step: 0.1,  default: 0.5,  decimals: 2, dynamicStep: true },
+    brightness:       { id: 'brightness',           urlKey: 'bright',    min: 0,     max: 100000,  step: 1,    default: 80,   decimals: 2, dynamicStep: true },
 
     // Geometrie
-    wallDistance:     { id: 'dist',                 urlKey: 'dist',      min: -100,  max: 1000,    step: 0.1,  default: 14,   decimals: 1, dynamicStep: true },
-    sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 1,    decimals: 1, dynamicStep: true },
-    glyphSize:        { id: 'glyphSize',            urlKey: 'gsize',     min: 0,     max: 500,     step: 0.1,  default: 4,    decimals: 1, dynamicStep: true },
-    wallSize:         { id: 'wallSize',             urlKey: 'wsize',     min: 0,     max: 200,    step: 1,    default: 25,   decimals: 0, dynamicStep: true },
+    wallDistance:     { id: 'dist',                 urlKey: 'dist',      min: -100,  max: 1000,    step: 0.01, default: 14,   decimals: 2, dynamicStep: true },
+    sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 2.5,    decimals: 2, dynamicStep: true },
+    glyphSize:        { id: 'glyphSize',            urlKey: 'gsize',     min: 0,     max: 500,     step: 0.1,  default: 4,    decimals: 2, dynamicStep: true },
+    wallSize:         { id: 'wallSize',             urlKey: 'wsize',     min: 0,     max: 200,    step: 1,    default: 25,   decimals: 2, dynamicStep: true },
 
     // Glyph-Rotationen (0-360° = voller Kreis)
-    glyphRot0:        { id: 'glyphRot0',            urlKey: 'r0',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 0, dynamicStep: true },
-    glyphRot1:        { id: 'glyphRot1',            urlKey: 'r1',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 0, dynamicStep: true },
-    glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 0, dynamicStep: true },
+    glyphRot0:        { id: 'glyphRot0',            urlKey: 'r0',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 2, dynamicStep: true },
+    glyphRot1:        { id: 'glyphRot1',            urlKey: 'r1',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 2, dynamicStep: true },
+    glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 2, dynamicStep: true },
 
     // Licht-Position
-    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.1,  default: 15,   decimals: 1, dynamicStep: true },
-    lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 0, dynamicStep: true },
+    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.01, default: 40,   decimals: 2, dynamicStep: true },
+    lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 2, dynamicStep: true },
 
     // Spotlight-Parameter
-    spotAngle:        { id: 'spotAngle',            urlKey: 'angle',     min: 0,     max: 180,    step: 1,    default: 15,   decimals: 4, dynamicStep: true },
+    spotAngle:        { id: 'spotAngle',            urlKey: 'angle',     min: 0,     max: 180,    step: 1,    default: 16,   decimals: 2, dynamicStep: true },
     spotPenumbra:     { id: 'spotPenumbra',         urlKey: 'pen',       min: 0,     max: 1,      step: 0.05, default: 0.5,  decimals: 2, dynamicStep: true },
     spotDecay:        { id: 'spotDecay',            urlKey: 'decay',     min: 0,     max: 2,      step: 1,    default: 0,    decimals: 0, isSegmented: true },
-    spotRange:        { id: 'spotRange',            urlKey: 'range',     min: 0,     max: 10000,  step: 1,    default: 10000, decimals: 0, dynamicStep: true },
+    spotRange:        { id: 'spotRange',            urlKey: 'range',     min: 0,     max: 10000,  step: 1,    default: 10000, decimals: 2, dynamicStep: true },
 
     // Shadow-Parameter
     shadowMapSize:    { id: 'shadowMapSize',        urlKey: 'smap',      min: 256,   max: 4096,   step: 256,  default: 1024, decimals: 0 },
@@ -784,32 +236,14 @@
       invertMode = true;
     }
 
+    // Form aus URL laden
+    if (urlParams.get('form') === 'wuerfel') shapeCube = true;
+
     // GEB-Mode aus URL laden
     const gebFromUrl = urlParams.get('geb');
     if (gebFromUrl === '1' || gebFromUrl === '5') {
       dualMode = true;
       gebFiveLamps = gebFromUrl === '5';
-    }
-
-    // GEB-Mode Default-Radius: Bei r=1 sind die zwei Kugeln so klein, dass die
-    // Wand-Glyphen zu unlesbaren Flecken werden. Wenn der User keinen eigenen
-    // Radius gesetzt hat (kein 'r' in der URL), auf einen größeren Wert anheben,
-    // damit der GEB-Effekt sofort lesbar ist. Einzel-Modus bleibt unberührt,
-    // ein explizites ?r=... wird respektiert.
-    if (dualMode && !urlParams.has(PARAMS_CONFIG.sphereRadius.urlKey)) {
-      params.sphereRadius = DUAL_DEFAULT_RADIUS;
-    }
-
-    // Nicht im 5-Lampen-Modus: dort würden die breiten Kegel der zwei Wandlampen ineinanderlaufen und die Glyphen füllen.
-    if (dualMode && !gebFiveLamps && !urlParams.has(PARAMS_CONFIG.lightDistance.urlKey)) {
-      params.lightDistance = DUAL_DEFAULT_LIGHT_DISTANCE;
-    }
-
-    // Der GEB-Aufbau ist höher: ohne eigenes 'zoom' weiter heraus, damit beide Kugeln und die Scheiben
-    // ins Bild passen. Lampen weiter weg als 15 bleiben bewusst außerhalb des Bildes.
-    if (dualMode && !urlParams.has(PARAMS_CONFIG.cameraDistance.urlKey)) {
-      params.cameraDistance = Math.max(params.cameraDistance,
-        1.55 * (upperSphereY() + Math.min(params.lightDistance, 15) + params.wallDistance));
     }
 
     // Lampen-Zustände aus URL laden (z.B. lights=110 → floor=1, back=1, side=0)
@@ -847,6 +281,12 @@
       urlParams.set('font', currentFontKey);
     } else {
       urlParams.delete('font');
+    }
+
+    if (shapeCube) {
+      urlParams.set('form', 'wuerfel');
+    } else {
+      urlParams.delete('form');
     }
 
     // Invert-Mode in URL schreiben
@@ -903,7 +343,7 @@
   function calcConeRadius(spotPos, wallDist, axis) {
     // Abstand vom Spotlight zur Wand
     let dist;
-    if (axis === 'y') dist = Math.abs(spotPos.y - (-wallDist));
+    if (axis === 'y') dist = Math.abs(spotPos.y - floorY());
     else if (axis === 'z') dist = Math.abs(spotPos.z - (-wallDist));
     else if (axis === 'x') dist = Math.abs(spotPos.x - (-wallDist));
     else dist = wallDist;
@@ -922,7 +362,7 @@
     const w = params.wallDistance;
     const yW = wallLampY();
     spotFloor.position.set(0, floorLampY(), 0);
-    spotFloor.target.position.set(0, -w, 0);
+    spotFloor.target.position.set(0, floorY(), 0);
     spotBack.position.set(0, yW, d);
     spotBack.target.position.set(0, yW, -w);
     spotSide.position.set(d, yW, 0);
@@ -957,12 +397,12 @@
 
     if (typeof params.wallDistance === 'number') {
       const d = -params.wallDistance;
-      if (floor) floor.position.y = d;
+      if (floor) floor.position.y = floorY();
       if (backWall) backWall.position.z = d;
       if (sideWall) sideWall.position.x = d;
 
       // Hit-Layer synchronisieren
-      if (hitLayerFloor) hitLayerFloor.position.y = d;
+      if (hitLayerFloor) hitLayerFloor.position.y = floorY();
       if (hitLayerBack) hitLayerBack.position.z = d;
       if (hitLayerSide) hitLayerSide.position.x = d;
 
@@ -1052,13 +492,98 @@
     });
   }
 
+  // Glyph-Masken als echtes Signed-Distance-Field (Half-Float, LINEAR gefiltert).
+  // Wert = vorzeichenbehaftete Distanz zum Glyph-Rand in UV-Einheiten, positiv = im Glyph.
+  // Die Shader marschieren damit exakt (Sphere Tracing), Normalen kommen aus dem glatten Gradienten.
+  const SDF_SIZE = 512;
+  const SDF_SPREAD_PX = 24;
+  const SDF_SPREAD_UV = SDF_SPREAD_PX / SDF_SIZE;
+  const SDF_INF = 1e20;
+
+  // Felzenszwalb/Huttenlocher: eindimensionale quadrierte Distanztransformation (in place)
+  function edt1d(grid, offset, stride, length, f, v, z) {
+    v[0] = 0; z[0] = -SDF_INF; z[1] = SDF_INF;
+    f[0] = grid[offset];
+    for (let q = 1, k = 0, s = 0; q < length; q++) {
+      f[q] = grid[offset + q * stride];
+      const q2 = q * q;
+      do {
+        const r = v[k];
+        s = (f[q] - f[r] + q2 - r * r) / (q - r) / 2;
+      } while (s <= z[k] && --k > -1);
+      k++;
+      v[k] = q; z[k] = s; z[k + 1] = SDF_INF;
+    }
+    for (let q = 0, k = 0; q < length; q++) {
+      while (z[k + 1] < q) k++;
+      const r = v[k], qr = q - r;
+      grid[offset + q * stride] = f[r] + qr * qr;
+    }
+  }
+
+  function edt2d(grid, size) {
+    const f = new Float64Array(size), z = new Float64Array(size + 1), v = new Uint16Array(size);
+    for (let x = 0; x < size; x++) edt1d(grid, x, size, size, f, v, z);
+    for (let y = 0; y < size; y++) edt1d(grid, y * size, 1, size, f, v, z);
+  }
+
+  function makeSdfTexture(values) {
+    const tex = new THREE.DataTexture(values, SDF_SIZE, SDF_SIZE, THREE.RedFormat, THREE.HalfFloatType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  function emptySdfTexture() {
+    const out = new Uint16Array(SDF_SIZE * SDF_SIZE);
+    out.fill(THREE.DataUtils.toHalfFloat(-SDF_SPREAD_UV));
+    return makeSdfTexture(out);
+  }
+
+  // Aus dem antialiasten Canvas (weiss auf schwarz) ein SDF mit Subpixel-Genauigkeit (wie tiny-sdf)
+  function canvasToSdfTexture(ctx) {
+    const size = SDF_SIZE;
+    const img = ctx.getImageData(0, 0, size, size).data;
+    const n = size * size;
+    const outer = new Float64Array(n), inner = new Float64Array(n);
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const a = img[i * 4] / 255;
+      if (a === 1) { outer[i] = 0; inner[i] = SDF_INF; any = true; }
+      else if (a === 0) { outer[i] = SDF_INF; inner[i] = 0; }
+      else {
+        any = true;
+        const d = 0.5 - a;
+        outer[i] = d > 0 ? d * d : 0;
+        inner[i] = d < 0 ? d * d : 0;
+      }
+    }
+    if (!any) return emptySdfTexture();
+    edt2d(outer, size);
+    edt2d(inner, size);
+    const out = new Uint16Array(n);
+    const toHalf = THREE.DataUtils.toHalfFloat;
+    for (let y = 0; y < size; y++) {
+      // Canvas-Zeile 0 = oben = v 1 (wie flipY bei CanvasTexture)
+      const dst = (size - 1 - y) * size;
+      const src = y * size;
+      for (let x = 0; x < size; x++) {
+        const dpx = Math.sqrt(inner[src + x]) - Math.sqrt(outer[src + x]);
+        out[dst + x] = toHalf(Math.max(-SDF_SPREAD_PX, Math.min(SDF_SPREAD_PX, dpx)) / size);
+      }
+    }
+    return makeSdfTexture(out);
+  }
+
   function createGlyphTexture(text, rotation = 0, showCursor = false) {
-    // Hohe Auflösung für glatte Kanten
-    const size = 1024;
+    const size = SDF_SIZE;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     // Schwarzer Hintergrund (= nicht im Loch)
     ctx.fillStyle = '#000000';
@@ -1068,15 +593,7 @@
     const fontFamily = FONT_OPTIONS[currentFontKey] || FONT_OPTIONS[DEFAULT_FONT_KEY];
 
     // Leerer Text ohne Cursor = nur schwarzer Hintergrund
-    if (safeText.length === 0 && !showCursor) {
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = true;
-      texture.anisotropy = 16;
-      texture.needsUpdate = true;
-      return texture;
-    }
+    if (safeText.length === 0 && !showCursor) return emptySdfTexture();
 
     // Rotation um Mittelpunkt
     ctx.translate(size / 2, size / 2);
@@ -1089,7 +606,7 @@
 
     // Dynamische Schriftgröße basierend auf Text + Cursor-Breite
     const maxSize = size * 0.85;
-    let fontSize = 720;
+    let fontSize = size * 0.703;
     const cursorWidthRatio = 0.08;  // Cursor-Breite relativ zur Schriftgröße
     const cursorGap = showCursor ? fontSize * 0.05 : 0;  // Abstand zum Cursor
 
@@ -1100,7 +617,7 @@
     const textWidth = metrics.width + (showCursor ? fontSize * cursorWidthRatio + cursorGap : 0);
     const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent || fontSize;
     const scale = Math.min(maxSize / textWidth, maxSize / textHeight, 1);
-    fontSize = Math.floor(fontSize * scale);
+    fontSize = fontSize * scale;
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
 
     // Neu messen nach Skalierung
@@ -1114,6 +631,11 @@
 
     // Text zeichnen
     if (safeText.length > 0) {
+      // Leichte Kontur verdickt feine Striche (v.a. die duenne ∞-Schleife), damit der Schatten aus der Ferne lesbar bleibt
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = fontSize * 0.02;
+      ctx.strokeText(safeText, textOffsetX, yOffset);
       ctx.fillText(safeText, textOffsetX, yOffset);
     }
 
@@ -1124,14 +646,7 @@
       ctx.fillRect(cursorX, -cursorHeight / 2, cursorWidth, cursorHeight);
     }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    // Wichtig: Lineare Filterung für glatte Übergänge!
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = true;
-    texture.anisotropy = 16;
-    texture.needsUpdate = true;
-    return texture;
+    return canvasToSdfTexture(ctx);
   }
 
   function updateGlyphTexturesFor(entry) {
@@ -1139,16 +654,24 @@
     const rotInf = (params.glyphRotInf || 0) * Math.PI / 180;
     const rot1   = (params.glyphRot1   || 0) * Math.PI / 180;
     const t = entry.glyphTextures;
-    if (t.x) { t.x.dispose(); t.x.image = null; }
-    if (t.y) { t.y.dispose(); t.y.image = null; }
-    if (t.z) { t.z.dispose(); t.z.image = null; }
+    const keys = entry.glyphKeys || (entry.glyphKeys = {});
     const isPrimary = (spheres[0] && entry === spheres[0]);
     const showL = isPrimary && activeGlyphTarget === 'left'  && cursorVisible;
     const showF = isPrimary && activeGlyphTarget === 'floor' && cursorVisible;
     const showR = isPrimary && activeGlyphTarget === 'right' && cursorVisible;
-    t.x = createGlyphTexture(entry.glyphChars.left,  rot0,   showL);
-    t.y = createGlyphTexture(entry.glyphChars.floor, rotInf, showF);
-    t.z = createGlyphTexture(entry.glyphChars.right, rot1,   showR);
+    // SDF nur neu bauen, wenn sich Text, Font, Rotation oder Cursor dieses Slots geaendert haben
+    const slots = [
+      ['x', entry.glyphChars.left,  rot0,   showL],
+      ['y', entry.glyphChars.floor, rotInf, showF],
+      ['z', entry.glyphChars.right, rot1,   showR],
+    ];
+    for (const [slot, text, rot, cur] of slots) {
+      const key = `${currentFontKey}|${text ?? ''}|${rot}|${cur ? 1 : 0}`;
+      if (t[slot] && keys[slot] === key) continue;
+      if (t[slot]) t[slot].dispose();
+      t[slot] = createGlyphTexture(text, rot, cur);
+      keys[slot] = key;
+    }
     if (entry.mesh && entry.mesh.material && entry.mesh.material.uniforms) {
       entry.mesh.material.uniforms.uGlyphTexX.value = t.x;
       entry.mesh.material.uniforms.uGlyphTexY.value = t.y;
@@ -1195,6 +718,103 @@
     }
   }
 
+  // Gemeinsamer GLSL-Block fuer Haupt-, Tiefen- und Nebel-Shader: exakte SDF-Szene.
+  // Voraussetzung im Shader: uGlyphSize, uGebEnabled, uInvertMode, uShapeCube.
+  // Tunnel-Textur = 2D-SDF (positiv im Glyph), jeder Tunnel ist ein unendlicher Zylinder.
+  // Normal: Form minus Vereinigung der Tunnel = max(Form, max_i t_i).
+  // Invertiert: Form geschnitten mit allen Tunneln = max(Form, max_i -t_i).
+  const sdfGlsl = `
+    float sdfShape(vec3 p) {
+      if (uShapeCube == 1) return max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
+      return length(p) - 1.0;
+    }
+
+    // Aeussere Normale der Form (Kugel: radial, Wuerfel: Flaeche der groessten Komponente)
+    vec3 sdfShapeNormal(vec3 p) {
+      if (uShapeCube == 1) {
+        vec3 a = abs(p);
+        if (a.x >= a.y && a.x >= a.z) return vec3(sign(p.x), 0.0, 0.0);
+        if (a.y >= a.z) return vec3(0.0, sign(p.y), 0.0);
+        return vec3(0.0, 0.0, sign(p.z));
+      }
+      return normalize(p);
+    }
+
+    // UV der drei Tunnel (X und Y gespiegelt, Z original)
+    vec2 sdfUvX(vec3 p) { float k = 0.5 / (max(uGlyphSize, 1e-3) * 0.3); return vec2(0.5 - p.z * k, p.y * k + 0.5); }
+    vec2 sdfUvY(vec3 p) { float k = 0.5 / (max(uGlyphSize, 1e-3) * 0.3); return vec2(p.x * k + 0.5, 0.5 - p.z * k); }
+    vec2 sdfUvZ(vec3 p) { float k = 0.5 / (max(uGlyphSize, 1e-3) * 0.3); return vec2(p.x * k + 0.5, p.y * k + 0.5); }
+
+    // Distanz zum Glyph-Rand in lokalen Einheiten, positiv = im Glyph. Ausserhalb der Textur: Randwert minus Abstand zum Rand.
+    float sdfTube(sampler2D tex, vec2 uv) {
+      vec2 c = clamp(uv, 0.0, 1.0);
+      return (textureLod(tex, c, 0.0).r - length(uv - c)) * (0.6 * uGlyphSize);
+    }
+
+    float sdfSolid(vec3 p, sampler2D tx, sampler2D ty, sampler2D tz) {
+      float s = sdfShape(p);
+      if (uGebEnabled == 0) return uInvertMode == 1 ? 1.0 : s;
+      float sg = uInvertMode == 1 ? -1.0 : 1.0;
+      float d = max(s, sg * sdfTube(tx, sdfUvX(p)));
+      d = max(d, sg * sdfTube(ty, sdfUvY(p)));
+      return max(d, sg * sdfTube(tz, sdfUvZ(p)));
+    }
+
+    // Sphere Tracing mit echten Distanzen. true = Strahl trifft Festkoerper in [t0, t1].
+    bool sdfRayHit(vec3 ro, vec3 rd, float t0, float t1, sampler2D tx, sampler2D ty, sampler2D tz, out float tHit) {
+      float t = t0;
+      float d = 1.0;
+      float eps = 2e-4;
+      for (int i = 0; i < 160; i++) {
+        if (t > t1) { tHit = t; return false; }
+        d = sdfSolid(ro + rd * t, tx, ty, tz);
+        eps = 2e-4 * (1.0 + t);
+        if (d < eps) { tHit = t; return true; }
+        t += d * 0.95;
+      }
+      // Schleifenende: nur bei streifendem Kontakt noch als Treffer werten
+      tHit = t;
+      return d < eps * 20.0;
+    }
+
+    vec3 sdfSafeNormal(vec3 v) {
+      float l = length(v);
+      return l > 1e-6 ? v / l : vec3(0.0, 0.0, 1.0);
+    }
+
+    // Gradient der Tunnel-SDF (UV-Richtung), zentrale Differenzen ueber ~3 Texel auf dem glatten Feld
+    vec2 sdfTubeGrad(sampler2D tex, vec2 uv) {
+      float e = 3.0 / ${SDF_SIZE}.0;
+      float gx = sdfTube(tex, uv + vec2(e, 0.0)) - sdfTube(tex, uv - vec2(e, 0.0));
+      float gy = sdfTube(tex, uv + vec2(0.0, e)) - sdfTube(tex, uv - vec2(0.0, e));
+      return vec2(gx, gy);
+    }
+
+    // Aeussere Normale des Festkoerpers an p. kind: 0 = Form (Kugel/Wuerfel), 1 = Tunnel-Wand.
+    // Es zaehlt nur der dominante Term: scharfe Kanten, glatte Waende.
+    vec3 sdfSolidNormal(vec3 p, sampler2D tx, sampler2D ty, sampler2D tz, out int kind) {
+      kind = 0;
+      float best = sdfShape(p);
+      float sg = uInvertMode == 1 ? -1.0 : 1.0;
+      int axis = 0;
+      if (uGebEnabled == 1) {
+        float fx = sg * sdfTube(tx, sdfUvX(p));
+        float fy = sg * sdfTube(ty, sdfUvY(p));
+        float fz = sg * sdfTube(tz, sdfUvZ(p));
+        if (fx > best) { best = fx; axis = 1; }
+        if (fy > best) { best = fy; axis = 2; }
+        if (fz > best) { best = fz; axis = 3; }
+      }
+      if (axis == 0) return sdfShapeNormal(p);
+      kind = 1;
+      vec3 g;
+      if (axis == 1) { vec2 q = sdfTubeGrad(tx, sdfUvX(p)); g = vec3(0.0, q.y, -q.x); }
+      else if (axis == 2) { vec2 q = sdfTubeGrad(ty, sdfUvY(p)); g = vec3(q.x, 0.0, -q.y); }
+      else { vec2 q = sdfTubeGrad(tz, sdfUvZ(p)); g = vec3(q.x, q.y, 0.0); }
+      return sdfSafeNormal(sg * g);
+    }
+  `;
+
   const sphereVertexShader = `
     varying vec3 vWorldPos;
     varying vec3 vNormal;
@@ -1228,6 +848,7 @@
     uniform float uLightDistance;  // Distanz der Lichtquellen vom Zentrum
     uniform int uGebEnabled;
     uniform int uInvertMode;       // 0=normal (Löcher), 1=invertiert (nur Zeichen)
+    uniform int uShapeCube;        // 0=Kugel, 1=Wuerfel
     uniform vec3 uLightsActive;    // Welche Lichter aktiv sind (x=floor, y=back, z=side)
 
     varying vec3 vWorldPos;
@@ -1235,132 +856,29 @@
     varying vec3 vLocalPos;
     varying vec3 vCameraLocal;
 
-    // Glyph-Textur samplen (clamp statt discard für korrekte Löcher am Rand)
-    float sampleGlyph(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      // Außerhalb der Textur = kein Loch
-      if (uv != clamped) return 0.0;
-      return texture2D(tex, uv).r;
-    }
+    ${sdfGlsl}
 
-    // Prüft ob Punkt in einem der drei Glyph-Zylinder liegt
-    // Gibt zurück: 0 = nicht im Loch, 1/2/3 = in Loch X/Y/Z (erstes gefundenes)
-    // holeCount wird gesetzt um Überschneidungen zu erkennen
-    // Im Invert-Modus: Early-Exit wenn eine Textur 0 ist (kann nie 3 werden)
-    int whichHole(vec3 p, out int holeCount) {
-      holeCount = 0;
-      if (uGebEnabled == 0) return 0;
-
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-      int firstHole = 0;
-
-      // X-Achse Loch (0) - Zylinder entlang X (gespiegelt für korrekte Orientierung)
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyphTexX, uvX) > threshold;
-      if (inX) {
-        holeCount++;
-        firstHole = 1;
-      } else if (uInvertMode == 1) {
-        return 0;  // EARLY EXIT: kann nie 3 werden
+    // Strahl gegen die Form (Kugel oder Wuerfel mit Halbkante 1): tEnter/tExit, false = kein Treffer
+    bool shapeRange(vec3 ro, vec3 rd, out float tEnter, out float tExit) {
+      if (uShapeCube == 1) {
+        vec3 inv = 1.0 / (rd + vec3(1e-9));
+        vec3 t0 = (-vec3(1.0) - ro) * inv;
+        vec3 t1 = ( vec3(1.0) - ro) * inv;
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+        tEnter = max(tmin.x, max(tmin.y, tmin.z));
+        tExit = min(tmax.x, min(tmax.y, tmax.z));
+        return tEnter <= tExit;
       }
-
-      // Y-Achse Loch (∞) - Zylinder entlang Y (gespiegelt)
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyphTexY, uvY) > threshold;
-      if (inY) {
-        holeCount++;
-        if (firstHole == 0) firstHole = 2;
-      } else if (uInvertMode == 1) {
-        return firstHole;  // EARLY EXIT: kann nie 3 werden
-      }
-
-      // Z-Achse Loch (1) - Zylinder entlang Z (original, war korrekt)
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      if (sampleGlyph(uGlyphTexZ, uvZ) > threshold) {
-        holeCount++;
-        if (firstHole == 0) firstHole = 3;
-      }
-
-      return firstHole;
-    }
-
-    // SDF für Kugel
-    float sphereSDF(vec3 p) {
-      return length(p) - 1.0;
-    }
-
-    // Normale der Tunnel-Wand berechnen (Gradient der Glyph-Textur)
-    // Zeigt NACH INNEN zum Tunnel (weg von der Wand)
-    vec3 calcTunnelNormal(vec3 p, int holeAxis) {
-      float glyphScale = uGlyphSize * 0.3;
-      float eps = 0.002;
-
-      if (holeAxis == 1) {
-        // X-Achsen-Tunnel: Normale in YZ-Ebene (gespiegelt)
-        vec2 uv = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-        float gx = sampleGlyph(uGlyphTexX, uv + vec2(eps, 0.0)) - sampleGlyph(uGlyphTexX, uv - vec2(eps, 0.0));
-        float gy = sampleGlyph(uGlyphTexX, uv + vec2(0.0, eps)) - sampleGlyph(uGlyphTexX, uv - vec2(0.0, eps));
-        return normalize(vec3(0.0, gy, gx));  // Vorzeichen angepasst wegen Spiegelung
-      } else if (holeAxis == 2) {
-        // Y-Achsen-Tunnel: Normale in XZ-Ebene (gespiegelt)
-        vec2 uv = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-        float gx = sampleGlyph(uGlyphTexY, uv + vec2(eps, 0.0)) - sampleGlyph(uGlyphTexY, uv - vec2(eps, 0.0));
-        float gy = sampleGlyph(uGlyphTexY, uv + vec2(0.0, eps)) - sampleGlyph(uGlyphTexY, uv - vec2(0.0, eps));
-        return normalize(vec3(-gx, 0.0, gy));  // Vorzeichen angepasst wegen Spiegelung
-      } else {
-        // Z-Achsen-Tunnel: Normale in XY-Ebene (unverändert)
-        vec2 uv = (p.xy / glyphScale) * 0.5 + 0.5;
-        float gx = sampleGlyph(uGlyphTexZ, uv + vec2(eps, 0.0)) - sampleGlyph(uGlyphTexZ, uv - vec2(eps, 0.0));
-        float gy = sampleGlyph(uGlyphTexZ, uv + vec2(0.0, eps)) - sampleGlyph(uGlyphTexZ, uv - vec2(0.0, eps));
-        return normalize(vec3(-gx, -gy, 0.0));
-      }
-    }
-
-    // Berechnet Distanz zur Tunnel-Wand für eine Achse (0 = auf der Wand, >0 = im Tunnel)
-    float tunnelWallDist(vec3 p, int axis) {
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-      vec2 uv;
-
-      if (axis == 1) {
-        uv = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-        return sampleGlyph(uGlyphTexX, uv) - threshold;
-      } else if (axis == 2) {
-        uv = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-        return sampleGlyph(uGlyphTexY, uv) - threshold;
-      } else {
-        uv = (p.xy / glyphScale) * 0.5 + 0.5;
-        return sampleGlyph(uGlyphTexZ, uv) - threshold;
-      }
-    }
-
-    // Berechnet die korrekte Normale für die Schnittmenge aller drei Tunnel
-    // Die nächste Tunnel-Wand bestimmt die Normale
-    vec3 calcIntersectionNormal(vec3 p, vec3 viewDir) {
-      // Finde welcher Tunnel am nächsten zur Wand ist (kleinster Wert = nächste Wand)
-      float distX = tunnelWallDist(p, 1);
-      float distY = tunnelWallDist(p, 2);
-      float distZ = tunnelWallDist(p, 3);
-
-      int closestAxis;
-      if (distX <= distY && distX <= distZ) {
-        closestAxis = 1;
-      } else if (distY <= distX && distY <= distZ) {
-        closestAxis = 2;
-      } else {
-        closestAxis = 3;
-      }
-
-      // calcTunnelNormal gibt den Gradienten zurück, der INS LOCH zeigt
-      // (von schwarz/Rand nach weiß/Mitte)
-      // Im Invert-Modus ist das Loch-Innere unser Objekt
-      // Die Oberflächen-Normale muss ZUR LICHTQUELLE zeigen können
-      // Der Gradient zeigt ins Loch = zum Objekt-Inneren
-      // Für korrekte Beleuchtung: Normale = Gradient (zeigt zur beleuchteten Seite)
-      vec3 normal = calcTunnelNormal(p, closestAxis);
-
-      return normal;
+      float a = dot(rd, rd);
+      float b = 2.0 * dot(ro, rd);
+      float c = dot(ro, ro) - 1.0;
+      float disc = b * b - 4.0 * a * c;
+      if (disc < 0.0) return false;
+      float sq = sqrt(disc);
+      tEnter = (-b - sq) / (2.0 * a);
+      tExit = (-b + sq) / (2.0 * a);
+      return true;
     }
 
     void main() {
@@ -1368,157 +886,26 @@
       vec3 rayDir = normalize(vLocalPos - vCameraLocal);
 
       // Ray-Sphere Intersection für Start/End des Raymarchings
-      float a = dot(rayDir, rayDir);
-      float b = 2.0 * dot(rayOrigin, rayDir);
-      float c = dot(rayOrigin, rayOrigin) - 1.0;
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) discard;
-
-      float sqrtD = sqrt(discriminant);
-      float tEnter = (-b - sqrtD) / (2.0 * a);
-      float tExit = (-b + sqrtD) / (2.0 * a);
+      float tEnter, tExit;
+      if (!shapeRange(rayOrigin, rayDir, tEnter, tExit)) discard;
 
       if (tExit < 0.0) discard;
       tEnter = max(tEnter, 0.001);
 
-      // Raymarching durch die Kugel
-      vec3 hitPos;
-      vec3 hitNormal;
-      bool foundHit = false;
-      int hitType = 0;  // 0=sphere outside, 1=sphere inside, 2=tunnel wall
+      // Sphere Tracing gegen die exakte SDF (Kugel/Wuerfel mit Tunneln)
+      float tHit;
+      if (!sdfRayHit(rayOrigin, rayDir, tEnter, tExit, uGlyphTexX, uGlyphTexY, uGlyphTexZ, tHit)) discard;
 
-      float t = tEnter;
-      // Größerer baseStep für Invert-Modus (Objekt ist kleiner)
-      float baseStep = (uInvertMode == 1) ? 0.025 : 0.015;
-
-      bool wasInHole = false;
-      int lastHoleAxis = 0;
-      float lastT = t;
-
-      // Reduzierte Iterationen: 80 statt 120 (mit adaptivem Stepping ausreichend)
-      for (int i = 0; i < 80; i++) {
-        if (t > tExit) break;
-
-        vec3 p = rayOrigin + rayDir * t;
-        float dist = sphereSDF(p);
-        bool inSphere = (dist < 0.0);
-        int holeCount;
-        int holeAxis = whichHole(p, holeCount);
-        bool inHole = (holeCount > 0);
-
-        if (uInvertMode == 1) {
-          // INVERTIERTER MODUS: Nur die SCHNITTMENGE aller drei Zeichen rendern
-          // inGlyph = innerhalb Kugel UND in ALLEN DREI Zylindern gleichzeitig
-          bool inGlyph = inSphere && (holeCount == 3);
-          bool wasInGlyph = wasInHole;  // wasInHole wird hier als wasInGlyph genutzt
-
-          // Eintritt in Glyph-Volumen (Außenkante der Schnittmenge)
-          if (!wasInGlyph && inGlyph) {
-            // Binary Search für präzise Kante (reduziert auf 8 Iterationen)
-            float tLo = lastT;
-            float tHi = t;
-            int finalAxis = holeAxis;
-            for (int j = 0; j < 8; j++) {
-              float tMid = (tLo + tHi) * 0.5;
-              vec3 pMid = rayOrigin + rayDir * tMid;
-              float distMid = sphereSDF(pMid);
-              int midCount;
-              int midAxis = whichHole(pMid, midCount);
-              bool midInGlyph = (distMid < 0.0) && (midCount == 3);
-              if (midInGlyph) {
-                tHi = tMid;
-                finalAxis = midAxis;
-              } else {
-                tLo = tMid;
-              }
-            }
-            hitPos = rayOrigin + rayDir * tHi;
-            // Normale muss NACH AUSSEN vom Glyph-Körper zeigen (in den leeren Raum)
-            float hitDist = sphereSDF(hitPos);
-            if (abs(hitDist) < 0.05) {
-              // Auf Kugeloberfläche: Normale zeigt radial nach außen
-              hitNormal = normalize(hitPos);
-            } else {
-              // An Tunnel-Wand: Berechne korrekte Normale basierend auf nächster Wand
-              hitNormal = calcIntersectionNormal(hitPos, rayDir);
-            }
-            hitType = 0;
-            foundHit = true;
-            break;
-          }
-
-          wasInHole = inGlyph;  // Track ob wir im Glyph waren
-          lastHoleAxis = holeAxis;
-          lastT = t;
-
-          // ADAPTIVE STEPPING für Invert-Modus:
-          // Außerhalb der Kugel: große Schritte (SDF-basiert)
-          // Innerhalb aber nicht in Schnittmenge: mittlere Schritte
-          // Nahe der Schnittmenge (holeCount >= 2): kleine Schritte
-          float step;
-          if (!inSphere) {
-            step = max(dist * 0.5, baseStep);  // Außerhalb: SDF-Distanz nutzen
-          } else if (holeCount >= 2) {
-            step = baseStep;  // Nahe Schnittmenge: fein
-          } else {
-            step = baseStep * 2.0;  // In Kugel aber weit weg: gröber
-          }
-          t += step;
-
-        } else {
-          // NORMALER MODUS: Kugel mit Löchern
-
-          // Tunnel-Wand-Detektion: Übergang von "im Loch" zu "nicht im Loch"
-          if (wasInHole && !inHole && dist < 0.0) {
-            // Binary Search für sub-pixel präzise Tunnel-Wand-Position
-            float tLo = lastT;
-            float tHi = t;
-            for (int j = 0; j < 12; j++) {
-              float tMid = (tLo + tHi) * 0.5;
-              vec3 pMid = rayOrigin + rayDir * tMid;
-              int dummyCount;
-              int midAxis = whichHole(pMid, dummyCount);
-              bool midInHole = (dummyCount > 0);
-              if (midInHole) {
-                tLo = tMid;
-              } else {
-                tHi = tMid;
-              }
-            }
-            // Präzise Position auf der Tunnel-Wand
-            hitPos = rayOrigin + rayDir * tHi;
-            hitNormal = calcTunnelNormal(hitPos, lastHoleAxis);
-            hitType = 2;  // Tunnel-Wand
-            foundHit = true;
-            break;
-          }
-
-          // Kugeloberfläche (nicht im Loch)?
-          if (abs(dist) < 0.01 && !inHole) {
-            hitPos = p;
-            hitNormal = normalize(p);
-            if (dot(hitNormal, rayDir) > 0.0) {
-              hitNormal = -hitNormal;
-              hitType = 1;  // Innenseite
-            } else {
-              hitType = 0;  // Außenseite
-            }
-            foundHit = true;
-            break;
-          }
-
-          wasInHole = inHole;
-          if (inHole) lastHoleAxis = holeAxis;
-          lastT = t;
-
-          // Adaptiver Schritt: kleiner nahe der Oberfläche, aber konstant in Löchern
-          float step = inHole ? baseStep : max(abs(dist) * 0.4, baseStep);
-          t += step;
-        }
+      vec3 hitPos = rayOrigin + rayDir * tHit;
+      int kind;
+      vec3 hitNormal = sdfSolidNormal(hitPos, uGlyphTexX, uGlyphTexY, uGlyphTexZ, kind);
+      int hitType = 0;  // 0=Aussenseite, 1=Innenseite, 2=Tunnel-Wand (nur Normal-Modus)
+      if (dot(hitNormal, rayDir) > 0.0) {
+        hitNormal = -hitNormal;
+        hitType = 1;
+      } else if (kind == 1 && uInvertMode == 0) {
+        hitType = 2;
       }
-
-      if (!foundHit) discard;
 
       // Lichtrichtungen (von Lichtquelle zur Kugel)
       vec3 lightPos1 = vec3(0.0, 1.0, 0.0) * uLightDistance;  // Floor-Spot
@@ -1649,54 +1036,35 @@
     uniform sampler2D uGlyphTexZ;
     uniform int uGebEnabled;
     uniform int uInvertMode;
+    uniform int uShapeCube;
 
     varying vec3 vLocalPos;
     varying vec3 vLightLocal;
     varying vec2 vHighPrecisionZW;
 
-    // EXAKT wie im Haupt-Shader!
-    float sampleGlyph(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      if (uv != clamped) return 0.0;
-      return texture2D(tex, uv).r;
-    }
+    ${sdfGlsl}
 
-    // Zählt in wie vielen Löchern der Punkt liegt (0-3)
-    // Im Invert-Modus: Early-Exit wenn eine Textur 0 ist (kann nie 3 werden)
-    int countHoles(vec3 p) {
-      if (uGebEnabled == 0) return 0;
-
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-
-      // X-Achse (gespiegelt)
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyphTexX, uvX) > threshold;
-
-      // EARLY EXIT für Invert-Modus: Wenn X=0, kann es nie 3 werden
-      if (uInvertMode == 1 && !inX) return 0;
-
-      // Y-Achse (gespiegelt)
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyphTexY, uvY) > threshold;
-
-      // EARLY EXIT für Invert-Modus: Wenn Y=0, kann es nie 3 werden
-      if (uInvertMode == 1 && !inY) return inX ? 1 : 0;
-
-      // Z-Achse (original)
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      bool inZ = sampleGlyph(uGlyphTexZ, uvZ) > threshold;
-
-      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
-    }
-
-    // Prüft ob Punkt in mindestens einem Loch ist
-    bool isInHole(vec3 p) {
-      return countHoles(p) > 0;
-    }
-
-    float sphereSDF(vec3 p) {
-      return length(p) - 1.0;
+    // Strahl gegen die Form (Kugel oder Wuerfel mit Halbkante 1): tEnter/tExit, false = kein Treffer
+    bool shapeRange(vec3 ro, vec3 rd, out float tEnter, out float tExit) {
+      if (uShapeCube == 1) {
+        vec3 inv = 1.0 / (rd + vec3(1e-9));
+        vec3 t0 = (-vec3(1.0) - ro) * inv;
+        vec3 t1 = ( vec3(1.0) - ro) * inv;
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+        tEnter = max(tmin.x, max(tmin.y, tmin.z));
+        tExit = min(tmax.x, min(tmax.y, tmax.z));
+        return tEnter <= tExit;
+      }
+      float a = dot(rd, rd);
+      float b = 2.0 * dot(ro, rd);
+      float c = dot(ro, ro) - 1.0;
+      float disc = b * b - 4.0 * a * c;
+      if (disc < 0.0) return false;
+      float sq = sqrt(disc);
+      tEnter = (-b - sq) / (2.0 * a);
+      tExit = (-b + sq) / (2.0 * a);
+      return true;
     }
 
     void main() {
@@ -1704,96 +1072,15 @@
       vec3 rayDir = normalize(vLocalPos - vLightLocal);
 
       // Ray-Sphere Intersection
-      float a = dot(rayDir, rayDir);
-      float b = 2.0 * dot(rayOrigin, rayDir);
-      float c = dot(rayOrigin, rayOrigin) - 1.0;
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) discard;
-
-      float sqrtD = sqrt(discriminant);
-      float tEnter = (-b - sqrtD) / (2.0 * a);
-      float tExit = (-b + sqrtD) / (2.0 * a);
+      float tEnter, tExit;
+      if (!shapeRange(rayOrigin, rayDir, tEnter, tExit)) discard;
 
       if (tExit < 0.0) discard;
       tEnter = max(tEnter, 0.001);
 
-      // Raymarching: Finde ersten soliden Punkt
-      float t = tEnter;
-      float baseStep = (uInvertMode == 1) ? 0.03 : 0.015;  // Gröber im Invert-Modus
-      bool foundSolid = false;
-      bool wasInHole = false;
-      float lastT = t;
-
-      for (int i = 0; i < 60; i++) {  // Reduziert von 100 auf 60
-        if (t > tExit) break;
-
-        vec3 p = rayOrigin + rayDir * t;
-        float dist = sphereSDF(p);
-        bool inSphere = (dist < 0.0);
-        int holeCount = countHoles(p);
-        bool inHole = (holeCount > 0);
-
-        if (uInvertMode == 1) {
-          // INVERTIERTER MODUS: Solid = Schnittmenge aller 3 Zylinder
-          bool inGlyph = inSphere && (holeCount == 3);
-          bool wasInGlyph = wasInHole;
-
-          // Eintritt in Glyph-Volumen (Schnittmenge)
-          if (!wasInGlyph && inGlyph) {
-            foundSolid = true;
-            break;
-          }
-
-          wasInHole = inGlyph;
-          lastT = t;
-
-          // ADAPTIVE STEPPING (wie im Hauptshader)
-          float step;
-          if (!inSphere) {
-            step = max(dist * 0.5, baseStep);
-          } else if (holeCount >= 2) {
-            step = baseStep;
-          } else {
-            step = baseStep * 2.0;
-          }
-          t += step;
-
-        } else {
-          // NORMALER MODUS: Kugel mit Löchern
-
-          // Tunnel-Wand: Übergang von Loch zu Nicht-Loch INNERHALB der Kugel
-          if (wasInHole && !inHole && dist < 0.0) {
-            // Binary Search für präzise Position (konsistent mit Hauptshader)
-            float tLo = lastT;
-            float tHi = t;
-            for (int j = 0; j < 12; j++) {
-              float tMid = (tLo + tHi) * 0.5;
-              vec3 pMid = rayOrigin + rayDir * tMid;
-              if (isInHole(pMid)) {
-                tLo = tMid;
-              } else {
-                tHi = tMid;
-              }
-            }
-            foundSolid = true;
-            break;
-          }
-
-          // Auf Kugeloberfläche und NICHT im Loch?
-          if (abs(dist) < 0.02 && !inHole) {
-            foundSolid = true;
-            break;
-          }
-
-          wasInHole = inHole;
-          lastT = t;
-          float step = inHole ? baseStep : max(abs(dist) * 0.4, baseStep);
-          t += step;
-        }
-      }
-
-      if (!foundSolid) discard;
+      // Sphere Tracing: erster solider Punkt
+      float tHit;
+      if (!sdfRayHit(rayOrigin, rayDir, tEnter, tExit, uGlyphTexX, uGlyphTexY, uGlyphTexZ, tHit)) discard;
 
       float fragCoordZ = 0.5 * vHighPrecisionZW.x / vHighPrecisionZW.y + 0.5;
       gl_FragColor = packDepthToRGBA(fragCoordZ);
@@ -1828,6 +1115,7 @@
     uniform sampler2D uGlyphTexZ;
     uniform int uGebEnabled;
     uniform int uInvertMode;       // 0=normal (Löcher), 1=invertiert (nur Zeichen)
+    uniform int uShapeCube;        // 0=Kugel, 1=Wuerfel
     uniform float uFogDensity;     // Nebel-Sichtbarkeit (0=unsichtbar, 1=voll)
     uniform float uLightIntensity; // Licht-Intensität (0-1, normalisiert)
     uniform vec3 uFogColor;
@@ -1852,60 +1140,7 @@
     varying vec3 vWorldPos;
     varying vec3 vLocalPos;
 
-    // Glyph sampling - EXAKT wie im Haupt-Shader!
-    float sampleGlyph(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      // Außerhalb der Textur = kein Loch
-      if (uv != clamped) return 0.0;
-      return texture2D(tex, uv).r;
-    }
-
-    // Zählt in wie vielen Löchern der Punkt liegt (0-3)
-    // WICHTIG: p ist in LOKALEN Koordinaten (wie im Haupt-Shader)
-    // Im Invert-Modus: Early-Exit wenn eine Textur 0 ist (kann nie 3 werden)
-    int countHoles(vec3 p) {
-      if (uGebEnabled == 0) return 0;
-
-      // IDENTISCH zum Haupt-Shader whichHole()!
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-
-      // X-Achse (gespiegelt) - EXAKT wie im Haupt-Shader
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyphTexX, uvX) > threshold;
-
-      // EARLY EXIT für Invert-Modus
-      if (uInvertMode == 1 && !inX) return 0;
-
-      // Y-Achse (gespiegelt) - EXAKT wie im Haupt-Shader
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyphTexY, uvY) > threshold;
-
-      // EARLY EXIT für Invert-Modus
-      if (uInvertMode == 1 && !inY) return 0;
-
-      // Z-Achse - EXAKT wie im Haupt-Shader
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      bool inZ = sampleGlyph(uGlyphTexZ, uvZ) > threshold;
-
-      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
-    }
-
-    // Wie countHoles, aber für die zweite Kugel (eigene, getauschte Glyphen).
-    int countHoles2(vec3 p) {
-      if (uGebEnabled == 0) return 0;
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyph2TexX, uvX) > threshold;
-      if (uInvertMode == 1 && !inX) return 0;
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyph2TexY, uvY) > threshold;
-      if (uInvertMode == 1 && !inY) return 0;
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      bool inZ = sampleGlyph(uGlyph2TexZ, uvZ) > threshold;
-      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
-    }
+    ${sdfGlsl}
 
     // Prüft ob der Strahl von 'from' nach 'to' die Kugel mit Zentrum 'center' trifft
     // (außer durch Löcher). useSecond=true → Glyphen der zweiten Kugel.
@@ -1914,57 +1149,40 @@
       vec3 rayDir = normalize(to - from);
       float rayLength = length(to - from);
 
-      // Ray-Sphere Intersection (in skalierten Koordinaten)
-      float a = dot(rayDir, rayDir);
-      float b = 2.0 * dot(rayOrigin, rayDir);
-      float c = dot(rayOrigin, rayOrigin) - uSphereRadius * uSphereRadius;
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) return false;  // Kein Treffer
-
-      float sqrtD = sqrt(discriminant);
-      float t1 = (-b - sqrtD) / (2.0 * a);
-      float t2 = (-b + sqrtD) / (2.0 * a);
-
-      // Prüfe ob Treffer zwischen from und to liegt
-      if (t2 < 0.0 || t1 > rayLength) return false;
-
-      float tEnter = max(t1, 0.0);
-      float tExit = min(t2, rayLength);
+      float tEnter, tExit;
+      if (uShapeCube == 1) {
+        vec3 inv = 1.0 / (rayDir + vec3(1e-9));
+        vec3 t0 = (-vec3(uSphereRadius) - rayOrigin) * inv;
+        vec3 t1 = ( vec3(uSphereRadius) - rayOrigin) * inv;
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+        float te = max(tmin.x, max(tmin.y, tmin.z));
+        float tx = min(tmax.x, min(tmax.y, tmax.z));
+        if (te > tx) return false;
+        if (tx < 0.0 || te > rayLength) return false;
+        tEnter = max(te, 0.0);
+        tExit = min(tx, rayLength);
+      } else {
+        float a = dot(rayDir, rayDir);
+        float b = 2.0 * dot(rayOrigin, rayDir);
+        float c = dot(rayOrigin, rayOrigin) - uSphereRadius * uSphereRadius;
+        float discriminant = b * b - 4.0 * a * c;
+        if (discriminant < 0.0) return false;
+        float sqrtD = sqrt(discriminant);
+        float t1 = (-b - sqrtD) / (2.0 * a);
+        float t2 = (-b + sqrtD) / (2.0 * a);
+        if (t2 < 0.0 || t1 > rayLength) return false;
+        tEnter = max(t1, 0.0);
+        tExit = min(t2, rayLength);
+      }
 
       if (tEnter >= tExit) return false;
 
-      // EINFACHER ANSATZ: Kleine Schritte, viele Samples
-      // Schrittgröße = 1% des Kugelradius = sehr fein
-      float step = uSphereRadius * 0.01;
-
-      if (uInvertMode == 1) {
-        // INVERT-MODUS: Schnittmenge aller 3 Zylinder
-        for (float t = tEnter; t < tExit; t += step) {
-          vec3 p = rayOrigin + rayDir * t;
-          // WICHTIG: Normalisiere auf Einheitskoordinaten für countHoles
-          // countHoles erwartet Koordinaten einer Einheitskugel (radius=1)
-          vec3 pNorm = p / uSphereRadius;
-          int holeCount = useSecond ? countHoles2(pNorm) : countHoles(pNorm);
-          if (holeCount == 3) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      // Normal-Modus
-      for (float t = tEnter; t < tExit; t += step) {
-        vec3 p = rayOrigin + rayDir * t;
-        // WICHTIG: Normalisiere auf Einheitskoordinaten für countHoles
-        vec3 pNorm = p / uSphereRadius;
-        int holeCount = useSecond ? countHoles2(pNorm) : countHoles(pNorm);
-        if (holeCount == 0) {
-          return true;
-        }
-      }
-
-      return false;
+      // Sphere Tracing in Einheitskoordinaten (Kugelradius = 1)
+      float tHit;
+      vec3 ro = rayOrigin / uSphereRadius;
+      if (useSecond) return sdfRayHit(ro, rayDir, tEnter / uSphereRadius, tExit / uSphereRadius, uGlyph2TexX, uGlyph2TexY, uGlyph2TexZ, tHit);
+      return sdfRayHit(ro, rayDir, tEnter / uSphereRadius, tExit / uSphereRadius, uGlyphTexX, uGlyphTexY, uGlyphTexZ, tHit);
     }
 
     // Berechnet Spotlight-Intensität mit Decay (0 = außerhalb, 1 = voll im Kegel)
@@ -2047,6 +1265,7 @@
         uGlyphTexZ: { value: glyphTextures.z },
         uGebEnabled: { value: gebEnabled ? 1 : 0 },
         uInvertMode: { value: invertMode ? 1 : 0 },
+        uShapeCube: { value: shapeCube ? 1 : 0 },
         uFogDensity: { value: 1.0 },
         uLightIntensity: { value: brightness },
         uFogColor: { value: textColorThree || new THREE.Color(1, 1, 1) },
@@ -2090,6 +1309,7 @@
       mat.uniforms.uGlyphTexZ.value = glyphTextures.z;
       mat.uniforms.uGebEnabled.value = gebEnabled ? 1 : 0;
       mat.uniforms.uInvertMode.value = invertMode ? 1 : 0;
+      mat.uniforms.uShapeCube.value = shapeCube ? 1 : 0;
       const angleDeg = (idx === 1 || idx === 2) ? wallLampAngleDeg() : (params.spotAngle ?? PARAMS_CONFIG.spotAngle.default);
       mat.uniforms.uSpotAngle.value = Math.cos(angleDeg * Math.PI / 180);
       mat.uniforms.uSpherePos.value.set(0, upperSphereY(), 0);
@@ -2153,8 +1373,16 @@
   // Baut eine einzelne Kugel mit eigenem sharedUniforms-Objekt und gibt
   // den spheres[]-Eintrag zurück. glyphCharsArg bestimmt die Glyphen;
   // yOffset positioniert die Kugel auf der Y-Achse.
+  function makeOutlineGeometry() {
+    return shapeCube ? new THREE.BoxGeometry(2.1, 2.1, 2.1) : new THREE.SphereGeometry(1.05, 32, 16);
+  }
+
+  function makeShapeGeometry() {
+    return shapeCube ? new THREE.BoxGeometry(2, 2, 2) : new THREE.SphereGeometry(1, 32, 24);
+  }
+
   function buildOneSphere(glyphCharsArg, yOffset) {
-    const geometry = new THREE.SphereGeometry(1, 32, 24);
+    const geometry = makeShapeGeometry();
 
     // Jede Kugel bekommt ein eigenes sharedUniforms-Objekt
     // (display material + depth material teilen sich dasselbe Objekt)
@@ -2165,6 +1393,7 @@
       uGlyphTexZ: { value: glyphTextures.z },
       uGebEnabled: { value: gebEnabled ? 1 : 0 },
       uInvertMode: { value: invertMode ? 1 : 0 },
+      uShapeCube: { value: shapeCube ? 1 : 0 },
       uModelMatrixInverse: { value: new THREE.Matrix4() }
     };
 
@@ -2249,6 +1478,7 @@
       const u = m.material.uniforms;
       u.uGebEnabled.value = gebEnabled ? 1 : 0;
       u.uInvertMode.value = invertMode ? 1 : 0;
+      u.uShapeCube.value = shapeCube ? 1 : 0;
       u.uAmbient.value = params.ambientIntensity ?? 0.5;
       u.uGlyphSize.value = params.glyphSize || 4;
       u.uBrightness.value = brightness;
@@ -2400,642 +1630,272 @@
     return value.toFixed(decimals);
   }
 
-  function updateValueDisplay(inputId, value, suffix = '') {
-    const display = document.getElementById(inputId + 'Value');
-    if (display) {
-      const num = typeof value === 'number' ? value : parseFloat(value);
-      const formatted = formatValueUnlimited(num);
-      // Für inputs: nur value setzen (kein suffix im value)
-      if (display.tagName === 'INPUT') {
-        display.value = formatted;
-      } else {
-        display.textContent = formatted + suffix;
-      }
-    }
+  // === Einstellungs-Panel (gemeinsame Komponente tools/controls.js) ===
+  let panel = null;
+  const ROT_PARAMS = ['glyphRotInf', 'glyphRot0', 'glyphRot1'];
+  const GLYPH_PARAMS = ['glyphSize', ...ROT_PARAMS];
+  const GLYPH_PANEL_KEYS = { glyph0: 'left', glyph1: 'right', glyphInf: 'floor' };
+
+  // key = params-Schluessel, sliderMin/Max = sichtbarer Regler-Bereich (Eingabe und URL duerfen bis PARAMS_CONFIG.min/max)
+  const PANEL_SLIDERS = [
+    { key: 'brightness',       label: 'Brightness',  sliderMin: 0,   sliderMax: 500, step: 0.1, decimals: 1 },
+    { key: 'ambientIntensity', label: 'Ambient',     sliderMin: 0,   sliderMax: 10,  step: 0.01, decimals: 2 },
+    'decay',
+    '---',
+    { key: 'sphereRadius',     label: 'Radius',      sliderMin: 0,   sliderMax: 20,  step: 0.01, decimals: 2 },
+    { key: 'wallDistance',     label: 'Distance',    sliderMin: -20, sliderMax: 100, step: 0.01, decimals: 2 },
+    { key: 'lightDistance',    label: 'Light Dist',  sliderMin: 0,   sliderMax: 200, step: 0.01, decimals: 2 },
+    { key: 'spotAngle',        label: 'Spot Angle',  sliderMin: 0,   sliderMax: 90,  step: 0.01, decimals: 2 },
+    { key: 'lampScale',        label: 'Lamp Size',   sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
+    '---',
+    'showLamps',
+    { key: 'glyphSize',        label: 'Glyph Size',  sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
+    'font',
+  ];
+
+  // Panel-Anzeige komplett aus params/glyphChars/currentFontKey neu setzen (nach Drag, Mausrad, Reset).
+  function syncPanelFromParams() {
+    if (!panel) return;
+    PANEL_SLIDERS.forEach((spec) => {
+      if (typeof spec === 'object') panel.set(spec.key, params[spec.key]);
+    });
+    panel.set('spotDecay', params.spotDecay);
+    panel.set('gebMode', dualMode);
+    ROT_PARAMS.forEach((k) => panel.set(k, params[k]));
+    panel.set('invertMode', invertMode);
+    panel.set('shapeCube', shapeCube);
+    Object.entries(GLYPH_PANEL_KEYS).forEach(([panelKey, charKey]) => panel.set(panelKey, glyphChars[charKey] ?? ''));
+    panel.set('fontKey', currentFontKey);
   }
 
-  function setupUI() {
-    const rotParams = ['glyphRotInf', 'glyphRot0', 'glyphRot1'];
+  function applyLampVisibility() {
+    const visible = !panel || panel.params.showLamps !== false;
+    [lampFloor, lampBack, lampSide, lampBackB, lampSideB,
+     lightConeFloor, lightConeBack, lightConeSide, lightConeBackB, lightConeSideB]
+      .forEach(o => { if (o) o.visible = visible; });
+  }
 
-    const controlsPanel = document.getElementById('shadows-controls');
-    const dragHandle = document.getElementById('dragHandle');
+  function applyParamChange(key) {
+    updateLightingFromParams();
+    updateGeometryFromParams();
+    needsUniformUpdate = true;
+    if (GLYPH_PARAMS.includes(key)) updateGlyphTextures();
+    scheduleURLUpdate();
+  }
 
-    if (controlsPanel && dragHandle) {
-      let isDragging = false;
-      let startY = 0;
-      let currentPanelY = 0; // Aktuelle Panel-Position (0 = voll offen, max = collapsed)
-      const canvas = document.getElementById('shadows-root');
+  function onSliderInput(key, rawValue) {
+    const cfg = PARAMS_CONFIG[key];
+    let val = Number(rawValue);
+    if (!Number.isFinite(val)) return;
+    val = ROT_PARAMS.includes(key)
+      ? ((val % 360) + 360) % 360
+      : Math.max(cfg.min, Math.min(cfg.max, val));
+    if (val !== Number(rawValue)) panel.set(key, val);
+    params[key] = val;
+    applyParamChange(key);
+  }
 
-      const isMobile = () => window.innerWidth <= 768;
-      const getMaxY = () => controlsPanel.offsetHeight - INTERACTION_CONFIG.collapsedHandleHeight;
-      const getMinY = () => 0; // Voll geöffnet
+  let brightnessAnimation = null;
+  // Decay-Wechsel haelt die sichtbare Helligkeit auf der Nebelebene konstant (Brightness animiert nachgefuehrt).
+  function onDecayChange(newDecay) {
+    const oldDecay = params.spotDecay ?? 0;
+    if (newDecay === oldDecay) return;
 
-      // Canvas proportional verschieben
-      const updateCanvasPosition = (panelY) => {
-        if (!canvas || !isMobile()) return;
-        const maxY = getMaxY();
-        const openRatio = 1 - (panelY / maxY); // 0 = closed, 1 = fully open
-        const canvasOffset = openRatio * -INTERACTION_CONFIG.canvasOffsetMax;
-        canvas.style.transform = `translateY(${canvasOffset}vh)`;
-      };
+    const effectiveDist = (params.lightDistance ?? 15) + (params.wallDistance ?? 5);
+    const startBrightness = params.brightness ?? 80;
+    const targetBrightness = Math.round(startBrightness * Math.pow(effectiveDist, newDecay - oldDecay) * 100) / 100;
 
-      // Panel-Position setzen
-      const setPanelPosition = (y, animate = false) => {
-        const maxY = getMaxY();
-        currentPanelY = Math.max(getMinY(), Math.min(maxY, y));
+    params.spotDecay = newDecay;
+    needsUniformUpdate = true;
 
-        if (animate) {
-          controlsPanel.style.transition = 'transform 0.25s ease-out';
-          canvas.style.transition = 'transform 0.25s ease-out';
-        } else {
-          controlsPanel.style.transition = 'none';
-          canvas.style.transition = 'none';
-        }
+    if (brightnessAnimation) cancelAnimationFrame(brightnessAnimation);
+    const duration = 500;
+    const startTime = performance.now();
 
-        controlsPanel.style.transform = `translateY(${currentPanelY}px)`;
-        updateCanvasPosition(currentPanelY);
-      };
-
-      // Initial: collapsed
-      if (isMobile()) {
-        currentPanelY = getMaxY();
-        controlsPanel.style.transform = `translateY(${currentPanelY}px)`;
-      }
-
-      // Toggle on tap (zwischen 3 Stufen: closed → half → full → closed)
-      dragHandle.addEventListener('click', (e) => {
-        if (isDragging || !isMobile()) return;
-
-        const maxY = getMaxY();
-        const halfY = maxY * 0.5;
-
-        // Snap zu nächster Stufe
-        if (currentPanelY > halfY) {
-          // Von closed → half open
-          setPanelPosition(halfY, true);
-        } else if (currentPanelY > 10) {
-          // Von half → full open
-          setPanelPosition(0, true);
-        } else {
-          // Von full → closed
-          setPanelPosition(maxY, true);
-        }
-      });
-
-      // Drag start
-      dragHandle.addEventListener('touchstart', (e) => {
-        if (!isMobile()) return;
-        isDragging = false;
-        startY = e.touches[0].clientY;
-        controlsPanel.style.transition = 'none';
-        canvas.style.transition = 'none';
-      }, { passive: true });
-
-      // Drag move - stufenlos!
-      dragHandle.addEventListener('touchmove', (e) => {
-        if (!isMobile()) return;
-        isDragging = true;
-        const deltaY = e.touches[0].clientY - startY;
-        const newY = currentPanelY + deltaY;
-
-        // Clamp und setzen (ohne Animation)
-        const clampedY = Math.max(getMinY(), Math.min(getMaxY(), newY));
-        controlsPanel.style.transform = `translateY(${clampedY}px)`;
-        updateCanvasPosition(clampedY);
-      }, { passive: true });
-
-      // Drag end - Position speichern, kein Snap!
-      dragHandle.addEventListener('touchend', (e) => {
-        if (!isMobile()) return;
-
-        if (isDragging) {
-          const endY = e.changedTouches[0].clientY;
-          const deltaY = endY - startY;
-          currentPanelY = Math.max(getMinY(), Math.min(getMaxY(), currentPanelY + deltaY));
-        }
-        isDragging = false;
-      });
-
-      // Bei Resize neu berechnen
-      window.addEventListener('resize', () => {
-        if (!isMobile()) {
-          controlsPanel.style.transform = '';
-          canvas.style.transform = '';
-        }
-      });
-    }
-
-    // Initial value displays
-    updateValueDisplay('brightness', params.brightness);
-    updateValueDisplay('ambient', params.ambientIntensity);
-    updateValueDisplay('radius', params.sphereRadius);
-    updateValueDisplay('dist', params.wallDistance);
-    updateValueDisplay('lightDistance', params.lightDistance);
-    updateValueDisplay('spotAngle', params.spotAngle, '°');
-    updateValueDisplay('lampScale', params.lampScale);
-    updateValueDisplay('glyphSize', params.glyphSize);
-    updateValueDisplay('glyphRot0', params.glyphRot0, '°');
-    updateValueDisplay('glyphRot1', params.glyphRot1, '°');
-    updateValueDisplay('glyphRotInf', params.glyphRotInf, '°');
-
-    // Stepper-Button Handler mit Hold-Repeat
-    document.querySelectorAll('.stepper-btn').forEach(btn => {
-      const paramKey = btn.dataset.param;
-      const cfg = PARAMS_CONFIG[paramKey];
-      if (!cfg) return;
-
-      let holdInterval = null;
-      let holdTimeout = null;
-
-      const doStep = () => {
-        const isPlus = btn.classList.contains('plus');
-        const currentVal = params[paramKey] ?? cfg.default;
-
-        // Dynamischer Step oder aus Config (mit Richtung)
-        const step = cfg.dynamicStep ? getDynamicStepForValue(currentVal, isPlus, cfg) : cfg.step;
-
-        let newVal = isPlus ? currentVal + step : currentVal - step;
-
-        // Rotation Wraparound: 360° → 0°, -1° → 359°
-        if (rotParams.includes(paramKey)) {
-          newVal = ((newVal % 360) + 360) % 360;
-        } else {
-          newVal = Math.max(cfg.min, Math.min(cfg.max, newVal));
-        }
-
-        // Rundungsfehler vermeiden
-        newVal = parseFloat(newVal.toPrecision(10));
-
-        params[paramKey] = newVal;
-
-        // Display aktualisieren
-        const suffix = paramKey === 'spotAngle' || rotParams.includes(paramKey) ? '°' : '';
-        const displayVal = cfg.dynamicStep ? formatValueUnlimited(newVal) : newVal;
-        updateValueDisplay(cfg.id, displayVal, suffix);
-
-        updateLightingFromParams();
-        updateGeometryFromParams();
-        needsUniformUpdate = true;
-
-        // Glyph-Parameter: Texturen sofort updaten
-        const glyphParams = ['glyphSize', ...rotParams];
-        if (glyphParams.includes(paramKey)) {
-          updateGlyphTextures();
-        }
-      };
-
-      const stopHold = () => {
-        if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
-        if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
-        updateURLFromParams();
-      };
-
-      // Pointer events für Hold-Funktion (funktioniert für Mouse + Touch)
-      btn.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        doStep();
-        // Nach 400ms Start mit Repeat alle 80ms
-        holdTimeout = setTimeout(() => {
-          holdInterval = setInterval(doStep, 80);
-        }, 400);
-      });
-
-      btn.addEventListener('pointerup', stopHold);
-      btn.addEventListener('pointerleave', stopHold);
-      btn.addEventListener('pointercancel', stopHold);
-    });
-
-    document.querySelectorAll('.value-input').forEach(input => {
-      const paramKey = input.dataset.param;
-      const cfg = PARAMS_CONFIG[paramKey];
-      if (!cfg) return;
-
-      let originalValue = params[paramKey] ?? cfg.default;
-
-      // Bei Focus: Wert merken für Escape
-      input.addEventListener('focus', () => {
-        originalValue = params[paramKey] ?? cfg.default;
-        input.select(); // Text selektieren
-      });
-
-      // ECHTZEIT: Bei jeder Eingabe sofort anwenden (ohne URL-Update für Performance)
-      input.addEventListener('input', () => {
-        applyInputValueLive(input, paramKey, cfg);
-      });
-
-      // Bei Blur: Wert finalisieren (mit URL-Update und Formatierung)
-      input.addEventListener('blur', () => {
-        applyInputValue(input, paramKey, cfg);
-      });
-
-      // Bei Enter: Wert übernehmen und Fokus verlieren
-      // Bei Escape: Originalwert wiederherstellen
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          applyInputValue(input, paramKey, cfg);
-          input.blur();
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          params[paramKey] = originalValue;
-          input.value = formatValueUnlimited(originalValue);
-          input.blur();
-        }
-      });
-    });
-
-    // Live-Update während der Eingabe (ohne Formatierung/URL für Performance)
-    function applyInputValueLive(input, paramKey, cfg) {
-      const inputVal = input.value.replace(',', '.');
-      let val = parseFloat(inputVal);
-
-      // Bei ungültiger Eingabe: nichts tun (warten auf weitere Eingabe)
-      if (isNaN(val)) return;
-
-      // Clampen auf min/max
-      val = Math.max(cfg.min, Math.min(cfg.max, val));
-
-      // Rotation Wraparound
-      if (rotParams.includes(paramKey)) {
-        val = ((val % 360) + 360) % 360;
-      }
-
-      params[paramKey] = val;
-
-      updateLightingFromParams();
-      updateGeometryFromParams();
+    function animateBrightness(now) {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      params.brightness = Math.round((startBrightness + (targetBrightness - startBrightness) * eased) * 100) / 100;
+      panel.set('brightness', params.brightness);
       needsUniformUpdate = true;
-
-      // Glyph-Parameter: Texturen updaten
-      if (['glyphSize', ...rotParams].includes(paramKey)) {
-        updateGlyphTextures();
-      }
-    }
-
-    // Finales Update bei Blur (mit Formatierung und URL)
-    function applyInputValue(input, paramKey, cfg) {
-      // Komma als Dezimaltrennzeichen erlauben (z.B. "1,5" → "1.5")
-      const inputVal = input.value.replace(',', '.');
-      let val = parseFloat(inputVal);
-
-      // Ungültige Eingabe: Originalwert wiederherstellen
-      if (isNaN(val)) {
-        val = params[paramKey] ?? cfg.default;
-      }
-
-      // Clampen auf min/max
-      val = Math.max(cfg.min, Math.min(cfg.max, val));
-
-      // Rotation Wraparound
-      if (rotParams.includes(paramKey)) {
-        val = ((val % 360) + 360) % 360;
-      }
-
-      params[paramKey] = val;
-      input.value = formatValueUnlimited(val);
-
-      updateLightingFromParams();
-      updateGeometryFromParams();
-      needsUniformUpdate = true;
-
-      // Glyph-Parameter: Texturen updaten
-      if (['glyphSize', ...rotParams].includes(paramKey)) {
-        updateGlyphTextures();
-      }
-
-      updateURLFromParams();
-    }
-
-    Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => {
-      const el = document.getElementById(cfg.id);
-      if (!el) return;
-
-      const isSelect = cfg.isSelect || el.tagName === 'SELECT';
-
-      // Alle Inputs (Range + Number) bekommen min/max/step aus Config
-      if (!isSelect) {
-        el.min = cfg.min;
-        el.max = cfg.max;
-        el.step = cfg.step;
-      }
-      el.value = params[key];
-
-      // Select: 'change', Input: 'input'
-      el.addEventListener(isSelect ? 'change' : 'input', () => {
-        let val = parseFloat(el.value);
-
-        // Rotation Wraparound (0-360)
-        if (rotParams.includes(key)) {
-          val = ((val % 360) + 360) % 360;
-          el.value = val;
-        }
-
-        params[key] = val;
-
-        // Value Display aktualisieren
-        const suffix = rotParams.includes(key) || key === 'spotAngle' ? '°' : '';
-        updateValueDisplay(cfg.id, val, suffix);
-
-        updateLightingFromParams();
-        updateGeometryFromParams();
-
-        // Glyph-Parameter: Texturen sofort updaten
-        const glyphParams = ['glyphSize', ...rotParams];
-        if (glyphParams.includes(key)) {
-          updateGlyphTextures();
-          needsUniformUpdate = true;
-        }
-
-        // Shader-Parameter: Uniforms updaten (Kugel + Fog)
-        const shaderParams = ['brightness', 'spotAngle', 'spotPenumbra', 'spotDecay', 'sphereRadius', 'lightDistance', 'ambientIntensity'];
-        if (shaderParams.includes(key)) {
-          needsUniformUpdate = true;
-        }
-
+      if (progress < 1) {
+        brightnessAnimation = requestAnimationFrame(animateBrightness);
+      } else {
+        brightnessAnimation = null;
         updateURLFromParams();
-      });
+      }
+    }
+    brightnessAnimation = requestAnimationFrame(animateBrightness);
+  }
+
+  // GEB-Modus: baut Kugeln und Lampen im laufenden Betrieb um (kein Reload, Kamerawinkel bleiben).
+  // Beide Modi teilen dieselben Einstellungen: der Toggle aendert nur 1 vs. 2 Kugeln, keinen Slider-Wert.
+  function onGebToggle(on) {
+    if (on === dualMode) return;
+    syncCameraParamsFromControls();
+    dualMode = on;
+    gebFiveLamps = false;
+    // 5-Lampen-Zusatzspots (nur ?geb=5) entfernen
+    [spotBackB, spotSideB].forEach(sp => { if (sp) { scene.remove(sp.target); scene.remove(sp); } });
+    [lampBackB, lampSideB, lightConeBackB, lightConeSideB].forEach(o => { if (o) scene.remove(o); });
+    spotBackB = spotSideB = lampBackB = lampSideB = lightConeBackB = lightConeSideB = null;
+
+    buildSphereWithShader();
+    updateLightingFromParams();
+    updateGeometryFromParams();
+    updateFogUniforms();
+    updateLampVisuals();
+    applyCameraFromParams();
+    controls.update();
+    needsUniformUpdate = true;
+    updateURLFromParams();
+  }
+
+  // Gemeinsamer Weg fuer Klick auf die Kugel und Panel-Schalter.
+  function setInvertMode(on) {
+    if (on === invertMode) return;
+    invertMode = on;
+    if (panel) panel.set('invertMode', on);
+    needsUniformUpdate = true;
+    updateURLFromParams();
+  }
+
+  // Form umschalten: tauscht nur Geometrie und Shader-Flag, alle Werte bleiben.
+  function setShapeCube(on) {
+    if (on === shapeCube) return;
+    shapeCube = on;
+    if (panel) panel.set('shapeCube', on);
+    spheres.forEach((entry) => {
+      const old = entry.mesh.geometry;
+      entry.mesh.geometry = makeShapeGeometry();
+      old.dispose();
     });
-		
-    // Checkbox für Lampen + Lichtkegel zusammen
-    const lampsEl = document.getElementById('showLamps');
-    if (lampsEl) {
-      const applyLampVisibility = () => {
-        const visible = lampsEl.checked;
-        // Lampen-Geometrien
-        if (lampFloor) lampFloor.visible = visible;
-        if (lampBack)  lampBack.visible  = visible;
-        if (lampSide)  lampSide.visible  = visible;
-        // GEB-Mode: Lampen der zweiten Kugel folgen demselben Master-Toggle
-        if (lampBackB) lampBackB.visible = visible;
-        if (lampSideB) lampSideB.visible = visible;
-        // Lichtkegel mit Lampen zusammen
-        if (lightConeFloor) lightConeFloor.visible = visible;
-        if (lightConeBack)  lightConeBack.visible  = visible;
-        if (lightConeSide)  lightConeSide.visible  = visible;
-        if (lightConeBackB) lightConeBackB.visible = visible;
-        if (lightConeSideB) lightConeSideB.visible = visible;
-      };
-      lampsEl.addEventListener('change', applyLampVisibility);
-      applyLampVisibility(); // Initialzustand
+    if (outlineSphere) {
+      const oldO = outlineSphere.geometry;
+      outlineSphere.geometry = makeOutlineGeometry();
+      oldO.dispose();
     }
+    updateFogUniforms();
+    needsUniformUpdate = true;
+    updateURLFromParams();
+  }
 
-    // GEB-Modus Toggle: baut Kugeln und Lampen im laufenden Betrieb um (kein Reload, Kamerawinkel bleiben).
-    // An = 3-Lampen-Variante (?geb=1). Die beim Einschalten angehobenen Werte (r, ldist, zoom) werden
-    // beim Ausschalten zurueckgesetzt, sofern der User sie nicht selbst verstellt hat.
-    const gebEl = document.getElementById('gebMode');
-    if (gebEl) {
-      gebEl.checked = dualMode;
-      let singleSaved = null;
-      let gebApplied = null;
-      gebEl.addEventListener('change', (e) => {
-        const on = e.target.checked;
-        if (on === dualMode) return;
-        syncCameraParamsFromControls();
-        const keys = ['sphereRadius', 'lightDistance', 'cameraDistance'];
-        if (on) {
-          singleSaved = {};
-          keys.forEach(k => { singleSaved[k] = params[k]; });
-          dualMode = true;
-          gebFiveLamps = false;
-          params.sphereRadius = DUAL_DEFAULT_RADIUS;
-          params.lightDistance = DUAL_DEFAULT_LIGHT_DISTANCE;
-          params.cameraDistance = Math.max(params.cameraDistance,
-            1.55 * (upperSphereY() + Math.min(params.lightDistance, 15) + params.wallDistance));
-          gebApplied = {};
-          keys.forEach(k => { gebApplied[k] = params[k]; });
-        } else {
-          dualMode = false;
-          gebFiveLamps = false;
-          keys.forEach(k => {
-            const untouched = gebApplied && Math.abs(params[k] - gebApplied[k]) <= 0.01 * Math.abs(gebApplied[k]);
-            if (untouched || !gebApplied) params[k] = singleSaved ? singleSaved[k] : PARAMS_CONFIG[k].default;
-          });
-          gebApplied = null;
-        }
-        // 5-Lampen-Zusatzspots (nur ?geb=5) entfernen
-        [spotBackB, spotSideB].forEach(sp => { if (sp) { scene.remove(sp.target); scene.remove(sp); } });
-        [lampBackB, lampSideB, lightConeBackB, lightConeSideB].forEach(o => { if (o) scene.remove(o); });
-        spotBackB = spotSideB = lampBackB = lampSideB = lightConeBackB = lightConeSideB = null;
+  function resetAll() {
+    Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => { params[key] = cfg.default; });
 
-        buildSphereWithShader();
-        updateLightingFromParams();
-        updateGeometryFromParams();
-        updateFogUniforms();
-        updateLampVisuals();
-        applyCameraFromParams();
-        controls.update();
-        needsUniformUpdate = true;
-        ['sphereRadius', 'lightDistance', 'cameraDistance'].forEach(k => {
-          const c = PARAMS_CONFIG[k];
-          if (c.id) updateValueDisplay(c.id, params[k]);
-        });
-        updateURLFromParams();
-      });
-    }
+    invertMode = false;  // per Klick auf die Kugel gesteuert
+    setShapeCube(false);
+    glyphChars = { ...DEFAULT_GLYPH_CHARS };
+    currentFontKey = DEFAULT_FONT_KEY;
+    syncPanelFromParams();
+    panel.set('showLamps', true);
+    applyLampVisibility();
 
-    // Decay Segmented Control mit animierter Brightness-Anpassung
-    const decayControl = document.getElementById('decayControl');
-    if (decayControl) {
-      const buttons = decayControl.querySelectorAll('button');
-      const brightnessInput = document.getElementById('brightnessValue');  // FIX: Korrekte ID
-
-      // Aktiven Button basierend auf params setzen
-      buttons.forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.value) === params.spotDecay);
-      });
-
-      let brightnessAnimation = null;
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const newDecay = parseInt(btn.dataset.value);
-          const oldDecay = params.spotDecay ?? 0;
-
-          if (newDecay === oldDecay) return;
-
-          // Aktiven Button wechseln
-          buttons.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-
-          // Brightness-Kompensation berechnen
-          // Die echte Distanz zur Fog-Ebene ist lightDistance + wallDistance
-          const lightDist = params.lightDistance ?? 15;
-          const wallDist = params.wallDistance ?? 5;
-          const effectiveDist = lightDist + wallDist;  // ≈ 20 bei Standard-Settings
-          const currentBrightness = params.brightness ?? 80;
-
-          // Ziel-Brightness: gleiche visuelle Helligkeit auf der Fog-Ebene
-          // decay=0: light = brightness
-          // decay=1: light = brightness / dist
-          // decay=2: light = brightness / dist²
-          // Um gleiche Helligkeit zu behalten: brightness_new = brightness_old * dist^(new-old)
-          const factor = Math.pow(effectiveDist, newDecay - oldDecay);
-          const targetBrightness = Math.round(currentBrightness * factor);
-
-          // Sofort Decay setzen
-          params.spotDecay = newDecay;
-          needsUniformUpdate = true;
-
-          // Animation stoppen falls noch läuft
-          if (brightnessAnimation) cancelAnimationFrame(brightnessAnimation);
-
-          // Brightness animiert anpassen
-          const startBrightness = currentBrightness;
-          const duration = 500; // ms
-          const startTime = performance.now();
-
-          function animateBrightness(now) {
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-
-            // Easing: ease-out
-            const eased = 1 - Math.pow(1 - progress, 3);
-
-            const newBrightness = Math.round(startBrightness + (targetBrightness - startBrightness) * eased);
-            params.brightness = newBrightness;
-            // FIX: Input-Feld korrekt aktualisieren (ist jetzt ein Input, nicht span)
-            if (brightnessInput) brightnessInput.value = formatValueUnlimited(newBrightness);
-            needsUniformUpdate = true;
-
-            if (progress < 1) {
-              brightnessAnimation = requestAnimationFrame(animateBrightness);
-            } else {
-              brightnessAnimation = null;
-              updateURLFromParams();
-            }
-          }
-
-          brightnessAnimation = requestAnimationFrame(animateBrightness);
-        });
-      });
-    }
-
-    // Reset-Button
-    const resetBtn = document.getElementById('resetParams');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        // Alle Parameter auf Defaults setzen
-        Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => {
-          params[key] = cfg.default;
-          const el = document.getElementById(cfg.id);
-          if (el) el.value = cfg.default;
-        });
-
-        // Value Displays aktualisieren
-        updateValueDisplay('brightness', params.brightness);
-        updateValueDisplay('ambient', params.ambientIntensity);
-        updateValueDisplay('radius', params.sphereRadius);
-        updateValueDisplay('dist', params.wallDistance);
-        updateValueDisplay('lightDistance', params.lightDistance);
-        updateValueDisplay('spotAngle', params.spotAngle, '°');
-        updateValueDisplay('lampScale', params.lampScale);
-        updateValueDisplay('glyphSize', params.glyphSize);
-        updateValueDisplay('glyphRot0', params.glyphRot0, '°');
-        updateValueDisplay('glyphRot1', params.glyphRot1, '°');
-        updateValueDisplay('glyphRotInf', params.glyphRotInf, '°');
-
-        // Decay Segmented Control aktualisieren
-        const decayButtons = document.querySelectorAll('#decayControl button');
-        decayButtons.forEach(btn => {
-          btn.classList.toggle('active', parseInt(btn.dataset.value) === params.spotDecay);
-        });
-
-        // Checkboxen zurücksetzen
-        const lampsEl = document.getElementById('showLamps');
-        if (lampsEl) {
-          lampsEl.checked = true;
-          lampsEl.dispatchEvent(new Event('change'));
-        }
-
-        // Invert-Mode zurücksetzen (per Klick auf Kugel gesteuert)
-        invertMode = false;
-        needsUniformUpdate = true;
-
-        // Glyph-Zeichen zurücksetzen
-        glyphChars = { ...DEFAULT_GLYPH_CHARS };
-        const infEl = document.getElementById('glyphCharInf');
-        const zeroEl = document.getElementById('glyphChar0');
-        const oneEl = document.getElementById('glyphChar1');
-        if (infEl) infEl.value = DEFAULT_GLYPH_CHARS.floor;
-        if (zeroEl) zeroEl.value = DEFAULT_GLYPH_CHARS.left;
-        if (oneEl) oneEl.value = DEFAULT_GLYPH_CHARS.right;
-
-        // Font zurücksetzen
-        currentFontKey = DEFAULT_FONT_KEY;
-        const fontSelectEl = document.getElementById('glyphFontSelect');
-        if (fontSelectEl) fontSelectEl.value = DEFAULT_FONT_KEY;
-
-        // Kamera zurücksetzen (aus Config-Defaults)
-        if (camera && controls) {
-          controls.target.set(0, orbitTargetY(), 0);
-          applyCameraFromParams();  // Nutzt die soeben gesetzten Default-Werte
-        }
-
-        // Alles aktualisieren
-        updateLightingFromParams();
-        updateGeometryFromParams();
-        updateGlyphTextures();
-        needsUniformUpdate = true;
-
-        // URL leeren (keine Parameter = Defaults)
-        history.replaceState(null, '', window.location.pathname);
-      });
+    if (camera && controls) {
+      controls.target.set(0, orbitTargetY(), 0);
+      applyCameraFromParams();
     }
 
     updateLightingFromParams();
     updateGeometryFromParams();
+    updateGlyphTextures();
+    needsUniformUpdate = true;
+
+    // URL leeren (keine Parameter = Defaults)
+    history.replaceState(null, '', window.location.pathname);
   }
 
-  function setupGlyphUI() {
-    const infEl = document.getElementById('glyphCharInf');
-    const zeroEl = document.getElementById('glyphChar0');
-    const oneEl = document.getElementById('glyphChar1');
-
-    // Eingabefelder initial aus glyphChars befüllen (ohne Fallback - leer = leer)
-    if (infEl)  infEl.value  = glyphChars.floor ?? '';
-    if (zeroEl) zeroEl.value = glyphChars.left  ?? '';
-    if (oneEl)  oneEl.value  = glyphChars.right ?? '';
-
-    // Invert-Mode wird jetzt per Klick auf die Kugel gesteuert (siehe onPointerUp)
-
-    // Text-Änderungen: Texturen sofort updaten (instant, kein Debounce nötig!)
-    // Keine Fallbacks: Leere Eingabe = nichts auf der Kugel
-    function handleCharChange() {
-      if (infEl)  glyphChars.floor = infEl.value;
-      if (zeroEl) glyphChars.left  = zeroEl.value;
-      if (oneEl)  glyphChars.right = oneEl.value;
-      updateURLFromParams();
-      updateGlyphTextures();
-      needsUniformUpdate = true;  // FIX: Fog-Uniforms müssen auch aktualisiert werden!
-    }
-
-    if (infEl)  infEl.addEventListener('input', handleCharChange);
-    if (zeroEl) zeroEl.addEventListener('input', handleCharChange);
-    if (oneEl)  oneEl.addEventListener('input', handleCharChange);
-
-    // Font-Dropdown initialisieren
-    const fontSelectEl = document.getElementById('glyphFontSelect');
-    if (fontSelectEl) {
-      fontSelectEl.innerHTML = '';
-      Object.keys(FONT_OPTIONS).forEach(key => {
-        const opt = document.createElement('option');
-        opt.value = key;
-        opt.textContent = key;
-        if (key === currentFontKey) opt.selected = true;
-        fontSelectEl.appendChild(opt);
+  // Oberste Panel-Zeilen: [Zeichen] [Textfeld] [Drehung - Wert +]. Die Drehung ist ein normaler Slider-Parameter
+  // (params.glyphRot*, URL r0/r1/rInf, Reset); hier wird nur seine Zeile in die Textzeile eingehaengt.
+  function addGlyphRows() {
+    [['glyph0', '0', 'left', 'glyphRot0'], ['glyph1', '1', 'right', 'glyphRot1'], ['glyphInf', '∞', 'floor', 'glyphRotInf']]
+      .forEach(([panelKey, label, charKey, rotKey]) => {
+        panel.addInput(panelKey, {
+          label,
+          value: glyphChars[charKey] ?? '',
+          // Leere Eingabe = nichts auf der Kugel (kein Fallback)
+          onChange: (v) => {
+            glyphChars[charKey] = v;
+            updateURLFromParams();
+            updateGlyphTextures();
+            needsUniformUpdate = true;
+          },
+        });
+        panel.addSlider(rotKey, {
+          label: '',
+          min: 0, max: 360, step: 0.1, decimals: 1,
+          value: params[rotKey],
+          onChange: (v) => onSliderInput(rotKey, v),
+        });
+        const inputRow = panel.bodyEl.querySelector(`[data-key="${panelKey}"]`);
+        const sliderRow = panel.bodyEl.querySelector(`[data-key="${rotKey}"]`);
+        const group = sliderRow.querySelector('.ctrl-slider-group');
+        const holder = document.createElement('div');
+        holder.dataset.key = rotKey;
+        holder.className = 'glyph-rot';
+        holder.title = 'Drehung (Grad)';
+        holder.appendChild(group);
+        inputRow.classList.add('glyph-row');
+        inputRow.appendChild(holder);
+        sliderRow.remove();
       });
-
-      fontSelectEl.addEventListener('change', () => {
-        currentFontKey = fontSelectEl.value;
-        updateGlyphTextures();
-        needsUniformUpdate = true;
-        updateURLFromParams();
-      });
-    }
-
+    panel.addDivider();
   }
 
+  function setupUI() {
+    panel = Controls.createPanel({
+      id: 'shadows-controls',
+      position: 'left',
+      mobileContentElement: document.getElementById('shadows-root'),
+    });
+    panel.addResetButton({ title: 'Reset', onClick: resetAll });
 
+    addGlyphRows();
+    panel.addToggle('gebMode', { label: 'GEB-Modus', value: dualMode, onChange: onGebToggle });
+    panel.addToggle('shapeCube', { label: 'Würfel (statt Kugel)', value: shapeCube, onChange: setShapeCube });
+    panel.addToggle('invertMode', { label: 'Invert (Kugel-Klick)', value: invertMode, onChange: setInvertMode });
+    panel.addDivider();
+
+    PANEL_SLIDERS.forEach((spec) => {
+      if (spec === '---') { panel.addDivider(); return; }
+      if (spec === 'decay') {
+        panel.addSelect('spotDecay', {
+          label: 'Decay',
+          options: [0, 1, 2],
+          value: params.spotDecay,
+          onChange: (v) => onDecayChange(Number(v)),
+        });
+      } else if (spec === 'showLamps') {
+        panel.addToggle('showLamps', { label: 'Show Lamps', value: true, onChange: applyLampVisibility });
+      } else if (spec === 'font') {
+        panel.addSelect('fontKey', {
+          label: 'Font',
+          options: Object.keys(FONT_OPTIONS),
+          value: currentFontKey,
+          onChange: (v) => {
+            currentFontKey = v;
+            updateGlyphTextures();
+            needsUniformUpdate = true;
+            updateURLFromParams();
+          },
+        });
+      } else {
+        panel.addSlider(spec.key, {
+          label: spec.label,
+          min: spec.sliderMin,
+          max: Math.max(spec.sliderMax, params[spec.key]),
+          step: spec.step,
+          decimals: spec.decimals,
+          value: params[spec.key],
+          onChange: (v) => onSliderInput(spec.key, v),
+        });
+      }
+    });
+
+    applyLampVisibility();
+    updateLightingFromParams();
+    updateGeometryFromParams();
+  }
 
 
   function init() {
@@ -3258,7 +2118,7 @@
 	    spotFloor = addSpot(
 	      initialSpotIntensity,
 	      0, floorLampY(), 0,
-	      0, -params.wallDistance, 0
+	      0, floorY(), 0
 	    );
 	    // Auf die Rückwand (Licht entlang -Z-Achse)
 	    spotBack = addSpot(
@@ -3326,7 +2186,7 @@
     fogMaterials.push(floorFogMat);
     floor = new THREE.Mesh(createFogDisc(floorRadius), floorFogMat);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -params.wallDistance;
+    floor.position.y = floorY();
     scene.add(floor);
 
     const backRadius = calcConeRadius(spotBack.position, params.wallDistance, 'z');
@@ -3354,7 +2214,7 @@
     // Floor Hit-Layer (Y-Achse)
     hitLayerFloor = new THREE.Mesh(new THREE.CircleGeometry(floorRadius, 32), hitLayerMat.clone());
     hitLayerFloor.rotation.x = -Math.PI / 2;
-    hitLayerFloor.position.y = -params.wallDistance;
+    hitLayerFloor.position.y = floorY();
     hitLayerFloor.userData.axis = 'y';
     hitLayerFloor.userData.normal = new THREE.Vector3(0, 1, 0);
     scene.add(hitLayerFloor);
@@ -3392,7 +2252,7 @@
     // Fog-Outlines (Ringe)
     outlineFloor = new THREE.Mesh(createRingOutline(floorRadius, outlineThickness), outlineMat.clone());
     outlineFloor.rotation.x = -Math.PI / 2;
-    outlineFloor.position.y = -params.wallDistance + 0.01;
+    outlineFloor.position.y = floorY() + 0.01;
     outlineFloor.visible = false;
     scene.add(outlineFloor);
 
@@ -3408,7 +2268,7 @@
     scene.add(outlineSide);
 
 
-    const sphereOutlineGeo = new THREE.SphereGeometry(1.05, 32, 16);
+    const sphereOutlineGeo = makeOutlineGeometry();
     const sphereOutlineMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       wireframe: true,
@@ -3507,7 +2367,6 @@
   updateFogUniforms();
   updateLampVisuals();  // Lampen-Visuals basierend auf lampStates initialisieren
   setupUI();
-  setupGlyphUI();
   updateURLFromParams();
 
   const raycaster = new THREE.Raycaster();
@@ -3564,7 +2423,7 @@
 
     if (obj === hitLayerFloor) {
       glyphTarget = 'floor';
-      centerOnPlane.set(0, -params.wallDistance, 0);
+      centerOnPlane.set(0, floorY(), 0);
     } else if (obj === hitLayerBack) {
       glyphTarget = 'left';
       centerOnPlane.set(0, 0, -params.wallDistance);
@@ -3850,17 +2709,14 @@
     newDist = Math.max(cfg.min, Math.min(cfg.max, newDist));
 
     // Parameter aktualisieren
-    const roundedDist = Math.round(newDist);
+    const roundedDist = Math.round(newDist * 100) / 100;
 
     if (dragType === 'fog') {
       params.wallDistance = roundedDist;
-      const distInput = document.getElementById('dist');
-      if (distInput) distInput.value = roundedDist;
     } else {
       params.lightDistance = roundedDist;
-      const lightDistInput = document.getElementById('lightDistance');
-      if (lightDistInput) lightDistInput.value = roundedDist;
     }
+    syncPanelFromParams();
 
     // Geometrie und Uniforms sofort aktualisieren
     updateGeometryFromParams();
@@ -3888,9 +2744,7 @@
         const hit = hitTest(event);
         if (hit && hit.type === 'sphere') {
           // Klick auf Kugel: Invert-Modus togglen
-          invertMode = !invertMode;
-          needsUniformUpdate = true;
-          updateURLFromParams();
+          setInvertMode(!invertMode);
           stopCursorBlink();  // Fokus verlieren
           return;
         } else if (hit && hit.type === 'lamp') {
@@ -3991,10 +2845,7 @@
       // Rundungsfehler vermeiden
       newAngle = parseFloat(newAngle.toPrecision(10));
       params.spotAngle = newAngle;
-
-      // Display aktualisieren
-      const displayVal = cfg.dynamicStep ? formatValueUnlimited(newAngle) : newAngle;
-      updateValueDisplay('spotAngle', displayVal, '°');
+      syncPanelFromParams();
     } else if (type === 'lamp') {
       // Lamp Size ändern + Brightness proportional koppeln
       const cfg = PARAMS_CONFIG.lampScale;
@@ -4002,7 +2853,7 @@
       const oldScale = params.lampScale ?? cfg.default;
       let newScale = oldScale + delta * cfg.step;
       newScale = Math.max(cfg.min, Math.min(cfg.max, newScale));
-      params.lampScale = Math.round(newScale);
+      params.lampScale = Math.round(newScale * 100) / 100;
 
       // Brightness proportional zur Lamp-Größe ändern
       // Größere Lampe = helleres Licht (ca. 5% pro Step)
@@ -4010,12 +2861,11 @@
         const scaleFactor = newScale / oldScale;
         let newBrightness = (params.brightness ?? cfgBright.default) * scaleFactor;
         newBrightness = Math.max(cfgBright.min, Math.min(cfgBright.max, newBrightness));
-        params.brightness = Math.round(newBrightness);
-        updateValueDisplay('brightness', params.brightness);
+        params.brightness = Math.round(newBrightness * 100) / 100;
         updateLightingFromParams();
       }
 
-      updateValueDisplay('lampScale', params.lampScale);
+      syncPanelFromParams();
     } else if (type === 'sphere') {
       // Sphere Radius ändern
       const cfg = PARAMS_CONFIG.sphereRadius;
@@ -4025,9 +2875,7 @@
       const factor = Math.pow(10, cfg.decimals);
       params.sphereRadius = Math.round(newRadius * factor) / factor;
 
-      updateValueDisplay('radius', params.sphereRadius);
-      const input = document.getElementById('radius');
-      if (input) input.value = params.sphereRadius;
+      syncPanelFromParams();
     }
 
     updateGeometryFromParams();
@@ -4168,7 +3016,7 @@
         glyphChars[activeGlyphTarget] = currentText.slice(0, -1);
         updateGlyphTextures();
         needsUniformUpdate = true;
-        syncGlyphInputs();
+        syncPanelFromParams();
         updateURLFromParams();
       }
       return;
@@ -4180,7 +3028,7 @@
       glyphChars[activeGlyphTarget] = '';
       updateGlyphTextures();
       needsUniformUpdate = true;
-      syncGlyphInputs();
+      syncPanelFromParams();
       updateURLFromParams();
       return;
     }
@@ -4197,21 +3045,11 @@
       glyphChars[activeGlyphTarget] = (glyphChars[activeGlyphTarget] || '') + e.key;
       updateGlyphTextures();
       needsUniformUpdate = true;
-      syncGlyphInputs();
+      syncPanelFromParams();
       updateURLFromParams();
     }
   }
 
-  // Synchronisiert die Glyph-Input-Felder im Panel mit glyphChars
-  function syncGlyphInputs() {
-    const char0Input = document.getElementById('char0');
-    const char1Input = document.getElementById('char1');
-    const charInfInput = document.getElementById('charInf');
-
-    if (char0Input) char0Input.value = glyphChars.left || '';
-    if (char1Input) char1Input.value = glyphChars.right || '';
-    if (charInfInput) charInfInput.value = glyphChars.floor || '';
-  }
 
   document.addEventListener('keydown', onKeyDown);
 
