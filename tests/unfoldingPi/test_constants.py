@@ -55,7 +55,7 @@ with sync_playwright() as pw:
     p.evaluate(KICK)
     s = wait_digits(p, 5000)
     R.check('%s Auswahl: Start mit pi' % B, s['constant'] == 'pi' and p.evaluate('window.unfoldingPi.digits()').startswith('3.14159'), s['constant'])
-    p.evaluate("(()=>{const d=document.getElementById('drift'); d.value=0; d.dispatchEvent(new Event('input',{bubbles:true}));})()")
+    p.evaluate(DRIFT, 0)
     trig = p.locator('.ctrl-row[data-key="const"] .ctrl-select-trigger')
     R.check('%s Auswahl: Select "const" im Panel vorhanden' % B, trig.count() == 1)
     trig.click()
@@ -71,7 +71,7 @@ with sync_playwright() as pw:
     R.check('%s Auswahl: e liefert Stellen == Referenz, kein pi-Rest' % B, s['constant'] == 'e' and ch[:3] == '2.7' and ch[2:5002] == ref('e')[:5000], ch[:12])
     R.check('%s Auswahl: URL traegt ?c=e' % B, 'c=e' in p.url, p.url)
     # zurueck auf pi
-    p.evaluate("(()=>{const d=document.getElementById('drift'); d.value=0; d.dispatchEvent(new Event('input',{bubbles:true}));})()")
+    p.evaluate(DRIFT, 0)
     p.locator('.ctrl-row[data-key="const"] .ctrl-select-trigger').click()
     p.locator('.ctrl-select-option', has_text='π').first.click()
     p.wait_for_function("window.unfoldingPi.state().constant === 'pi'", timeout=5000)

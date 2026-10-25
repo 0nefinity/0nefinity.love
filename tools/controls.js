@@ -1481,7 +1481,13 @@
 
         _getMobileNaturalBodyHeight() {
             if (!this.bodyEl) return 0;
-            return Math.max(this.bodyEl.scrollHeight || 0, this.bodyEl.clientHeight || 0, 0);
+            // Ohne die selbst gesetzte Hoehe messen: clientHeight traegt sonst die letzte Sheet-Hoehe mit, die Hoehe
+            // schrumpft erst ueber mehrere Bilder auf den Inhalt und ein kurzes Panel startet zugeklappt.
+            const s = this.bodyEl.style, h = s.height, mh = s.maxHeight;
+            s.height = 'auto'; s.maxHeight = 'none';
+            const natural = this.bodyEl.scrollHeight || 0;
+            s.height = h; s.maxHeight = mh;
+            return Math.max(natural, 0);
         }
 
         _getMobileExpandedPanelHeight() {

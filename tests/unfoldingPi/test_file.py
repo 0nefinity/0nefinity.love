@@ -12,7 +12,7 @@ from common import *
 
 MUT = os.environ.get('MUT', ''); B = os.environ.get('BROWSER', 'chromium')
 FILE_URL = HOST + '/pi-daten/pi-1e9.b196'
-SET = "(v)=>{const d=document.getElementById('drift'); d.value=v; d.dispatchEvent(new Event('input',{bubbles:true}));}"
+SET = DRIFT
 SAMPLER = """(ms)=>new Promise(res=>{const out=[];const t0=performance.now();
  function f(t){const s=window.unfoldingPi.shown();out.push([s.lo,s.codes,s.marks,s.fromRemote]);
  if(t-t0<ms)requestAnimationFrame(f);else res(out);}requestAnimationFrame(f);})"""

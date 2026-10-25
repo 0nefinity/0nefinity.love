@@ -6,7 +6,12 @@ HOST = os.environ.get('HOST', 'https://dev.0nefinity.love')
 URL = os.environ.get('URL', HOST + '/unfoldingPi')
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 REF_DIR = os.path.join(REPO, 'tests', 'irrational', 'ref')
-KICK = "(()=>{const d=document.getElementById('drift'); d.value=-1; d.dispatchEvent(new Event('input',{bubbles:true}));})()"
+# Sausen auf der alten Skala -1..1 (Rate 10^(10|v|)-1, negativ = vorwaerts): weitet die Reglergrenzen im Panel
+# auf diese Rate und stellt den Regler darauf (Panel-Regler: Stellen/s, negativ = vorwaerts)
+DRIFT = """(v) => { const x = Math.sign(v) * (Math.pow(10, 10 * Math.abs(v)) - 1), a = Math.abs(x);
+  if (a) window.unfoldingPi.controls.setSliderConfig('drift', { min: -a, max: a });
+  const d = document.getElementById('drift'); d.value = x; d.dispatchEvent(new Event('input', { bubbles: true })); }"""
+KICK = '(' + DRIFT + ')(-1)'
 HINT = 'use better hardware to get access to more digits'
 
 
