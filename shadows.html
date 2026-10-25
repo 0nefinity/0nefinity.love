@@ -162,35 +162,35 @@
 
   const PARAMS_CONFIG = {
     // Kamera
-    cameraDistance:   {                             urlKey: 'zoom',      min: 0,     max: 10000,  step: 1,    default: 100,  decimals: 0, dynamicStep: true },
-    cameraAzimuth:    {                             urlKey: 'az',        min: -180,  max: 180,    step: 1,    default: 45,  decimals: 0, dynamicStep: true },
-    cameraElevation:  {                             urlKey: 'el',        min: -89,   max: 89,     step: 1,    default: 35,  decimals: 0, dynamicStep: true },
+    cameraDistance:   {                             urlKey: 'zoom',      min: 0,     max: 10000,  step: 1,    default: 100,  decimals: 2, dynamicStep: true },
+    cameraAzimuth:    {                             urlKey: 'az',        min: -180,  max: 180,    step: 1,    default: 45,  decimals: 2, dynamicStep: true },
+    cameraElevation:  {                             urlKey: 'el',        min: -89,   max: 89,     step: 1,    default: 35,  decimals: 2, dynamicStep: true },
 
     // Beleuchtung
-    wallBrightness:   {                             urlKey: 'fog',       min: 0,     max: 1,      step: 0.1,  default: 1,    decimals: 1, dynamicStep: true },
-    ambientIntensity: { id: 'ambient',              urlKey: 'ambient',   min: 0,     max: 10,     step: 0.1,  default: 0.5,  decimals: 1, dynamicStep: true },
-    brightness:       { id: 'brightness',           urlKey: 'bright',    min: 0,     max: 100000,  step: 1,    default: 80,   decimals: 0, dynamicStep: true },
+    wallBrightness:   {                             urlKey: 'fog',       min: 0,     max: 1,      step: 0.1,  default: 1,    decimals: 2, dynamicStep: true },
+    ambientIntensity: { id: 'ambient',              urlKey: 'ambient',   min: 0,     max: 10,     step: 0.1,  default: 0.5,  decimals: 2, dynamicStep: true },
+    brightness:       { id: 'brightness',           urlKey: 'bright',    min: 0,     max: 100000,  step: 1,    default: 80,   decimals: 2, dynamicStep: true },
 
     // Geometrie
     wallDistance:     { id: 'dist',                 urlKey: 'dist',      min: -100,  max: 1000,    step: 0.01, default: 14,   decimals: 2, dynamicStep: true },
-    sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 2.5,    decimals: 1, dynamicStep: true },
-    glyphSize:        { id: 'glyphSize',            urlKey: 'gsize',     min: 0,     max: 500,     step: 0.1,  default: 4,    decimals: 1, dynamicStep: true },
-    wallSize:         { id: 'wallSize',             urlKey: 'wsize',     min: 0,     max: 200,    step: 1,    default: 25,   decimals: 0, dynamicStep: true },
+    sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 2.5,    decimals: 2, dynamicStep: true },
+    glyphSize:        { id: 'glyphSize',            urlKey: 'gsize',     min: 0,     max: 500,     step: 0.1,  default: 4,    decimals: 2, dynamicStep: true },
+    wallSize:         { id: 'wallSize',             urlKey: 'wsize',     min: 0,     max: 200,    step: 1,    default: 25,   decimals: 2, dynamicStep: true },
 
     // Glyph-Rotationen (0-360° = voller Kreis)
-    glyphRot0:        { id: 'glyphRot0',            urlKey: 'r0',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 0, dynamicStep: true },
-    glyphRot1:        { id: 'glyphRot1',            urlKey: 'r1',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 0, dynamicStep: true },
-    glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 0, dynamicStep: true },
+    glyphRot0:        { id: 'glyphRot0',            urlKey: 'r0',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 2, dynamicStep: true },
+    glyphRot1:        { id: 'glyphRot1',            urlKey: 'r1',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 2, dynamicStep: true },
+    glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 2, dynamicStep: true },
 
     // Licht-Position
     lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.01, default: 40,   decimals: 2, dynamicStep: true },
-    lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 0, dynamicStep: true },
+    lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 2, dynamicStep: true },
 
     // Spotlight-Parameter
-    spotAngle:        { id: 'spotAngle',            urlKey: 'angle',     min: 0,     max: 180,    step: 1,    default: 16,   decimals: 4, dynamicStep: true },
+    spotAngle:        { id: 'spotAngle',            urlKey: 'angle',     min: 0,     max: 180,    step: 1,    default: 16,   decimals: 2, dynamicStep: true },
     spotPenumbra:     { id: 'spotPenumbra',         urlKey: 'pen',       min: 0,     max: 1,      step: 0.05, default: 0.5,  decimals: 2, dynamicStep: true },
     spotDecay:        { id: 'spotDecay',            urlKey: 'decay',     min: 0,     max: 2,      step: 1,    default: 0,    decimals: 0, isSegmented: true },
-    spotRange:        { id: 'spotRange',            urlKey: 'range',     min: 0,     max: 10000,  step: 1,    default: 10000, decimals: 0, dynamicStep: true },
+    spotRange:        { id: 'spotRange',            urlKey: 'range',     min: 0,     max: 10000,  step: 1,    default: 10000, decimals: 2, dynamicStep: true },
 
     // Shadow-Parameter
     shadowMapSize:    { id: 'shadowMapSize',        urlKey: 'smap',      min: 256,   max: 4096,   step: 256,  default: 1024, decimals: 0 },
@@ -1638,18 +1638,18 @@
 
   // key = params-Schluessel, sliderMin/Max = sichtbarer Regler-Bereich (Eingabe und URL duerfen bis PARAMS_CONFIG.min/max)
   const PANEL_SLIDERS = [
-    { key: 'brightness',       label: 'Brightness',  sliderMin: 0,   sliderMax: 500, step: 1,   decimals: 0 },
-    { key: 'ambientIntensity', label: 'Ambient',     sliderMin: 0,   sliderMax: 10,  step: 0.1, decimals: 1 },
+    { key: 'brightness',       label: 'Brightness',  sliderMin: 0,   sliderMax: 500, step: 0.1, decimals: 1 },
+    { key: 'ambientIntensity', label: 'Ambient',     sliderMin: 0,   sliderMax: 10,  step: 0.01, decimals: 2 },
     'decay',
     '---',
-    { key: 'sphereRadius',     label: 'Radius',      sliderMin: 0,   sliderMax: 20,  step: 0.1, decimals: 1 },
+    { key: 'sphereRadius',     label: 'Radius',      sliderMin: 0,   sliderMax: 20,  step: 0.01, decimals: 2 },
     { key: 'wallDistance',     label: 'Distance',    sliderMin: -20, sliderMax: 100, step: 0.01, decimals: 2 },
     { key: 'lightDistance',    label: 'Light Dist',  sliderMin: 0,   sliderMax: 200, step: 0.01, decimals: 2 },
-    { key: 'spotAngle',        label: 'Spot Angle',  sliderMin: 0,   sliderMax: 90,  step: 0.1, decimals: 1 },
-    { key: 'lampScale',        label: 'Lamp Size',   sliderMin: 0,   sliderMax: 50,  step: 1,   decimals: 0 },
+    { key: 'spotAngle',        label: 'Spot Angle',  sliderMin: 0,   sliderMax: 90,  step: 0.01, decimals: 2 },
+    { key: 'lampScale',        label: 'Lamp Size',   sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
     '---',
     'showLamps',
-    { key: 'glyphSize',        label: 'Glyph Size',  sliderMin: 0,   sliderMax: 50,  step: 0.1, decimals: 1 },
+    { key: 'glyphSize',        label: 'Glyph Size',  sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
     'font',
   ];
 
@@ -1703,7 +1703,7 @@
 
     const effectiveDist = (params.lightDistance ?? 15) + (params.wallDistance ?? 5);
     const startBrightness = params.brightness ?? 80;
-    const targetBrightness = Math.round(startBrightness * Math.pow(effectiveDist, newDecay - oldDecay));
+    const targetBrightness = Math.round(startBrightness * Math.pow(effectiveDist, newDecay - oldDecay) * 100) / 100;
 
     params.spotDecay = newDecay;
     needsUniformUpdate = true;
@@ -1715,7 +1715,7 @@
     function animateBrightness(now) {
       const progress = Math.min((now - startTime) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      params.brightness = Math.round(startBrightness + (targetBrightness - startBrightness) * eased);
+      params.brightness = Math.round((startBrightness + (targetBrightness - startBrightness) * eased) * 100) / 100;
       panel.set('brightness', params.brightness);
       needsUniformUpdate = true;
       if (progress < 1) {
@@ -1823,7 +1823,7 @@
         });
         panel.addSlider(rotKey, {
           label: '',
-          min: 0, max: 360, step: 1, decimals: 0,
+          min: 0, max: 360, step: 0.1, decimals: 1,
           value: params[rotKey],
           onChange: (v) => onSliderInput(rotKey, v),
         });
@@ -2853,7 +2853,7 @@
       const oldScale = params.lampScale ?? cfg.default;
       let newScale = oldScale + delta * cfg.step;
       newScale = Math.max(cfg.min, Math.min(cfg.max, newScale));
-      params.lampScale = Math.round(newScale);
+      params.lampScale = Math.round(newScale * 100) / 100;
 
       // Brightness proportional zur Lamp-Größe ändern
       // Größere Lampe = helleres Licht (ca. 5% pro Step)
@@ -2861,7 +2861,7 @@
         const scaleFactor = newScale / oldScale;
         let newBrightness = (params.brightness ?? cfgBright.default) * scaleFactor;
         newBrightness = Math.max(cfgBright.min, Math.min(cfgBright.max, newBrightness));
-        params.brightness = Math.round(newBrightness);
+        params.brightness = Math.round(newBrightness * 100) / 100;
         updateLightingFromParams();
       }
 
