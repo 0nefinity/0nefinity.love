@@ -44,6 +44,15 @@ function renderSsiInclude($relativePath, $host) {
         function ($m) use ($isDev) { return $isDev ? $m[1] : ''; },
         $content
     );
+    if ($content !== null) {
+        $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+        $notChicken = preg_match('/why-coordinatesystem-is-chicken/', $uri) !== 1;
+        $content = preg_replace_callback(
+            '/' . preg_quote('<!--#if expr="%{REQUEST_URI} !~ /why-coordinatesystem-is-chicken/" -->', '/') . '(.*?)' . preg_quote('<!--#endif -->', '/') . '/s',
+            function ($m) use ($notChicken) { return $notChicken ? $m[1] : ''; },
+            $content
+        );
+    }
     if ($content === null || strpos($content, '<!--#') !== false) {
         failInclude($relativePath, 'unsupported SSI directive');
     }
