@@ -4,12 +4,24 @@ Statisches Menü-HTML generieren für SSI-Include.
 Quelle: git ls-files, ohne Entwickler-Material (siehe EXCLUDE_*).
 """
 
+import json
 import os
+import re
 import subprocess
 from html import escape
+from html.parser import HTMLParser
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_FILE = os.path.join(ROOT_DIR, 'includes', 'something-in-the-body.html')
+INDEX_FILE = os.path.join(ROOT_DIR, 'includes', 'search-index.json')
+
+# Volltext-Index: sichtbarer Text der Seiten im Menue, geladen von meta.js beim
+# ersten Tastendruck in der Suche. Je Datei auf INDEX_CAP Zeichen begrenzt.
+INDEX_CAP = 20000
+NON_TEXT_EXTS = {
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp3', '.mp4', '.webm',
+    '.wav', '.ogg', '.pdf', '.zip', '.woff', '.ttf', '.otf', '.php',
+}
 
 # Das Menue listet nur, was git verfolgt (git ls-files) und ein Besucher
 # aufrufen kann. Entwickler-Material bleibt draussen.
@@ -89,6 +101,68 @@ def collect_structure():
     return structure
 
 
+class _TextExtractor(HTMLParser):
+    SKIP = {'script', 'style', 'template', 'svg', 'noscript', 'canvas'}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skip += 1
+        self.parts.append(' ')
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP and self.skip:
+            self.skip -= 1
+        self.parts.append(' ')
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.parts.append(data)
+
+
+def visible_text(rel_path):
+    """Sichtbarer Text einer Seite (None: keine Textdatei)."""
+    ext = os.path.splitext(rel_path)[1].lower()
+    if ext in NON_TEXT_EXTS:
+        return None
+    with open(os.path.join(ROOT_DIR, rel_path), 'rb') as fh:
+        raw = fh.read()
+    if b'\0' in raw[:4096]:
+        return None
+    text = raw.decode('utf-8', errors='replace')
+    if ext in ('.html', '.htm') or (not ext and text.lstrip()[:1] == '<'):
+        parser = _TextExtractor()
+        parser.feed(text)
+        parser.close()
+        text = ''.join(parser.parts)
+    return re.sub(r'\s+', ' ', text).strip()[:INDEX_CAP]
+
+
+def build_search_index(structure):
+    """{ '/pfad': text } fuer genau die Dateien, die im Menue stehen."""
+    index = {}
+
+    def walk(node):
+        for f in node['files']:
+            text = visible_text(f['path'])
+            if text is not None:
+                index['/' + f['path']] = text
+        for sub in node['folders'].values():
+            walk(sub)
+
+    walk(structure)
+    for item in PRIORITY_ITEMS:
+        if item['type'] == 'file':
+            text = visible_text(item['path'])
+            if text is not None:
+                index['/' + item['path']] = text
+    return index
+
+
 def render_file(f):
     href = '/' + f['path']
     return f'<li><a href="{escape(href)}">{escape(f["name"])}</a></li>'
@@ -145,6 +219,12 @@ def generate():
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as out:
         out.write(''.join(lines) + '\n')
+
+    index = build_search_index(structure)
+    with open(INDEX_FILE, 'w', encoding='utf-8') as out:
+        json.dump(index, out, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
+        out.write('\n')
+    print(f'search-index.json — {len(index)} Dateien, {os.path.getsize(INDEX_FILE) // 1024} KB')
 
     total = sum(1 for line in lines if '<li><a ' in line)
     print(f'menu.html generiert — {total} Einträge')

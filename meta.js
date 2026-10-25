@@ -180,7 +180,7 @@ function initMenuSearch(menu, fileList) {
                 if (f.c.startsWith(t)) s = f.c === t ? -3 : 0;
                 else if (f.b.some(p => f.c.startsWith(t, p))) s = 1;
                 else if (!isPath && f.c.includes(t)) s = 10;
-                else if (!isPath && fuzzy && t.length >= 4) {
+                else if (!isPath && fuzzy && t.length >= 5) {
                     const max = t.length >= 8 ? 2 : 1;
                     if (f.fuz.length >= t.length - max && fuzzyDist(phon(t), f.fuz) <= max) s = 20;
                 }
@@ -247,13 +247,139 @@ function initMenuSearch(menu, fileList) {
         a.append(entry.label.slice(pos));
     }
 
+    // ─── Volltext ───
+    // includes/search-index.json (vom Generator, { "/pfad": "sichtbarer Text" }) wird erst beim
+    // ersten Tastendruck geladen. Treffer = alle Begriffe kommen als Teilstring vor (gleiche
+    // Verdichtung und Aliasse wie die Namenssuche, aber ohne Tippfehler-Toleranz). Ladefehler
+    // melden sich sichtbar in der Trefferliste und per console.error; die Namenssuche laeuft weiter.
+    const CONTENT_CAP = 30;
+    const CONTENT_MIN_TERM = 2;
+    const contentState = { state: 'idle', docs: [] };
+    let contentLoad = null;
+
+    function loadContent() {
+        if (contentLoad) return contentLoad;
+        contentState.state = 'loading';
+        contentLoad = fetch('/includes/search-index.json', { cache: 'no-cache' })
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('unerwartetes Format');
+                if (!entries) buildIndex();
+                const known = new Set(entries.map(e => e.href));
+                const docs = [];
+                for (const [href, text] of Object.entries(data)) {
+                    if (typeof text !== 'string') throw new Error('unerwartetes Format');
+                    if (!known.has(href)) continue;
+                    const full = compact(text, true);
+                    // Variante ohne ae/oe/ue/ss nur, wo sie sich unterscheiden kann
+                    const vs = /[äöüßÄÖÜẞ]/.test(text) ? [full, compact(text, false)] : [full];
+                    docs.push({ href, text, vs });
+                }
+                contentState.docs = docs;
+                contentState.state = 'ready';
+            })
+            .catch(err => {
+                contentState.state = 'error';
+                console.error('Volltext-Index nicht verfügbar:', err);
+            });
+        return contentLoad;
+    }
+
+    // Treffer eines Dokuments oder null. Alle Begriffe muessen in derselben Variante vorkommen.
+    function contentMatch(doc, altsList) {
+        for (const v of doc.vs) {
+            let first = null, count = 0, ok = true;
+            for (const alts of altsList) {
+                let best = -1, bestLen = 0, termCount = 0;
+                for (const t of alts) {
+                    if (!t) continue;
+                    let at = v.c.indexOf(t);
+                    if (at < 0) continue;
+                    if (best < 0 || at < best) { best = at; bestLen = t.length; }
+                    for (let n = 0; at >= 0 && n < 50; n++) { termCount++; at = v.c.indexOf(t, at + t.length); }
+                }
+                if (best < 0) { ok = false; break; }
+                count += termCount;
+                if (!first || best < first.at) first = { at: best, len: bestLen };
+            }
+            if (ok) return { v, first, density: count * 1000 / (v.c.length || 1) };
+        }
+        return null;
+    }
+
+    // Einzeiliger Ausschnitt um den ersten Treffer, alle Begriffe im Ausschnitt hervorgehoben
+    function renderSnippet(el, doc, m, altsList) {
+        const { v, first } = m;
+        const cLo = Math.max(0, first.at - 24);
+        const cHi = Math.min(v.c.length, first.at + first.len + 70);
+        const hitFrom = v.map[first.at], hitTo = v.end[first.at + first.len - 1];
+        let from = v.map[cLo], to = v.end[cHi - 1];
+        const text = doc.text;
+        if (from > 0) {
+            const sp = text.indexOf(' ', from);
+            if (sp >= 0 && sp < from + 12 && sp + 1 <= hitFrom) from = sp + 1;
+        }
+        if (to < text.length) {
+            const sp = text.lastIndexOf(' ', to);
+            if (sp > to - 12 && sp >= hitTo) to = sp;
+        }
+        const marks = [];
+        for (const alts of altsList) {
+            for (const t of alts) {
+                if (!t) continue;
+                let i = v.c.indexOf(t, cLo);
+                while (i >= 0 && i < cHi) {
+                    const a = v.map[i], b = v.end[i + t.length - 1];
+                    if (a >= from && b <= to) marks.push([a, b]);
+                    i = v.c.indexOf(t, i + t.length);
+                }
+            }
+        }
+        marks.sort((x, y) => x[0] - y[0] || y[1] - x[1]);
+        if (from > 0) el.append('…');
+        let pos = from;
+        for (const [a, b] of marks) {
+            if (a < pos) continue;
+            el.append(text.slice(pos, a));
+            const mk = document.createElement('mark');
+            mk.textContent = text.slice(a, b);
+            el.append(mk);
+            pos = b;
+        }
+        el.append(text.slice(pos, to));
+        if (to < text.length) el.append('…');
+    }
+
+    function contentHits(altsList, skip) {
+        if (contentState.state !== 'ready') return [];
+        if (!altsList.some(alts => alts[0].length >= CONTENT_MIN_TERM)) return [];
+        const out = [];
+        for (const doc of contentState.docs) {
+            if (skip.has(doc.href)) continue;
+            const m = contentMatch(doc, altsList);
+            if (m) out.push({ doc, m });
+        }
+        out.sort((x, y) => y.m.density - x.m.density || x.doc.text.length - y.doc.text.length);
+        return out;
+    }
+
+    function noteRow(text, extra) {
+        const li = document.createElement('li');
+        li.className = 'search-hit menu-search-note' + (extra ? ' ' + extra : '');
+        li.textContent = text;
+        return li;
+    }
+
     function clearHits() {
         fileList.querySelectorAll(':scope > li.search-hit').forEach(li => li.remove());
     }
 
     let selected = -1;
     function select(i) {
-        const items = fileList.querySelectorAll(':scope > li.search-hit:not(.menu-search-empty)');
+        const items = fileList.querySelectorAll(':scope > li.search-hit:not(.menu-search-empty):not(.menu-search-note)');
         if (!items.length) { selected = -1; return; }
         selected = (i + items.length) % items.length;
         items.forEach((li, k) => li.classList.toggle('selected', k === selected));
@@ -261,9 +387,20 @@ function initMenuSearch(menu, fileList) {
     }
 
     function filter(queryRaw) {
+        const query = queryRaw.trim();
+        selected = -1;
+        if (query && contentState.state === 'idle') {
+            loadContent().then(() => {
+                if (searchInput.value.trim() === query) render(query, true);
+            });
+        }
+        render(query, false);
+    }
+
+    function render(query, keepSel) {
+        const prev = selected;
         clearHits();
         selected = -1;
-        const query = queryRaw.trim();
         fileList.classList.toggle('searching', !!query);
         if (!query) {
             fileList.querySelectorAll('details').forEach(details => { details.open = false; });
@@ -286,15 +423,38 @@ function initMenuSearch(menu, fileList) {
             }
             frag.append(li);
         });
-        if (!hits.length) {
+        const inContent = contentHits(altsList, new Set(hits.map(h => h.href)));
+        if (inContent.length) {
+            frag.append(noteRow('im Inhalt', 'menu-search-section'));
+            const byHref = new Map(entries.map(e => [e.href, e]));
+            inContent.slice(0, CONTENT_CAP).forEach(({ doc, m }) => {
+                const entry = byHref.get(doc.href);
+                const li = document.createElement('li');
+                li.className = 'search-hit search-content';
+                const a = document.createElement('a');
+                a.href = doc.href;
+                a.title = entry.dir ? entry.dir + '/' + entry.label : entry.label;
+                a.textContent = entry.label;
+                li.append(a);
+                const snip = document.createElement('span');
+                snip.className = 'menu-search-snippet';
+                renderSnippet(snip, doc, m, altsList);
+                li.append(snip);
+                frag.append(li);
+            });
+            if (inContent.length > CONTENT_CAP) frag.append(noteRow('+' + (inContent.length - CONTENT_CAP) + ' weitere'));
+        }
+        if (contentState.state === 'error') frag.append(noteRow('Volltext nicht verfügbar', 'menu-search-error'));
+        const settled = contentState.state === 'ready' || contentState.state === 'error';
+        if (!hits.length && !inContent.length && settled) {
             const li = document.createElement('li');
             li.className = 'search-hit menu-search-empty';
             li.textContent = 'nichts gefunden';
-            frag.append(li);
+            frag.prepend(li);
         }
         fileList.append(frag);
-        fileList.scrollTop = 0;
-        select(0);
+        if (!keepSel) fileList.scrollTop = 0;
+        select(keepSel && prev > 0 ? prev : 0);
     }
 
     let searchTimeoutId = null;
