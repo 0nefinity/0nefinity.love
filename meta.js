@@ -37,11 +37,52 @@ applyTabTitle();
 
 // ─── Favicon: das rotierende 0 1 ∞ der Startseite ───
 // Geometrie wie drawFrameWithAngle in 0nefinity.js (Radius 30 %, Zeichen 25 %, ≡ 23 % auf den Kanten), weiß auf transparent wie /favicon.ico.
-// Tempo konstant (°/s aus der verstrichenen Zeit, nicht pro Frame): die Startseite fährt Auto-Speed-Rampen in °/Frame, die im Tab nur flackern würden.
+// Tempo wie die Startseite: Auto-Speed-Stufen aus AUTO_SPEED_CONFIG in 0nefinity.js (°/Frame, Cosinus-Rampen), hier 1:1 kopiert und mit virtuellen 60-Hz-Frames aus der Zeit aufsummiert (Monitor-Hz egal). Auf der Startseite wird stattdessen der Winkel des Seiten-Symbols (window.__symbolAngle) gespiegelt.
 // 32 px = native Größe eines 16-px-Tab-Icons auf 2x-Displays und ~4x billigeres toDataURL pro Frame als 64 px; das Einlesen des Streams ist der Engpass, nicht das Zeichnen.
-// Test: ?favfps=<1-120> deckelt die Bildrate, ?favspeed=<°/s> ändert das Tempo; beides bleibt im Tab (sessionStorage).
+// Test: ?favfps=<1-120> deckelt die Bildrate, ?favspeed=<Faktor> skaliert das Seiten-Tempo (Standard 1); beides bleibt im Tab (sessionStorage).
 const FAVICON_SIZE = 32;
-const FAVICON_DEFAULT_DEG_PER_SEC = 60;
+const FAVICON_VIRTUAL_HZ = 60;
+const FAVICON_SPEED_CONFIG = {
+    START_PHASE: { startSpeed: 30, rampTo: 0, rampDuration: 0.8, holdDuration: 1.5 },
+    SPEED_STEPS: [
+        { increment: 120, rampDuration: 0.8, holdDuration: 1.5 },
+        { increment: 240, rampDuration: 0.8, holdDuration: 1.5 },
+        { increment: 180, rampDuration: 0.8, holdDuration: 1.5 },
+        { increment: 180, rampDuration: 0.8, holdDuration: 1.5 }
+    ]
+};
+function faviconLerp(a, b, t) { return a + (b - a) * t; }
+function faviconAutoSpeed(elapsed) {
+    const sp = FAVICON_SPEED_CONFIG.START_PHASE;
+    const steps = FAVICON_SPEED_CONFIG.SPEED_STEPS;
+    if (elapsed < sp.rampDuration) {
+        const t = elapsed / sp.rampDuration;
+        return faviconLerp(sp.startSpeed, sp.rampTo, (1 - Math.cos(Math.PI * t)) / 2);
+    }
+    const startPhaseEnd = sp.rampDuration + sp.holdDuration;
+    if (elapsed < startPhaseEnd) return sp.rampTo;
+    const T = elapsed - startPhaseEnd;
+    const cycleDur = steps.reduce((a, s) => a + s.rampDuration + s.holdDuration, 0);
+    const incPerCycle = steps.reduce((a, s) => a + s.increment, 0);
+    const cyclesCompleted = Math.floor(T / cycleDur);
+    const tInCycle = T - cyclesCompleted * cycleDur;
+    let stepBase = sp.rampTo + cyclesCompleted * incPerCycle;
+    let acc = 0;
+    for (const step of steps) {
+        const stepEnd = acc + step.rampDuration + step.holdDuration;
+        if (tInCycle < stepEnd) {
+            const tInStep = tInCycle - acc;
+            if (tInStep < step.rampDuration) {
+                const t = tInStep / step.rampDuration;
+                return faviconLerp(stepBase, stepBase + step.increment, (1 - Math.cos(Math.PI * t)) / 2);
+            }
+            return stepBase + step.increment;
+        }
+        acc = stepEnd;
+        stepBase += step.increment;
+    }
+    return stepBase;
+}
 function favParam(name, min, max, fallback) {
     let raw = null;
     try {
@@ -104,17 +145,33 @@ function startFaviconAnimation() {
     }
     const fps = favParam('favfps', 1, 120, 0);
     const minFrameMs = fps ? 1000 / fps : 0;
-    const radPerMs = favParam('favspeed', -1e6, 1e6, FAVICON_DEFAULT_DEG_PER_SEC) * Math.PI / 180 / 1000;
+    const speedFactor = favParam('favspeed', -1e6, 1e6, 1);
     link.type = 'image/png';
     link.removeAttribute('sizes');
     let start = null;
     let last = -Infinity;
+    let virtualFrame = 0;
+    let angleDeg = 0;
     function tick(now) {
         requestAnimationFrame(tick);
         if (start === null) start = now;
         if (now - last < minFrameMs - 1) return;
         last = now;
-        drawFaviconFrame(ctx, (now - start) * radPerMs);
+        const elapsed = (now - start) / 1000;
+        const pageFresh = typeof window.__symbolAngle === 'number' && now - window.__symbolAngleT < 250;
+        if (pageFresh && speedFactor === 1) {
+            angleDeg = window.__symbolAngle;
+        } else {
+            const due = Math.floor(elapsed * FAVICON_VIRTUAL_HZ);
+            // Wie die Seite nach Tab-Pause: Zeitplan springt weiter, der Winkel macht höchstens wenige Frames
+            if (due - virtualFrame > 10) virtualFrame = due - 10;
+            const speed = faviconAutoSpeed(elapsed) * speedFactor;
+            while (virtualFrame < due) {
+                angleDeg = (angleDeg + speed) % 360;
+                virtualFrame++;
+            }
+        }
+        drawFaviconFrame(ctx, angleDeg * Math.PI / 180);
         link.href = canvas.toDataURL('image/png');
     }
     requestAnimationFrame(tick);
