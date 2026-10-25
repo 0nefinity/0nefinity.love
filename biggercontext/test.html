@@ -1,34 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--#include virtual="/includes/something-in-the-head.html" -->
 <title>1 Divided by 0</title>
 <style>
-    body {
+    html, body {
         margin: 0;
-        background-color: black;
-        color: white;
+        height: 100%;
         overflow: hidden;
-        font-family: Arial, sans-serif;
     }
     #language-switch {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: none;
-        border: 1px solid white;
-        color: white;
-        padding: 5px 10px;
-        cursor: pointer;
+        position: fixed;
+        bottom: 12px;
+        right: 12px;
+        z-index: 5;
     }
-    #content, #shrunk-content {
+    button.quiet {
+        background: none;
+        border: 1px solid var(--ui-border-strong);
+        color: var(--text-color);
+        font: inherit;
+        font-size: 0.9rem;
+        padding: 6px 12px;
+        cursor: pointer;
+        transition: border-color 0.3s ease, opacity 1s ease;
+    }
+    button.quiet:hover, button.quiet:focus-visible {
+        border-color: var(--text-color);
+        outline: none;
+    }
+    #content {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         height: 100vh;
-        transition: transform 1s ease;
+        height: 100dvh;
+        text-align: center;
+        padding: 0 1rem;
+        box-sizing: border-box;
     }
     .fraction {
         display: inline-flex;
@@ -40,135 +50,366 @@
         line-height: 1;
     }
     .fraction .denominator {
-        border-top: 2px solid white;
+        border-top: 0.018em solid var(--text-color);
         margin-top: 0.2em;
     }
     #message, #context-button {
         margin-top: 20px;
         opacity: 0;
-        transition: opacity 1s ease;
     }
-    #context-button {
-        background: none;
-        border: 1px solid white;
-        color: white;
-        padding: 10px 20px;
-        cursor: pointer;
+    #message { transition: opacity 1s ease; }
+    #context-button { padding: 10px 20px; font-size: 1rem; }
+    #content.leaving #message, #content.leaving #context-button {
+        opacity: 0 !important;
+        transition: opacity 0.5s ease;
+        pointer-events: none;
     }
-    #outer-screen {
+    #content.leaving .fraction, #content.away .fraction { visibility: hidden; }
+    #content.away #message, #content.away #context-button { visibility: hidden; }
+
+    /* stage: everything that flies out of the 1/0 */
+    #stage {
+        position: fixed;
+        inset: 0;
         display: none;
+        pointer-events: none;
+        z-index: 2;
+    }
+    #stage.on { display: block; }
+    #stage .item {
         position: absolute;
-        top: 0;
         left: 0;
+        top: 0;
+        transform-origin: 0 0;
+        will-change: transform, opacity;
+    }
+    #stage .sym { line-height: 1; }
+    #stage svg {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
+        overflow: visible;
     }
-    .symbol {
-        position: absolute;
-        font-size: 5vw;
+    #stage svg path, #stage svg line {
+        fill: none;
+        stroke: var(--text-color);
+        stroke-linecap: butt;
+        stroke-linejoin: round;
     }
-    #symbol-zero {
-        top: 10%;
+    #back-button {
+        position: fixed;
         left: 50%;
+        bottom: 18px;
         transform: translateX(-50%);
+        z-index: 5;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
     }
-    #symbol-one {
-        bottom: 10%;
-        left: 20%;
-    }
-    #symbol-infinity {
-        bottom: 10%;
-        right: 20%;
+    #back-button.show { opacity: 1; visibility: visible; pointer-events: auto; }
+    #stage.fade { transition: opacity 0.7s ease; }
+    @media (prefers-reduced-motion: reduce) {
+        #message, #context-button, #back-button { transition-duration: 0.01s; }
     }
 </style>
 </head>
 <body>
 
-<button id="language-switch">Deutsch</button>
+<button id="language-switch" class="quiet">Deutsch</button>
 
 <div id="content">
-    <div class="fraction">
+    <div class="fraction" id="fraction">
+        <div class="numerator" id="numerator">1</div>
+        <div class="denominator" id="denominator">0</div>
+    </div>
+    <div id="message"></div>
+    <button id="context-button" class="quiet"></button>
+</div>
+
+<div id="stage" aria-hidden="true">
+    <svg id="lines"><path id="inf"></path></svg>
+    <div class="item sym" id="s-one">1</div>
+    <div class="item sym" id="s-zero">0</div>
+    <div class="item fraction" id="s-frac">
         <div class="numerator">1</div>
         <div class="denominator">0</div>
     </div>
-    <div id="message"></div>
-    <button id="context-button"></button>
 </div>
-
-<div id="outer-screen">
-    <div id="shrunk-content">
-        <div class="fraction">
-            <div class="numerator">1</div>
-            <div class="denominator">0</div>
-        </div>
-    </div>
-    <div class="symbol" id="symbol-zero">0</div>
-    <div class="symbol" id="symbol-one">1</div>
-    <div class="symbol" id="symbol-infinity">∞</div>
-</div>
+<button id="back-button" class="quiet"></button>
 
 <script>
+(function () {
     let language = 'en';
-
     const translations = {
         en: {
             switchTo: 'Deutsch',
             message: "don't try to fuck your math teacher with solving this",
             buttonText: 'enable bigger context',
+            back: 'back to 1/0',
+            label: '1/0 is 0, 1 and ∞ at once'
         },
         de: {
             switchTo: 'English',
             message: 'Versuchen Sie nicht, Ihren Mathelehrer mit der Lösung dieses Problems zu verärgern',
             buttonText: 'zeige größeren Kontext',
+            back: 'zurück zu 1/0',
+            label: '1/0 ist 0, 1 und ∞ zugleich'
         }
     };
 
-    const languageSwitch = document.getElementById('language-switch');
-    const message = document.getElementById('message');
-    const contextButton = document.getElementById('context-button');
-    const content = document.getElementById('content');
-    const outerScreen = document.getElementById('outer-screen');
-    const shrunkContent = document.getElementById('shrunk-content');
+    const $ = id => document.getElementById(id);
+    const languageSwitch = $('language-switch'), message = $('message'),
+          contextButton = $('context-button'), content = $('content'),
+          stage = $('stage'), backButton = $('back-button'),
+          infPath = $('inf'), svg = $('lines'),
+          sOne = $('s-one'), sZero = $('s-zero'), sFrac = $('s-frac');
+
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const TOTAL = 3.2;             // seconds of forward animation
+    const SVGNS = 'http://www.w3.org/2000/svg';
 
     function updateLanguage() {
-        languageSwitch.textContent = translations[language].switchTo;
-        message.textContent = translations[language].message;
-        contextButton.textContent = translations[language].buttonText;
+        const t = translations[language];
+        languageSwitch.textContent = t.switchTo;
+        message.textContent = t.message;
+        contextButton.textContent = t.buttonText;
+        backButton.textContent = t.back;
+        stage.setAttribute('aria-label', t.label);
+        document.documentElement.lang = language;
     }
 
-    function showMessage() {
-        message.style.opacity = 1;
+    // ---------- easing helpers ----------
+    const clamp = x => Math.min(1, Math.max(0, x));
+    const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+    const seg = (t, a, b) => ease(clamp((t - a) / (b - a)));
+    const lerp = (a, b, k) => a + (b - a) * k;
+
+    // ---------- geometry ----------
+    let G = null;   // computed layout (start from the real 1/0, end triangle)
+
+    function boxDist(ux, uy, hw, hh) {
+        const ax = Math.abs(ux), ay = Math.abs(uy);
+        return Math.min(ax > 1e-6 ? hw / ax : Infinity, ay > 1e-6 ? hh / ay : Infinity);
     }
 
-    function showContextButton() {
-        contextButton.style.opacity = 1;
+    function measure() {
+        const W = innerWidth, H = innerHeight;
+        const fr = $('fraction').getBoundingClientRect();
+        const nr = $('numerator').getBoundingClientRect();
+        const dr = $('denominator').getBoundingClientRect();
+        const F0 = parseFloat(getComputedStyle($('fraction')).fontSize);
+
+        const R = Math.min(H * 0.34, W * 0.42);
+        const F1 = R * 0.27;                 // font size of everything in the final state
+        const S = Math.max(F0, F1);          // stage text is rendered at S and scaled down
+        const k0 = F0 / S, k1 = F1 / S;
+
+        const C = { x: W / 2, y: H / 2 + R * 0.16 };   // triangle is optically centered
+        const dx = R * Math.sqrt(3) / 2;
+        const P = {
+            zero: { x: C.x, y: C.y - R },
+            one:  { x: C.x - dx, y: C.y + R / 2 },
+            inf:  { x: C.x + dx, y: C.y + R / 2 }
+        };
+        // half extents of each thing in the final state
+        const half = {
+            frac: { w: 0.42 * F1, h: 1.12 * F1 },
+            zero: { w: 0.34 * F1, h: 0.5 * F1 },
+            one:  { w: 0.26 * F1, h: 0.5 * F1 },
+            inf:  { w: 0.54 * F1, h: 0.26 * F1 }
+        };
+        const nodes = { frac: C, zero: P.zero, one: P.one, inf: P.inf };
+
+        function identity(a, b) {
+            const A = nodes[a], B = nodes[b];
+            const len = Math.hypot(B.x - A.x, B.y - A.y);
+            const ux = (B.x - A.x) / len, uy = (B.y - A.y) / len;
+            const da = boxDist(ux, uy, half[a].w, half[a].h);
+            const db = boxDist(ux, uy, half[b].w, half[b].h);
+            const pad = 0.2 * F1;
+            const s = da + pad, e = len - db - pad;
+            const mid = (s + e) / 2, avail = e - s;
+            return { A, ux, uy, mid, L: Math.max(0, Math.min(0.5 * F1, avail)) };
+        }
+
+        G = {
+            W, H, F0, F1, S, k0, k1, R, C, P,
+            frac0: { x: fr.left + fr.width / 2, y: fr.top + fr.height / 2 },
+            one0: { x: nr.left + nr.width / 2, y: nr.top + nr.height / 2 },
+            zero0: { x: dr.left + dr.width / 2, y: dr.top + dr.height / 2 },
+            bar0: { x: dr.left + dr.width / 2, y: dr.top + 0.009 * F0, a: dr.width / 2, w: Math.max(1, 0.018 * F0) },
+            ids: [
+                { d: identity('frac', 'zero'), at: 1.80, dur: 0.6, o: 1 },
+                { d: identity('frac', 'one'),  at: 1.95, dur: 0.6, o: 1 },
+                { d: identity('frac', 'inf'),  at: 2.10, dur: 0.6, o: 1 },
+                { d: identity('zero', 'one'),  at: 2.55, dur: 0.6, o: 0.5 },
+                { d: identity('one', 'inf'),   at: 2.65, dur: 0.6, o: 0.5 },
+                { d: identity('inf', 'zero'),  at: 2.75, dur: 0.6, o: 0.5 }
+            ]
+        };
+
+        for (const el of [sOne, sZero, sFrac]) el.style.fontSize = S + 'px';
+        sOne.style.width = sZero.style.width = '';
+        // identity lines (3 bars each)
+        svg.querySelectorAll('g.id').forEach(g => g.remove());
+        G.ids.forEach(id => {
+            const g = document.createElementNS(SVGNS, 'g');
+            g.setAttribute('class', 'id');
+            id.lines = [];
+            for (let i = 0; i < 3; i++) {
+                const l = document.createElementNS(SVGNS, 'line');
+                g.appendChild(l);
+                id.lines.push(l);
+            }
+            svg.appendChild(g);
+        });
     }
 
-    function shrinkContent() {
-        content.style.transform = 'scale(0.3)';
-        content.style.position = 'absolute';
-        content.style.top = '50%';
-        content.style.left = '50%';
-        content.style.transform = 'translate(-50%, -50%) scale(0.3)';
-        message.style.display = 'none';
-        contextButton.style.display = 'none';
-        outerScreen.style.display = 'block';
+    function place(el, x, y, k, opacity) {
+        el.style.transform = `translate(${x}px, ${y}px) scale(${k}) translate(-50%, -50%)`;
+        el.style.opacity = opacity;
+    }
+
+    // bar -> lemniscate morph, s = 0 (bar) .. 1 (infinity)
+    function infPathD(cx, cy, a, s) {
+        const N = 96;
+        let d = '';
+        for (let i = 0; i <= N; i++) {
+            const t = (i / N) * Math.PI * 2;
+            const c = Math.cos(t), sn = Math.sin(t);
+            const den = 1 + sn * sn;
+            const x = lerp(c, c / den, s) * a;
+            const y = s * (sn * c / den) * a * 1.15;
+            d += (i ? 'L' : 'M') + (cx + x).toFixed(2) + ' ' + (cy + y).toFixed(2);
+        }
+        return d + 'Z';
+    }
+
+    function render(t) {
+        if (!G) return;
+        const g = G;
+        // the 1/0 itself: glides to the center, dims while its parts leave, re-forms
+        const mf = seg(t, 0, 1.9);
+        const fx = lerp(g.frac0.x, g.C.x, mf), fy = lerp(g.frac0.y, g.C.y, mf);
+        const dim = 1 - 0.7 * seg(t, 0, 0.8) + 0.7 * seg(t, 1.8, 2.5);
+        place(sFrac, fx, fy, lerp(g.k0, g.k1, mf), dim);
+
+        // the 1 leaves the numerator
+        const m1 = seg(t, 0.05, 1.75);
+        place(sOne, lerp(g.one0.x, g.P.one.x, m1), lerp(g.one0.y, g.P.one.y, m1), lerp(g.k0, g.k1, m1), 1);
+
+        // the 0 leaves the denominator
+        const m0 = seg(t, 0.2, 1.9);
+        place(sZero, lerp(g.zero0.x, g.P.zero.x, m0), lerp(g.zero0.y, g.P.zero.y, m0), lerp(g.k0, g.k1, m0), 1);
+
+        // the fraction bar bends into the infinity loop
+        const mi = seg(t, 0.35, 2.05);
+        const a0 = g.bar0.a, a1 = 0.5 * g.F1;
+        infPath.setAttribute('d', infPathD(
+            lerp(g.bar0.x, g.P.inf.x, mi), lerp(g.bar0.y, g.P.inf.y, mi),
+            lerp(a0, a1, mi), mi));
+        infPath.setAttribute('stroke-width', lerp(g.bar0.w, 0.05 * g.F1, mi));
+
+        // identity signs draw from their middle outwards
+        const sw = Math.max(1.2, 0.03 * g.F1), sp = 0.15 * g.F1;
+        g.ids.forEach(id => {
+            const k = seg(t, id.at, id.at + id.dur);
+            const d = id.d;
+            const cx = d.A.x + d.ux * d.mid, cy = d.A.y + d.uy * d.mid;
+            const h = d.L / 2 * k, nx = -d.uy, ny = d.ux;
+            id.lines.forEach((l, i) => {
+                const o = (i - 1) * sp;
+                l.setAttribute('x1', cx + nx * o - d.ux * h);
+                l.setAttribute('y1', cy + ny * o - d.uy * h);
+                l.setAttribute('x2', cx + nx * o + d.ux * h);
+                l.setAttribute('y2', cy + ny * o + d.uy * h);
+                l.setAttribute('stroke-width', sw);
+                l.style.opacity = id.o * clamp(k * 2);
+            });
+        });
+    }
+
+    // ---------- playback ----------
+    let t = 0, running = false, shown = false;
+
+    function loop(dir, speed, done) {
+        running = true;
+        let last = performance.now();
+        const step = now => {
+            t = clamp((t + dir * speed * (now - last) / 1000) / TOTAL) * TOTAL;
+            last = now;
+            render(t);
+            if ((dir > 0 && t >= TOTAL) || (dir < 0 && t <= 0)) {
+                running = false;
+                done();
+            } else {
+                requestAnimationFrame(step);
+            }
+        };
+        requestAnimationFrame(step);
+    }
+
+    function enable() {
+        if (running || shown) return;
+        shown = true;
+        measure();
+        t = 0;
+        render(0);
+        stage.classList.add('on');
+        content.classList.add('leaving');
+        if (reduced) {
+            t = TOTAL;
+            render(t);
+            stage.classList.add('fade');
+            stage.style.opacity = 0;
+            requestAnimationFrame(() => requestAnimationFrame(() => { stage.style.opacity = 1; }));
+            backButton.classList.add('show');
+            backButton.focus({ preventScroll: true });
+            return;
+        }
+        loop(1, 1, () => {
+            backButton.classList.add('show');
+            backButton.focus({ preventScroll: true });
+        });
+    }
+
+    function back() {
+        if (running || !shown) return;
+        backButton.classList.remove('show');
+        const finish = () => {
+            stage.classList.remove('on', 'fade');
+            stage.style.opacity = '';
+            content.classList.remove('leaving');
+            shown = false;
+            contextButton.focus({ preventScroll: true });
+        };
+        if (reduced) {
+            stage.style.opacity = 0;
+            setTimeout(finish, 700);
+            return;
+        }
+        loop(-1, 1.6, finish);
     }
 
     languageSwitch.addEventListener('click', () => {
         language = language === 'en' ? 'de' : 'en';
         updateLanguage();
     });
+    contextButton.addEventListener('click', enable);
+    backButton.addEventListener('click', back);
+    addEventListener('resize', () => {
+        if (!shown) return;
+        measure();
+        render(t);
+    });
 
-    contextButton.addEventListener('click', shrinkContent);
-
-    // Initialize
     updateLanguage();
-
-    // Timing for message and button
-    setTimeout(showMessage, 3000);
-    setTimeout(showContextButton, 5000);
+    setTimeout(() => { message.style.opacity = 1; }, 3000);
+    setTimeout(() => { contextButton.style.opacity = 1; }, 5000);
+})();
 </script>
 
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
