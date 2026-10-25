@@ -2,6 +2,8 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <script src="/tools/math-notation.js" defer></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kreis aus Dingen mit Musterpotenzial</title>
@@ -11,9 +13,7 @@
     something really crazy goes around when you feed it some 8 -->
 
     
-    <link href="/meta.css" rel="stylesheet" />
     <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
-    <script src="/meta.js"></script>
     <!-- decimal.js: seit 27.08.2026 nicht mehr global aus meta.js,
          sondern nur hier - diese Seite rechnet Pi mit Chudnovsky. -->
     <script src="/tools/tools/decimal.js"></script>
@@ -944,5 +944,6 @@
             }
         });
     </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
