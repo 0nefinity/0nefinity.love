@@ -84,6 +84,12 @@ Flache Sammlung selbst-enthaltener HTML-Seiten. Die gemeinsame Infrastruktur:
 - **Performance:** Muss auch auf alter Hardware ("Gurke") flüssig laufen. Rechenintensive Aufgaben in Web Worker auslagern (`tools/workers/`).
 - **Dateinamen:** Auf Deutsch, beschreibend, Leerzeichen und Emojis sind erlaubt und gewollt.
 
+## Arbeitsdateien gehören nicht ins Repo
+
+- Arbeitsdateien von Agenten (Specs, Pläne, Reviews, Testskripte, Entwürfe, Mockups, Kritzelseiten, Sicherungskopien) liegen in `/home/timbr/werkstatt/0nefinity/`, nie in diesem Repo.
+- Skills, die standardmäßig nach `docs/...` schreiben (superpowers brainstorming, writing-plans u. a.), schreiben stattdessen dorthin, mit derselben Ordnerstruktur (`docs/specs/`, `docs/plans/`, `tests/`).
+- Ins Repo kommt nur, was Tim auf der Seite sehen will. Ausnahme: `tests/menu-search/` bleibt vorerst hier.
+
 ## Philosophische Konventionen
 
 Deutsch-Englisch-Mix, unkonventionelle Interpunktion und metaphorische Variablennamen sind Absicht, keine Fehler. Die "Unvollkommenheiten" gehören zur Ästhetik des Projekts.
