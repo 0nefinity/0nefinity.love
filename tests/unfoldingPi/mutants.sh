@@ -16,7 +16,8 @@ for b in $BROWSERS; do
   for mu in nopiError_reset nodrift_reset nofehlerclass_reset; do m $b test_restart $mu; done
   for mu in nolistener noresize noraf; do m $b test_view_module $mu; done
   for mu in oldsetd noclamp nosnap nocapresize notitle text; do m $b test_bedienung $mu; done
-  for mu in shift nibble noseam nomark nopending non206 nocount norange nototal nodigits noevict noabort nolook nohyst noonerror; do m $b test_file $mu; done
+  for mu in shift noseam nomark nopending non206 non206h nocount norange nototal nolim nomagic noevict noabort nolook nohyst noonerror; do m $b test_file $mu; done
+  for mu in bitorder blockoff nolim nofill nopad nomagic noversion nodigitshdr; do m $b test_decoder $mu; done
   m $b test_big cap
 done
 bash ../irrational/mutants.sh || bad=1

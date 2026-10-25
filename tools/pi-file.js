@@ -1,52 +1,84 @@
 /*
- * PiFile: liest Pi-Stellen aus der selbst gehosteten BCD-Datei per HTTP-Range (same-origin), haelt nur wenige Bloecke.
+ * PiFile: liest Pi-Stellen aus der selbst gehosteten b196-Datei per HTTP-Range (same-origin), haelt nur wenige Gruppen.
  * Klassisches Script, kein Build. Setzt das Global `PiFile`. Format: /pi-daten/pi-1e9.txt
- *   2 Ziffern je Byte (BCD, hohes Nibble zuerst), kein Kopf, Byte 0 = Nachkommastellen 1 und 2.
+ *   Kopf 32 Byte ("PI59", Version, 59, 196, Bitreihenfolge, Stellenzahl, Blockzahl), dann je 59 Ziffern als eine Zahl in 196 Bit,
+ *   MSB zuerst, bitdicht ohne Byte-Ausrichtung. Block b = Nachkommastellen 59b+1..59b+59 bei Bit 196b (ab Byte 32).
+ *   Letzter Block: Ziffern rechts mit Nullen aufgefuellt (Fuellziffern muessen 0 sein und werden nie gezeigt).
  *
- *   const f = PiFile.create({ url, bytes, onError(err), onChange() });
+ *   const f = PiFile.create({ url, digits, onError(err), onChange() });
  *   f.length            // Kettenlaenge wie in UnfoldingView: Index 0 = "3", 1 = ".", 2.. = Nachkommastellen
- *   f.at(i)             // ASCII-Code der Stelle an Kettenindex i, 0 solange der Block noch nicht da ist
+ *   f.at(i)             // ASCII-Code der Stelle an Kettenindex i, 0 solange die Gruppe noch nicht da ist
  *   f.want(lo, hi, step)// sichtbares Fenster (Kettenindizes) und Versatz je Bild; holt Fenster entlang der Bahn gebuendelt vor
  *   f.stats()  f.close()
+ *   PiFile.decodeGroup(bytes, nblocks, valid)  // Decoder: 8 Bloecke (196 Byte) -> 472 ASCII-Codes
  *
- * Abruf: fehlende Bloecke der naechsten Bilder gehen als EIN Multi-Range-Request (hoechstens 350 Bereiche, mehr sprengt das
- * Header-Limit des Servers); Bloecke von verlassenen Fenstern werden nicht geladen, laufende Anfragen ohne Nutzen abgebrochen.
- * Fehler (Netz, Nicht-206, falsche Laenge/Bereiche, fehlende Teile, ungueltige Ziffern) rufen genau einmal onError und
- * schliessen den Leser; kein stilles Weiterlaufen. Ein Nicht-206 wird nie gelesen (ungueltiges If-Range lieferte sonst 500 MB).
+ * Cache-Einheit ist die Gruppe: 8 Bloecke = 472 Ziffern = 196 Byte (byteausgerichtet, Byte 32+196g).
+ * Zuerst wird der Kopf gelesen und geprueft (falsches Magic/Version/Groesse -> Fehler), danach die Daten.
+ * Abruf: fehlende Gruppen der naechsten Bilder gehen als EIN Multi-Range-Request (hoechstens 350 Bereiche, mehr sprengt das
+ * Header-Limit des Servers); Gruppen von verlassenen Fenstern werden nicht geladen, laufende Anfragen ohne Nutzen abgebrochen.
+ * Fehler (Netz, Nicht-206, falsche Laenge/Bereiche, fehlende Teile, Blockwert >= 10^59, Fuellziffern) rufen genau einmal onError und
+ * schliessen den Leser; kein stilles Weiterlaufen. Ein Nicht-206 wird nie gelesen (ungueltiges If-Range lieferte sonst 400 MB).
  */
 (() => {
   'use strict';
 
-  const BLOCK_SHIFT = 7;              // 128 Byte = 256 Ziffern je Block
-  const BLOCK = 1 << BLOCK_SHIFT;
-  const MAX_BLOCKS = 640;             // harte Grenze des Block-Caches (80 KB)
+  const HEADER = 32;                  // Byte
+  const D = 59, BITS = 196;           // Ziffern und Bit je Block
+  const GB = 8;                       // Bloecke je Gruppe: 8 * 196 Bit = 196 Byte, byteausgerichtet
+  const GBYTES = GB * BITS / 8;       // 196
+  const GD = GB * D;                  // 472 Ziffern je Gruppe
+  const MAX_BLOCKS = 352;             // harte Grenze des Gruppen-Caches (352 * 472 = 166k Ziffern)
   const MAX_RANGES = 350;             // je Request (Server: Header-Limit)
   const MAX_INFLIGHT = 2;
   const LOOK = 60;                    // Bilder Vorlauf
   const NEAR = 30;                    // fehlt davon etwas, wird nachgeladen (sonst nicht: kein Request je Bild)
+  const LIM = 10n ** 59n, MASK = (1n << 196n) - 1n;
 
   class PiFileError extends Error {}
 
+  // Gruppe -> ASCII-Codes. src: mindestens ceil(196 * nblocks / 8) Byte ab Gruppenanfang; valid = echte Ziffern der Gruppe.
+  function decodeGroup(src, nblocks, valid, label) {
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    const out = new Uint8Array(GD);
+    for (let k = 0; k < nblocks; k++) {
+      const at = (BITS * k) >> 3;                                   // 25 Byte decken den Block ab (4 Rand-Bit)
+      if (at + 25 > src.length) throw new PiFileError('Pi-Datei: Gruppe ' + label + ' zu kurz');
+      let v = (((dv.getBigUint64(at) << 64n) | dv.getBigUint64(at + 8)) << 64n | dv.getBigUint64(at + 16)) << 8n | BigInt(src[at + 24]);
+      v = (k & 1) ? v & MASK : v >> 4n;                             // ungerades k beginnt im Halbbyte
+      if (v >= LIM) throw new PiFileError('Pi-Datei: Blockwert >= 10^59 in Gruppe ' + label + ' Block ' + k);
+      const s = v.toString();
+      const o = k * D + D - s.length;
+      for (let q = k * D; q < o; q++) out[q] = 48;
+      for (let q = 0; q < s.length; q++) out[o + q] = s.charCodeAt(q);
+    }
+    for (let q = valid; q < nblocks * D; q++) if (out[q] !== 48) throw new PiFileError('Pi-Datei: Fuellziffer ungleich 0 in Gruppe ' + label);
+    return out;
+  }
+
   function create(opts) {
-    const url = opts.url, bytes = opts.bytes;
-    if (!url || !(bytes > 0)) throw new TypeError('PiFile.create: url und bytes noetig');
-    const count = bytes * 2;          // Nachkommastellen
+    const url = opts.url, digits = opts.digits;
+    if (!url || !(digits > 0)) throw new TypeError('PiFile.create: url und digits noetig');
+    const nBlocks = Math.ceil(digits / D);
+    const nGroups = Math.ceil(nBlocks / GB);
+    const bytes = HEADER + Math.ceil(nBlocks * BITS / 8);
+    const count = digits;             // Nachkommastellen
     const length = count + 2;
-    const cache = new Map();          // Block -> { data, use }
+    const cache = new Map();          // Gruppe -> { data, use }
     const inflight = [];              // { ctrl, blocks:Set }
     let keep = new Set(), near = new Set();
-    let tick = 0, closed = false, failed = null;
+    let tick = 0, closed = false, failed = null, ready = false, headCtrl = null;
     let lastBlk = -1, lastData = null;
     const st = { requests: 0, aborted: 0, ranges: 0, bytesIn: 0, blocksLoaded: 0 };
     const ascii = new TextDecoder('latin1');
 
-    const blkOfIdx = (i) => (Math.max(2, Math.min(length - 1, i)) - 2 >> 1) >> BLOCK_SHIFT;
+    const blkOfIdx = (i) => Math.floor((Math.max(2, Math.min(length - 1, i)) - 2) / GD);
 
     function fail(e) {
       if (failed) return;
       failed = e instanceof Error ? e : new PiFileError(String(e));
       closed = true;
       for (const r of inflight) r.ctrl.abort();
+      if (headCtrl) headCtrl.abort();
       inflight.length = 0;
       cache.clear(); lastBlk = -1; lastData = null;
       console.error('[PiFile] ' + failed.message);
@@ -56,7 +88,7 @@
     function at(i) {
       const j = i - 2;
       if (j < 0 || j >= count) return 0;
-      const byte = j >> 1, b = byte >> BLOCK_SHIFT;
+      const b = Math.floor(j / GD);
       let data;
       if (b === lastBlk) data = lastData;
       else {
@@ -64,8 +96,40 @@
         if (!e) return 0;
         lastBlk = b; lastData = data = e.data;
       }
-      const v = data[byte & (BLOCK - 1)];
-      return 48 + ((j & 1) ? v & 15 : v >> 4);
+      return data[j - b * GD];
+    }
+
+    function checkHeader(h) {
+      const bad = (m) => { throw new PiFileError('Pi-Datei: Kopf ungueltig (' + m + ')'); };
+      if (h.length !== HEADER) bad('Laenge ' + h.length);
+      if (String.fromCharCode(h[0], h[1], h[2], h[3]) !== 'PI59') bad('Magic');
+      if (h[4] !== 1) bad('Version ' + h[4]);
+      if (h[5] !== D || h[6] !== BITS) bad('Block ' + h[5] + ' Ziffern/' + h[6] + ' Bit');
+      if (h[7] !== 0) bad('Bitreihenfolge ' + h[7]);
+      const dv = new DataView(h.buffer, h.byteOffset, h.byteLength);
+      if (dv.getBigUint64(8) !== BigInt(digits)) bad('Stellen ' + dv.getBigUint64(8) + ' statt ' + digits);
+      if (dv.getBigUint64(16) !== BigInt(nBlocks)) bad('Bloecke ' + dv.getBigUint64(16) + ' statt ' + nBlocks);
+      for (let k = 24; k < 32; k++) if (h[k] !== 0) bad('reserviert');
+    }
+
+    async function loadHeader() {
+      headCtrl = new AbortController();
+      st.requests++; st.ranges++;
+      try {
+        const res = await fetch(url, { headers: { Range: 'bytes=0-' + (HEADER - 1) }, signal: headCtrl.signal, credentials: 'same-origin' });
+        if (res.status !== 206) { headCtrl.abort(); throw new PiFileError('Pi-Datei: Antwort ' + res.status + ' statt 206 (' + url + ')'); }
+        const body = new Uint8Array(await res.arrayBuffer());
+        st.bytesIn += body.length;
+        verify([singlePart(res, body)], [[0, HEADER - 1]]);
+        checkHeader(body);
+      } catch (e) {
+        if (closed) return;
+        fail(e instanceof PiFileError ? e : new PiFileError('Pi-Datei nicht ladbar: ' + (e && e.message ? e.message : e)));
+        return;
+      }
+      headCtrl = null;
+      ready = true;
+      pump();
     }
 
     // Fenster entlang der Bahn: k = 0 ist das sichtbare, k bis LOOK die erwarteten (Versatz step je Bild).
@@ -109,7 +173,7 @@
     }
 
     function pump() {
-      if (closed || inflight.length >= MAX_INFLIGHT) return;
+      if (closed || !ready || inflight.length >= MAX_INFLIGHT) return;
       const pending = new Set();
       for (const r of inflight) for (const b of r.blocks) pending.add(b);
       let urgent = false;
@@ -137,7 +201,7 @@
       const ctrl = new AbortController();
       const req = { ctrl, blocks: new Set(taken) };
       inflight.push(req);
-      const spans = ranges.map((r) => [r.a * BLOCK, Math.min((r.b + 1) * BLOCK, bytes) - 1]);
+      const spans = ranges.map((r) => [HEADER + r.a * GBYTES, Math.min(HEADER + (r.b + 1) * GBYTES, bytes) - 1]);
       st.requests++; st.ranges += spans.length;
       try {
         const res = await fetch(url, { headers: { Range: 'bytes=' + spans.map((s) => s[0] + '-' + s[1]).join(',') }, signal: ctrl.signal, credentials: 'same-origin' });
@@ -221,13 +285,10 @@
 
     function store(parts) {
       for (const p of parts) {
-        for (let o = 0; o < p.data.length; o += BLOCK) {
-          const b = (p.a + o) >> BLOCK_SHIFT;
-          const data = p.data.slice(o, o + BLOCK);
-          for (let k = 0; k < data.length; k++) {
-            const v = data[k];
-            if ((v >> 4) > 9 || (v & 15) > 9) throw new PiFileError('Pi-Datei: ungueltige Ziffern im Block ' + b);
-          }
+        for (let o = 0; o < p.data.length; o += GBYTES) {
+          const b = (p.a - HEADER + o) / GBYTES;
+          const nb = Math.min(GB, nBlocks - b * GB);
+          const data = decodeGroup(p.data.subarray(o, o + GBYTES), nb, Math.min(GD, digits - b * GD), b);
           st.blocksLoaded++;
           if (!keep.has(b)) continue;   // Fenster inzwischen verlassen
           cache.set(b, { data, use: tick });
@@ -239,15 +300,17 @@
     function close() {
       closed = true;
       for (const r of inflight) r.ctrl.abort();
+      if (headCtrl) headCtrl.abort();
       inflight.length = 0;
       cache.clear(); lastBlk = -1; lastData = null;
     }
 
+    loadHeader();
     return {
       length, at, want, close,
       stats() { return Object.assign({ cached: cache.size, inflight: inflight.length, maxBlocks: MAX_BLOCKS, failed: failed ? failed.message : null }, st); }
     };
   }
 
-  window.PiFile = { create, PiFileError };
+  window.PiFile = { create, decodeGroup, PiFileError };
 })();

@@ -88,7 +88,7 @@
     let limitState = null;
     let handle = null;
     let file = null;   // Pi-Stellendatei (tools/pi-file.js): nur fuer pi, traegt die Stellen jenseits der am Geraet gerechneten
-    const FILE_URL = '/pi-daten/pi-1e9.bcd', FILE_BYTES = 500000000;
+    const FILE_URL = '/pi-daten/pi-1e9.b196', FILE_DIGITS = 1000000000;
     const testCfg = () => window.unfoldingPiTest || {};
     const deviceCap = () => (file ? (testCfg().deviceDigits || 100000) + 1 : Infinity);
     const startChain = () => view.setDigits(...chainStart());
@@ -167,7 +167,7 @@
       view.setRemote(null);
       if (cid !== 'pi' || testCfg().file === false) return;
       file = PiFile.create({
-        url: testCfg().fileUrl || FILE_URL, bytes: FILE_BYTES,
+        url: testCfg().fileUrl || FILE_URL, digits: FILE_DIGITS,
         onError: (e) => fail('Pi-Datei: ' + e.message),
         onChange: () => view.invalidate()
       });
