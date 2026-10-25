@@ -172,7 +172,7 @@
     brightness:       { id: 'brightness',           urlKey: 'bright',    min: 0,     max: 100000,  step: 1,    default: 80,   decimals: 0, dynamicStep: true },
 
     // Geometrie
-    wallDistance:     { id: 'dist',                 urlKey: 'dist',      min: -100,  max: 1000,    step: 0.1,  default: 14,   decimals: 1, dynamicStep: true },
+    wallDistance:     { id: 'dist',                 urlKey: 'dist',      min: -100,  max: 1000,    step: 0.01, default: 14,   decimals: 2, dynamicStep: true },
     sphereRadius:     { id: 'radius',               urlKey: 'r',         min: 0,     max: 1000,    step: 0.1,  default: 2.5,    decimals: 1, dynamicStep: true },
     glyphSize:        { id: 'glyphSize',            urlKey: 'gsize',     min: 0,     max: 500,     step: 0.1,  default: 4,    decimals: 1, dynamicStep: true },
     wallSize:         { id: 'wallSize',             urlKey: 'wsize',     min: 0,     max: 200,    step: 1,    default: 25,   decimals: 0, dynamicStep: true },
@@ -183,7 +183,7 @@
     glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 0, dynamicStep: true },
 
     // Licht-Position
-    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.1,  default: 40,   decimals: 1, dynamicStep: true },
+    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.01, default: 40,   decimals: 2, dynamicStep: true },
     lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 0, dynamicStep: true },
 
     // Spotlight-Parameter
@@ -1643,8 +1643,8 @@
     'decay',
     '---',
     { key: 'sphereRadius',     label: 'Radius',      sliderMin: 0,   sliderMax: 20,  step: 0.1, decimals: 1 },
-    { key: 'wallDistance',     label: 'Distance',    sliderMin: -20, sliderMax: 100, step: 0.1, decimals: 1 },
-    { key: 'lightDistance',    label: 'Light Dist',  sliderMin: 0,   sliderMax: 200, step: 0.1, decimals: 1 },
+    { key: 'wallDistance',     label: 'Distance',    sliderMin: -20, sliderMax: 100, step: 0.01, decimals: 2 },
+    { key: 'lightDistance',    label: 'Light Dist',  sliderMin: 0,   sliderMax: 200, step: 0.01, decimals: 2 },
     { key: 'spotAngle',        label: 'Spot Angle',  sliderMin: 0,   sliderMax: 90,  step: 0.1, decimals: 1 },
     { key: 'lampScale',        label: 'Lamp Size',   sliderMin: 0,   sliderMax: 50,  step: 1,   decimals: 0 },
     '---',
@@ -2709,7 +2709,7 @@
     newDist = Math.max(cfg.min, Math.min(cfg.max, newDist));
 
     // Parameter aktualisieren
-    const roundedDist = Math.round(newDist);
+    const roundedDist = Math.round(newDist * 100) / 100;
 
     if (dragType === 'fog') {
       params.wallDistance = roundedDist;
