@@ -57,6 +57,8 @@ function initMenuSearch(menu, fileList) {
     const searchInput = menuSearch.querySelector('input');
     if (!searchInput) return null;
 
+    const stopOverlay = menuSearch.querySelector('.menu-search-stop');
+    if (stopOverlay) stopOverlay.remove();
     searchInput.disabled = false;
     searchInput.placeholder = 'type what you want…';
     searchInput.setAttribute('aria-label', 'Menü durchsuchen');

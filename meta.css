@@ -654,20 +654,33 @@ button:focus {
                          calc(356px + (49.8px - 356px) * var(--loupe-on))) rotate(-45deg);
 }
 
-/* ⊘-Stoppschild bei Tap/Halten aufs deaktivierte Suchfeld (no-JS). --loupe-on springt beim
+/* ⊘-Stoppschild bei Tap/Halten aufs Overlay der Suchleiste (no-JS). --loupe-on springt beim
    Andrücken sofort auf 1 und fällt erst 0.4s NACH dem Loslassen auf 0 zurück (Transition
    mit Delay auf der Zahl): ein kurzer Tap fährt so komplett hinein, hält kurz und gleitet
    zurück; Halten hält das Schild; ein neuer Tap fährt von der aktuellen Position erneut hinein. */
 .menu-search {
     transition: --loupe-on 0s 0.4s;
 }
-.menu-search:has(input:disabled:active) {
+.menu-search:has(.menu-search-stop:active) {
     --loupe-on: 1;
     transition: --loupe-on 0s 0s;
 }
-.menu-search:has(input:disabled:active) .meta-loupe-lens,
-.menu-search:has(input:disabled:active) .meta-loupe-handle {
+.menu-search:has(.menu-search-stop:active) .meta-loupe-lens,
+.menu-search:has(.menu-search-stop:active) .meta-loupe-handle {
     transition: transform 0.13s ease;
+}
+
+/* Auslöser: nicht deaktiviertes, nicht fokussierbares Overlay über der Suchleiste (ein
+   disabled-Feld bekommt auf Android keine verlässlichen Touch-Ereignisse). meta.js entfernt
+   es, damit das echte Feld bedienbar ist. */
+.menu-search-stop {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Menü-Such-Lupe: 0+1-Konstrukt (quadratischer viewBox + preserveAspectRatio)
