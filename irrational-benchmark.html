@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>irrational benchmark</title>
+  <style>
+    body { background: var(--bg-color); color: var(--text-color); }
+    .bench { box-sizing: border-box; max-width: 38rem; margin: 0 auto; padding: 5rem 1.25rem 4rem; display: flex; flex-direction: column; gap: 1.6rem; }
+    h1 { margin: 0; text-align: center; font-size: 1.5rem; font-weight: 400; opacity: 0.85; }
+    .consts { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+    .consts button, .go {
+      font: inherit; color: var(--text-color); background: transparent;
+      border: 1px solid var(--ui-border); border-radius: 0.5rem; cursor: pointer;
+      min-width: 3.2rem; min-height: 2.75rem; padding: 0 1rem;
+    }
+    .consts button[aria-pressed="true"] { border-color: var(--ui-border-strong); background: var(--ui-fill-10); }
+    .consts button:disabled { cursor: default; opacity: 0.4; }
+    .consts button:hover:not(:disabled), .go:hover { border-color: var(--ui-border-strong); }
+    .consts button:focus-visible, .go:focus-visible { outline: 2px solid var(--ui-border-strong); outline-offset: 2px; }
+    .algo { text-align: center; font-size: 0.8rem; opacity: 0.5; margin: 0; }
+    .count { text-align: center; font-size: clamp(2rem, 9vw, 3.6rem); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; line-height: 1.1; }
+    .count small { display: block; font-size: 0.8rem; opacity: 0.5; letter-spacing: 0; margin-top: 0.4rem; }
+    .time { text-align: center; font-variant-numeric: tabular-nums; opacity: 0.7; margin-top: -1rem; }
+    .go { align-self: center; min-width: 9rem; min-height: 3rem; }
+    #curve { width: 100%; height: 13rem; display: block; border-top: 1px solid var(--ui-border-soft); border-bottom: 1px solid var(--ui-border-soft); }
+    .view { display: flex; flex-direction: column; gap: 0.2rem; }
+    .view .sym { font-size: 0.8rem; opacity: 0.5; min-height: 1.1em; }
+    #digits { width: 100%; height: 6.5rem; display: block; touch-action: pan-y; border-top: 1px solid var(--ui-border-soft); border-bottom: 1px solid var(--ui-border-soft); }
+    .view .ctrl-range { box-sizing: content-box; width: 100%; padding: 14px 0; background-clip: content-box; }
+    .view .ctrl-range::-webkit-slider-thumb { width: 24px; height: 24px; }
+    .view .ctrl-range::-moz-range-thumb { width: 24px; height: 24px; }
+    .marks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.4rem 1.5rem; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+    .marks li { display: flex; justify-content: space-between; border-bottom: 1px solid var(--ui-border-soft); padding-bottom: 0.2rem; }
+    .marks li span:first-child { opacity: 0.55; }
+    .limit { text-align: center; font-size: 0.9rem; margin: 0; }
+    .limit small { display: block; margin-top: 0.3rem; font-size: 0.75rem; opacity: 0.5; }
+    .error { text-align: center; font-size: 0.9rem; color: #e5484d; border: 1px solid #e5484d; border-radius: 0.5rem; padding: 0.75rem 1rem; margin: 0; overflow-wrap: anywhere; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="bench" id="bench">
+    <h1>irrational benchmark</h1>
+    <div class="consts" id="consts" role="group" aria-label="Konstante"></div>
+    <p class="algo" id="algo"></p>
+    <div class="count" id="count">0<small>Nachkommastellen</small></div>
+    <div class="time" id="time">0.00 s</div>
+    <button class="go" id="go" type="button">Start</button>
+    <section class="view" aria-label="Berechnete Stellen">
+      <span class="sym" id="sym"></span>
+      <canvas id="digits"></canvas>
+      <input type="range" class="ctrl-range" id="drift" min="-1" max="1" step="any" value="0" aria-label="Durch die Stellen scrollen">
+    </section>
+    <canvas id="curve" aria-label="Stellen über Zeit"></canvas>
+    <ul class="marks" id="marks"></ul>
+    <p class="limit" id="limit" hidden></p>
+    <p class="error" id="error" role="alert" hidden></p>
+  </main>
+
+  <script src="/tools/irrational.js"></script>
+  <script src="/tools/unfolding-view.js"></script>
+  <script>
+  (() => {
+    'use strict';
+
+    const CONSTS = Irrational.constants;
+    function constOf(id) { return CONSTS.find((k) => k.id === id); }
+    const STORE = 'irrationalBenchmark.v1';
+    const TAIL = 64;
+    const $ = (id) => document.getElementById(id);
+    const el = { consts: $('consts'), algo: $('algo'), count: $('count'), time: $('time'), go: $('go'), canvas: $('curve'), marks: $('marks'), digits: $('digits'), sym: $('sym'), drift: $('drift'), limit: $('limit'), error: $('error') };
+    const ctx = el.canvas.getContext('2d');
+    const latin1 = new TextDecoder('latin1');
+    const hooks = window.irrationalBenchmarkTest || {};
+
+    // Ergebnisobjekt: Grundlage fuer eine spaetere serverseitig geprueftes Ranking (Stufe 2); bleibt lokal.
+    // end: 'running' | 'stopped' | 'limit' | 'error'
+    let cid = CONSTS[0].id;
+    let result = null;
+    let handle = null;
+    let t0 = 0;
+    let pageError = null;
+    // Die Ansicht haelt alle berechneten Stellen der gemessenen Konstante (Bytes); sie rechnet nichts nach.
+    let view = null;
+    if (!hooks.noView) {
+      try { view = UnfoldingView.create(el.digits, { intPart: constOf(cid).intPart, drift: () => el.drift.value }); }
+      catch (e) { pageError = 'Ansicht nicht verfügbar: ' + e.message; console.error('[irrationalBenchmark] ' + pageError); }
+    }
+
+    const now = () => performance.now() - t0;
+
+    function fmtTime(ms) {
+      const s = ms / 1000;
+      if (s < 60) return s.toFixed(2) + ' s';
+      const m = Math.floor(s / 60), r = Math.floor(s % 60);
+      if (m < 60) return m + ':' + String(r).padStart(2, '0') + ' min';
+      return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') + ':' + String(r).padStart(2, '0') + ' h';
+    }
+    const fmtInt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+    function save(r) {
+      stored[r.constant] = r;
+      try { localStorage.setItem(STORE + '.' + r.constant, JSON.stringify(r)); }
+      catch (e) { console.warn('[irrationalBenchmark] Ergebnis nicht gespeichert: ' + e.message); }
+    }
+    function load(id) {
+      let raw = null;
+      try { raw = localStorage.getItem(STORE + '.' + id); } catch (e) { console.warn('[irrationalBenchmark] Speicher nicht lesbar: ' + e.message); }
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (e) { console.warn('[irrationalBenchmark] gespeichertes Ergebnis unlesbar: ' + e.message); return null; }
+    }
+
+    function newResult(id) {
+      return { constant: id, algorithm: constOf(id).algorithm, digits: 0, startedAt: new Date().toISOString(), elapsedMs: 0, marks: [], points: [], tail: '', tailFrom: 0, end: 'running', limit: null, error: null };
+    }
+
+    // ─── Zeichnen ───
+    // Gedaempfte Linienfarben je Konstante (feste Reihenfolge, Text bleibt in der Textfarbe, nur das Symbol am Linienende traegt die Farbe).
+    const LINE_COLORS = { pi: '#8ab4f8', e: '#e8a87c', ln2: '#8fd19e', sqrt2: '#c9a0dc', phi: '#e5c07b' };
+    const TIME_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 30000, 60000, 120000, 300000, 600000, 1800000, 3600000, 7200000, 21600000, 86400000];
+    const LABEL_GAP = 13;
+    let curveLabels = { axes: [], ticks: [], lines: [], width: 0, height: 0 };
+    const stored = {};
+    for (const k of CONSTS) stored[k.id] = load(k.id);
+
+    function fmtDigitsShort(n) {
+      if (n >= 1e9) return n / 1e9 + ' Mrd';
+      if (n >= 1e6) return n / 1e6 + ' M';
+      if (n >= 1e3) return n / 1e3 + 'k';
+      return String(n);
+    }
+    function fmtTick(ms) {
+      if (ms < 1000) return ms + ' ms';
+      if (ms < 60000) return ms / 1000 + ' s';
+      if (ms < 3600000) return ms / 60000 + ' min';
+      return ms / 3600000 + ' h';
+    }
+    const overlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+    function drawCurve() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = el.canvas.clientWidth, h = el.canvas.clientHeight;
+      if (el.canvas.width !== Math.round(w * dpr)) el.canvas.width = Math.round(w * dpr);
+      if (el.canvas.height !== Math.round(h * dpr)) el.canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      curveLabels = { axes: [], ticks: [], lines: [], width: w, height: h };
+      const cs = getComputedStyle(el.canvas);
+      const col = cs.color;
+      const series = [];
+      for (const k of CONSTS) {
+        const r = k.id === cid ? result : stored[k.id];
+        if (r && r.points.length) series.push({ k, r, sel: k.id === cid });
+      }
+      if (!series.length) return;
+      const FS = 11;
+      const padL = 40, padR = 38, padT = 20, padB = 30;
+      const pw = w - padL - padR, ph = h - padT - padB;
+      let tMax = 1, dLo = Infinity, dHi = 10;
+      for (const { r } of series) {
+        const last = r.points[r.points.length - 1];
+        tMax = Math.max(tMax, r.end === 'running' ? now() : r.elapsedMs, last[0]);
+        dLo = Math.min(dLo, Math.max(1, r.points[0][1]));
+        dHi = Math.max(dHi, last[1]);
+      }
+      const yMin = Math.log10(dLo / 2), yMax = Math.log10(dHi) + 0.15;
+      const X = (t) => padL + (t / tMax) * pw;
+      const Y = (d) => padT + ph - ((Math.log10(Math.max(1, d)) - yMin) / (yMax - yMin)) * ph;
+      ctx.save();
+      ctx.font = FS + 'px ' + cs.fontFamily;
+      ctx.textBaseline = 'middle';
+      const boxes = [];
+      const put = (text, x, y, align, bucket, extra) => {
+        const tw = ctx.measureText(text).width;
+        const x0 = align === 'right' ? x - tw : align === 'center' ? x - tw / 2 : x;
+        const box = { x0, y0: y - FS / 2 - 1, x1: x0 + tw, y1: y + FS / 2 + 1 };
+        if (box.x0 < 0 || box.x1 > w || box.y0 < 0 || box.y1 > h) return null;
+        if (bucket === 'ticks' && boxes.some((b) => overlap(b, { x0: box.x0 - 4, y0: box.y0, x1: box.x1 + 4, y1: box.y1 }))) return null;
+        boxes.push(box);
+        return Object.assign({ text, x, y, box }, extra);
+      };
+      const draw = (l, color, alpha) => {
+        ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.textAlign = l.align;
+        ctx.fillText(l.text, l.x, l.y);
+      };
+      // Achsentitel
+      const ax = [
+        put('Stellen', 2, FS / 2 + 1, 'left', 'axes', { axis: 'y', align: 'left' }),
+        put('Zeit', w - 2, h - FS / 2 - 1, 'right', 'axes', { axis: 'x', align: 'right' }),
+      ].filter(Boolean);
+      curveLabels.axes = ax;
+      // Achsen und leises Raster
+      ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.moveTo(padL + 0.5, padT); ctx.lineTo(padL + 0.5, padT + ph + 0.5); ctx.lineTo(w - padR, padT + ph + 0.5);
+      ctx.stroke();
+      // y-Ticks: Zehnerpotenzen, hoechstens 4
+      const decades = [];
+      for (let k = Math.ceil(yMin); k <= yMax; k++) decades.push(k);
+      const stride = Math.max(1, Math.ceil(decades.length / 4));
+      const yTicks = decades.filter((k, i) => i % stride === (decades.length - 1) % stride);
+      ctx.globalAlpha = 0.07;
+      for (const k of yTicks) {
+        const y = Math.round(Y(Math.pow(10, k))) + 0.5;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      }
+      for (const k of yTicks) {
+        const v = Math.pow(10, k);
+        const t = put(fmtDigitsShort(v), padL - 6, Y(v), 'right', 'ticks', { axis: 'y', value: v, align: 'right' });
+        if (t) curveLabels.ticks.push(t);
+      }
+      // x-Ticks: schoene Zeitschritte, hoechstens 3
+      const step = TIME_STEPS.find((s) => Math.floor(tMax / s) <= 3) || TIME_STEPS[TIME_STEPS.length - 1];
+      for (let v = step; v <= tMax; v += step) {
+        const t = put(fmtTick(v), X(v), h - padB + 12, 'center', 'ticks', { axis: 'x', value: v, align: 'center' });
+        if (t) curveLabels.ticks.push(t);
+      }
+      ctx.globalAlpha = 0.22;
+      for (const t of curveLabels.ticks) {
+        ctx.beginPath();
+        if (t.axis === 'x') { const x = Math.round(t.x) + 0.5; ctx.moveTo(x, padT + ph); ctx.lineTo(x, padT + ph + 3); }
+        else { const y = Math.round(t.y) + 0.5; ctx.moveTo(padL - 3, y); ctx.lineTo(padL, y); }
+        ctx.stroke();
+      }
+      ctx.fillStyle = col;
+      for (const l of ax) draw(l, col, 0.55);
+      for (const l of curveLabels.ticks) draw(l, col, 0.55);
+      // Linien
+      ctx.lineJoin = 'round';
+      for (const { k, r, sel } of [...series].sort((a, b) => a.sel - b.sel)) {
+        const c = LINE_COLORS[k.id] || col;
+        ctx.strokeStyle = c; ctx.fillStyle = c;
+        ctx.globalAlpha = sel ? 0.9 : 0.5; ctx.lineWidth = sel ? 1.5 : 1.2;
+        ctx.beginPath();
+        r.points.forEach(([t, d], i) => { if (i) ctx.lineTo(X(t), Y(d)); else ctx.moveTo(X(t), Y(d)); });
+        ctx.stroke();
+        if (sel) for (const [t, d] of r.points) { ctx.beginPath(); ctx.arc(X(t), Y(d), 2.2, 0, 7); ctx.fill(); }
+      }
+      // Direktbeschriftung: rechts neben dem Endpunkt der eigenen Linie, gleiche Hoehe. Nur wer mit einem anderen Label
+      // kollidiert (Boxen ueberlappen in x und y), weicht senkrecht aus; dann zeigt eine duenne Linie zum Endpunkt.
+      ctx.font = (FS + 1) + 'px ' + cs.fontFamily;
+      const ends = series.map(({ k, r, sel }) => {
+        const [t, d] = r.points[r.points.length - 1];
+        const tw = ctx.measureText(k.symbol).width;
+        const ex = X(t), ey = Y(d);
+        const x = Math.max(ex + 4, Math.min(ex + 6, w - 2 - tw));
+        return { k, sel, ex, ey, x, y: ey, tw };
+      }).sort((a, b) => a.ey - b.ey);
+      const yLo = padT + FS / 2 + 1, yHi = padT + ph - FS / 2;
+      const xover = (a, b) => a.x < b.x + b.tw && b.x < a.x + a.tw;
+      for (let i = 0; i < ends.length; i++) {
+        let y = Math.max(yLo, ends[i].y);
+        for (let j = 0; j < i; j++) if (xover(ends[i], ends[j])) y = Math.max(y, ends[j].y + LABEL_GAP);
+        ends[i].y = y;
+      }
+      for (let i = ends.length - 1; i >= 0; i--) {
+        let y = Math.min(yHi, ends[i].y);
+        for (let j = i + 1; j < ends.length; j++) if (xover(ends[i], ends[j])) y = Math.min(y, ends[j].y - LABEL_GAP);
+        ends[i].y = y;
+      }
+      for (const e of ends) {
+        const color = LINE_COLORS[e.k.id] || col;
+        const box = { x0: e.x, y0: e.y - FS / 2 - 1, x1: e.x + e.tw, y1: e.y + FS / 2 + 1 };
+        const leader = Math.abs(e.y - e.ey) > 3;
+        const l = { text: e.k.symbol, id: e.k.id, x: e.x, y: e.y, box, align: 'left', endX: e.ex, endY: e.ey, leader };
+        curveLabels.lines.push(l);
+        if (leader) {
+          ctx.strokeStyle = color; ctx.lineWidth = 0.75; ctx.globalAlpha = 0.6;
+          ctx.beginPath(); ctx.moveTo(e.ex, e.ey); ctx.lineTo(e.x - 1, e.y); ctx.stroke();
+        }
+        ctx.textAlign = 'left'; ctx.fillStyle = color; ctx.globalAlpha = e.sel ? 1 : 0.8;
+        ctx.fillText(l.text, l.x, l.y);
+      }
+      ctx.restore();
+    }
+
+    function renderMarks() {
+      el.marks.textContent = '';
+      for (const m of result ? result.marks : []) {
+        const li = document.createElement('li');
+        const a = document.createElement('span'); a.textContent = '10' + String(m.exp).split('').map((c) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[c]).join('');
+        const b = document.createElement('span'); b.textContent = fmtTime(m.ms);
+        li.append(a, b);
+        el.marks.appendChild(li);
+      }
+    }
+
+    function render() {
+      const running = result && result.end === 'running';
+      for (const b of el.consts.children) { b.setAttribute('aria-pressed', String(b.dataset.id === cid)); b.disabled = !!running; }
+      el.algo.textContent = constOf(cid).algorithm;
+      el.count.firstChild.nodeValue = fmtInt(result ? result.digits : 0);
+      el.time.textContent = fmtTime(result ? (running ? now() : result.elapsedMs) : 0);
+      el.go.textContent = running ? 'Stopp' : 'Start';
+      const lim = result && result.end === 'limit' ? result.limit : null;
+      el.limit.hidden = !lim;
+      if (lim) {
+        el.limit.textContent = '';
+        const main = document.createTextNode(fmtInt(lim.digits) + ' Stellen: ' + (lim.kind === 'device' ? 'Grenze des Geräts (Speicher)' : 'Grenze des Browsers'));
+        const small = document.createElement('small'); small.textContent = lim.reason;
+        el.limit.append(main, small);
+      }
+      const msg = pageError || (result && result.end === 'error' ? 'Fehler: ' + result.error.split('\n')[0] : null);
+      el.error.hidden = !msg;
+      if (msg) el.error.textContent = msg;
+      renderMarks();
+      drawCurve();
+    }
+
+    // ─── Ansicht ───
+    function coupleView(id) {
+      el.sym.textContent = constOf(id).symbol;
+      if (!view) return;
+      view.setDigits(constOf(id).intPart, '');
+      view.rewind();
+      el.drift.value = 0;
+    }
+    function feedView(u8, offset) {
+      if (!view) return true;
+      try { view.appendDigits(u8, offset); return true; }
+      catch (e) {
+        console.error('[irrationalBenchmark] Ansicht: ' + e.message);
+        if (e instanceof RangeError) {
+          // Speicher fuer die Stellen ist erschoepft: Grenze des Geraets, kein Programmfehler.
+          result.digits = view.state().chainLength - 2;
+          result.limit = { kind: 'device', reason: e.message, digits: result.digits };
+          finish('limit');
+        } else {
+          result.error = e.message; finish('error');
+        }
+        return false;
+      }
+    }
+
+    // ─── Lauf ───
+    function finish(end) {
+      if (!result || result.end !== 'running') return;
+      result.end = end;
+      result.elapsedMs = now();
+      if (handle) { handle.close(); handle = null; }
+      save(result);
+      render();
+    }
+
+    function onDigits(u8, offset) {
+      if (!result || result.end !== 'running') return;
+      const total = offset + u8.length;
+      if (!feedView(u8, offset)) return;
+      const keep = u8.subarray(Math.max(0, u8.length - TAIL));
+      result.tail = latin1.decode(keep);
+      result.tailFrom = total - keep.length;
+      result.digits = total;
+      const t = now();
+      result.points.push([t, total]);
+      for (let exp = 5; Math.pow(10, exp) <= total; exp++) {
+        if (!result.marks.some((m) => m.exp === exp)) result.marks.push({ exp, digits: Math.pow(10, exp), reached: total, ms: t });
+      }
+      render();
+      if (handle) handle.want(total + 1);   // naechste Stufe; der Worker verdoppelt selbst
+    }
+
+    function start() {
+      if (handle) { handle.close(); handle = null; }
+      result = newResult(cid);
+      coupleView(cid);
+      t0 = performance.now();
+      try {
+        handle = Irrational.open(cid, {
+          onDigits,
+          onLimit: (lim) => { if (result.end === 'running') { result.limit = { kind: lim.kind, reason: lim.reason, digits: lim.digits }; finish('limit'); } },
+          onNotice: (msg) => console.warn('[irrationalBenchmark] ' + msg),
+          onError: (e) => { if (result.end === 'running') { result.error = e.message; finish('error'); } },
+        }, window.irrationalBenchmarkTest);
+      } catch (e) {
+        result.error = e.message; finish('error'); return;
+      }
+      render();
+      handle.want(1);
+    }
+
+    function select(id) {
+      if (result && result.end === 'running') return;
+      cid = id;
+      coupleView(id);
+      result = load(id);
+      render();
+    }
+
+    // ─── Boot ───
+    for (const k of CONSTS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.id = k.id; b.textContent = k.symbol; b.title = k.name;
+      b.addEventListener('click', () => select(k.id));
+      el.consts.appendChild(b);
+    }
+    el.go.addEventListener('click', () => { if (result && result.end === 'running') finish('stopped'); else start(); });
+    setInterval(() => { if (result && result.end === 'running') { el.time.textContent = fmtTime(now()); drawCurve(); } }, 250);
+    window.addEventListener('resize', drawCurve);
+    coupleView(cid);
+    result = load(cid);
+    render();
+
+    // Nur lesende Zustandsabfrage fuer Tests.
+    window.irrationalBenchmark = {
+      state() {
+        return JSON.parse(JSON.stringify({
+          constant: cid, running: !!result && result.end === 'running',
+          end: result ? result.end : 'idle', digits: result ? result.digits : 0,
+          marks: result ? result.marks : [], points: result ? result.points : [],
+          limit: result ? result.limit : null, error: result ? result.error : null,
+          elapsedMs: result ? (result.end === 'running' ? now() : result.elapsedMs) : 0,
+          tail: result ? result.tail : '',
+          view: view ? (() => { const v = view.state(); return { symbol: el.sym.textContent, digits: v.chainLength - 2, startIndex: v.startIndex, endIndex: v.endIndex, drawnCount: v.drawnCount, velocity: v.velocity }; })() : null,
+        }));
+      },
+      labels() { return JSON.parse(JSON.stringify(curveLabels)); },
+      viewDigits() { return view ? view.digits() : ''; },
+    };
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>

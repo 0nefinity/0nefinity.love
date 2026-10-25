@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>0necanvas — Atelier · Design-Mockup</title>
+<style>
+/* =====================================================================
+   0necanvas — Entwurf "Atelier"
+   These: Das Werk ist der Star. Die Leinwand füllt immer den ganzen
+   Schirm. Interface existiert in drei leisen Schichten, die erscheinen,
+   wenn man sie ruft — und weichen, wenn man arbeitet.
+   ===================================================================== */
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --accent: #a8b8e8;
+  --font: Verdana, Geneva, Tahoma, sans-serif;
+  --serif: Georgia, "Times New Roman", serif;
+  --t-90: color-mix(in srgb, var(--fg) 90%, transparent);
+  --t-70: color-mix(in srgb, var(--fg) 70%, transparent);
+  --t-55: color-mix(in srgb, var(--fg) 55%, transparent);
+  --t-40: color-mix(in srgb, var(--fg) 40%, transparent);
+  --t-25: color-mix(in srgb, var(--fg) 25%, transparent);
+  --line-soft: color-mix(in srgb, var(--fg) 8%, transparent);
+  --line: color-mix(in srgb, var(--fg) 16%, transparent);
+  --line-strong: color-mix(in srgb, var(--fg) 32%, transparent);
+  --fill-05: color-mix(in srgb, var(--fg) 5%, transparent);
+  --fill-08: color-mix(in srgb, var(--fg) 8%, transparent);
+  --fill-12: color-mix(in srgb, var(--fg) 12%, transparent);
+  --surface: color-mix(in srgb, #06060a 88%, transparent);
+  --surface-strong: color-mix(in srgb, #050508 94%, transparent);
+  --acc-28: color-mix(in srgb, var(--accent) 28%, transparent);
+  --acc-45: color-mix(in srgb, var(--accent) 45%, transparent);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  overscroll-behavior: none;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ---------- Bühne ---------- */
+#stage { position: fixed; inset: 0; }
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#stage.tool-draw   { cursor: crosshair; }
+#stage.tool-warp   { cursor: grab; }
+#stage.tool-move   { cursor: default; }
+
+/* ---------- Chrome: Grundverhalten (erscheinen / weichen) ---------- */
+.ui {
+  transition: opacity 0.7s ease;
+}
+body.idle .ui { opacity: 0.05; }
+body.idle .ui.stay { opacity: 1; }
+body.idle #dock, body.idle #chip.show, body.idle #selframe.show { opacity: 0.1; }
+#dock, #chip, #selframe { transition: opacity 0.7s ease; }
+body.focus .ui { opacity: 0; pointer-events: none; }
+
+/* ---------- Wortmarke ---------- */
+#wordmark {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top, 0px));
+  left: 18px;
+  z-index: 30;
+  font-size: 0.82rem;
+  letter-spacing: 0.26em;
+  color: var(--t-55);
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+}
+#wordmark b { font-weight: normal; color: var(--fg); }
+#wordmark .sep { color: var(--t-25); margin: 0 0.4em; }
+#wordmark:hover { color: var(--t-90); }
+
+/* ---------- Stille Aktionen oben rechts ---------- */
+#corner {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--t-55);
+  font-size: 1.05rem;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.icon-btn:hover { color: var(--fg); background: var(--fill-05); }
+.icon-btn:active { transform: scale(0.94); }
+#corner .gap { width: 10px; height: 20px; border-left: 1px solid var(--line-soft); margin: 0 4px 0 8px; }
+
+/* ---------- Werkzeug-Kapsel unten mittig ---------- */
+#capsule {
+  position: fixed;
+  bottom: calc(16px + var(--safe-b));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 32;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.tool {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  min-height: 42px;
+  padding: 0 1.05rem;
+  border-radius: 999px;
+  color: var(--t-55);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  transition: color 0.15s ease, background 0.15s ease;
+  user-select: none;
+}
+.tool .t-ico { font-size: 1rem; line-height: 1; }
+.tool:hover { color: var(--t-90); }
+.tool.active {
+  color: var(--fg);
+  background: var(--fill-08);
+  box-shadow: inset 0 0 0 1px var(--acc-28), 0 0 18px -6px var(--acc-45);
+}
+.tool.active .t-ico { color: var(--accent); }
+
+/* ---------- Der Stapel: Wirbelsäule am rechten Rand ---------- */
+#spine {
+  position: fixed;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+#spine:hover { border-color: var(--line-soft); background: var(--surface); }
+#spine-add {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--t-70);
+  font-size: 1.2rem;
+  line-height: 1;
+  padding-bottom: 2px;
+  margin-bottom: 6px;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+#spine-add:hover { color: var(--fg); border-color: var(--line-strong); background: var(--fill-05); }
+.vertebra {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--t-40);
+  font-size: 0.82rem;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.vertebra:hover { color: var(--t-90); background: var(--fill-05); }
+.vertebra.kraft { color: color-mix(in srgb, var(--accent) 75%, transparent); }
+.vertebra.selected {
+  color: var(--fg);
+  background: var(--fill-08);
+  box-shadow: inset 0 0 0 1px var(--acc-28);
+}
+.vertebra.hidden-block { opacity: 0.28; }
+/* Wirkungs-Faden: eine Kraft strahlt nach unten */
+.vertebra.kraft::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 3px);
+  width: 1px;
+  height: 10px;
+  background: linear-gradient(var(--acc-45), transparent);
+  pointer-events: none;
+}
+.vertebra.pulse { animation: vpulse 0.9s ease; }
+@keyframes vpulse {
+  0% { box-shadow: inset 0 0 0 1px var(--accent), 0 0 22px -4px var(--accent); color: var(--fg); }
+  100% { box-shadow: none; }
+}
+#spine-hint {
+  margin-top: 6px;
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  color: var(--t-25);
+  writing-mode: vertical-rl;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ---------- Stapel ausgeklappt ---------- */
+#stack-panel {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%) translateX(14px);
+  z-index: 40;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+#stack-panel.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.95rem 1rem 0.15rem 1.15rem;
+}
+.panel-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t-70);
+  user-select: none;
+}
+.panel-sub {
+  padding: 0 1.15rem 0.65rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--t-40);
+  user-select: none;
+}
+.panel-sub .down { color: var(--acc-45); }
+#stack-close, #stack-add { width: 34px; height: 34px; border-radius: 8px; color: var(--t-40); font-size: 0.85rem; display:grid; place-items:center; }
+#stack-add { font-size: 1.15rem; padding-bottom: 2px; }
+#stack-close:hover, #stack-add:hover { color: var(--fg); background: var(--fill-05); }
+#stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.55rem 0.6rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 46px;
+  padding: 0 0.4rem 0 0.2rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.2s ease;
+}
+.row + .row { margin-top: 2px; }
+.row:hover { background: var(--fill-05); }
+.row.selected { background: var(--fill-08); border-color: var(--acc-28); }
+.row.hidden-block { opacity: 0.4; }
+.row.in-scope::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(var(--acc-45), color-mix(in srgb, var(--accent) 12%, transparent));
+}
+.row .grip { color: var(--t-25); font-size: 0.78rem; cursor: grab; padding: 0 2px; }
+.row .r-ico { width: 24px; text-align: center; font-size: 0.88rem; color: var(--t-55); }
+.row.k-kraft .r-ico { color: var(--accent); }
+.row .r-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.row .r-kind { font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--t-40); }
+.row.k-kraft .r-kind { color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.row .r-name { font-size: 0.86rem; color: var(--t-90); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .r-act {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  color: var(--t-40);
+  font-size: 0.82rem;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.row:hover .r-act, .row.selected .r-act { opacity: 1; }
+.row .r-act:hover { color: var(--fg); background: var(--fill-08); }
+@media (hover: none) { .row .r-act { opacity: 1; } }
+.scope-note {
+  margin: 0.15rem 0.6rem 0.35rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.66rem;
+  color: color-mix(in srgb, var(--accent) 70%, var(--fg));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 8px;
+  display: none;
+  user-select: none;
+}
+#stack-panel.kraft-selected .scope-note { display: block; }
+
+/* ---------- Bibliothek ---------- */
+#library {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  width: min(400px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-strong);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border-left: 1px solid var(--line-soft);
+  transform: translateX(102%);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.3, 1);
+}
+#library.open { transform: translateX(0); }
+#library .panel-head { padding: 1.15rem 1rem 0.2rem 1.35rem; }
+#library .panel-sub { padding: 0 1.35rem 0.9rem; }
+#lib-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 1.15rem 1.4rem; }
+.fam { margin-bottom: 1.4rem; }
+.fam-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0.2rem 0.55rem;
+  position: sticky;
+  top: 0;
+  background: linear-gradient(color-mix(in srgb, #050508 96%, transparent) 70%, transparent);
+  z-index: 2;
+  user-select: none;
+}
+.fam-name { font-size: 0.7rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--t-70); }
+.fam.kraefte .fam-name { color: var(--accent); }
+.fam-desc { font-size: 0.66rem; color: var(--t-40); letter-spacing: 0.02em; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.5rem 0.8rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+  background: var(--fill-05);
+  color: var(--t-70);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+.tile:hover { border-color: var(--acc-28); background: var(--fill-08); color: var(--fg); }
+.tile:active { transform: scale(0.97); }
+.tile svg { width: 40px; height: 40px; overflow: visible; color: var(--t-55); transition: color 0.15s ease; }
+.tile:hover svg { color: var(--accent); }
+.tile .tl-name { font-size: 0.74rem; letter-spacing: 0.03em; }
+.tile .tl-sub { font-size: 0.6rem; color: var(--t-40); text-align: center; line-height: 1.35; min-height: 2em; }
+.fam.kraefte .tile svg { color: color-mix(in srgb, var(--accent) 60%, var(--t-55)); }
+/* lebendige Vorschauen */
+.tile svg .spin   { transform-origin: center; animation: tspin 14s linear infinite; }
+.tile svg .breathe{ animation: tbreathe 3.6s ease-in-out infinite; }
+.tile svg .blink1 { animation: tblink 2.4s steps(1) infinite; }
+.tile svg .blink2 { animation: tblink 2.4s steps(1) 1.2s infinite; }
+.tile svg .flow   { stroke-dasharray: 5 4; animation: tflow 4s linear infinite; }
+@keyframes tspin { to { transform: rotate(360deg); } }
+@keyframes tbreathe { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
+@keyframes tblink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0.15; } }
+@keyframes tflow { to { stroke-dashoffset: -36; } }
+#lib-backdrop {
+  position: fixed; inset: 0; z-index: 55;
+  background: color-mix(in srgb, #000 45%, transparent);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+#lib-backdrop.show { opacity: 1; pointer-events: auto; }
+
+/* ---------- Auswahl auf der Leinwand ---------- */
+#selframe {
+  position: fixed;
+  z-index: 20;
+  border: 1px solid var(--acc-45);
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  box-shadow: 0 0 30px -12px var(--acc-45);
+}
+#selframe.show { opacity: 1; }
+#selframe i {
+  position: absolute;
+  width: 7px; height: 7px;
+  border: 1px solid var(--accent);
+  background: #000;
+}
+#selframe i:nth-child(1) { top: -4px; left: -4px; }
+#selframe i:nth-child(2) { top: -4px; right: -4px; }
+#selframe i:nth-child(3) { bottom: -4px; left: -4px; }
+#selframe i:nth-child(4) { bottom: -4px; right: -4px; }
+
+#chip {
+  position: fixed;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 3px 4px 3px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  white-space: nowrap;
+}
+#chip.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+#chip .c-ico { color: var(--accent); font-size: 0.82rem; margin-right: 0.45em; }
+#chip .c-name { font-size: 0.8rem; color: var(--t-90); margin-right: 0.35em; }
+#chip .c-kind { font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--t-40); margin-right: 0.5em; }
+#chip .c-div { width: 1px; height: 16px; background: var(--line-soft); margin: 0 4px; }
+#chip button {
+  min-width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  color: var(--t-55);
+  font-size: 0.82rem;
+  padding: 0 8px;
+}
+#chip button:hover { color: var(--fg); background: var(--fill-08); }
+#chip .c-regler { font-size: 0.72rem; letter-spacing: 0.08em; }
+
+/* ---------- Regie: Kontext-Rahmen + echtes controls.js-Panel ----------
+   Das Innenleben (Zeilen, Slider, Stepper, Header-Griff) ist das
+   bestehende controls.js-Panel — hier nur positioniert und gerahmt. */
+#dock {
+  position: fixed;
+  left: 16px;
+  bottom: calc(16px + var(--safe-b));
+  z-index: 45;
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+#dock.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+#dock-context {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  user-select: none;
+}
+#dock-context .d-ico { color: var(--accent); font-size: 0.95rem; }
+#dock-context .d-name { font-size: 0.88rem; color: var(--fg); }
+#dock-context .d-meta { font-size: 0.64rem; color: var(--t-40); letter-spacing: 0.04em; margin-left: auto; text-align: right; line-height: 1.4; }
+#dock-context .d-meta .down { color: var(--acc-45); }
+#dock-close {
+  width: 32px; height: 32px;
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  color: var(--t-40);
+  font-size: 0.8rem;
+}
+#dock-close:hover { color: var(--fg); background: var(--fill-05); }
+
+/* — ab hier: 1:1 die Optik des bestehenden ctrl-panels — */
+#ctrl {
+  border: 1px solid var(--line-soft);
+  border-radius: 0 0 14px 14px;
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 0 1rem 0.8rem;
+  max-height: 44vh;
+  overflow-y: auto;
+}
+.ctrl-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0.3rem 0 0.35rem;
+}
+.ctrl-drag { width: 40px; height: 4px; border-radius: 2px; background: var(--t-40); }
+.ctrl-hbtns { position: absolute; right: 0; display: flex; gap: 4px; }
+.ctrl-hbtn { width: 28px; height: 28px; display: grid; place-items: center; color: var(--t-55); font-size: 0.85rem; border-radius: 6px; }
+.ctrl-hbtn:hover { color: var(--fg); background: var(--fill-05); }
+.ctrl-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  column-gap: 0.65rem;
+  align-items: center;
+  min-height: 34px;
+  margin-bottom: 0.4rem;
+}
+.ctrl-row:last-child { margin-bottom: 0; }
+.ctrl-label {
+  font-size: 12px;
+  color: var(--t-70);
+  text-align: right;
+  line-height: 1.15;
+  user-select: none;
+}
+.ctrl-group { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
+.ctrl-step {
+  width: 30px; height: 30px;
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  color: var(--t-55);
+  font-size: 1.25rem;
+  font-weight: 300;
+  border-radius: 50%;
+  line-height: 1;
+  padding-bottom: 3px;
+}
+.ctrl-step:hover { color: var(--fg); }
+.ctrl-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 6px;
+  background: var(--fill-12);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+.ctrl-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  background: var(--fg);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.ctrl-range::-moz-range-thumb {
+  width: 16px; height: 16px;
+  background: var(--fg);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.ctrl-range::-moz-range-track { height: 6px; background: var(--fill-12); border-radius: 3px; }
+.ctrl-val {
+  width: 3.2em;
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--t-90);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.ctrl-select {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 13px;
+  color: var(--t-90);
+  background: var(--fill-08);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: left;
+}
+.ctrl-select:hover { background: var(--fill-12); border-color: var(--line-strong); }
+.ctrl-select .caret {
+  width: 0.5rem; height: 0.5rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  opacity: 0.8;
+  flex: 0 0 auto;
+}
+
+/* ---------- Flüstern (Onboarding) ---------- */
+.whisper {
+  position: fixed;
+  z-index: 25;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: var(--t-55);
+  user-select: none;
+  pointer-events: none;
+  text-align: center;
+  line-height: 1.7;
+  transition: opacity 0.9s ease;
+}
+.whisper .w-key { color: var(--accent); }
+body.worked .whisper { opacity: 0; }
+#whisper-center {
+  left: 50%;
+  top: 24%;
+  transform: translateX(-50%);
+  animation: wfloat 5s ease-in-out infinite;
+}
+#whisper-tools { left: 50%; bottom: calc(76px + var(--safe-b)); transform: translateX(-50%); }
+#whisper-stack {
+  right: 64px;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: right;
+}
+@keyframes wfloat { 0%,100% { margin-top: 0; } 50% { margin-top: -6px; } }
+
+/* ---------- Toast ---------- */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + var(--safe-b));
+  transform: translate(-50%, 8px);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.78rem;
+  color: var(--t-90);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  max-width: calc(100vw - 32px);
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+#toast .undo { color: var(--accent); font-size: 0.78rem; letter-spacing: 0.06em; }
+#toast .undo:hover { text-decoration: underline; }
+
+/* ---------- Fokus-Modus ---------- */
+#focus-exit {
+  position: fixed;
+  right: 22px;
+  bottom: calc(22px + var(--safe-b));
+  z-index: 80;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--acc-45);
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  animation: fbreathe 3s ease-in-out infinite;
+}
+body.focus #focus-exit { opacity: 1; pointer-events: auto; }
+@keyframes fbreathe {
+  0%,100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 14px 0 var(--acc-28); }
+}
+
+/* ---------- Mobile: Pillen + Sheets ---------- */
+#m-stack-pill, #m-add-pill { display: none; }
+
+@media (max-width: 720px) {
+  #spine, #spine-hint { display: none; }
+  #whisper-stack { display: none; }
+  #wordmark { font-size: 0.72rem; letter-spacing: 0.2em; }
+  #corner .desktop-only { display: none; }
+
+  #capsule { bottom: calc(14px + var(--safe-b)); }
+  .tool { padding: 0 0.8rem; flex-direction: column; gap: 2px; justify-content: center; min-height: 48px; }
+  .tool .t-name { font-size: 0.6rem; letter-spacing: 0.04em; }
+  .tool .t-ico { font-size: 1.05rem; }
+
+  #m-stack-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    position: fixed;
+    left: 12px;
+    bottom: calc(18px + var(--safe-b));
+    z-index: 32;
+    min-height: 46px;
+    padding: 0 1rem;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    color: var(--t-70);
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  #m-stack-pill .n { color: var(--accent); }
+  #m-add-pill {
+    display: grid;
+    place-items: center;
+    position: fixed;
+    right: 12px;
+    bottom: calc(18px + var(--safe-b));
+    z-index: 32;
+    width: 46px; height: 46px;
+    font-size: 1.25rem;
+    padding-bottom: 2px;
+    color: var(--t-90);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  /* Stapel + Bibliothek + Regie als Bottom-Sheets */
+  #stack-panel {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100vw;
+    max-height: 62vh;
+    max-height: 62dvh;
+    border-radius: 18px 18px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    transform: translateY(14px);
+  }
+  #stack-panel.open { transform: translateY(0); }
+  #stack-panel::before {
+    content: '';
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--t-25);
+    margin: 10px auto 0;
+  }
+
+  #library {
+    top: auto;
+    width: 100vw;
+    max-height: 76vh;
+    max-height: 76dvh;
+    height: auto;
+    border-left: none;
+    border-top: 1px solid var(--line-soft);
+    border-radius: 18px 18px 0 0;
+    transform: translateY(103%);
+  }
+  #library.open { transform: translateY(0); }
+  #library::before {
+    content: '';
+    display: block;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--t-25);
+    margin: 10px auto 0;
+  }
+  .tiles { grid-template-columns: 1fr 1fr; }
+
+  #dock {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    transform: translateY(14px);
+  }
+  #dock.open { transform: translateY(0); }
+  #dock-context { border-radius: 18px 18px 0 0; border-left: none; border-right: none; padding-top: 0.7rem; }
+  #ctrl { border-radius: 0; border: none; border-top: 1px solid var(--line-soft); max-height: 34vh; padding-bottom: calc(0.8rem + var(--safe-b)); }
+  #whisper-center { top: 18%; width: 86vw; }
+  #whisper-tools { display: none; }
+
+  /* Regie-Sheet offen: die untere Leiste weicht dem Werkraum */
+  body.dock-open #capsule,
+  body.dock-open #m-stack-pill,
+  body.dock-open #m-add-pill { opacity: 0; pointer-events: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="stage" class="tool-move">
+  <canvas id="scene"></canvas>
+</div>
+
+<!-- Auswahl-Rahmen + Kontext-Chip (Schicht 2: erscheint am Objekt) -->
+<div id="selframe"><i></i><i></i><i></i><i></i></div>
+<div id="chip">
+  <span class="c-ico" id="chip-ico">◆</span><span class="c-name" id="chip-name">Kurve</span><span class="c-kind" id="chip-kind">Ding</span>
+  <span class="c-div"></span>
+  <button class="c-regler" id="chip-regler" title="Regler öffnen">Regler</button>
+  <button id="chip-dup" title="Duplizieren" aria-label="Duplizieren">⧉</button>
+  <button id="chip-del" title="Löschen" aria-label="Löschen">✕</button>
+</div>
+
+<!-- Schicht 1: stiller Rand -->
+<a id="wordmark" class="ui" href="/"><b>0nefinity</b><span class="sep">—</span>canvas</a>
+
+<div id="corner" class="ui">
+  <button class="icon-btn" title="Einpassen" aria-label="Einpassen">⊡</button>
+  <button class="icon-btn desktop-only" title="Neue Szene" aria-label="Neue Szene">∅</button>
+  <button class="icon-btn" title="Als PNG exportieren" aria-label="Als PNG exportieren">⤓</button>
+  <button class="icon-btn desktop-only" title="Teilen — Szene liegt in der URL" aria-label="Teilen">⧉</button>
+  <span class="gap"></span>
+  <button class="icon-btn" id="btn-focus" title="Fokus — nur das Werk" aria-label="Fokus">◐</button>
+  <button class="icon-btn desktop-only" title="Vollbild" aria-label="Vollbild">⛶</button>
+</div>
+
+<div id="capsule" class="ui">
+  <button class="tool active" data-tool="move" aria-label="Werkzeug Bewegen">
+    <span class="t-ico">✥</span><span class="t-name">Bewegen</span>
+  </button>
+  <button class="tool" data-tool="warp" aria-label="Werkzeug Verzerren">
+    <span class="t-ico">≈</span><span class="t-name">Verzerren</span>
+  </button>
+  <button class="tool" data-tool="draw" aria-label="Werkzeug Zeichnen">
+    <span class="t-ico">✎</span><span class="t-name">Zeichnen</span>
+  </button>
+</div>
+
+<!-- Der Stapel als Wirbelsäule -->
+<div id="spine" class="ui" role="navigation" aria-label="Stapel">
+  <button id="spine-add" title="Baustein hinzufügen" aria-label="Baustein hinzufügen">+</button>
+  <div id="spine-list"></div>
+  <span id="spine-hint">Stapel</span>
+</div>
+
+<!-- Mobile Pillen -->
+<button id="m-stack-pill" class="ui">Stapel <span class="n" id="m-stack-n">5</span></button>
+<button id="m-add-pill" class="ui" aria-label="Baustein hinzufügen">+</button>
+
+<!-- Stapel ausgeklappt -->
+<section id="stack-panel" aria-label="Stapel — Bausteine">
+  <div class="panel-head">
+    <span class="panel-title">Stapel</span>
+    <span style="display:flex;align-items:center;gap:2px;">
+      <button id="stack-add" aria-label="Baustein hinzufügen" title="Baustein hinzufügen">+</button>
+      <button id="stack-close" aria-label="Schließen">✕</button>
+    </span>
+  </div>
+  <div class="panel-sub">wirkt von oben nach unten <span class="down">↓</span> — Kräfte verwandeln alles darunter</div>
+  <div class="scope-note" id="scope-note">◎ Diese Kraft wirkt auf alles unter ihr — markierte Bausteine liegen in ihrem Feld.</div>
+  <ul id="stack-list"></ul>
+</section>
+
+<!-- Bibliothek -->
+<div id="lib-backdrop"></div>
+<section id="library" aria-label="Bibliothek — Baustein hinzufügen">
+  <div class="panel-head">
+    <span class="panel-title">Bibliothek</span>
+    <button id="lib-close" class="icon-btn" aria-label="Schließen" style="width:34px;height:34px;font-size:0.85rem;">✕</button>
+  </div>
+  <div class="panel-sub">Drei Familien — antippen legt den Baustein in den Stapel.</div>
+  <div id="lib-scroll"></div>
+</section>
+
+<!-- Regie: Kontext + controls.js-Panel -->
+<div id="dock">
+  <div id="dock-context">
+    <span class="d-ico" id="dock-ico">◆</span>
+    <span class="d-name" id="dock-name">Kurve</span>
+    <span class="d-meta" id="dock-meta">Ding · 3 von 5</span>
+    <button id="dock-close" title="Schließen" aria-label="Regler schließen">✕</button>
+  </div>
+  <div id="ctrl">
+    <div class="ctrl-header">
+      <span class="ctrl-drag"></span>
+      <span class="ctrl-hbtns">
+        <button class="ctrl-hbtn" title="Verschieben">⠿</button>
+        <button class="ctrl-hbtn" title="Zurücksetzen">↺</button>
+        <button class="ctrl-hbtn" title="Layout wechseln">↔</button>
+      </span>
+    </div>
+    <div id="ctrl-rows"></div>
+  </div>
+</div>
+
+<!-- Flüstern -->
+<div class="whisper" id="whisper-center">tippe das Werk an, um es zu formen</div>
+<div class="whisper" id="whisper-tools"><span class="w-key">bewegen</span> · verzerren · zeichnen — ziehen wirkt direkt auf der Leinwand</div>
+<div class="whisper" id="whisper-stack">der Stapel<br>oben wirkt auf unten <span class="w-key">↓</span></div>
+
+<div id="toast"><span id="toast-text"></span><button class="undo" id="toast-undo" hidden>Rückgängig</button></div>
+<button id="focus-exit" title="Fokus beenden" aria-label="Fokus beenden"></button>
+
+<script>
+'use strict';
+/* =====================================================================
+   Mockup-Logik: Attrappe mit lebendiger Szene.
+   ===================================================================== */
+
+/* ---------- Szene-Zustand ---------- */
+const scene = {
+  grid:    { on: true, spacing: 96, alpha: 0.07 },
+  symbol:  { on: true, size: 0.42, alpha: 0.5, width: 26, glow: 30 },
+  heart:   { on: true, size: 150, morph: 0.72, width: 2.2, glow: 14, x: 0, y: 0 },
+  spawner: { on: true, rate: 0.5 },
+  warp:    { on: true, amp: 10, freq: 0.55, speed: 0.5 },
+  cam:     { x: 0, y: 0 },
+};
+
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Stapel-Daten ---------- */
+let uid = 10;
+const stack = [
+  { id: 'b5', kind: 'kraft',    ico: '◎', name: 'Raum verzerren',   layer: 'warp',    vis: true },
+  { id: 'b4', kind: 'erzeuger', ico: '⁂', name: 'Spawner',          layer: 'spawner', vis: true },
+  { id: 'b3', kind: 'ding',     ico: '◆', name: 'Kurve',            layer: 'heart',   vis: true },
+  { id: 'b2', kind: 'ding',     ico: '✦', name: 'Symbol ∞',         layer: 'symbol',  vis: true },
+  { id: 'b1', kind: 'ding',     ico: '▦', name: 'Koordinatengitter', layer: 'grid',    vis: true },
+];
+const KIND_LABEL = { ding: 'Ding', erzeuger: 'Erzeuger', kraft: 'Kraft' };
+
+/* ---------- Regler-Sets (Optik des echten controls.js-Panels) ---------- */
+const PROPS = {
+  b3: [
+    { t: 'slider', label: 'Größe', min: 20, max: 600, val: 150, bind: v => scene.heart.size = v },
+    { t: 'slider', label: 'Morph Kreis ↔ Herz (%)', min: 0, max: 100, val: 72, bind: v => scene.heart.morph = v / 100 },
+    { t: 'slider', label: 'Strichstärke', min: 0.5, max: 12, step: 0.1, val: 2.2, bind: v => scene.heart.width = v },
+    { t: 'slider', label: 'Glühen', min: 0, max: 60, val: 14, bind: v => scene.heart.glow = v },
+    { t: 'select', label: 'Rundung', val: 'Echter Bogen' },
+  ],
+  b5: [
+    { t: 'slider', label: 'Stärke', min: 0, max: 60, val: 10, bind: v => scene.warp.amp = v },
+    { t: 'slider', label: 'Frequenz', min: 0, max: 3, step: 0.05, val: 0.55, bind: v => scene.warp.freq = v },
+    { t: 'slider', label: 'Tempo', min: 0, max: 3, step: 0.05, val: 0.5, bind: v => scene.warp.speed = v },
+  ],
+  b4: [
+    { t: 'slider', label: 'Rate (je s)', min: 0, max: 6, step: 0.1, val: 0.5, bind: v => scene.spawner.rate = v },
+    { t: 'slider', label: 'Lebenszeit (s)', min: 1, max: 20, val: 7 },
+  ],
+  b2: [
+    { t: 'slider', label: 'Größe', min: 5, max: 100, val: 42, bind: v => scene.symbol.size = v / 100 },
+    { t: 'slider', label: 'Deckkraft (%)', min: 0, max: 100, val: 50, bind: v => scene.symbol.alpha = v / 100 },
+    { t: 'slider', label: 'Glühen', min: 0, max: 80, val: 30, bind: v => scene.symbol.glow = v },
+  ],
+  b1: [
+    { t: 'slider', label: 'Abstand', min: 20, max: 300, val: 96, bind: v => scene.grid.spacing = v },
+    { t: 'slider', label: 'Deckkraft (%)', min: 0, max: 40, val: 7, bind: v => scene.grid.alpha = v / 100 },
+  ],
+  generic: [
+    { t: 'slider', label: 'Größe', min: 10, max: 400, val: 120 },
+    { t: 'slider', label: 'Deckkraft (%)', min: 0, max: 100, val: 85 },
+  ],
+};
+
+/* ---------- Bibliothek ---------- */
+function svgWrap(inner) {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round">' + inner + '</svg>';
+}
+const LIB = [
+  { fam: 'Dinge', kind: 'ding', desc: 'sichtbare Formen', items: [
+    { name: 'Koordinatengitter', ico: '▦', sub: 'Raum, in dem alles steht',
+      svg: '<path class="breathe" d="M4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16"/>' },
+    { name: 'Kurve', ico: '◆', sub: 'Kreis, der ein Herz wird',
+      svg: '<path class="flow" d="M12 20 C 4 13, 4 6, 8.5 6 C 10.8 6, 12 8, 12 9 C 12 8, 13.2 6, 15.5 6 C 20 6, 20 13, 12 20 Z"/>' },
+    { name: 'Symbol', ico: '✦', sub: '∞, 0 oder 1 — als Zeichen',
+      svg: '<path class="breathe" d="M12 12 C 10 8, 4 8, 4 12 C 4 16, 10 16, 12 12 C 14 8, 20 8, 20 12 C 20 16, 14 16, 12 12 Z"/>' },
+    { name: 'Pfad', ico: '✎', sub: 'freie Linie deiner Hand',
+      svg: '<path class="flow" d="M4 17 C 7 9, 9 19, 12 12 C 14 7, 17 13, 20 7"/>' },
+    { name: 'Text als Punkte', ico: '∴', sub: 'Worte, in Punkte zerlegt',
+      svg: '<g class="breathe"><circle cx="6" cy="9" r="0.9" fill="currentColor"/><circle cx="10" cy="7.5" r="0.9" fill="currentColor"/><circle cx="14" cy="7.5" r="0.9" fill="currentColor"/><circle cx="18" cy="9" r="0.9" fill="currentColor"/><circle cx="8" cy="13" r="0.9" fill="currentColor"/><circle cx="12" cy="14" r="0.9" fill="currentColor"/><circle cx="16" cy="13" r="0.9" fill="currentColor"/><circle cx="12" cy="17.5" r="0.9" fill="currentColor"/></g>' },
+    { name: 'Linienschar', ico: '≡', sub: 'viele Linien, ein Gesetz',
+      svg: '<path class="breathe" d="M5 19 L 15 4 M8 20 L 18 5 M11 21 L 21 6"/>' },
+    { name: 'Spirale / Helix', ico: '↻', sub: 'Weg um einen Mittelpunkt',
+      svg: '<path class="spin" d="M12 12 m0 -1 a1 1 0 0 1 1 1 a2 2 0 0 1 -2 2 a3.2 3.2 0 0 1 -3.2 -3.2 a4.6 4.6 0 0 1 4.6 -4.6 a6.2 6.2 0 0 1 6.2 6.2 a8 8 0 0 1 -8 8"/>' },
+    { name: 'Ring-Schrift', ico: '◌', sub: 'Zeichen auf dem Kreis',
+      svg: '<circle class="spin" cx="12" cy="12" r="8" stroke-dasharray="2.5 3.5"/>' },
+  ]},
+  { fam: 'Erzeuger', kind: 'erzeuger', desc: 'lassen laufend Neues entstehen', items: [
+    { name: 'Spawner', ico: '⁂', sub: 'gebiert Symbole in den Raum',
+      svg: '<g class="breathe"><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="6" cy="7" r="0.8" fill="currentColor"/><circle cx="18" cy="6.5" r="0.8" fill="currentColor"/><circle cx="19" cy="16" r="0.8" fill="currentColor"/><circle cx="6.5" cy="17" r="0.8" fill="currentColor"/><path d="M12 12 L 6.8 7.8 M12 12 L 17.2 7.3 M12 12 L 18.2 15.5 M12 12 L 7.3 16.3" stroke-dasharray="1 2"/></g>' },
+    { name: 'Game of Life', ico: '▚', sub: 'Zellen leben, sterben, wandern',
+      svg: '<path d="M4 9h16M4 15h16M9 4v16M15 4v16" opacity="0.4"/><rect class="blink1" x="9.8" y="9.8" width="4.4" height="4.4" fill="currentColor" stroke="none"/><rect class="blink2" x="15.8" y="4" width="4.2" height="5" fill="currentColor" stroke="none"/><rect class="blink2" x="4" y="15.8" width="5" height="4.2" fill="currentColor" stroke="none"/>' },
+    { name: 'Strahlen', ico: '✺', sub: 'Linien aus einem Punkt',
+      svg: '<g class="spin"><path d="M12 12 L 12 4 M12 12 L 18.9 8 M12 12 L 18.9 16 M12 12 L 12 20 M12 12 L 5.1 16 M12 12 L 5.1 8"/></g>' },
+    { name: 'Text-Baum', ico: '⑂', sub: 'Sätze verzweigen sich',
+      svg: '<path class="breathe" d="M12 20 V 13 M12 13 C 12 10, 9 10, 7 7 M12 13 C 12 10, 15 10, 17 7 M7 7 L 5.5 4.5 M7 7 L 9 4.5 M17 7 L 15 4.5 M17 7 L 18.5 4.5"/>' },
+    { name: 'Fourier-Zeichner', ico: '∿', sub: 'Kreise auf Kreisen zeichnen',
+      svg: '<circle cx="9" cy="12" r="5" opacity="0.5"/><circle class="spin" cx="14" cy="9.5" r="2.5" opacity="0.8"/><path class="flow" d="M16.5 9.5 C 18 12, 19 15, 20.5 16.5"/>' },
+  ]},
+  { fam: 'Kräfte', kind: 'kraft', desc: 'verwandeln alles darunter — wie Wetter über einer Landschaft', items: [
+    { name: 'Raum verzerren', ico: '◎', sub: 'knetet das Gitter der Welt',
+      svg: '<path class="breathe" d="M4 8 C 8 6, 16 10, 20 8 M4 12 C 8 10, 16 14, 20 12 M4 16 C 8 14, 16 18, 20 16"/>' },
+    { name: 'Fraktal', ico: '◬', sub: 'die Form in der Form',
+      svg: '<path d="M12 4 L 20 19 L 4 19 Z"/><path class="breathe" d="M12 10.5 L 16 17 L 8 17 Z" opacity="0.7"/><path class="blink1" d="M12 14 L 13.8 16.6 L 10.2 16.6 Z" opacity="0.5"/>' },
+    { name: 'Kaleidoskop', ico: '✳', sub: 'spiegelt in Sektoren',
+      svg: '<g class="spin"><path d="M12 12 L 12 4 A 8 8 0 0 1 18.9 8 Z"/><path d="M12 12 L 18.9 16 A 8 8 0 0 1 12 20 Z" opacity="0.6"/><path d="M12 12 L 5.1 16 A 8 8 0 0 1 5.1 8 Z" opacity="0.35"/></g>' },
+    { name: 'Tapete', ico: '▤', sub: 'wiederholt bis ∞',
+      svg: '<g class="breathe"><path d="M8 5 L 11 8 L 8 11 L 5 8 Z"/><path d="M16 5 L 19 8 L 16 11 L 13 8 Z" opacity="0.7"/><path d="M8 13 L 11 16 L 8 19 L 5 16 Z" opacity="0.7"/><path d="M16 13 L 19 16 L 16 19 L 13 16 Z" opacity="0.45"/></g>' },
+  ]},
+];
+
+/* ---------- DOM-Verweise ---------- */
+const $ = id => document.getElementById(id);
+const stageEl = $('stage');
+const canvas = $('scene');
+const ctx = canvas.getContext('2d');
+const spineList = $('spine-list');
+const stackPanel = $('stack-panel');
+const stackList = $('stack-list');
+const library = $('library');
+const libBackdrop = $('lib-backdrop');
+const dock = $('dock');
+const chip = $('chip');
+const selframe = $('selframe');
+const toast = $('toast');
+
+let selectedId = null;
+let currentTool = 'move';
+let dockOpen = false;
+
+/* =====================================================================
+   Stapel-Rendering: Wirbelsäule + Panel
+   ===================================================================== */
+function kraftScopeIds() {
+  /* Bausteine im Feld der ausgewählten Kraft = alle darunter */
+  const i = stack.findIndex(b => b.id === selectedId);
+  if (i < 0 || stack[i].kind !== 'kraft') return new Set();
+  return new Set(stack.slice(i + 1).map(b => b.id));
+}
+
+function renderStack() {
+  const scope = kraftScopeIds();
+  /* Wirbelsäule */
+  spineList.innerHTML = '';
+  stack.forEach(b => {
+    const v = document.createElement('button');
+    v.className = 'vertebra ' + b.kind
+      + (b.id === selectedId ? ' selected' : '')
+      + (b.vis ? '' : ' hidden-block');
+    v.textContent = b.ico;
+    v.title = KIND_LABEL[b.kind] + ' — ' + b.name;
+    v.setAttribute('aria-label', v.title);
+    v.dataset.id = b.id;
+    v.addEventListener('click', e => { e.stopPropagation(); openStack(); selectBlock(b.id); });
+    spineList.appendChild(v);
+  });
+  /* Panel-Liste */
+  stackList.innerHTML = '';
+  stack.forEach((b, i) => {
+    const li = document.createElement('li');
+    li.className = 'row k-' + b.kind
+      + (b.id === selectedId ? ' selected' : '')
+      + (b.vis ? '' : ' hidden-block')
+      + (scope.has(b.id) ? ' in-scope' : '');
+    li.dataset.id = b.id;
+    li.innerHTML =
+      '<span class="grip" title="Ziehen zum Umsortieren">⠿</span>' +
+      '<span class="r-ico">' + b.ico + '</span>' +
+      '<span class="r-label"><span class="r-kind">' + KIND_LABEL[b.kind] + '</span>' +
+      '<span class="r-name">' + b.name + '</span></span>' +
+      '<button class="r-act act-eye" title="' + (b.vis ? 'Ausblenden' : 'Einblenden') + '">' + (b.vis ? '◉' : '○') + '</button>' +
+      '<button class="r-act act-del" title="Löschen">✕</button>';
+    li.addEventListener('click', () => selectBlock(b.id));
+    li.querySelector('.act-eye').addEventListener('click', e => { e.stopPropagation(); toggleVis(b.id); });
+    li.querySelector('.act-del').addEventListener('click', e => { e.stopPropagation(); deleteBlock(b.id); });
+    stackList.appendChild(li);
+  });
+  stackPanel.classList.toggle('kraft-selected', scope.size > 0);
+  $('m-stack-n').textContent = stack.length;
+}
+
+function toggleVis(id) {
+  const b = stack.find(x => x.id === id);
+  if (!b) return;
+  b.vis = !b.vis;
+  if (b.layer && scene[b.layer]) scene[b.layer].on = b.vis;
+  renderStack();
+}
+
+let lastDeleted = null;
+function deleteBlock(id) {
+  const i = stack.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const [b] = stack.splice(i, 1);
+  lastDeleted = { block: b, index: i };
+  if (b.layer && scene[b.layer]) scene[b.layer].on = false;
+  if (selectedId === id) deselect();
+  renderStack();
+  showToast(b.name + ' entfernt', true);
+}
+$('toast-undo').addEventListener('click', () => {
+  if (!lastDeleted) return;
+  stack.splice(lastDeleted.index, 0, lastDeleted.block);
+  const b = lastDeleted.block;
+  if (b.layer && scene[b.layer]) scene[b.layer].on = b.vis;
+  lastDeleted = null;
+  renderStack();
+  hideToast();
+});
+
+/* ---------- Stapel öffnen/schließen ---------- */
+function openStack() { stackPanel.classList.add('open'); }
+function closeStack() { stackPanel.classList.remove('open'); }
+$('spine-hint');
+document.getElementById('spine').addEventListener('click', e => {
+  if (e.target.id !== 'spine-add') openStack();
+});
+$('stack-close').addEventListener('click', closeStack);
+$('m-stack-pill').addEventListener('click', () => {
+  stackPanel.classList.contains('open') ? closeStack() : (closeLibrary(), closeDockMobile(), openStack());
+});
+
+function closeDockMobile() {
+  if (window.matchMedia('(max-width: 720px)').matches) closeDock();
+}
+
+/* =====================================================================
+   Auswahl: Rahmen + Chip + Regie-Dock
+   ===================================================================== */
+function selectBlock(id) {
+  selectedId = id;
+  markWorked();
+  renderStack();
+  renderDock();
+  openDock();
+  if (window.matchMedia('(max-width: 720px)').matches) closeStack();
+}
+
+function deselect() {
+  selectedId = null;
+  renderStack();
+  closeDock();
+  chip.classList.remove('show');
+  selframe.classList.remove('show');
+}
+
+function openDock() { dock.classList.add('open'); document.body.classList.add('dock-open'); dockOpen = true; }
+function closeDock() { dock.classList.remove('open'); document.body.classList.remove('dock-open'); dockOpen = false; }
+
+function renderDock() {
+  const b = stack.find(x => x.id === selectedId);
+  if (!b) return;
+  const i = stack.indexOf(b);
+  $('dock-ico').textContent = b.ico;
+  $('dock-name').textContent = b.name;
+  let meta = KIND_LABEL[b.kind] + ' · ' + (i + 1) + ' von ' + stack.length;
+  if (b.kind === 'kraft') {
+    const n = stack.length - i - 1;
+    meta = 'Kraft · wirkt auf ' + n + ' Baustein' + (n === 1 ? '' : 'e') + ' darunter <span class="down">↓</span>';
+  } else {
+    const above = stack.slice(0, i).filter(x => x.kind === 'kraft' && x.vis).map(x => x.name);
+    if (above.length) meta += ' · im Feld von: ' + above.join(', ');
+  }
+  $('dock-meta').innerHTML = meta;
+  /* Chip */
+  $('chip-ico').textContent = b.ico;
+  $('chip-name').textContent = b.name;
+  $('chip-kind').textContent = KIND_LABEL[b.kind];
+  /* Regler-Zeilen (Optik controls.js) */
+  const rows = $('ctrl-rows');
+  rows.innerHTML = '';
+  (PROPS[b.id] || PROPS.generic).forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'ctrl-row';
+    if (p.t === 'select') {
+      row.innerHTML = '<span class="ctrl-label">' + p.label + '</span>' +
+        '<button class="ctrl-select"><span>' + p.val + '</span><span class="caret"></span></button>';
+    } else {
+      row.innerHTML = '<span class="ctrl-label">' + p.label + '</span>' +
+        '<span class="ctrl-group">' +
+        '<button class="ctrl-step" aria-label="weniger">−</button>' +
+        '<input class="ctrl-range" type="range" min="' + p.min + '" max="' + p.max + '" step="' + (p.step || 1) + '" value="' + p.val + '">' +
+        '<button class="ctrl-step" aria-label="mehr">+</button>' +
+        '<span class="ctrl-val">' + p.val + '</span></span>';
+      const input = row.querySelector('input');
+      const val = row.querySelector('.ctrl-val');
+      const apply = v => {
+        val.textContent = (p.step && p.step < 1) ? (+v).toFixed(2).replace(/\.?0+$/, '') : Math.round(v);
+        p.val = +v;
+        if (p.bind) p.bind(+v);
+      };
+      input.addEventListener('input', () => apply(input.value));
+      const [minus, plus] = row.querySelectorAll('.ctrl-step');
+      minus.addEventListener('click', () => { input.value = +input.value - (+(p.step || 1)); apply(input.value); });
+      plus.addEventListener('click', () => { input.value = +input.value + (+(p.step || 1)); apply(input.value); });
+    }
+    rows.appendChild(row);
+  });
+}
+
+$('chip-regler').addEventListener('click', () => openDock());
+$('dock-close').addEventListener('click', deselect);
+$('chip-dup').addEventListener('click', () => showToast('Dupliziert — liegt direkt darüber im Stapel'));
+$('chip-del').addEventListener('click', () => { if (selectedId) deleteBlock(selectedId); });
+
+/* ---------- Rahmen + Chip folgen dem Objekt ---------- */
+function updateSelectionOverlay() {
+  const b = stack.find(x => x.id === selectedId);
+  const canFrame = b && b.vis && (b.id === 'b3' || b.id === 'b2');
+  if (!canFrame) {
+    selframe.classList.remove('show');
+    if (!b) chip.classList.remove('show');
+    else chip.classList.remove('show');
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  const cx = r.left + r.width / 2 - scene.cam.x;
+  const cy = r.top + r.height / 2 - scene.cam.y;
+  let x, y, w, h;
+  if (b.id === 'b3') {
+    /* echte Hüllbox der Kurve abtasten */
+    const s = scene.heart.size * Math.min(r.width, r.height) / 900 * 1.9;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (let i = 0; i < 64; i++) {
+      const [px, py] = curvePoint((i / 64) * Math.PI * 2, scene.heart.morph, s);
+      if (px < x0) x0 = px; if (px > x1) x1 = px;
+      if (py < y0) y0 = py; if (py > y1) y1 = py;
+    }
+    const pad = 14;
+    x = cx + scene.heart.x + x0 - pad;
+    y = cy + scene.heart.y + y0 - pad;
+    w = (x1 - x0) + pad * 2;
+    h = (y1 - y0) + pad * 2;
+  } else {
+    const s = Math.min(r.width, r.height) * scene.symbol.size;
+    w = s * 1.72; h = s * 0.94;
+    x = cx - w / 2; y = cy - h / 2;
+  }
+  selframe.style.left = x + 'px';
+  selframe.style.top = y + 'px';
+  selframe.style.width = w + 'px';
+  selframe.style.height = h + 'px';
+  selframe.classList.add('show');
+  chip.style.left = (x + w / 2) + 'px';
+  chip.style.top = Math.max(60, y - 52) + 'px';
+  chip.classList.add('show');
+}
+
+/* =====================================================================
+   Bibliothek
+   ===================================================================== */
+function buildLibrary() {
+  const wrap = $('lib-scroll');
+  LIB.forEach(f => {
+    const sec = document.createElement('div');
+    sec.className = 'fam' + (f.kind === 'kraft' ? ' kraefte' : '');
+    sec.innerHTML = '<div class="fam-head"><span class="fam-name">' + f.fam + '</span>' +
+      '<span class="fam-desc">' + f.desc + '</span></div>';
+    const grid = document.createElement('div');
+    grid.className = 'tiles';
+    f.items.forEach(item => {
+      const t = document.createElement('button');
+      t.className = 'tile';
+      t.innerHTML = svgWrap(item.svg) + '<span class="tl-name">' + item.name + '</span>' +
+        '<span class="tl-sub">' + item.sub + '</span>';
+      t.addEventListener('click', () => addFromLibrary(f.kind, item));
+      grid.appendChild(t);
+    });
+    sec.appendChild(grid);
+    wrap.appendChild(sec);
+  });
+}
+
+function addFromLibrary(kind, item) {
+  const block = { id: 'n' + (uid++), kind, ico: item.ico, name: item.name, layer: null, vis: true };
+  let msg;
+  if (kind === 'kraft') {
+    stack.unshift(block);
+    msg = item.name + ' liegt oben — wirkt ab jetzt auf alles darunter';
+  } else {
+    /* Neues landet UNTER den Kräften, damit deren Feld es erfasst */
+    let i = 0;
+    while (i < stack.length && stack[i].kind === 'kraft') i++;
+    stack.splice(i, 0, block);
+    msg = item.name + ' in den Stapel gelegt — unter den Kräften, in ihrem Feld';
+  }
+  closeLibrary();
+  renderStack();
+  selectBlock(block.id);
+  showToast(msg);
+  const v = spineList.querySelector('[data-id="' + block.id + '"]');
+  if (v) { v.classList.add('pulse'); setTimeout(() => v.classList.remove('pulse'), 950); }
+}
+
+function openLibrary() {
+  closeStack(); closeDockMobile();
+  library.classList.add('open');
+  libBackdrop.classList.add('show');
+  markWorked();
+}
+function closeLibrary() {
+  library.classList.remove('open');
+  libBackdrop.classList.remove('show');
+}
+$('spine-add').addEventListener('click', e => { e.stopPropagation(); openLibrary(); });
+$('stack-add').addEventListener('click', e => { e.stopPropagation(); openLibrary(); });
+$('m-add-pill').addEventListener('click', openLibrary);
+$('lib-close').addEventListener('click', closeLibrary);
+libBackdrop.addEventListener('click', closeLibrary);
+
+/* =====================================================================
+   Werkzeuge
+   ===================================================================== */
+document.querySelectorAll('.tool').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentTool = btn.dataset.tool;
+    document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b === btn));
+    stageEl.className = 'tool-' + currentTool;
+    markWorked();
+    if (currentTool === 'draw') showToast('Zeichnen — ziehe frei über die Leinwand');
+    if (currentTool === 'warp') showToast('Verzerren — ziehe, um den Raum zu kneten');
+    if (currentTool === 'move') hideToast();
+  });
+});
+
+/* =====================================================================
+   Leinwand-Interaktion
+   ===================================================================== */
+const strokes = [];
+let activeStroke = null;
+const ripples = [];
+let drag = null;
+
+function canvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function heartHit(p) {
+  const r = canvas.getBoundingClientRect();
+  const cx = r.width / 2 - scene.cam.x + scene.heart.x;
+  const cy = r.height / 2 - scene.cam.y + scene.heart.y;
+  const s = scene.heart.size * (Math.min(r.width, r.height) / 900) * 1.25;
+  return Math.abs(p.x - cx) < s && Math.abs(p.y - cy) < s;
+}
+
+canvas.addEventListener('pointerdown', e => {
+  const p = canvasPos(e);
+  canvas.setPointerCapture(e.pointerId);
+  markWorked();
+  if (currentTool === 'draw') {
+    activeStroke = [p];
+    strokes.push(activeStroke);
+  } else if (currentTool === 'warp') {
+    drag = { type: 'warp', last: p };
+    pulseKraft();
+  } else {
+    drag = heartHit(p)
+      ? { type: 'heart', last: p, moved: 0 }
+      : { type: 'pan', last: p, moved: 0 };
+  }
+});
+
+canvas.addEventListener('pointermove', e => {
+  const p = canvasPos(e);
+  if (activeStroke) { activeStroke.push(p); return; }
+  if (!drag) return;
+  const dx = p.x - drag.last.x, dy = p.y - drag.last.y;
+  drag.moved = (drag.moved || 0) + Math.abs(dx) + Math.abs(dy);
+  if (drag.type === 'heart') { scene.heart.x += dx; scene.heart.y += dy; }
+  else if (drag.type === 'pan') { scene.cam.x -= dx; scene.cam.y -= dy; }
+  else if (drag.type === 'warp') {
+    ripples.push({ x: p.x, y: p.y, born: perf, strength: Math.min(26, Math.hypot(dx, dy) * 1.6) });
+    if (ripples.length > 24) ripples.shift();
+  }
+  drag.last = p;
+});
+
+canvas.addEventListener('pointerup', e => {
+  const p = canvasPos(e);
+  if (activeStroke) {
+    if (activeStroke.length > 4) {
+      const block = { id: 'n' + (uid++), kind: 'ding', ico: '✎', name: 'Pfad', layer: null, vis: true };
+      let i = 0;
+      while (i < stack.length && stack[i].kind === 'kraft') i++;
+      stack.splice(i, 0, block);
+      renderStack();
+      showToast('Pfad in den Stapel gelegt');
+    } else {
+      strokes.pop();
+    }
+    activeStroke = null;
+    return;
+  }
+  if (drag && drag.moved < 6) {
+    /* Klick statt Zug: auswählen / abwählen */
+    if (drag.type === 'heart') selectBlock('b3');
+    else deselect();
+  }
+  drag = null;
+});
+
+function pulseKraft() {
+  const v = spineList.querySelector('[data-id="b5"]');
+  if (v) { v.classList.add('pulse'); setTimeout(() => v.classList.remove('pulse'), 950); }
+}
+
+/* =====================================================================
+   Erscheinen & Weichen: Idle, Fokus, Flüstern
+   ===================================================================== */
+let idleTimer = null;
+function wake() {
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (!document.body.classList.contains('focus')) document.body.classList.add('idle');
+  }, 3500);
+}
+['pointermove', 'pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+  window.addEventListener(ev, wake, { passive: true }));
+wake();
+
+let worked = false;
+function markWorked() {
+  if (worked) return;
+  worked = true;
+  document.body.classList.add('worked');
+}
+
+$('btn-focus').addEventListener('click', e => {
+  e.stopPropagation();
+  document.body.classList.add('focus');
+  deselect();
+  closeStack(); closeLibrary();
+  showToast('Fokus — nur das Werk. Der Punkt unten rechts führt zurück.');
+  setTimeout(hideToast, 2600);
+});
+$('focus-exit').addEventListener('click', () => document.body.classList.remove('focus'));
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { document.body.classList.remove('focus'); closeLibrary(); }
+});
+
+/* ---------- Toast ---------- */
+let toastTimer = null;
+function showToast(msg, withUndo) {
+  $('toast-text').textContent = msg;
+  $('toast-undo').hidden = !withUndo;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, withUndo ? 6000 : 3200);
+}
+function hideToast() { toast.classList.remove('show'); }
+
+/* =====================================================================
+   Lebendige Szene — Canvas 2D
+   ===================================================================== */
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.max(1, r.width);
+  H = Math.max(1, r.height);
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+new ResizeObserver(resize).observe(canvas);
+resize();
+
+let perf = 0, last = 0;
+
+function warp(x, y, t) {
+  let wx = x, wy = y;
+  if (scene.warp.on && scene.warp.amp > 0) {
+    const a = scene.warp.amp;
+    const f = scene.warp.freq * 0.008;
+    wx += a * Math.sin(y * f * 2.2 + t * 0.7);
+    wy += a * 0.6 * Math.cos(x * f * 2.6 + t * 0.55);
+  }
+  for (const rp of ripples) {
+    const age = perf - rp.born;
+    if (age > 1.6) continue;
+    const d = Math.hypot(x - rp.x, y - rp.y);
+    if (d > 260 || d < 0.5) continue;
+    const damp = (1 - age / 1.6) * Math.exp(-d / 130);
+    const push = Math.sin(d * 0.05 - age * 6) * rp.strength * damp;
+    wx += (x - rp.x) / d * push;
+    wy += (y - rp.y) / d * push;
+  }
+  return [wx, wy];
+}
+
+function curvePoint(u, m, s) {
+  const hx = 16 * Math.pow(Math.sin(u), 3);
+  const hy = -(13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u));
+  /* Kreis phasengleich zum Herz (u=0 oben) — Morph bleibt spiegelsymmetrisch */
+  const cx2 = 15 * Math.sin(u);
+  const cy2 = -15 * Math.cos(u);
+  return [((1 - m) * cx2 + m * hx) * s / 16, ((1 - m) * cy2 + m * hy) * s / 16];
+}
+
+/* Spawner-Symbole */
+const symbols = [];
+const GLYPHS = ['∞', '0', '1'];
+let spawnAcc = 0;
+function spawnSymbol() {
+  symbols.push({
+    char: GLYPHS[Math.floor(Math.random() * GLYPHS.length)],
+    x: W * (0.2 + Math.random() * 0.6),
+    y: H * (0.18 + Math.random() * 0.64),
+    vx: (Math.random() - 0.5) * 7,
+    vy: -4 - Math.random() * 6,
+    born: perf,
+    life: 7,
+    rot: (Math.random() - 0.5) * 0.7,
+    size: 15 + Math.random() * 16,
+  });
+  if (symbols.length > 40) symbols.shift();
+}
+
+function draw(ms) {
+  requestAnimationFrame(draw);
+  const dt = Math.min(0.05, (ms - last) / 1000) || 0.016;
+  last = ms;
+  if (!REDUCED) perf += dt;
+  const t = perf * scene.warp.speed;
+  const cx = W / 2 - scene.cam.x;
+  const cy = H / 2 - scene.cam.y;
+
+  ctx.clearRect(0, 0, W, H);
+
+  /* dunkle Vignette */
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+  grad.addColorStop(0, 'rgba(18,18,24,0.5)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  /* Koordinatengitter */
+  if (scene.grid.on && scene.grid.alpha > 0) {
+    const sp = scene.grid.spacing;
+    const al = scene.grid.alpha;
+    ctx.lineWidth = 1;
+    const step = 28;
+    const ox = ((cx % sp) + sp) % sp, oy = ((cy % sp) + sp) % sp;
+    for (let gx = ox - sp; gx <= W + sp; gx += sp) {
+      const axis = Math.abs(gx - cx) < 1;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (axis ? al * 2.6 : al) + ')';
+      ctx.beginPath();
+      for (let y = -step; y <= H + step; y += step) {
+        const [px, py] = warp(gx, y, t);
+        (y === -step) ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    for (let gy = oy - sp; gy <= H + sp; gy += sp) {
+      const axis = Math.abs(gy - cy) < 1;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (axis ? al * 2.6 : al) + ')';
+      ctx.beginPath();
+      for (let x = -step; x <= W + step; x += step) {
+        const [px, py] = warp(x, gy, t);
+        (x === -step) ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+  }
+
+  /* Symbol ∞ — zwei glühende Kreise */
+  if (scene.symbol.on && scene.symbol.alpha > 0) {
+    const s = Math.min(W, H) * scene.symbol.size;
+    const R = s * 0.42;
+    const breathe = 1 + 0.025 * Math.sin(perf * 0.4);
+    ctx.save();
+    ctx.lineWidth = scene.symbol.width;
+    ctx.strokeStyle = 'rgba(255,255,255,' + (scene.symbol.alpha * 0.55) + ')';
+    ctx.shadowColor = 'rgba(255,255,255,0.4)';
+    ctx.shadowBlur = scene.symbol.glow;
+    [-1, 1].forEach(side => {
+      ctx.beginPath();
+      const N = 90;
+      for (let i = 0; i <= N; i++) {
+        const u = (i / N) * Math.PI * 2;
+        let x = cx + side * R * 0.96 + R * breathe * Math.cos(u);
+        let y = cy + R * breathe * Math.sin(u);
+        [x, y] = warp(x, y, t);
+        (i === 0) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    });
+    ctx.restore();
+    /* gestrichelter Wirkungsring */
+    ctx.save();
+    ctx.setLineDash([4, 7]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(168,184,232,0.28)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.92, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    /* Mittelpunkt */
+    ctx.fillStyle = 'rgba(168,184,232,0.8)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* Kurve (Kreis ↔ Herz) */
+  if (scene.heart.on) {
+    const m = scene.heart.morph;
+    const pulse = 1 + 0.02 * Math.sin(perf * 1.1);
+    const s = scene.heart.size * pulse * Math.min(W, H) / 900;
+    const hx = cx + scene.heart.x, hy = cy + scene.heart.y;
+    ctx.save();
+    ctx.lineWidth = scene.heart.width;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.shadowColor = 'rgba(255,255,255,0.55)';
+    ctx.shadowBlur = scene.heart.glow;
+    ctx.beginPath();
+    const N = 220;
+    for (let i = 0; i <= N; i++) {
+      const u = (i / N) * Math.PI * 2;
+      let [x, y] = curvePoint(u, m, s * 1.9);
+      [x, y] = warp(hx + x, hy + y, t);
+      (i === 0) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* Spawner */
+  if (scene.spawner.on && scene.spawner.rate > 0 && !REDUCED) {
+    spawnAcc += dt * scene.spawner.rate;
+    while (spawnAcc >= 1) { spawnAcc -= 1; spawnSymbol(); }
+  }
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = symbols.length - 1; i >= 0; i--) {
+    const sym = symbols[i];
+    const age = perf - sym.born;
+    if (age > sym.life) { symbols.splice(i, 1); continue; }
+    sym.x += sym.vx * dt;
+    sym.y += sym.vy * dt;
+    const p = age / sym.life;
+    const alpha = 0.5 * Math.sin(Math.PI * Math.min(1, p));
+    const [px, py] = warp(sym.x, sym.y, t);
+    ctx.font = '100 ' + sym.size + 'px Georgia, "Times New Roman", serif';
+    ctx.fillStyle = 'rgba(255,255,255,' + alpha.toFixed(3) + ')';
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(sym.rot * p);
+    ctx.fillText(sym.char, 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  /* gezeichnete Pfade */
+  if (strokes.length) {
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.shadowColor = 'rgba(168,184,232,0.5)';
+    ctx.shadowBlur = 10;
+    for (const st of strokes) {
+      if (st.length < 2) continue;
+      ctx.beginPath();
+      st.forEach((pt, i) => (i === 0) ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* alte Ripples entsorgen */
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    if (perf - ripples[i].born > 1.6) ripples.splice(i, 1);
+  }
+
+  updateSelectionOverlay();
+}
+
+/* ---------- Start ---------- */
+buildLibrary();
+renderStack();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -16,6 +16,16 @@ const localCss = localIdx >= 0 ? fs.readFileSync(args[localIdx + 1].replace(/met
 
 // top = Treffer muss auf Rang <= top stehen; in = nur enthalten sein
 const CASES = [
+    ['Foldingpi', '/unfoldingPi.html', 1],
+    ['foldingpi', '/unfoldingPi.html', 1],
+    ['Foldingπ', '/unfoldingPi.html', 1],
+    ['folding pi', '/unfoldingPi.html', 1],
+    ['unfolding pi', '/unfoldingPi.html', 1],
+    ['pi unfolding', '/unfoldingPi.html', 1],
+    ['(un)folding', '/unfoldingPi.html', 1],
+    ['unfoldnigpi', '/unfoldingPi.html', 3],
+    ['unfoldingpi.html', '/unfoldingPi.html', 1],
+    ['unfoldingpi', '/unfoldingPi.html', 1],
     ['koordinaten', '/co0rdinates.html', 8],
     ['co0rdinates', '/co0rdinates.html', 2],
     ['coordinates', '/co0rdinates.html', 8],
@@ -56,8 +66,8 @@ async function visibleResults(page) {
 }
 
 (async () => {
-    const browser = await chromium.launch({ executablePath: CHROME, args: process.env.CHROME_ARGS ? process.env.CHROME_ARGS.split('|') : [] });
-    const ctx = await browser.newContext({ ...(mobile ? devices['iPhone 12'] : { viewport: { width: 1280, height: 800 } }), ...(process.env.FORWARDED_HTTPS ? { extraHTTPHeaders: { 'X-Forwarded-Proto': 'https' } } : {}) });
+    const browser = await chromium.launch({ executablePath: CHROME });
+    const ctx = await browser.newContext(mobile ? { ...devices['iPhone 12'] } : { viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
     const errors = [];
     page.on('console', m => m.type() === 'error' && errors.push(m.text()));
@@ -97,9 +107,9 @@ async function visibleResults(page) {
     report(emptyText.length === 1 && /nichts gefunden/.test(emptyText[0]), 'Leerzustand "nichts gefunden"', JSON.stringify(emptyText));
 
     // Hervorhebung
-    await search('kreisausdingen');
+    await search('foldingpi');
     const marks = await page.$$eval('#file-list li a mark', m => m.filter(x => x.offsetParent).slice(0, 1).map(x => x.textContent));
-    report(marks[0] === 'kreisausdingen', 'Hervorhebung "kreisausdingen" im ersten Treffer', JSON.stringify(marks));
+    report(marks[0] === 'foldingPi', 'Hervorhebung "foldingPi" im ersten Treffer', JSON.stringify(marks));
 
     // Enter oeffnet ersten Treffer
     if (!mobile) {
@@ -127,10 +137,10 @@ async function visibleResults(page) {
         href: (h => { try { return decodeURI(h); } catch (e) { return h; } })(l.querySelector('a').getAttribute('href')),
         snippet: l.querySelector('.menu-search-snippet').textContent,
         marks: [...l.querySelectorAll('.menu-search-snippet mark')].map(m => m.textContent) })));
-    const NULL = '/README.html';
+    const NULL = '/0necanvas-design-null.html';
 
     // Wort, das nur im Seiteninhalt vorkommt
-    await search('absurdität');
+    await search('unstofflicher');
     let rows = await contentRows();
     report(rows.length === 1 && rows[0].href === NULL, 'Volltext: Wort nur im Inhalt -> "im Inhalt"-Zeile', JSON.stringify(rows.map(r => r.href)));
     const section = await page.$$eval('#file-list li.menu-search-section', e => e.filter(x => x.offsetParent).map(x => x.textContent.trim()));
@@ -138,7 +148,7 @@ async function visibleResults(page) {
     report((await page.$$eval('.menu-search-empty', e => e.filter(x => x.offsetParent).length)) === 0, 'Volltext: kein "nichts gefunden" bei Inhaltstreffer', '');
 
     // Hervorhebung im Ausschnitt
-    report(rows[0] && rows[0].marks.length >= 1 && rows[0].marks.every(m => m.toLowerCase() === 'absurdität'), 'Volltext: Treffer im Ausschnitt hervorgehoben', JSON.stringify(rows[0] && rows[0].marks));
+    report(rows[0] && rows[0].marks.length >= 1 && rows[0].marks.every(m => m.toLowerCase() === 'unstofflicher'), 'Volltext: Treffer im Ausschnitt hervorgehoben', JSON.stringify(rows[0] && rows[0].marks));
 
     // Ausschnitt ist eine Zeile
     const geo = await page.$eval('#file-list li.search-content .menu-search-snippet', e => {
@@ -150,19 +160,19 @@ async function visibleResults(page) {
     report(geo.ws === 'nowrap' && !geo.nl && geo.h <= geo.lh * 1.3 && geo.right <= geo.vw, 'Volltext: Ausschnitt einzeilig (nowrap, passt in Breite)', JSON.stringify(geo));
 
     // Mehrere Woerter: alle muessen in der Datei vorkommen
-    rows = (await search('absurdität sonstigen'), await contentRows());
+    rows = (await search('konstellation unstofflicher'), await contentRows());
     report(rows.length === 1 && rows[0].href === NULL && rows[0].marks.length >= 2, 'Volltext: zwei Woerter in einer Datei', JSON.stringify(rows));
-    rows = (await search('absurdität abgetragene'), await contentRows());
+    rows = (await search('konstellation leinwand'), await contentRows());
     report(rows.length === 0, 'Volltext: zwei Woerter aus verschiedenen Dateien -> kein Treffer', JSON.stringify(rows.map(r => r.href)));
 
     // Umlaut-Aequivalenz im Inhalt
-    rows = (await search('anhaengern'), await contentRows());
-    report(rows.some(r => r.href === '/README.html'), 'Volltext: anhaengern findet "anhängern"', JSON.stringify(rows.map(r => r.href)));
-    rows = (await search('anhangern'), await contentRows());
-    report(rows.some(r => r.href === '/README.html'), 'Volltext: anhangern findet "anhängern"', JSON.stringify(rows.map(r => r.href)));
+    rows = (await search('rueckgaengig'), await contentRows());
+    report(rows.some(r => r.href === '/0necanvas-design-atelier.html'), 'Volltext: rueckgaengig findet "rückgängig"', JSON.stringify(rows.map(r => r.href)));
+    rows = (await search('ruckgangig'), await contentRows());
+    report(rows.some(r => r.href === '/0necanvas-design-atelier.html'), 'Volltext: ruckgangig findet "rückgängig"', JSON.stringify(rows.map(r => r.href)));
 
     // Kein Fuzzy im Inhalt: Tippfehler findet nichts
-    rows = (await search('absurdiät'), await contentRows());
+    rows = (await search('unstoflicher'), await contentRows());
     report(rows.length === 0, 'Volltext: kein Fuzzy (Tippfehler -> kein Inhaltstreffer)', JSON.stringify(rows.map(r => r.href)));
 
     // Tippfehler-Treffer nur als Ersatz: "test" liefert nur Eintraege, die "test" wirklich enthalten
@@ -170,7 +180,7 @@ async function visibleResults(page) {
         const res = await search('test');
         const bad = res.filter(r => !r.href.toLowerCase().includes('test') && !(r.text || '').toLowerCase().includes('test'));
         report(res.length > 0 && bad.length === 0, 'Namenssuche "test": nur echte Treffer (kein Tippfehler-Rauschen)', JSON.stringify(bad.map(r => r.href).slice(0, 5)));
-        report(['/biggercontext/test.html'].every(h => res.some(r => r.href === h)), 'Namenssuche "test": test.html bleibt auffindbar');
+        report(['/biggercontext/test.html', '/biggercontext/test3.html'].every(h => res.some(r => r.href === h)), 'Namenssuche "test": test.html und test3.html bleiben auffindbar');
     }
 
     // Namenstreffer erscheinen nicht doppelt; Namenstreffer stehen oben
@@ -196,7 +206,7 @@ async function visibleResults(page) {
     if (!mobile) {
         await page.goto(base + '/README.html');
         await page.click('.menu-button');
-        await input.fill('absurdität');
+        await input.fill('unstofflicher');
         await page.waitForTimeout(400);
         await Promise.all([page.waitForURL(isPage(NULL), { timeout: 8000, waitUntil: 'commit' }), input.press('Enter')]).then(
             () => report(true, 'Volltext: Enter oeffnet Inhaltstreffer'),
@@ -227,7 +237,7 @@ async function visibleResults(page) {
         await p2.click('.menu-button');
         await p2.waitForTimeout(500);
         const before = reqs.length;
-        await p2.locator('.menu-search input').fill('absurdität');
+        await p2.locator('.menu-search input').fill('unstofflicher');
         await p2.waitForTimeout(600);
         report(before === 0 && reqs.length === 1, 'Index lazy: kein Request vor dem ersten Tastendruck, genau einer danach', `vorher ${before}, danach ${reqs.length}`);
         await p2.close();
