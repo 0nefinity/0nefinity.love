@@ -1,7 +1,7 @@
-"""Pi-Stellendatei (tools/pi-file.js, /pi-daten/pi-1e9.bcd) in unfoldingPi:
+"""Pi-Stellendatei (tools/pi-file.js, /pi-daten/pi-1e9.b196) in unfoldingPi:
  r1  Range-Lesen: Stellen an mehreren Positionen stimmen mit der Datei (und den bekannten Stellen 1-20, 762-767)
  s1  Nahtstelle Geraet/Datei: keine Luecke, keine Verschiebung, Kennzeichnung wechselt genau an der Kettenlaenge
- e*  Fehlerweg: 404, 200 statt 206, fehlender Teil, falsches Content-Range/Dateigroesse, ungueltige Ziffern -> sichtbarer Fehler
+ e*  Fehlerweg: 404, 200 statt 206, fehlender Teil, falsches Content-Range/Dateigroesse, Blockwert >= 10^59, falscher Kopf -> sichtbarer Fehler
  m1  Speicher: nach Sausen ueber viele Fenster bleibt der Block-Cache begrenzt
  h1  Ehrlichkeit bei Hoechsttempo: Stichproben-Fenster gegen die Datei; Datenrate (KB/s), Anfragen je Sekunde
  a1  Verlassene Fenster: langsame Anfragen werden abgebrochen, waehrend des Ladens keine falschen Ziffern (Platzhalter)
@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 from common import *
 
 MUT = os.environ.get('MUT', ''); B = os.environ.get('BROWSER', 'chromium')
-FILE_URL = HOST + '/pi-daten/pi-1e9.bcd'
+FILE_URL = HOST + '/pi-daten/pi-1e9.b196'
 SET = "(v)=>{const d=document.getElementById('drift'); d.value=v; d.dispatchEvent(new Event('input',{bubbles:true}));}"
 SAMPLER = """(ms)=>new Promise(res=>{const out=[];const t0=performance.now();
  function f(t){const s=window.unfoldingPi.shown();out.push([s.lo,s.codes,s.marks,s.fromRemote]);
@@ -19,15 +19,16 @@ SAMPLER = """(ms)=>new Promise(res=>{const out=[];const t0=performance.now();
 
 MUTS = {   # name: (route-Muster, alt, neu)
     'shift':     ('**/pi-file.js', "const j = i - 2;", "const j = i - 1;"),
-    'nibble':    ('**/pi-file.js', "(j & 1) ? v & 15 : v >> 4", "(j & 1) ? v >> 4 : v & 15"),
     'noseam':    ('**/unfolding-view.js', "const fromRemote = i >= chainLen;", "const fromRemote = i > chainLen;"),
     'nomark':    ('**/unfolding-view.js', "const FILE_ALPHA = 0.7;", "const FILE_ALPHA = 1;"),
     'nopending': ('**/unfolding-view.js', "const PENDING_ALPHA = 0.1;", "const PENDING_ALPHA = 0;"),
-    'non206':    ('**/pi-file.js', "if (res.status !== 206)", "if (false)"),
+    'non206':    ('**/pi-file.js', "if (res.status !== 206) { ctrl", "if (false) { ctrl"),
+    'non206h':   ('**/pi-file.js', "if (res.status !== 206) { headCtrl", "if (false) { headCtrl"),
     'nocount':   ('**/pi-file.js', "if (parts.length !== spans.length) throw", "if (false) throw"),
     'norange':   ('**/pi-file.js', "if (p.a !== spans[k][0] || p.b !== spans[k][1]) throw", "if (false) throw"),
     'nototal':   ('**/pi-file.js', "if (p.total !== bytes) throw", "if (false) throw"),
-    'nodigits':  ('**/pi-file.js', "if ((v >> 4) > 9 || (v & 15) > 9) throw", "if (false) throw"),
+    'nolim':     ('**/pi-file.js', "if (v >= LIM) throw", "if (false) throw"),
+    'nomagic':   ('**/pi-file.js', "!== 'PI59') bad", "!== 'PI59' && false) bad"),
     'noevict':   ('**/pi-file.js', "function evict() {", "function evict() { return;"),
     'noabort':   ('**/pi-file.js', "if (!useful) {", "if (false) {"),
     'nolook':    ('**/pi-file.js', "const LOOK = 60;", "const LOOK = 0;"),
@@ -39,14 +40,16 @@ if MUT and MUT != 'ident' and MUT not in MUTS:
 
 
 def ref_digits(d, n):
-    """Nachkommastellen d..d+n-1 (1-basiert) aus der Datei per Range."""
-    a, b = (d - 1) >> 1, (d + n - 2) >> 1
-    rq = urllib.request.Request(FILE_URL, headers={'Range': 'bytes=%d-%d' % (a, b)})
+    """Nachkommastellen d..d+n-1 (1-basiert) aus der b196-Datei per Range, eigener Entpacker (59 Ziffern je 196 Bit, MSB zuerst)."""
+    b0, b1 = (d - 1) // 59, (d + n - 2) // 59
+    lo, hi = 32 + (196 * b0 >> 3), 32 + ((196 * (b1 + 1) + 7) >> 3) - 1
+    rq = urllib.request.Request(FILE_URL, headers={'Range': 'bytes=%d-%d' % (lo, hi)})
     with urllib.request.urlopen(rq) as r:
         assert r.status == 206, r.status
         body = r.read()
-    s = ''.join('%02x' % x for x in body)
-    off = (d - 1) - 2 * a
+    big = int.from_bytes(body, 'big'); tot = 8 * len(body); skip = 196 * b0 - 8 * (196 * b0 >> 3)
+    s = ''.join('%059d' % ((big >> (tot - skip - 196 * (k + 1))) & ((1 << 196) - 1)) for k in range(b1 - b0 + 1))
+    off = (d - 1) - 59 * b0
     return s[off:off + n]
 
 
@@ -157,10 +160,18 @@ with sync_playwright() as pw:
     def h404(r): r.fulfill(status=404, body='nicht da', content_type='text/plain')
     fehler('e1 404', h404)
 
-    def h200(r):
+    def is_head(r): return r.request.headers.get('range', '') == 'bytes=0-31'
+    def h200d(r):
+        if is_head(r): r.continue_(); return
         resp = r.fetch()
         r.fulfill(status=200, headers=dict(resp.headers), body=resp.body())
-    fehler('e2 200 statt 206 (gueltiger Inhalt)', h200, '200')
+    fehler('e2d 200 statt 206 (Daten, gueltiger Inhalt)', h200d, '200')
+
+    def h200h(r):
+        if not is_head(r): r.continue_(); return
+        resp = r.fetch()
+        r.fulfill(status=200, headers=dict(resp.headers), body=resp.body())
+    fehler('e2h 200 statt 206 (Kopf, gueltiger Inhalt)', h200h, '200')
 
     def hmissing(r):
         rng = r.request.headers.get('range', '')
@@ -189,17 +200,25 @@ with sync_playwright() as pw:
     def htotal(r):
         resp = r.fetch(); body = resp.body(); hd = dict(resp.headers)
         if 'content-range' in hd:
-            hd['content-range'] = hd['content-range'].replace('/500000000', '/500000001')
-        body = body.replace(b'/500000000', b'/500000001')
+            hd['content-range'] = hd['content-range'].replace('/415254281', '/415254282')
+        body = body.replace(b'/415254281', b'/415254282')
         r.fulfill(status=206, headers=hd, body=body)
     fehler('e5 falsche Dateigroesse', htotal, 'Dateigroesse')
 
     def hdigits(r):
         resp = r.fetch(); body = bytearray(resp.body())
-        i = len(body) - 60 if len(body) >= 300 else 20
-        body[i:i + 6] = b'\xff' * 6
+        if body[:4] == b'PI59':   # Kopfantwort bleibt heil
+            r.fulfill(status=206, headers=dict(resp.headers), body=bytes(body)); return
+        i = body.index(b'\r\n\r\n') + 4 if body[:2] == b'--' else 0
+        body[i:i + 6] = b'\xff' * 6   # erster Block der ersten Gruppe >= 10^59
         r.fulfill(status=206, headers=dict(resp.headers), body=bytes(body))
-    fehler('e6 ungueltige Ziffern', hdigits, 'ungueltige Ziffern')
+    fehler('e6 Blockwert >= 10^59', hdigits, 'Blockwert')
+
+    def hmagic(r):
+        resp = r.fetch(); body = bytearray(resp.body())
+        if body[:4] == b'PI59': body[0] = 0x58
+        r.fulfill(status=206, headers=dict(resp.headers), body=bytes(body))
+    fehler('e8 falscher Kopf (Magic)', hmagic, 'Kopf')
 
     def hcut(r):
         resp = r.fetch(); body = resp.body()

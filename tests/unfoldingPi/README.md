@@ -9,6 +9,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 
 | Datei | Prüft |
 |---|---|
+| `test_decoder.py` (`decoder.js`) | b196-Decoder und Kopfpruefung unter node: synthetische Datei (Bloecke gerade/ungerade, Gruppengrenzen, letzter unvollstaendiger Block, Fuellziffern nie sichtbar), Fehler (Blockwert >= 10^59, Fuellziffer, Kopf), 17 feste Referenzstellen aus `pi-ref-samples.json` gegen die echte Datei |
 | `test_constants.py` | pi, e, ln 2, √2, φ gegen `tests/irrational/ref`; Auswahlfeld; unbekannte Konstante ist laut |
 | `test_limits.py` | device: kleiner grauer Hinweis; engine: kein Text, `console.warn`; ohne Grenze kein Hinweis |
 | `test_ui.py` | Gesten, Pixelproben, Layout (nur Chromium, Touch per CDP) |
@@ -18,7 +19,7 @@ Alle Tests laufen gegen die Live-Seite https://dev.0nefinity.love/unfoldingPi (P
 | `test_restart.py` | Konstantenwechsel nach Fehler (`?c=foo`, Fehler mitten im Lauf): Fehler-/Grenzzustand ist zurueckgesetzt, Kette waechst, Stellen 2.71828 |
 | `test_view_module.py` | Abroll-Modul `tools/unfolding-view.js`: unfoldingPi laedt es; mit fremder Ziffernquelle auf leerer Seite (create, setDigits/appendDigits, nur sichtbares Fenster, DigitError, Sperre, Ziehen); destroy entfernt Listener und Bildschleife |
 | `test_bedienung.py` | Bedienung: Verdichtungs-Regler (P) aendert nur die Stauchzone (Start, eingerollt, d=0, Fenster klein/gross, danach die 3 ziehen) |
-| `test_file.py` | Pi-Stellendatei `/pi-daten/pi-1e9.bcd` (Range-Lesen, Naht Geraet/Datei, Fehlerwege e1-e7, Block-Cache, Ehrlichkeit bei Hoechsttempo samt KB/s, Abbruch verlassener Fenster) |
+| `test_file.py` | Pi-Stellendatei `/pi-daten/pi-1e9.b196` (Range-Lesen, Naht Geraet/Datei, Fehlerwege e1-e8 inkl. Blockwert und Kopf, Block-Cache, Ehrlichkeit bei Hoechsttempo samt KB/s, Abbruch verlassener Fenster) |
 | `test_big.py` | 3e5 Stellen in jedem Browser, Kette wächst weiter |
 | `test_license.py` | Auslieferung, Content-Types, Lizenztexte, alter Worker 404 (nur einmal) |
 
@@ -75,11 +76,11 @@ Spec der Bedienung von unfoldingPi (geprueft in `test_bedienung.py`, Gesten in `
 
 ## Pi-Datei (virtualisiertes Pi)
 
-- Jenseits der am Geraet gerechneten Stellen (Testhaken `deviceDigits`, Standard 100000) liest `tools/pi-file.js` die Stellen per HTTP-Range aus `/pi-daten/pi-1e9.bcd` (1e9 Stellen, BCD). Nur pi; auf dem Live-Host fehlt die Datei, dann meldet die Seite einen roten Fehler (`Pi-Datei: ...`), sobald das erste Dateifenster gebraucht wird.
+- Jenseits der am Geraet gerechneten Stellen (Testhaken `deviceDigits`, Standard 100000) liest `tools/pi-file.js` die Stellen per HTTP-Range aus `/pi-daten/pi-1e9.b196` (1e9 Stellen, 59 Ziffern je 196 Bit bitdicht, 32-Byte-Kopf `PI59`, 415254281 Byte; Beschreibung `/var/www/pi-daten/pi-1e9.txt`). Nur pi; auf dem Live-Host fehlt die Datei, dann meldet die Seite einen roten Fehler (`Pi-Datei: ...`), sobald das erste Dateifenster gebraucht wird.
 - Testhaken `file:false` schaltet die Datei ab (Tests der Geraete-Front/-Grenzen), `fileUrl` ueberschreibt die URL.
 - Kennzeichnung: Dateistellen mit Deckkraft 0,7 (Geraet 1,0), noch nicht geladene Stellen als blasser Balken (0,1). Kein Text.
-- Streng: jedes Nicht-206, falsche Teilezahl, falsches Content-Range, falsche Dateigroesse, Nibbles > 9, falsche Laenge -> ein Fehler, Leser schliesst, `console.error`.
-- Bloecke zu 128 Byte, LRU 640 Bloecke, hoechstens 350 Bereiche je Request, 2 Requests gleichzeitig, Abbruch (AbortController), wenn kein Block der Anfrage mehr gebraucht wird.
+- Streng: jedes Nicht-206, falsche Teilezahl, falsches Content-Range, falsche Dateigroesse, Blockwert >= 10^59, Fuellziffer ungleich 0, falscher Kopf (Magic, Version, Blockgroesse, Bitreihenfolge, Stellen- oder Blockzahl), falsche Laenge -> ein Fehler, Leser schliesst, `console.error`.
+- Cache-Einheit Gruppe = 8 Bloecke = 472 Ziffern = 196 Byte (byteausgerichtet), LRU 352 Gruppen, Kopf (32 Byte) wird einmal vorab gelesen und geprueft, hoechstens 350 Bereiche je Request, 2 Requests gleichzeitig, Abbruch (AbortController), wenn kein Block der Anfrage mehr gebraucht wird.
 - Takt: die Bildperiode wechselt nur bei mehr als 12 % Abweichung (Hysterese); sonst verschoebe ein 16/17-ms-Wackeln (Firefox) die vorausgeholte Bahn (8x mehr Datenverkehr gemessen). Test j1, Mutant nohyst.
 - Sausen: liegt der Vorschub je Bild ueber einer linearen Ziffer, rastet der Schritt auf die Bildperiode (Fenster springen im festen Abstand) und Wischer (Blur) deutet die Bewegung an. Kippgrenze gemessen (geometrisch, nicht per Auge): ab Regler etwa -0,18 je lineare Ziffer, ab etwa -0,43 sind aufeinanderfolgende Fenster (330 Stellen) ueberlappungsfrei.
 - Datenrate bei Hoechsttempo (Regler -0,8, 6 s, chromium): etwa 27 KB/s, 2,4 Requests/s mit je etwa 28 Bereichen (`test_file.py` druckt die MESSUNG-Zeile).
