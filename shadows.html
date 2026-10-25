@@ -492,13 +492,98 @@
     });
   }
 
+  // Glyph-Masken als echtes Signed-Distance-Field (Half-Float, LINEAR gefiltert).
+  // Wert = vorzeichenbehaftete Distanz zum Glyph-Rand in UV-Einheiten, positiv = im Glyph.
+  // Die Shader marschieren damit exakt (Sphere Tracing), Normalen kommen aus dem glatten Gradienten.
+  const SDF_SIZE = 512;
+  const SDF_SPREAD_PX = 24;
+  const SDF_SPREAD_UV = SDF_SPREAD_PX / SDF_SIZE;
+  const SDF_INF = 1e20;
+
+  // Felzenszwalb/Huttenlocher: eindimensionale quadrierte Distanztransformation (in place)
+  function edt1d(grid, offset, stride, length, f, v, z) {
+    v[0] = 0; z[0] = -SDF_INF; z[1] = SDF_INF;
+    f[0] = grid[offset];
+    for (let q = 1, k = 0, s = 0; q < length; q++) {
+      f[q] = grid[offset + q * stride];
+      const q2 = q * q;
+      do {
+        const r = v[k];
+        s = (f[q] - f[r] + q2 - r * r) / (q - r) / 2;
+      } while (s <= z[k] && --k > -1);
+      k++;
+      v[k] = q; z[k] = s; z[k + 1] = SDF_INF;
+    }
+    for (let q = 0, k = 0; q < length; q++) {
+      while (z[k + 1] < q) k++;
+      const r = v[k], qr = q - r;
+      grid[offset + q * stride] = f[r] + qr * qr;
+    }
+  }
+
+  function edt2d(grid, size) {
+    const f = new Float64Array(size), z = new Float64Array(size + 1), v = new Uint16Array(size);
+    for (let x = 0; x < size; x++) edt1d(grid, x, size, size, f, v, z);
+    for (let y = 0; y < size; y++) edt1d(grid, y * size, 1, size, f, v, z);
+  }
+
+  function makeSdfTexture(values) {
+    const tex = new THREE.DataTexture(values, SDF_SIZE, SDF_SIZE, THREE.RedFormat, THREE.HalfFloatType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  function emptySdfTexture() {
+    const out = new Uint16Array(SDF_SIZE * SDF_SIZE);
+    out.fill(THREE.DataUtils.toHalfFloat(-SDF_SPREAD_UV));
+    return makeSdfTexture(out);
+  }
+
+  // Aus dem antialiasten Canvas (weiss auf schwarz) ein SDF mit Subpixel-Genauigkeit (wie tiny-sdf)
+  function canvasToSdfTexture(ctx) {
+    const size = SDF_SIZE;
+    const img = ctx.getImageData(0, 0, size, size).data;
+    const n = size * size;
+    const outer = new Float64Array(n), inner = new Float64Array(n);
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const a = img[i * 4] / 255;
+      if (a === 1) { outer[i] = 0; inner[i] = SDF_INF; any = true; }
+      else if (a === 0) { outer[i] = SDF_INF; inner[i] = 0; }
+      else {
+        any = true;
+        const d = 0.5 - a;
+        outer[i] = d > 0 ? d * d : 0;
+        inner[i] = d < 0 ? d * d : 0;
+      }
+    }
+    if (!any) return emptySdfTexture();
+    edt2d(outer, size);
+    edt2d(inner, size);
+    const out = new Uint16Array(n);
+    const toHalf = THREE.DataUtils.toHalfFloat;
+    for (let y = 0; y < size; y++) {
+      // Canvas-Zeile 0 = oben = v 1 (wie flipY bei CanvasTexture)
+      const dst = (size - 1 - y) * size;
+      const src = y * size;
+      for (let x = 0; x < size; x++) {
+        const dpx = Math.sqrt(inner[src + x]) - Math.sqrt(outer[src + x]);
+        out[dst + x] = toHalf(Math.max(-SDF_SPREAD_PX, Math.min(SDF_SPREAD_PX, dpx)) / size);
+      }
+    }
+    return makeSdfTexture(out);
+  }
+
   function createGlyphTexture(text, rotation = 0, showCursor = false) {
-    // Hohe Auflösung für glatte Kanten
-    const size = 1024;
+    const size = SDF_SIZE;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     // Schwarzer Hintergrund (= nicht im Loch)
     ctx.fillStyle = '#000000';
@@ -508,15 +593,7 @@
     const fontFamily = FONT_OPTIONS[currentFontKey] || FONT_OPTIONS[DEFAULT_FONT_KEY];
 
     // Leerer Text ohne Cursor = nur schwarzer Hintergrund
-    if (safeText.length === 0 && !showCursor) {
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = true;
-      texture.anisotropy = 16;
-      texture.needsUpdate = true;
-      return texture;
-    }
+    if (safeText.length === 0 && !showCursor) return emptySdfTexture();
 
     // Rotation um Mittelpunkt
     ctx.translate(size / 2, size / 2);
@@ -529,7 +606,7 @@
 
     // Dynamische Schriftgröße basierend auf Text + Cursor-Breite
     const maxSize = size * 0.85;
-    let fontSize = 720;
+    let fontSize = size * 0.703;
     const cursorWidthRatio = 0.08;  // Cursor-Breite relativ zur Schriftgröße
     const cursorGap = showCursor ? fontSize * 0.05 : 0;  // Abstand zum Cursor
 
@@ -540,7 +617,7 @@
     const textWidth = metrics.width + (showCursor ? fontSize * cursorWidthRatio + cursorGap : 0);
     const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent || fontSize;
     const scale = Math.min(maxSize / textWidth, maxSize / textHeight, 1);
-    fontSize = Math.floor(fontSize * scale);
+    fontSize = fontSize * scale;
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
 
     // Neu messen nach Skalierung
@@ -569,14 +646,7 @@
       ctx.fillRect(cursorX, -cursorHeight / 2, cursorWidth, cursorHeight);
     }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    // Wichtig: Lineare Filterung für glatte Übergänge!
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = true;
-    texture.anisotropy = 16;
-    texture.needsUpdate = true;
-    return texture;
+    return canvasToSdfTexture(ctx);
   }
 
   function updateGlyphTexturesFor(entry) {
@@ -584,16 +654,24 @@
     const rotInf = (params.glyphRotInf || 0) * Math.PI / 180;
     const rot1   = (params.glyphRot1   || 0) * Math.PI / 180;
     const t = entry.glyphTextures;
-    if (t.x) { t.x.dispose(); t.x.image = null; }
-    if (t.y) { t.y.dispose(); t.y.image = null; }
-    if (t.z) { t.z.dispose(); t.z.image = null; }
+    const keys = entry.glyphKeys || (entry.glyphKeys = {});
     const isPrimary = (spheres[0] && entry === spheres[0]);
     const showL = isPrimary && activeGlyphTarget === 'left'  && cursorVisible;
     const showF = isPrimary && activeGlyphTarget === 'floor' && cursorVisible;
     const showR = isPrimary && activeGlyphTarget === 'right' && cursorVisible;
-    t.x = createGlyphTexture(entry.glyphChars.left,  rot0,   showL);
-    t.y = createGlyphTexture(entry.glyphChars.floor, rotInf, showF);
-    t.z = createGlyphTexture(entry.glyphChars.right, rot1,   showR);
+    // SDF nur neu bauen, wenn sich Text, Font, Rotation oder Cursor dieses Slots geaendert haben
+    const slots = [
+      ['x', entry.glyphChars.left,  rot0,   showL],
+      ['y', entry.glyphChars.floor, rotInf, showF],
+      ['z', entry.glyphChars.right, rot1,   showR],
+    ];
+    for (const [slot, text, rot, cur] of slots) {
+      const key = `${currentFontKey}|${text ?? ''}|${rot}|${cur ? 1 : 0}`;
+      if (t[slot] && keys[slot] === key) continue;
+      if (t[slot]) t[slot].dispose();
+      t[slot] = createGlyphTexture(text, rot, cur);
+      keys[slot] = key;
+    }
     if (entry.mesh && entry.mesh.material && entry.mesh.material.uniforms) {
       entry.mesh.material.uniforms.uGlyphTexX.value = t.x;
       entry.mesh.material.uniforms.uGlyphTexY.value = t.y;
@@ -640,6 +718,103 @@
     }
   }
 
+  // Gemeinsamer GLSL-Block fuer Haupt-, Tiefen- und Nebel-Shader: exakte SDF-Szene.
+  // Voraussetzung im Shader: uGlyphSize, uGebEnabled, uInvertMode, uShapeCube.
+  // Tunnel-Textur = 2D-SDF (positiv im Glyph), jeder Tunnel ist ein unendlicher Zylinder.
+  // Normal: Form minus Vereinigung der Tunnel = max(Form, max_i t_i).
+  // Invertiert: Form geschnitten mit allen Tunneln = max(Form, max_i -t_i).
+  const sdfGlsl = `
+    float sdfShape(vec3 p) {
+      if (uShapeCube == 1) return max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
+      return length(p) - 1.0;
+    }
+
+    // Aeussere Normale der Form (Kugel: radial, Wuerfel: Flaeche der groessten Komponente)
+    vec3 sdfShapeNormal(vec3 p) {
+      if (uShapeCube == 1) {
+        vec3 a = abs(p);
+        if (a.x >= a.y && a.x >= a.z) return vec3(sign(p.x), 0.0, 0.0);
+        if (a.y >= a.z) return vec3(0.0, sign(p.y), 0.0);
+        return vec3(0.0, 0.0, sign(p.z));
+      }
+      return normalize(p);
+    }
+
+    // UV der drei Tunnel (X und Y gespiegelt, Z original)
+    vec2 sdfUvX(vec3 p) { float k = 0.5 / (max(uGlyphSize, 1e-3) * 0.3); return vec2(0.5 - p.z * k, p.y * k + 0.5); }
+    vec2 sdfUvY(vec3 p) { float k = 0.5 / (max(uGlyphSize, 1e-3) * 0.3); return vec2(p.x * k + 0.5, 0.5 - p.z * k); }
+    vec2 sdfUvZ(vec3 p) { float k = 0.5 / (max(uGlyphSize, 1e-3) * 0.3); return vec2(p.x * k + 0.5, p.y * k + 0.5); }
+
+    // Distanz zum Glyph-Rand in lokalen Einheiten, positiv = im Glyph. Ausserhalb der Textur: Randwert minus Abstand zum Rand.
+    float sdfTube(sampler2D tex, vec2 uv) {
+      vec2 c = clamp(uv, 0.0, 1.0);
+      return (textureLod(tex, c, 0.0).r - length(uv - c)) * (0.6 * uGlyphSize);
+    }
+
+    float sdfSolid(vec3 p, sampler2D tx, sampler2D ty, sampler2D tz) {
+      float s = sdfShape(p);
+      if (uGebEnabled == 0) return uInvertMode == 1 ? 1.0 : s;
+      float sg = uInvertMode == 1 ? -1.0 : 1.0;
+      float d = max(s, sg * sdfTube(tx, sdfUvX(p)));
+      d = max(d, sg * sdfTube(ty, sdfUvY(p)));
+      return max(d, sg * sdfTube(tz, sdfUvZ(p)));
+    }
+
+    // Sphere Tracing mit echten Distanzen. true = Strahl trifft Festkoerper in [t0, t1].
+    bool sdfRayHit(vec3 ro, vec3 rd, float t0, float t1, sampler2D tx, sampler2D ty, sampler2D tz, out float tHit) {
+      float t = t0;
+      float d = 1.0;
+      float eps = 2e-4;
+      for (int i = 0; i < 160; i++) {
+        if (t > t1) { tHit = t; return false; }
+        d = sdfSolid(ro + rd * t, tx, ty, tz);
+        eps = 2e-4 * (1.0 + t);
+        if (d < eps) { tHit = t; return true; }
+        t += d * 0.95;
+      }
+      // Schleifenende: nur bei streifendem Kontakt noch als Treffer werten
+      tHit = t;
+      return d < eps * 20.0;
+    }
+
+    vec3 sdfSafeNormal(vec3 v) {
+      float l = length(v);
+      return l > 1e-6 ? v / l : vec3(0.0, 0.0, 1.0);
+    }
+
+    // Gradient der Tunnel-SDF (UV-Richtung), zentrale Differenzen ueber ~3 Texel auf dem glatten Feld
+    vec2 sdfTubeGrad(sampler2D tex, vec2 uv) {
+      float e = 3.0 / ${SDF_SIZE}.0;
+      float gx = sdfTube(tex, uv + vec2(e, 0.0)) - sdfTube(tex, uv - vec2(e, 0.0));
+      float gy = sdfTube(tex, uv + vec2(0.0, e)) - sdfTube(tex, uv - vec2(0.0, e));
+      return vec2(gx, gy);
+    }
+
+    // Aeussere Normale des Festkoerpers an p. kind: 0 = Form (Kugel/Wuerfel), 1 = Tunnel-Wand.
+    // Es zaehlt nur der dominante Term: scharfe Kanten, glatte Waende.
+    vec3 sdfSolidNormal(vec3 p, sampler2D tx, sampler2D ty, sampler2D tz, out int kind) {
+      kind = 0;
+      float best = sdfShape(p);
+      float sg = uInvertMode == 1 ? -1.0 : 1.0;
+      int axis = 0;
+      if (uGebEnabled == 1) {
+        float fx = sg * sdfTube(tx, sdfUvX(p));
+        float fy = sg * sdfTube(ty, sdfUvY(p));
+        float fz = sg * sdfTube(tz, sdfUvZ(p));
+        if (fx > best) { best = fx; axis = 1; }
+        if (fy > best) { best = fy; axis = 2; }
+        if (fz > best) { best = fz; axis = 3; }
+      }
+      if (axis == 0) return sdfShapeNormal(p);
+      kind = 1;
+      vec3 g;
+      if (axis == 1) { vec2 q = sdfTubeGrad(tx, sdfUvX(p)); g = vec3(0.0, q.y, -q.x); }
+      else if (axis == 2) { vec2 q = sdfTubeGrad(ty, sdfUvY(p)); g = vec3(q.x, 0.0, -q.y); }
+      else { vec2 q = sdfTubeGrad(tz, sdfUvZ(p)); g = vec3(q.x, q.y, 0.0); }
+      return sdfSafeNormal(sg * g);
+    }
+  `;
+
   const sphereVertexShader = `
     varying vec3 vWorldPos;
     varying vec3 vNormal;
@@ -681,72 +856,7 @@
     varying vec3 vLocalPos;
     varying vec3 vCameraLocal;
 
-    // Glyph-Textur samplen (clamp statt discard für korrekte Löcher am Rand)
-    float sampleGlyph(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      // Außerhalb der Textur = kein Loch
-      if (uv != clamped) return 0.0;
-      return textureLod(tex, uv, 0.0).r;
-    }
-
-    // Prüft ob Punkt in einem der drei Glyph-Zylinder liegt
-    // Gibt zurück: 0 = nicht im Loch, 1/2/3 = in Loch X/Y/Z (erstes gefundenes)
-    // holeCount wird gesetzt um Überschneidungen zu erkennen
-    // Im Invert-Modus: Early-Exit wenn eine Textur 0 ist (kann nie 3 werden)
-    int whichHole(vec3 p, out int holeCount) {
-      holeCount = 0;
-      if (uGebEnabled == 0) return 0;
-
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-      int firstHole = 0;
-
-      // X-Achse Loch (0) - Zylinder entlang X (gespiegelt für korrekte Orientierung)
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyphTexX, uvX) > threshold;
-      if (inX) {
-        holeCount++;
-        firstHole = 1;
-      } else if (uInvertMode == 1) {
-        return 0;  // EARLY EXIT: kann nie 3 werden
-      }
-
-      // Y-Achse Loch (∞) - Zylinder entlang Y (gespiegelt)
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyphTexY, uvY) > threshold;
-      if (inY) {
-        holeCount++;
-        if (firstHole == 0) firstHole = 2;
-      } else if (uInvertMode == 1) {
-        return firstHole;  // EARLY EXIT: kann nie 3 werden
-      }
-
-      // Z-Achse Loch (1) - Zylinder entlang Z (original, war korrekt)
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      if (sampleGlyph(uGlyphTexZ, uvZ) > threshold) {
-        holeCount++;
-        if (firstHole == 0) firstHole = 3;
-      }
-
-      return firstHole;
-    }
-
-    // SDF für Kugel
-    float sphereSDF(vec3 p) {
-      if (uShapeCube == 1) return max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
-      return length(p) - 1.0;
-    }
-
-    // Aeussere Normale der Form (Kugel: radial, Wuerfel: Flaeche der groessten Komponente)
-    vec3 shapeNormal(vec3 p) {
-      if (uShapeCube == 1) {
-        vec3 a = abs(p);
-        if (a.x >= a.y && a.x >= a.z) return vec3(sign(p.x), 0.0, 0.0);
-        if (a.y >= a.z) return vec3(0.0, sign(p.y), 0.0);
-        return vec3(0.0, 0.0, sign(p.z));
-      }
-      return normalize(p);
-    }
+    ${sdfGlsl}
 
     // Strahl gegen die Form (Kugel oder Wuerfel mit Halbkante 1): tEnter/tExit, false = kein Treffer
     bool shapeRange(vec3 ro, vec3 rd, out float tEnter, out float tExit) {
@@ -771,92 +881,6 @@
       return true;
     }
 
-    // Weichgezeichnete Probe (Mip 2) nur fuer Normalen: der binaere Rand liefert sonst Zackenbaender
-    float sampleGlyphSoft(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      if (uv != clamped) return 0.0;
-      return textureLod(tex, uv, 2.0).r;
-    }
-
-    // normalize(0) liefert NaN (Pixelrauschen): Fallback radial nach aussen ist hier nicht bekannt, daher Z-Achse
-    vec3 safeNormal(vec3 v) {
-      float l = length(v);
-      return l > 1e-5 ? v / l : vec3(0.0, 0.0, 1.0);
-    }
-
-    // Normale der Tunnel-Wand berechnen (Gradient der Glyph-Textur)
-    // Zeigt NACH INNEN zum Tunnel (weg von der Wand)
-    vec3 calcTunnelNormal(vec3 p, int holeAxis) {
-      float glyphScale = uGlyphSize * 0.3;
-      float eps = 0.008;  // ~8 Texel: glatter Gradient statt 8-Bit-Treppen
-
-      if (holeAxis == 1) {
-        // X-Achsen-Tunnel: Normale in YZ-Ebene (gespiegelt)
-        vec2 uv = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-        float gx = sampleGlyphSoft(uGlyphTexX, uv + vec2(eps, 0.0)) - sampleGlyphSoft(uGlyphTexX, uv - vec2(eps, 0.0));
-        float gy = sampleGlyphSoft(uGlyphTexX, uv + vec2(0.0, eps)) - sampleGlyphSoft(uGlyphTexX, uv - vec2(0.0, eps));
-        return safeNormal(vec3(0.0, gy, gx));  // Vorzeichen angepasst wegen Spiegelung
-      } else if (holeAxis == 2) {
-        // Y-Achsen-Tunnel: Normale in XZ-Ebene (gespiegelt)
-        vec2 uv = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-        float gx = sampleGlyphSoft(uGlyphTexY, uv + vec2(eps, 0.0)) - sampleGlyphSoft(uGlyphTexY, uv - vec2(eps, 0.0));
-        float gy = sampleGlyphSoft(uGlyphTexY, uv + vec2(0.0, eps)) - sampleGlyphSoft(uGlyphTexY, uv - vec2(0.0, eps));
-        return safeNormal(vec3(-gx, 0.0, gy));  // Vorzeichen angepasst wegen Spiegelung
-      } else {
-        // Z-Achsen-Tunnel: Normale in XY-Ebene (unverändert)
-        vec2 uv = (p.xy / glyphScale) * 0.5 + 0.5;
-        float gx = sampleGlyphSoft(uGlyphTexZ, uv + vec2(eps, 0.0)) - sampleGlyphSoft(uGlyphTexZ, uv - vec2(eps, 0.0));
-        float gy = sampleGlyphSoft(uGlyphTexZ, uv + vec2(0.0, eps)) - sampleGlyphSoft(uGlyphTexZ, uv - vec2(0.0, eps));
-        return safeNormal(vec3(-gx, -gy, 0.0));
-      }
-    }
-
-    // Berechnet Distanz zur Tunnel-Wand für eine Achse (0 = auf der Wand, >0 = im Tunnel)
-    float tunnelWallDist(vec3 p, int axis) {
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-      vec2 uv;
-
-      if (axis == 1) {
-        uv = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-        return sampleGlyph(uGlyphTexX, uv) - threshold;
-      } else if (axis == 2) {
-        uv = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-        return sampleGlyph(uGlyphTexY, uv) - threshold;
-      } else {
-        uv = (p.xy / glyphScale) * 0.5 + 0.5;
-        return sampleGlyph(uGlyphTexZ, uv) - threshold;
-      }
-    }
-
-    // Berechnet die korrekte Normale für die Schnittmenge aller drei Tunnel
-    // Die nächste Tunnel-Wand bestimmt die Normale
-    vec3 calcIntersectionNormal(vec3 p, vec3 viewDir) {
-      // Finde welcher Tunnel am nächsten zur Wand ist (kleinster Wert = nächste Wand)
-      float distX = tunnelWallDist(p, 1);
-      float distY = tunnelWallDist(p, 2);
-      float distZ = tunnelWallDist(p, 3);
-
-      int closestAxis;
-      if (distX <= distY && distX <= distZ) {
-        closestAxis = 1;
-      } else if (distY <= distX && distY <= distZ) {
-        closestAxis = 2;
-      } else {
-        closestAxis = 3;
-      }
-
-      // calcTunnelNormal gibt den Gradienten zurück, der INS LOCH zeigt
-      // (von schwarz/Rand nach weiß/Mitte)
-      // Im Invert-Modus ist das Loch-Innere unser Objekt
-      // Die Oberflächen-Normale muss ZUR LICHTQUELLE zeigen können
-      // Der Gradient zeigt ins Loch = zum Objekt-Inneren
-      // Für korrekte Beleuchtung: Normale = Gradient (zeigt zur beleuchteten Seite)
-      vec3 normal = calcTunnelNormal(p, closestAxis);
-
-      return normal;
-    }
-
     void main() {
       vec3 rayOrigin = vCameraLocal;
       vec3 rayDir = normalize(vLocalPos - vCameraLocal);
@@ -868,143 +892,20 @@
       if (tExit < 0.0) discard;
       tEnter = max(tEnter, 0.001);
 
-      // Raymarching durch die Kugel
-      vec3 hitPos;
-      vec3 hitNormal;
-      bool foundHit = false;
-      int hitType = 0;  // 0=sphere outside, 1=sphere inside, 2=tunnel wall
+      // Sphere Tracing gegen die exakte SDF (Kugel/Wuerfel mit Tunneln)
+      float tHit;
+      if (!sdfRayHit(rayOrigin, rayDir, tEnter, tExit, uGlyphTexX, uGlyphTexY, uGlyphTexZ, tHit)) discard;
 
-      float t = tEnter;
-      // Größerer baseStep für Invert-Modus (Objekt ist kleiner)
-      float baseStep = (uInvertMode == 1) ? 0.018 : 0.012;
-
-      bool wasInHole = false;
-      int lastHoleAxis = 0;
-      float lastT = t;
-
-      // Reduzierte Iterationen: 80 statt 120 (mit adaptivem Stepping ausreichend)
-      for (int i = 0; i < 110; i++) {
-        if (t > tExit) break;
-
-        vec3 p = rayOrigin + rayDir * t;
-        float dist = sphereSDF(p);
-        bool inSphere = (dist < 0.0);
-        int holeCount;
-        int holeAxis = whichHole(p, holeCount);
-        bool inHole = (holeCount > 0);
-
-        if (uInvertMode == 1) {
-          // INVERTIERTER MODUS: Nur die SCHNITTMENGE aller drei Zeichen rendern
-          // inGlyph = innerhalb Kugel UND in ALLEN DREI Zylindern gleichzeitig
-          bool inGlyph = inSphere && (holeCount == 3);
-          bool wasInGlyph = wasInHole;  // wasInHole wird hier als wasInGlyph genutzt
-
-          // Eintritt in Glyph-Volumen (Außenkante der Schnittmenge)
-          if (!wasInGlyph && inGlyph) {
-            // Binary Search für präzise Kante (reduziert auf 8 Iterationen)
-            float tLo = lastT;
-            float tHi = t;
-            int finalAxis = holeAxis;
-            for (int j = 0; j < 8; j++) {
-              float tMid = (tLo + tHi) * 0.5;
-              vec3 pMid = rayOrigin + rayDir * tMid;
-              float distMid = sphereSDF(pMid);
-              int midCount;
-              int midAxis = whichHole(pMid, midCount);
-              bool midInGlyph = (distMid < 0.0) && (midCount == 3);
-              if (midInGlyph) {
-                tHi = tMid;
-                finalAxis = midAxis;
-              } else {
-                tLo = tMid;
-              }
-            }
-            hitPos = rayOrigin + rayDir * tHi;
-            // Normale muss NACH AUSSEN vom Glyph-Körper zeigen (in den leeren Raum)
-            float hitDist = sphereSDF(hitPos);
-            if (abs(hitDist) < 0.05) {
-              // Auf Kugeloberfläche: Normale zeigt radial nach außen
-              hitNormal = shapeNormal(hitPos);
-            } else {
-              // An Tunnel-Wand: Berechne korrekte Normale basierend auf nächster Wand
-              hitNormal = calcIntersectionNormal(hitPos, rayDir);
-            }
-            hitType = 0;
-            foundHit = true;
-            break;
-          }
-
-          wasInHole = inGlyph;  // Track ob wir im Glyph waren
-          lastHoleAxis = holeAxis;
-          lastT = t;
-
-          // ADAPTIVE STEPPING für Invert-Modus:
-          // Außerhalb der Kugel: große Schritte (SDF-basiert)
-          // Innerhalb aber nicht in Schnittmenge: mittlere Schritte
-          // Nahe der Schnittmenge (holeCount >= 2): kleine Schritte
-          float step;
-          if (!inSphere) {
-            step = max(dist * 0.5, baseStep);  // Außerhalb: SDF-Distanz nutzen
-          } else if (holeCount >= 2) {
-            step = baseStep;  // Nahe Schnittmenge: fein
-          } else {
-            step = baseStep * 2.0;  // In Kugel aber weit weg: gröber
-          }
-          t += step;
-
-        } else {
-          // NORMALER MODUS: Kugel mit Löchern
-
-          // Tunnel-Wand-Detektion: Übergang von "im Loch" zu "nicht im Loch"
-          if (wasInHole && !inHole && dist < 0.0) {
-            // Binary Search für sub-pixel präzise Tunnel-Wand-Position
-            float tLo = lastT;
-            float tHi = t;
-            for (int j = 0; j < 12; j++) {
-              float tMid = (tLo + tHi) * 0.5;
-              vec3 pMid = rayOrigin + rayDir * tMid;
-              int dummyCount;
-              int midAxis = whichHole(pMid, dummyCount);
-              bool midInHole = (dummyCount > 0);
-              if (midInHole) {
-                tLo = tMid;
-              } else {
-                tHi = tMid;
-              }
-            }
-            // Präzise Position auf der Tunnel-Wand
-            hitPos = rayOrigin + rayDir * tHi;
-            hitNormal = calcTunnelNormal(hitPos, lastHoleAxis);
-            hitType = 2;  // Tunnel-Wand
-            foundHit = true;
-            break;
-          }
-
-          // Kugeloberfläche (nicht im Loch)?
-          if (abs(dist) < 0.01 && !inHole) {
-            hitPos = p;
-            hitNormal = shapeNormal(p);
-            if (dot(hitNormal, rayDir) > 0.0) {
-              hitNormal = -hitNormal;
-              hitType = 1;  // Innenseite
-            } else {
-              hitType = 0;  // Außenseite
-            }
-            foundHit = true;
-            break;
-          }
-
-          wasInHole = inHole;
-          if (inHole) lastHoleAxis = holeAxis;
-          lastT = t;
-
-          // Adaptiver Schritt: kleiner nahe der Oberfläche, aber konstant in Löchern
-          float step = inHole ? baseStep : max(abs(dist) * 0.4, baseStep);
-          t += step;
-        }
+      vec3 hitPos = rayOrigin + rayDir * tHit;
+      int kind;
+      vec3 hitNormal = sdfSolidNormal(hitPos, uGlyphTexX, uGlyphTexY, uGlyphTexZ, kind);
+      int hitType = 0;  // 0=Aussenseite, 1=Innenseite, 2=Tunnel-Wand (nur Normal-Modus)
+      if (dot(hitNormal, rayDir) > 0.0) {
+        hitNormal = -hitNormal;
+        hitType = 1;
+      } else if (kind == 1 && uInvertMode == 0) {
+        hitType = 2;
       }
-
-      if (!foundHit) discard;
 
       // Lichtrichtungen (von Lichtquelle zur Kugel)
       vec3 lightPos1 = vec3(0.0, 1.0, 0.0) * uLightDistance;  // Floor-Spot
@@ -1141,62 +1042,7 @@
     varying vec3 vLightLocal;
     varying vec2 vHighPrecisionZW;
 
-    // EXAKT wie im Haupt-Shader!
-    float sampleGlyph(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      if (uv != clamped) return 0.0;
-      return textureLod(tex, uv, 0.0).r;
-    }
-
-    // Zählt in wie vielen Löchern der Punkt liegt (0-3)
-    // Im Invert-Modus: Early-Exit wenn eine Textur 0 ist (kann nie 3 werden)
-    int countHoles(vec3 p) {
-      if (uGebEnabled == 0) return 0;
-
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-
-      // X-Achse (gespiegelt)
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyphTexX, uvX) > threshold;
-
-      // EARLY EXIT für Invert-Modus: Wenn X=0, kann es nie 3 werden
-      if (uInvertMode == 1 && !inX) return 0;
-
-      // Y-Achse (gespiegelt)
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyphTexY, uvY) > threshold;
-
-      // EARLY EXIT für Invert-Modus: Wenn Y=0, kann es nie 3 werden
-      if (uInvertMode == 1 && !inY) return inX ? 1 : 0;
-
-      // Z-Achse (original)
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      bool inZ = sampleGlyph(uGlyphTexZ, uvZ) > threshold;
-
-      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
-    }
-
-    // Prüft ob Punkt in mindestens einem Loch ist
-    bool isInHole(vec3 p) {
-      return countHoles(p) > 0;
-    }
-
-    float sphereSDF(vec3 p) {
-      if (uShapeCube == 1) return max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
-      return length(p) - 1.0;
-    }
-
-    // Aeussere Normale der Form (Kugel: radial, Wuerfel: Flaeche der groessten Komponente)
-    vec3 shapeNormal(vec3 p) {
-      if (uShapeCube == 1) {
-        vec3 a = abs(p);
-        if (a.x >= a.y && a.x >= a.z) return vec3(sign(p.x), 0.0, 0.0);
-        if (a.y >= a.z) return vec3(0.0, sign(p.y), 0.0);
-        return vec3(0.0, 0.0, sign(p.z));
-      }
-      return normalize(p);
-    }
+    ${sdfGlsl}
 
     // Strahl gegen die Form (Kugel oder Wuerfel mit Halbkante 1): tEnter/tExit, false = kein Treffer
     bool shapeRange(vec3 ro, vec3 rd, out float tEnter, out float tExit) {
@@ -1232,82 +1078,9 @@
       if (tExit < 0.0) discard;
       tEnter = max(tEnter, 0.001);
 
-      // Raymarching: Finde ersten soliden Punkt
-      float t = tEnter;
-      float baseStep = (uInvertMode == 1) ? 0.03 : 0.015;  // Gröber im Invert-Modus
-      bool foundSolid = false;
-      bool wasInHole = false;
-      float lastT = t;
-
-      for (int i = 0; i < 60; i++) {  // Reduziert von 100 auf 60
-        if (t > tExit) break;
-
-        vec3 p = rayOrigin + rayDir * t;
-        float dist = sphereSDF(p);
-        bool inSphere = (dist < 0.0);
-        int holeCount = countHoles(p);
-        bool inHole = (holeCount > 0);
-
-        if (uInvertMode == 1) {
-          // INVERTIERTER MODUS: Solid = Schnittmenge aller 3 Zylinder
-          bool inGlyph = inSphere && (holeCount == 3);
-          bool wasInGlyph = wasInHole;
-
-          // Eintritt in Glyph-Volumen (Schnittmenge)
-          if (!wasInGlyph && inGlyph) {
-            foundSolid = true;
-            break;
-          }
-
-          wasInHole = inGlyph;
-          lastT = t;
-
-          // ADAPTIVE STEPPING (wie im Hauptshader)
-          float step;
-          if (!inSphere) {
-            step = max(dist * 0.5, baseStep);
-          } else if (holeCount >= 2) {
-            step = baseStep;
-          } else {
-            step = baseStep * 2.0;
-          }
-          t += step;
-
-        } else {
-          // NORMALER MODUS: Kugel mit Löchern
-
-          // Tunnel-Wand: Übergang von Loch zu Nicht-Loch INNERHALB der Kugel
-          if (wasInHole && !inHole && dist < 0.0) {
-            // Binary Search für präzise Position (konsistent mit Hauptshader)
-            float tLo = lastT;
-            float tHi = t;
-            for (int j = 0; j < 12; j++) {
-              float tMid = (tLo + tHi) * 0.5;
-              vec3 pMid = rayOrigin + rayDir * tMid;
-              if (isInHole(pMid)) {
-                tLo = tMid;
-              } else {
-                tHi = tMid;
-              }
-            }
-            foundSolid = true;
-            break;
-          }
-
-          // Auf Kugeloberfläche und NICHT im Loch?
-          if (abs(dist) < 0.02 && !inHole) {
-            foundSolid = true;
-            break;
-          }
-
-          wasInHole = inHole;
-          lastT = t;
-          float step = inHole ? baseStep : max(abs(dist) * 0.4, baseStep);
-          t += step;
-        }
-      }
-
-      if (!foundSolid) discard;
+      // Sphere Tracing: erster solider Punkt
+      float tHit;
+      if (!sdfRayHit(rayOrigin, rayDir, tEnter, tExit, uGlyphTexX, uGlyphTexY, uGlyphTexZ, tHit)) discard;
 
       float fragCoordZ = 0.5 * vHighPrecisionZW.x / vHighPrecisionZW.y + 0.5;
       gl_FragColor = packDepthToRGBA(fragCoordZ);
@@ -1367,60 +1140,7 @@
     varying vec3 vWorldPos;
     varying vec3 vLocalPos;
 
-    // Glyph sampling - EXAKT wie im Haupt-Shader!
-    float sampleGlyph(sampler2D tex, vec2 uv) {
-      vec2 clamped = clamp(uv, 0.0, 1.0);
-      // Außerhalb der Textur = kein Loch
-      if (uv != clamped) return 0.0;
-      return textureLod(tex, uv, 0.0).r;
-    }
-
-    // Zählt in wie vielen Löchern der Punkt liegt (0-3)
-    // WICHTIG: p ist in LOKALEN Koordinaten (wie im Haupt-Shader)
-    // Im Invert-Modus: Early-Exit wenn eine Textur 0 ist (kann nie 3 werden)
-    int countHoles(vec3 p) {
-      if (uGebEnabled == 0) return 0;
-
-      // IDENTISCH zum Haupt-Shader whichHole()!
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-
-      // X-Achse (gespiegelt) - EXAKT wie im Haupt-Shader
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyphTexX, uvX) > threshold;
-
-      // EARLY EXIT für Invert-Modus
-      if (uInvertMode == 1 && !inX) return 0;
-
-      // Y-Achse (gespiegelt) - EXAKT wie im Haupt-Shader
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyphTexY, uvY) > threshold;
-
-      // EARLY EXIT für Invert-Modus
-      if (uInvertMode == 1 && !inY) return 0;
-
-      // Z-Achse - EXAKT wie im Haupt-Shader
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      bool inZ = sampleGlyph(uGlyphTexZ, uvZ) > threshold;
-
-      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
-    }
-
-    // Wie countHoles, aber für die zweite Kugel (eigene, getauschte Glyphen).
-    int countHoles2(vec3 p) {
-      if (uGebEnabled == 0) return 0;
-      float glyphScale = uGlyphSize * 0.3;
-      float threshold = 0.5;
-      vec2 uvX = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-      bool inX = sampleGlyph(uGlyph2TexX, uvX) > threshold;
-      if (uInvertMode == 1 && !inX) return 0;
-      vec2 uvY = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-      bool inY = sampleGlyph(uGlyph2TexY, uvY) > threshold;
-      if (uInvertMode == 1 && !inY) return 0;
-      vec2 uvZ = (p.xy / glyphScale) * 0.5 + 0.5;
-      bool inZ = sampleGlyph(uGlyph2TexZ, uvZ) > threshold;
-      return (inX ? 1 : 0) + (inY ? 1 : 0) + (inZ ? 1 : 0);
-    }
+    ${sdfGlsl}
 
     // Prüft ob der Strahl von 'from' nach 'to' die Kugel mit Zentrum 'center' trifft
     // (außer durch Löcher). useSecond=true → Glyphen der zweiten Kugel.
@@ -1458,37 +1178,11 @@
 
       if (tEnter >= tExit) return false;
 
-      // EINFACHER ANSATZ: Kleine Schritte, viele Samples
-      // Schrittgröße = 1% des Kugelradius = sehr fein
-      float step = uSphereRadius * 0.006;
-
-      if (uInvertMode == 1) {
-        // INVERT-MODUS: Schnittmenge aller 3 Zylinder
-        for (float t = tEnter; t < tExit; t += step) {
-          vec3 p = rayOrigin + rayDir * t;
-          // WICHTIG: Normalisiere auf Einheitskoordinaten für countHoles
-          // countHoles erwartet Koordinaten einer Einheitskugel (radius=1)
-          vec3 pNorm = p / uSphereRadius;
-          int holeCount = useSecond ? countHoles2(pNorm) : countHoles(pNorm);
-          if (holeCount == 3) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      // Normal-Modus
-      for (float t = tEnter; t < tExit; t += step) {
-        vec3 p = rayOrigin + rayDir * t;
-        // WICHTIG: Normalisiere auf Einheitskoordinaten für countHoles
-        vec3 pNorm = p / uSphereRadius;
-        int holeCount = useSecond ? countHoles2(pNorm) : countHoles(pNorm);
-        if (holeCount == 0) {
-          return true;
-        }
-      }
-
-      return false;
+      // Sphere Tracing in Einheitskoordinaten (Kugelradius = 1)
+      float tHit;
+      vec3 ro = rayOrigin / uSphereRadius;
+      if (useSecond) return sdfRayHit(ro, rayDir, tEnter / uSphereRadius, tExit / uSphereRadius, uGlyph2TexX, uGlyph2TexY, uGlyph2TexZ, tHit);
+      return sdfRayHit(ro, rayDir, tEnter / uSphereRadius, tExit / uSphereRadius, uGlyphTexX, uGlyphTexY, uGlyphTexZ, tHit);
     }
 
     // Berechnet Spotlight-Intensität mit Decay (0 = außerhalb, 1 = voll im Kegel)
