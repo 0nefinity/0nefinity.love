@@ -17,13 +17,17 @@
  *   view.setD(v)  view.setLocked(b)  view.invalidate()  view.refreshColor()
  *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
- *                                       // Ziffern aus r (Index >= Kettenlaenge) sind dezent gedaempft, noch fehlende ein ruhiger Strich.
+ *                                       // Ziffern aus r (Index >= Kettenlaenge) sind dezent gedaempft, noch fehlende ein ruhiger Strich
+ *                                       // (gestaucht zaehlen sie wie Ziffern mittlerer Tinte).
  *   view.state()  view.digits()  view.shown()   // nur lesend (Tests)
  *   view.destroy()                      // Listener, Beobachter und Bildschleife weg
  *
  * Fehler werfen: appendDigits wirft UnfoldingView.DigitError bei Luecke/Widerspruch (Meldung ist fertig lesbar), sonst die
  * urspruengliche Ausnahme (z. B. RangeError an der Stringgrenze). Kein stilles Verschlucken; der Besitzer entscheidet.
  * Gerendert wird nur das sichtbare Fenster (iLo..iHi); Atlas je Zeichen/Farbe/Groesse einmal.
+ * Stauchzone: Tinte bleibt erhalten. Eine gestauchte Ziffer gibt ihre ganze Tinte (Flaeche der Glyphe) an die Spalten ab,
+ * die sie ueberdeckt; je Geraetepixel addiert sich die Tinte zur Deckkraft (hoechstens 1). So wird die Zone schmaler und
+ * satter, nie blasser, und bleibt bis zuletzt eine Haarlinie, solange dort Ziffern liegen (auch bei d = 0).
  */
 (() => {
   'use strict';
@@ -67,10 +71,11 @@
     let W = 0, H = 0, dpr = 1, S = 40, w = 24;
     let L = 0, R = 0, X0 = 0, d = 24;
     let color = '#fff';
-    let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0, atlasRgb = [0, 0, 0];
-    // Unter einem Geraetepixel Breite: Deckung je Geraetespalte und Zeichen (acc[c * 11 + t]), einmal je Bild ausgegeben.
-    const NG = GLYPHS.length;
-    let acc = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
+    let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0, atlasRgb = [0, 0, 0], gw = 1, gh = 1;
+    // Stauchzone, einmal je Bild ausgegeben: ink[c * gh + y] traegt die Tinte gestauchter Ziffern ab 1 Geraetepixel Breite,
+    // acc[c * NGA + t] die Zahl der Ziffern t (Anteil) unter 1 Geraetepixel; t = AVG ist eine noch fehlende Stelle.
+    const NG = GLYPHS.length, AVG = NG, NGA = NG + 1;
+    let acc = new Float32Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
     let dirty = true;
     let velocity = 0, drawnCount = 0;
@@ -149,7 +154,7 @@
 
     function rolledLeft() { return X0 < L + deff() - 0.5; }
 
-    // ─── Atlas: je Zeichen mehrere Breitenstufen (Mipmap in x) ───
+    // ─── Atlas: je Zeichen das Bild, die Silhouette und die Tinte je Spalte ───
     function rowMaxAlpha(data, width, height) {
       const out = new Uint8Array(height);
       for (let y = 0; y < height; y++) {
@@ -167,45 +172,39 @@
       const probe = document.createElement('canvas').getContext('2d');
       probe.fillStyle = color; probe.fillRect(0, 0, 1, 1);
       const rgb = probe.getImageData(0, 0, 1, 1).data;
+      const cums = [];
       for (const ch of GLYPHS) {
-        const levels = [];
-        let cw = wd;
-        let c = document.createElement('canvas'); c.width = cw; c.height = hd;
-        let g = c.getContext('2d');
+        const c = document.createElement('canvas'); c.width = wd; c.height = hd;
+        const g = c.getContext('2d');
         g.fillStyle = color;
         g.font = (S * dpr) + 'px ' + fam;
         g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(ch, cw / 2, hd / 2);
-        levels.push(c);
-        const cw0 = cw;
-        while (cw > 1) {
-          const nw = Math.max(1, Math.ceil(cw / 2));
-          const n = document.createElement('canvas'); n.width = nw; n.height = hd;
-          const ng = n.getContext('2d');
-          ng.imageSmoothingEnabled = true; ng.imageSmoothingQuality = 'high';
-          ng.drawImage(levels[levels.length - 1], 0, 0, cw, hd, 0, 0, nw, hd);
-          levels.push(n); cw = nw;
-        }
-        // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (das Zeichen "bis auf Strichstärke" gestaucht).
-        const rowMax = rowMaxAlpha(g.getImageData(0, 0, cw0, hd).data, cw0, hd);
+        g.fillText(ch, wd / 2, hd / 2);
+        const data = g.getImageData(0, 0, wd, hd).data;
+        // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (ruhiger Strich fuer fehlende Stellen).
+        const rowMax = rowMaxAlpha(data, wd, hd);
         const bar = document.createElement('canvas'); bar.width = 1; bar.height = hd;
         const bg = bar.getContext('2d'), bd = bg.createImageData(1, hd);
-        const [br, bgc, bb] = rgb;
         for (let y = 0; y < hd; y++) {
-          bd.data[y * 4] = br; bd.data[y * 4 + 1] = bgc; bd.data[y * 4 + 2] = bb; bd.data[y * 4 + 3] = rowMax[y];
+          bd.data[y * 4] = rgb[0]; bd.data[y * 4 + 1] = rgb[1]; bd.data[y * 4 + 2] = rgb[2]; bd.data[y * 4 + 3] = rowMax[y];
         }
         bg.putImageData(bd, 0, 0);
-        // Mittlere Deckung je Zeile ueber die volle Zeichenbreite: so viel Tinte traegt eine Geraetespalte, wenn das Zeichen
-        // auf die Breite b < 1 gestaucht ist, mal b (flaechentreu, siehe accumulate).
-        const d0 = g.getImageData(0, 0, cw0, hd).data, rowMean = new Float32Array(hd);
-        for (let y = 0; y < hd; y++) {
-          let s = 0;
-          for (let x = 0; x < cw0; x++) s += d0[(y * cw0 + x) * 4 + 3];
-          rowMean[y] = s / (cw0 * 255);
+        // Tinte links von Quellspalte s, je Zeile: cum[s * hd + y] (s = 0..wd). cum[wd * hd + y] ist die ganze Tinte der Zeile
+        // in Geraetepixeln; sie bleibt beim Stauchen erhalten.
+        const cum = new Float32Array((wd + 1) * hd);
+        for (let s = 0; s < wd; s++) {
+          for (let y = 0; y < hd; y++) cum[(s + 1) * hd + y] = cum[s * hd + y] + data[(y * wd + s) * 4 + 3] / 255;
         }
-        atlas[ch] = { levels, wd, hd, bar, rowMax, rowMean, t: GLYPHS.indexOf(ch) };
+        cums.push(cum);
+        atlas[ch] = { img: c, bar, rowMax, cum, t: GLYPHS.indexOf(ch) };
       }
+      // Noch fehlende Stelle, gestaucht: die mittlere Tinte der zehn Ziffern.
+      const avg = new Float32Array((wd + 1) * hd);
+      for (let k = 0; k < 10; k++) { const cu = cums[k]; for (let i = 0; i < avg.length; i++) avg[i] += cu[i] / 10; }
+      cums.push(avg);
+      atlas.cums = cums;
       atlasRgb = [rgb[0], rgb[1], rgb[2]];
+      gw = wd; gh = hd;
       let top = -1, bot = -1;
       atlas['8'].rowMax.forEach((m, y) => { if (m > 40) { if (top < 0) top = y; bot = y; } });
       inkTop = top; inkBottom = bot;
@@ -229,10 +228,12 @@
       if (opts.onNeedDigits) opts.onNeedDigits(iLinHi + 2 + K + 100);
       if (opts.onFront) opts.onFront(iLinHi >= total() - 3);
       if (remote) remote.want(iLo, iHi, step);
-      const wd = atlas['0'].wd, hd = atlas['0'].hd;
+      const wd = gw, hd = gh;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       const mid = (L + R) / 2;
-      if (accCols !== canvas.width) { accCols = canvas.width; acc = new Float32Array(accCols * NG); }
+      if (accCols !== canvas.width || ink.length !== canvas.width * hd) {
+        accCols = canvas.width; acc = new Float32Array(accCols * NGA); ink = new Float32Array(accCols * hd);
+      }
       let n = 0;
       if (shownCodes.length < iHi - iLo + 1) { shownCodes = new Uint8Array(Math.max(iHi - iLo + 1, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
       shownMark.fill(0, 0, iHi - iLo + 1);
@@ -254,13 +255,15 @@
           if (!code) {
             if (fromRemote && remote) {
               if (pass === 0) shownMark[i - iLo] = Math.round(PENDING_ALPHA * 100);
-              // Platzhalter verblasst, bevor die Stelle schmaler als eine halbe Ziffer wird: keine Linie aus Platzhaltern.
+              // Die Stelle kommt sicher: lesbar ein ruhiger Strich, gestaucht geht er stetig in die mittlere Tinte einer
+              // Ziffer ueber (ab halber Breite ganz), damit die Stauchzone beim Nachladen nicht ausduennt.
               const fade = Math.max(0, Math.min(1, (nat / w - 0.5) / 0.5));
               if (fade > 0) {
                 ctx.globalAlpha = PENDING_ALPHA * mul * fade;
                 ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
                 ctx.globalAlpha = 1;
               }
+              if (fade < 1) deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade));
             }
             continue;
           }
@@ -270,11 +273,10 @@
           const al = (fromRemote ? FILE_ALPHA : 1) * mul;
           if (pass === 0) shownMark[i - iLo] = Math.round(al * 100);
           n++;
-          // Schmaler als ein Geraetepixel: die Ziffer selbst, flaechentreu in ihre Spalte(n) gerechnet (kein Mindestmass).
-          if (wDev < 1) { accumulate(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); continue; }
+          // Gestaucht: die ganze Tinte der Ziffer in ihre Spalten (Tinte bleibt erhalten, kein Mindestmass).
+          if (wDev < wd * 0.999) { deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); continue; }
           ctx.globalAlpha = al;
-          const k = Math.max(0, Math.min(g.levels.length - 1, Math.floor(Math.log2(wd / wDev))));
-          ctx.drawImage(g.levels[k], xDev, y0, wDev, hd);
+          ctx.drawImage(g.img, xDev, y0, wDev, hd);
         }
       }
       ctx.globalAlpha = 1;
@@ -283,20 +285,49 @@
       drawnCount = n;
     }
 
-    // Ziffer t mit Breite wDev (< 1 Geraetepixel) ab xDev: Anteil je ueberdeckter Spalte (hoechstens zwei) mal Deckkraft.
-    function accumulate(zone, t, xDev, wDev, al) {
+    // Ziffer t (Breite wDev Geraetepixel, ab xDev, Deckkraft al) gibt ihre ganze Tinte an die ueberdeckten Spalten ab.
+    function mark(zone, c) { if (c < zone.lo) zone.lo = c; if (c > zone.hi) zone.hi = c; }
+    function deposit(zone, t, xDev, wDev, al) {
+      if (wDev <= 1e-9) {
+        // ohne Breite (d = 0 oder Ende der Zone): alles in die Spalte an der Kante, innen
+        const c = zone === zoneR ? Math.ceil(xDev) - 1 : Math.floor(xDev);
+        if (c >= 0 && c < accCols) { acc[c * NGA + t] += al; mark(zone, c); }
+        return;
+      }
       const end = xDev + wDev;
+      if (wDev < 1) {
+        // unter 1 Geraetepixel: Anteil der Ziffer je Spalte; flush legt die Zeilentinte der Ziffer darauf
+        for (let c = Math.floor(xDev); c < end; c++) {
+          if (c < 0 || c >= accCols) continue;
+          const part = Math.min(c + 1, end) - Math.max(c, xDev);
+          if (part <= 0) continue;
+          acc[c * NGA + t] += al * part / wDev;
+          if (c < zone.lo) zone.lo = c;
+          if (c > zone.hi) zone.hi = c;
+        }
+        return;
+      }
+      // breiter: auf Spalte c fallen die Quellspalten [u0, u1); ihre mittlere Deckung mal gw / wDev Quellspalten je
+      // Geraetepixel ist ihre volle Tinte (Summe ueber u, nicht Mittel)
+      const cum = atlas.cums[t], hd = gh;
+      const gain = al * gw / wDev;
       for (let c = Math.floor(xDev); c < end; c++) {
         if (c < 0 || c >= accCols) continue;
         const part = Math.min(c + 1, end) - Math.max(c, xDev);
+        const u0 = (Math.max(c, xDev) - xDev) * gw / wDev, u1 = u0 + part * gw / wDev;
         if (part <= 0) continue;
-        acc[c * NG + t] += part * al;
-        if (c < zone.lo) zone.lo = c;
-        if (c > zone.hi) zone.hi = c;
+        const i0 = Math.min(gw - 1, Math.floor(u0)), f0 = u0 - i0, i1 = Math.min(gw - 1, Math.floor(u1)), f1 = u1 - i1;
+        const a0 = i0 * hd, a1 = i1 * hd, o = c * hd, k = gain * part / (u1 - u0);
+        for (let y = 0; y < hd; y++) {
+          const p0 = cum[a0 + y] + f0 * (cum[a0 + hd + y] - cum[a0 + y]);
+          const p1 = cum[a1 + y] + f1 * (cum[a1 + hd + y] - cum[a1 + y]);
+          ink[o + y] += (p1 - p0) * k;
+        }
+        mark(zone, c);
       }
     }
-    // Je Spalte und Zeile: Summe der Ziffernprofile (rowMean) nach ihrem Breitenanteil. Die Ziffern kacheln die Spalte,
-    // deshalb ist die Summe die Deckung, die die echten, so schmal gezeichneten Ziffern dort haetten.
+    // Je Spalte und Zeile: Tinte der breiteren Ziffern plus Zeilentinte (cum der vollen Breite) mal Anteil der schmalen,
+    // als Deckkraft min(1, Summe). Nichts wird gemittelt: mehr Ziffern je Spalte, mehr Tinte.
     function flush(zone, y0, hd) {
       if (zone.hi < zone.lo) { zone.lo = Infinity; zone.hi = -1; return; }
       const lo = zone.lo, cw = zone.hi - lo + 1;
@@ -304,20 +335,18 @@
       if (flushCanvas.width < cw || flushCanvas.height !== hd) { flushCanvas.width = Math.max(cw, flushCanvas.width); flushCanvas.height = hd; }
       const img = flushCtx.createImageData(cw, hd), px = img.data;
       const [r, gc, b] = atlasRgb;
-      const prof = [];
-      for (let t = 0; t < NG; t++) prof.push(atlas[GLYPHS[t]].rowMean);
-      const colA = new Float32Array(hd);
+      const off = gw * hd, cums = atlas.cums;
       for (let x = 0; x < cw; x++) {
-        const base = (lo + x) * NG;
-        colA.fill(0);
-        for (let t = 0; t < NG; t++) {
+        const c = lo + x, base = c * NGA, o = c * hd;
+        for (let t = 0; t < NGA; t++) {
           const a = acc[base + t];
           if (!a) continue;
-          const pr = prof[t];
-          for (let y = 0; y < hd; y++) colA[y] += a * pr[y];
+          const cu = cums[t];
+          for (let y = 0; y < hd; y++) ink[o + y] += a * cu[off + y];
         }
-        for (let y = 0; y < hd; y++) { const o = (y * cw + x) * 4; px[o] = r; px[o + 1] = gc; px[o + 2] = b; px[o + 3] = colA[y] * 255; }   // Uint8Clamped kappt bei 255
-        acc.fill(0, base, base + NG);
+        for (let y = 0; y < hd; y++) { const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = ink[o + y] * 255; }   // Uint8Clamped kappt bei 255
+        acc.fill(0, base, base + NGA);
+        ink.fill(0, o, o + hd);
       }
       flushCtx.putImageData(img, 0, 0);
       ctx.drawImage(flushCanvas, 0, 0, cw, hd, lo, y0, cw, hd);
@@ -543,8 +572,8 @@
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,
           chainLength: chainLen, totalLength: total(), step, blur, sausen,
-          inkTop: atlas ? inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,   // null bis zum ersten Bild
-          inkBottom: atlas ? inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,
+          inkTop: atlas ? inkTop / dpr + (H / 2 - gh / dpr / 2) : null,   // null bis zum ersten Bild
+          inkBottom: atlas ? inkBottom / dpr + (H / 2 - gh / dpr / 2) : null,
           rate: curRate,
           color
         };
