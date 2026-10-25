@@ -50,6 +50,9 @@ if (menuButton) fixStickyHover(menuButton);
 if (backButton) fixStickyHover(backButton);
 
 // ─── Suchfunktion ───
+// Während der Suche zeigt #file-list eine flache, nach Treffergüte sortierte Trefferliste
+// (li.search-hit, Ordner als Pfadzeile); der Ordnerbaum bleibt darunter unverändert und
+// kommt beim Leeren zurück. Gesucht wird in Linktext, Dateiname und Ordnerpfad.
 function initMenuSearch(menu, fileList) {
     const menuSearch = menu.querySelector('.menu-search');
     if (!menuSearch) return null;
@@ -62,6 +65,11 @@ function initMenuSearch(menu, fileList) {
     searchInput.disabled = false;
     searchInput.placeholder = 'type what you want…';
     searchInput.setAttribute('aria-label', 'Menü durchsuchen');
+    // Handy-Autokorrektur macht aus "Foldingpi" gern "Folding pi" oder "Folding Pi"
+    searchInput.autocomplete = 'off';
+    searchInput.spellcheck = false;
+    searchInput.setAttribute('autocorrect', 'off');
+    searchInput.setAttribute('autocapitalize', 'off');
 
     const clearButton = document.createElement('button');
     clearButton.type = 'button';
@@ -70,67 +78,214 @@ function initMenuSearch(menu, fileList) {
     clearButton.textContent = '×';
     menuSearch.appendChild(clearButton);
 
-    function normalizeForSearch(str) {
-        return str
-            .toLocaleLowerCase('de')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '');
+    // Verdichtet Text zu [a-z0-9≡]: ohne Groß/Klein, Akzente, Trenner. π→pi, ∞→inf.
+    // expand: ä/ö/ü/ß als ae/oe/ue/ss (sonst ä→a). Liefert auch Wortanfänge (b) und für jedes
+    // verdichtete Zeichen den Index im Original (map), für die Hervorhebung.
+    const UML = { 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss', 'π': 'pi', '∞': 'inf' };
+    function compact(raw, expand) {
+        let c = '', b = [], map = [], end = [], prevAlnum = false, prevLower = false;
+        let i = 0;
+        for (const ch of raw) {
+            const lower = ch.toLocaleLowerCase('de');
+            let piece = (expand || lower === 'π' || lower === '∞') ? UML[lower] : (lower === 'ß' ? 'ss' : null);
+            if (!piece) piece = lower.normalize('NFD').replace(/[̀-ͯ]/g, '');
+            piece = piece.replace(/[^a-z0-9≡]/g, '');
+            if (piece) {
+                const isUpper = ch !== lower;
+                if (!prevAlnum || (isUpper && prevLower)) b.push(c.length);
+                for (let k = 0; k < piece.length; k++) { map.push(i); end.push(i + ch.length); }
+                c += piece;
+            }
+            prevAlnum = !!piece;
+            prevLower = !!piece && ch === lower && ch !== ch.toLocaleUpperCase('de');
+            i += ch.length;
+        }
+        return { c, b, map, end };
     }
 
-    function filterList(ul, query) {
-        let hasVisibleChild = false;
-        Array.from(ul.children).forEach(li => {
-            const isHeading = li.querySelector(':scope > .menu-heading');
-            const isSeparator = li.classList.contains('menu-separator');
-            if (isHeading || isSeparator) {
-                li.style.display = 'none';
-                return;
+    // Gleichwertige Begriffe: ein ganzer Suchbegriff gilt auch als jeder andere der Gruppe.
+    const ALIASES = [
+        ['inf', 'infinity', 'infinite', 'unendlich', 'unendlichkeit'],
+        ['0', 'null', 'zero'],
+        ['1', 'eins', 'one'],
+        ['≡', 'equiv', 'identisch']
+    ];
+
+    // Für Tippfehler-Suche: k/c, s/z und 0/o gelten als gleich (koordinaten ~ co0rdinates)
+    const phon = s => s.replace(/c/g, 'k').replace(/z/g, 's').replace(/0/g, 'o');
+
+    // Kleinste Editierdistanz von t zu irgendeinem Teilstück von s (Sellers)
+    function fuzzyDist(t, s) {
+        const m = t.length;
+        let prev = new Uint8Array(m + 1), cur = new Uint8Array(m + 1);
+        for (let i = 0; i <= m; i++) prev[i] = i;
+        let best = m;
+        for (let j = 0; j < s.length; j++) {
+            cur[0] = 0;
+            for (let i = 1; i <= m; i++) {
+                cur[i] = Math.min(prev[i] + 1, cur[i - 1] + 1, prev[i - 1] + (t[i - 1] === s[j] ? 0 : 1));
             }
-            const details = li.querySelector(':scope > details');
-            if (details) {
-                const nestedList = details.querySelector(':scope > ul.folder-contents');
-                const childHasMatch = nestedList ? filterList(nestedList, query) : false;
-                li.style.display = childHasMatch ? '' : 'none';
-                details.open = !!(childHasMatch && query);
-                if (childHasMatch) hasVisibleChild = true;
-            } else {
-                const link = li.querySelector('a');
-                const text = link
-                    ? normalizeForSearch(link.textContent || '')
-                    : normalizeForSearch(li.textContent || '');
-                const match = text.includes(query);
-                li.style.display = match ? '' : 'none';
-                if (match) hasVisibleChild = true;
-            }
+            if (cur[m] < best) best = cur[m];
+            [prev, cur] = [cur, prev];
+        }
+        return best;
+    }
+
+    // Index: einmalig aus dem Menü-DOM. Felder je Eintrag: Linktext, Dateiname, Ordnerpfad.
+    let entries = null;
+    function buildIndex() {
+        entries = [];
+        fileList.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href');
+            let path;
+            try { path = decodeURIComponent(href); } catch (e) { path = href; }
+            const parts = path.split('/').filter(Boolean);
+            const name = parts.pop() || '';
+            const label = a.textContent || name;
+            const dir = parts.join('/');
+            const fields = [];
+            [[label, 0], [name, 0], [dir, 3]].forEach(([raw, pen]) => {
+                if (!raw) return;
+                const vs = [compact(raw, true)];
+                const flat = compact(raw, false);
+                if (flat.c !== vs[0].c) vs.push(flat);
+                vs.forEach(v => { v.pen = pen; v.fuz = phon(v.c); fields.push(v); });
+            });
+            entries.push({ href, label, dir, fields, len: fields[0] ? fields[0].c.length : 0 });
         });
-        return hasVisibleChild;
+    }
+
+    function termAlts(raw) {
+        const t = compact(raw, true).c;
+        const alts = [t];
+        const flat = compact(raw, false).c;
+        if (flat !== t) alts.push(flat);
+        const group = ALIASES.find(g => g.includes(t));
+        if (group) group.forEach(g => { if (g !== t) alts.push(g); });
+        return alts;
+    }
+
+    // Güte eines Begriffs in einem Eintrag: kleiner ist besser, null = kein Treffer.
+    // Wortanfang 0, innerhalb 10, Tippfehler 20; +feld-Strafe (Pfad), +2 je Alias, +5 ohne Pfad-Wortanfang.
+    function termScore(alts, entry, fuzzy) {
+        let best = null;
+        for (let a = 0; a < alts.length; a++) {
+            const t = alts[a], ap = a ? 3 : 0;
+            if (!t) continue;
+            for (const f of entry.fields) {
+                let s = null;
+                if (f.c.startsWith(t)) s = f.c === t ? -3 : 0;
+                else if (f.b.some(p => f.c.startsWith(t, p))) s = 1;
+                else if (f.c.includes(t)) s = 10;
+                else if (fuzzy && t.length >= 4) {
+                    const max = t.length >= 8 ? 2 : 1;
+                    if (f.fuz.length >= t.length - max && fuzzyDist(phon(t), f.fuz) <= max) s = 20;
+                }
+                if (s !== null && (best === null || s + f.pen + ap < best)) best = s + f.pen + ap;
+            }
+        }
+        return best;
+    }
+
+    function search(query) {
+        if (!entries) buildIndex();
+        const altsList = query.split(/\s+/).filter(t => compact(t, true).c).map(termAlts);
+        if (!altsList.length) return { hits: [], altsList };
+        function run(fuzzy) {
+            const hits = [];
+            for (const e of entries) {
+                let score = 0, ok = true;
+                for (const alts of altsList) {
+                    const s = termScore(alts, e, fuzzy);
+                    if (s === null) { ok = false; break; }
+                    score += s;
+                }
+                if (ok) hits.push({ e, score: score + e.len / 1000 });
+            }
+            return hits.sort((x, y) => x.score - y.score);
+        }
+        let hits = run(false);
+        if (hits.length < 5) hits = run(true);
+        return { hits: hits.slice(0, 200).map(h => h.e), altsList };
+    }
+
+    // Linktext mit <mark> um die gefundenen Stellen (nur Treffer im Linktext selbst)
+    function renderLabel(a, entry, altsList) {
+        const variants = [compact(entry.label, true), compact(entry.label, false)];
+        const marks = [];
+        for (const alts of altsList) {
+            let found = null;
+            for (const v of variants) {
+                for (const t of alts) {
+                    const at = v.c.indexOf(t);
+                    if (at >= 0) { found = [v.map[at], v.end[at + t.length - 1]]; break; }
+                }
+                if (found) break;
+            }
+            if (found) marks.push(found);
+        }
+        marks.sort((x, y) => x[0] - y[0]);
+        let pos = 0;
+        for (const [from, to] of marks) {
+            if (from < pos) continue;
+            a.append(entry.label.slice(pos, from));
+            const m = document.createElement('mark');
+            m.textContent = entry.label.slice(from, to);
+            a.append(m);
+            pos = to;
+        }
+        a.append(entry.label.slice(pos));
+    }
+
+    function clearHits() {
+        fileList.querySelectorAll(':scope > li.search-hit').forEach(li => li.remove());
+    }
+
+    let selected = -1;
+    function select(i) {
+        const items = fileList.querySelectorAll(':scope > li.search-hit:not(.menu-search-empty)');
+        if (!items.length) { selected = -1; return; }
+        selected = (i + items.length) % items.length;
+        items.forEach((li, k) => li.classList.toggle('selected', k === selected));
+        items[selected].scrollIntoView({ block: 'nearest' });
     }
 
     function filter(queryRaw) {
-        const query = normalizeForSearch(queryRaw.trim());
+        clearHits();
+        selected = -1;
+        const query = queryRaw.trim();
+        fileList.classList.toggle('searching', !!query);
         if (!query) {
-            fileList.querySelectorAll('li').forEach(li => { li.style.display = ''; });
             fileList.querySelectorAll('details').forEach(details => { details.open = false; });
             return;
         }
-        filterList(fileList, query);
+        const { hits, altsList } = search(query);
+        const frag = document.createDocumentFragment();
+        hits.forEach(entry => {
+            const li = document.createElement('li');
+            li.className = 'search-hit';
+            const a = document.createElement('a');
+            a.href = entry.href;
+            renderLabel(a, entry, altsList);
+            li.append(a);
+            if (entry.dir) {
+                const dir = document.createElement('span');
+                dir.className = 'menu-search-path';
+                dir.textContent = entry.dir;
+                li.append(dir);
+            }
+            frag.append(li);
+        });
+        if (!hits.length) {
+            const li = document.createElement('li');
+            li.className = 'search-hit menu-search-empty';
+            li.textContent = 'nichts gefunden';
+            frag.append(li);
+        }
+        fileList.append(frag);
+        fileList.scrollTop = 0;
+        select(0);
     }
-
-    // Eingabehilfe (π/∞-Vorschläge, pi(n)) lädt nur dort, wo sie gebraucht wird: Seiten ohne
-    // Eingabefelder laden math-notation.js nicht, die Menüsuche holt sie beim ersten Fokus nach.
-    const MATH_SRC = '/tools/math-notation.js';
-    function ensureMathNotation() {
-        if (document.querySelector(`script[src="${MATH_SRC}"]`)) return;
-        const script = document.createElement('script');
-        script.src = MATH_SRC;
-        script.onload = () => {
-            if (searchInput.value) searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-        };
-        script.onerror = () => console.error(`[meta] ${MATH_SRC} konnte nicht geladen werden: Eingabehilfe der Menüsuche fehlt`);
-        document.head.appendChild(script);
-    }
-    searchInput.addEventListener('focus', ensureMathNotation, { once: true });
-    searchInput.addEventListener('input', ensureMathNotation, { once: true });
 
     let searchTimeoutId = null;
 
@@ -138,10 +293,12 @@ function initMenuSearch(menu, fileList) {
         const value = searchInput.value;
         clearButton.classList.toggle('visible', value.length > 0);
         clearTimeout(searchTimeoutId);
-        searchTimeoutId = setTimeout(() => filter(value), 100);
+        searchTimeoutId = setTimeout(() => { searchTimeoutId = null; filter(value); }, 80);
     });
 
     function clearSearch() {
+        clearTimeout(searchTimeoutId);
+        searchTimeoutId = null;
         searchInput.value = '';
         clearButton.classList.remove('visible');
         filter('');
@@ -156,6 +313,15 @@ function initMenuSearch(menu, fileList) {
         if (e.key === 'Escape') {
             clearSearch();
             searchInput.blur();
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (searchTimeoutId) { clearTimeout(searchTimeoutId); filter(searchInput.value); searchTimeoutId = null; }
+            select(selected + (e.key === 'ArrowDown' ? 1 : -1));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (searchTimeoutId) { clearTimeout(searchTimeoutId); searchTimeoutId = null; filter(searchInput.value); }
+            const link = fileList.querySelector(':scope > li.search-hit.selected a');
+            if (link) location.href = link.href;
         }
     });
 
