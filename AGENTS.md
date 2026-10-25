@@ -25,3 +25,9 @@ The codebase is informal and experimental. AI agents should adhere to the follow
 
 ## Commit Guidelines
 Commit messages are informal and often in German or a mix of German and English (e.g., "zwischenspeichern", "018 ascii animation, yeah"). No specific prefix or format is required, but clarity regarding the "nuggets" or "experiments" added is preferred.
+
+## Arbeitsdateien gehören nicht ins Repo
+
+- Arbeitsdateien von Agenten (Specs, Pläne, Reviews, Testskripte, Entwürfe, Mockups, Kritzelseiten, Sicherungskopien) liegen in `/home/timbr/werkstatt/0nefinity/`, nie in diesem Repo.
+- Skills, die standardmäßig nach `docs/...` schreiben (superpowers brainstorming, writing-plans u. a.), schreiben stattdessen dorthin, mit derselben Ordnerstruktur (`docs/specs/`, `docs/plans/`, `tests/`).
+- Ins Repo kommt nur, was Tim auf der Seite sehen will. Ausnahme: `tests/menu-search/` bleibt vorerst hier.
