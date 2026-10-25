@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <script src="/tools/math-notation.js" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>0nefinity — canvas</title>
+  <meta name="description" content="0necanvas — Dinge, Erzeuger und Kräfte stapeln und daraus lebendige Bilder bauen. 0 ≡ 1 ≡ ∞" />
+  <meta property="og:title" content="0nefinity — canvas" />
+  <meta property="og:description" content="Dinge, Erzeuger und Kräfte stapeln und daraus lebendige Bilder bauen. 0 ≡ 1 ≡ ∞" />
+  <meta property="og:type" content="website" />
+  <link rel="apple-touch-icon" href="/profilbilder/favicon/index/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/tools/0necanvas/0necanvas.css" />
+</head>
+<body>
+  <div id="oc-app">
+
+    <!-- Bühne: die Leinwand füllt immer den ganzen Schirm -->
+    <main id="oc-stage" class="_018-canvas">
+      <canvas id="oc-canvas"></canvas>
+      <div id="oc-empty-hint" class="empty-hint" hidden></div>
+      <div class="status-pills oc-ui">
+        <span id="oc-limit-pill" class="limit-pill" hidden>Instanz-Limit erreicht</span>
+        <span id="oc-heavy-pill" class="limit-pill" hidden>Sehr schwere Szene</span>
+      </div>
+      <button id="oc-offview-pill" class="stage-pill" hidden>Au&szlig;erhalb der Ansicht &mdash; Einpassen?</button>
+    </main>
+
+    <!-- Erstbesuchs-Flüstern: eine Zeile, weicht der ersten Interaktion -->
+    <div class="oc-whisper" id="oc-whisper-center" hidden>tippe das Werk an, um es zu formen</div>
+
+    <!-- Stiller Rand: Wortmarke -->
+    <a id="oc-wordmark" class="oc-ui" href="/" title="Zur 0nefinity-Startseite"><b>0<span class="wm-rest">nefinity</span></b><span class="sep">&mdash;</span><span class="wm-sub">canvas</span></a>
+
+  </div>
+
+  <!-- Bibliothek -->
+  <div id="oc-lib-overlay" role="dialog" aria-modal="true" aria-label="Bibliothek &mdash; Baustein hinzuf&uuml;gen">
+    <div class="overlay-card">
+      <div class="panel-head">
+        <span class="panel-title">Bibliothek</span>
+        <button class="icon-btn" id="oc-lib-close" title="Schlie&szlig;en" aria-label="Schlie&szlig;en">&#10005;</button>
+      </div>
+      <div class="panel-sub">Drei Familien &mdash; antippen legt den Baustein in den Stapel.</div>
+      <div class="lib-search">
+        <input id="oc-lib-search" type="search" placeholder="Suchen &mdash; Name oder Familie" aria-label="Bibliothek durchsuchen" autocomplete="off" spellcheck="false" />
+      </div>
+      <div id="oc-lib-scroll"></div>
+    </div>
+  </div>
+
+  <!-- Kommando-Palette (Cmd/Strg+K): Befehle + Bausteine + Familien -->
+  <div id="oc-palette" role="dialog" aria-modal="true" aria-label="Befehle">
+    <div class="pal-card">
+      <input id="oc-pal-input" type="search" placeholder="Befehl oder Baustein &mdash; z. B. Herz, Kraft, Export &hellip;" aria-label="Befehle durchsuchen" autocomplete="off" spellcheck="false" />
+      <ul id="oc-pal-list"></ul>
+      <div id="oc-pal-empty" hidden>Nichts gefunden &mdash; <kbd>&#9166;</kbd> &ouml;ffnet die Bibliothek</div>
+    </div>
+  </div>
+
+  <!-- Fokus-Modus: atmender R&uuml;ckkehr-Punkt -->
+  <button type="button" id="oc-focus-exit" title="Fokus beenden" aria-label="Fokus beenden"></button>
+
+  <script src="/tools/0necanvas/engine.js"></script>
+  <script src="/tools/0necanvas/blocks-dinge.js"></script>
+  <script src="/tools/0necanvas/blocks-erzeuger.js"></script>
+  <script src="/tools/0necanvas/blocks-kraefte.js"></script>
+  <script src="/tools/0necanvas/blocks-muster.js"></script>
+  <script src="/tools/0necanvas/blocks-leben.js"></script>
+  <script src="/tools/0necanvas/blocks-fourier.js"></script>
+  <script src="/tools/0necanvas/state.js"></script>
+  <script src="/tools/0necanvas/ui.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var canvas = document.getElementById('oc-canvas');
+    var sc = OneCanvas.createScene(canvas);
+    // exposed for verification scripts (fps checks, param reads)
+    window.ocScene = sc;
+
+    var q = new URLSearchParams(location.search);
+
+    if (q.get('selftest') === '1') {
+      OneCanvas.registerBlock({
+        type: '_selftest',
+        kind: 'ding',
+        label: 'Selbsttest',
+        icon: '✳',
+        schema: [
+          { key: 'size', ctrl: 'slider', label: 'Größe', min: 10, max: 400, step: 1, value: 120 }
+        ],
+        emit: function (block, t) {
+          var pts = [];
+          var n = 96;
+          for (var i = 0; i <= n; i++) {
+            var a = (i / n) * Math.PI * 2;
+            var r = block.params.size * (1 + 0.12 * Math.sin(t * 2 + a * 3));
+            pts.push(Math.cos(a) * r, Math.sin(a) * r);
+          }
+          return [
+            { k: 'poly', pts: pts, closed: true, w: 1.5, col: 'rgba(255,255,255,0.9)', glow: 12 },
+            { k: 'glyph', ch: '∞', x: 0, y: 0, size: 60, col: 'rgba(168,184,232,0.8)', glow: 8 },
+            { k: 'dot', x: 160, y: 0, r: 4, col: 'rgba(255,255,255,0.7)' }
+          ];
+        }
+      });
+      sc.add('_selftest');
+      console.log('ENGINE OK');
+    }
+
+    // UI init first so stack/select hooks are registered before blocks arrive
+    try {
+      if (window.OneCanvasUI && typeof OneCanvasUI.init === 'function') {
+        OneCanvasUI.init(sc);
+      }
+    } catch (e) { console.warn('0necanvas boot: ui init failed', e); }
+
+    if (q.get('selftest') !== '1') {
+      var loaded = false;
+      try {
+        if (window.OneCanvasState) {
+          OneCanvasState.bind(sc);
+          loaded = OneCanvasState.loadFromUrl(sc);
+        }
+      } catch (e) { console.warn('0necanvas boot: state load failed', e); }
+      if (!loaded) {
+        try {
+          if (window.OneCanvasUI && typeof OneCanvasUI.buildDefaultScene === 'function') {
+            OneCanvasUI.buildDefaultScene(sc);
+          }
+        } catch (e) { console.warn('0necanvas boot: default scene failed', e); }
+      }
+    }
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>

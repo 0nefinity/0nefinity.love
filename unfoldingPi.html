@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <script src="/tools/math-notation.js" defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>(un)foldingPi</title>
+  <style>
+    html, body { height: 100%; overflow: hidden; touch-action: none; }
+    /* Sausen zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
+    .ctrl-row[data-key="drift"] .ctrl-value-input { width: 4.6em; }
+    /* Touch-Ziel: mindestens 44 x 44 px */
+    .ctrl-row[data-key="notation"] .ctrl-button { min-height: 44px; min-width: 44px; }
+    .stage {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      background: var(--bg-color);
+      color: var(--text-color);
+      user-select: none; -webkit-user-select: none;
+    }
+    .stage.hinweis { box-shadow: inset 0 0 0 2px #b8860b; }
+    .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
+    /* Wartezustand: die Anzeige steht an der letzten berechneten Stelle und wartet auf den Worker (kein Ende, kein Fehler). */
+    .stage.warte::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-color); pointer-events: none; animation: warte-puls 1.6s ease-in-out infinite; }
+    @keyframes warte-puls { 0%, 100% { opacity: 0.08; } 50% { opacity: 0.45; } }
+    /* Hinweis nur bei Geraetegrenze: klein, gedaempft, ohne Interaktion. */
+    .limit-hint { position: absolute; top: 0.75rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; font-size: 0.7rem; color: var(--text-color); opacity: 0.45; pointer-events: none; }
+    #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+    /* Stellenanzeige: feste Stelle unter der Zeile, nur der Text wechselt */
+    .stellen { position: absolute; left: 0; right: 0; top: calc(50% + 3.5rem); text-align: center; font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--text-color); opacity: 0.55; pointer-events: none; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="stage _018" id="stage">
+    <canvas id="pi"></canvas>
+    <div class="stellen" id="stellen" aria-live="polite">&nbsp;</div>
+  </div>
+
+  <script src="/tools/irrational.js"></script>
+  <script src="/tools/pi-file.js"></script>
+  <script src="/tools/unfolding-view.js"></script>
+  <script>
+  (() => {
+    'use strict';
+
+    // Pi-Anfang (Ziffern inkl. der 3, ohne Punkt): sofort da; der Worker liefert den Rest und prüft sich daran.
+    const RESERVE =
+      "31415926535897932384626433832795028841971693993751058209749445923078164062862089"+
+      "98628034825342117067982148086513282306647093844609550582231725359408128481117450"+
+      "28410270193852110555964462294895493038196442881097566593344612847564823378678316"+
+      "52712019091456485669234603486104543266482133936072602491412737245870066063155881"+
+      "74881520920962829254091715364367892590360011330530548820466521384146951941511609"+
+      "43305727036575959195309218611738193261179310511854807446237996274956735188575272"+
+      "48912279381830119491298336733624406566430860213949463952247371907021798609437027"+
+      "70539217176293176752384674818467669405132000568127145263560827785771342757789609"+
+      "17363717872146844090122495343014654958537105079227968925892354201995611212902196"+
+      "08640344181598136297747713099605187072113499999983729780499510597317328160963185"+
+      "95024459455346908302642522308253344685035261931188171010003137838752886587533208"+
+      "38142061717766914730359825349042875546873115956286388235378759375195778185778053"+
+      "2171226806613001927876611195909216420198";
+
+    // Die Ansicht (tools/unfolding-view.js) hält die Kette: Ganzzahl (Irrational.constants[].intPart), ".", Nachkommastellen.
+    const CONSTS = Irrational.constants;
+    const constOf = (id) => CONSTS.find((k) => k.id === id);
+    const params = new URLSearchParams(location.search);
+    let cid = params.get('c') || 'pi';
+    let requestedTotal = 0;
+    let piError = null;
+    let piNotice = null;
+    let limitState = null;
+    let handle = null;
+    let file = null;   // Pi-Stellendatei (tools/pi-file.js): nur fuer pi, traegt die Stellen jenseits der am Geraet gerechneten
+    const FILE_URL = '/pi-daten/pi-1e9.b196', FILE_DIGITS = 1000000000;
+    const testCfg = () => window.unfoldingPiTest || {};
+    const deviceCap = () => (file ? (testCfg().deviceDigits || 100000) + 1 : Infinity);
+    const startChain = () => view.setDigits(...chainStart());
+    const chainStart = () => [constOf(cid) ? constOf(cid).intPart : '0', cid === 'pi' ? RESERVE.slice(1) : ''];
+
+    const stage  = document.getElementById('stage');
+    const canvas = document.getElementById('pi');
+    let panel = null;   // Regler (tools/controls.js): Sausen, Verdichtungsfaktor, Konstante; im Boot angelegt
+    let driftEl = null, driftValue = 0;   // Sausen in Stellen/s: negativ = Regler links = vorwaerts
+    // Standardgrenze des Sausens: +-10.000 Stellen/s, Step 1. Im Popup (min/max) beliebig weit verstellbar;
+    // die Kennlinie bleibt logarithmisch zwischen 0 und der Grenze.
+    const DRIFT_MAX = 10000;
+    // Zahlen ausgeschrieben ohne Tausenderpunkt, nie in Exponentialschreibweise: 10000, 1000000, 0,5.
+    // Eingaben mit Tausenderpunkten (1.000.000) werden weiter verstanden.
+    const fmtDE = (v, decimals) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: Math.max(0, decimals | 0), useGrouping: false }).format(v);
+    function parseDE(text) {
+      let t = String(text ?? '').trim().replace(/\s/g, '');
+      // Mit Komma: Punkte sind Tausender. Ohne Komma: Punkte nur dann Tausender, wenn sie Dreiergruppen trennen (1.000.000).
+      if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+      else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+      const n = Number(t);
+      return t && Number.isFinite(n) ? n : NaN;
+    }
+    const driftTransform = {
+      toSliderValue(v, cfg) {
+        const lim = (v > 0 ? cfg.max : -cfg.min);
+        if (!v || !(lim > 0)) return 0;
+        return Math.sign(v) * lim * Math.log1p(Math.min(Math.abs(v), lim)) / Math.log1p(lim);
+      },
+      fromSliderValue(s, cfg) {
+        const lim = (s > 0 ? cfg.max : -cfg.min);
+        if (!(lim > 0) || Math.abs(s) < 0.02 * lim) return 0;   // Totzone um die Mitte: kein Kriechen
+        return Math.sign(s) * Math.expm1(Math.min(1, Math.abs(s) / lim) * Math.log1p(lim));
+      },
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
+    };
+
+    // ─── Ansicht ───
+    const [intPart0, decimals0] = chainStart();
+    const view = UnfoldingView.create(canvas, {
+      intPart: intPart0, decimals: decimals0,   // schon beim ersten Layout da: die Grenzen richten sich nach der Kettenlaenge
+      colorElement: stage,
+      rate: () => -driftValue,
+      // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
+      onNeedDigits: (total) => requestDigits(total),
+      onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && !file && atFront),
+      onPointerInfo: (info) => { pointerInfo = info; showPlace(); }
+    });
+
+    // ─── Stellenanzeige ───
+    // 0-Notation (Standard): die Ganzzahl ist "0.", die erste Nachkommastelle "1.". Alternative: Zaehlung ab der Ganzzahl
+    // (bei pi heisst die 3 "3.", die erste Nachkommastelle "4."). Kettenindex i: 0 = Ganzzahl, 1 = Komma, ab 2 Nachkommastellen.
+    const NOTATION_KEY = 'unfoldingPi.notation';
+    let notation = 'zero', pointerInfo = null;
+    try { if (localStorage.getItem(NOTATION_KEY) === 'int') notation = 'int'; }
+    catch (e) { console.error('unfoldingPi: Notation nicht lesbar', e); }
+    const placeEl = document.getElementById('stellen');
+    function placeNumber(i) {
+      const off = notation === 'int' ? (Number(constOf(cid) ? constOf(cid).intPart : 0) || 0) : 0;
+      return (i === 0 ? 0 : Math.max(1, i - 1)) + off;
+    }
+    function placeText(info) {
+      if (!info) return '\u00a0';
+      const name = cid === 'pi' ? 'pi' : symbolOf(cid);
+      const n = (i) => fmtDE(placeNumber(i), 0) + '.';
+      if (info.kind === 'digit') return info.index === 1 ? 'decimal point of ' + name : n(info.index) + ' digit of ' + name;
+      if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
+      if (info.kind === 'right') return n(info.lo) + '-every digit of ' + name;
+      return n(0) + '-every digit of ' + name;
+    }
+    function showPlace() { placeEl.textContent = placeText(pointerInfo); }
+    function setNotation(v) {
+      if (v !== 'zero' && v !== 'int') throw new TypeError('Notation unbekannt: ' + v);
+      notation = v;
+      try { localStorage.setItem(NOTATION_KEY, v); }
+      catch (e) { console.error('unfoldingPi: Notation nicht speicherbar', e); }
+      showPlace();
+    }
+
+    // ─── Konstanten-Rechner (tools/irrational.js) ───
+    function fail(message) {
+      if (piError) return;
+      piError = message;
+      console.error('[unfoldingPi] ' + message);
+      stage.classList.remove('warte', 'hinweis');
+      stage.classList.add('fehler');
+      driftEl.disabled = true;
+      driftValue = 0;
+      panel.set('drift', 0);
+      view.setLocked(true);
+      view.invalidate();
+    }
+    // Nicht sperrender Hinweis (Rueckfall auf BigInt ohne WebAssembly): gleicher Rahmenweg wie fail(), der Drift laeuft weiter.
+    function notice(message) {
+      if (piNotice || piError) return;
+      piNotice = message;
+      console.warn('[unfoldingPi] ' + message);
+      stage.classList.add('hinweis');
+      view.invalidate();
+    }
+    function onLimit(lim) {
+      limitState = lim;
+      stage.classList.remove('warte');
+      if (file) { if (handle) handle.close(); view.invalidate(); return; }   // Geraetegrenze: die Datei traegt weiter
+      if (lim.kind === 'device' && !document.getElementById('limit-hint')) {
+        const hint = document.createElement('div');
+        hint.id = 'limit-hint';
+        hint.className = 'limit-hint';
+        hint.textContent = 'use better hardware to get access to more digits';
+        stage.appendChild(hint);
+      }
+      if (handle) handle.close(); // der Worker gibt seinen WASM-Speicher frei; die Anzeige bleibt
+      view.invalidate();
+    }
+    function onDigits(u8, offset) {
+      try {
+        view.appendDigits(u8, offset);
+      } catch (e) {
+        if (e instanceof RangeError) {
+          // V8-Stringgrenze: Rechenwerk-Grenze, kein Text, die Anzeige bleibt stehen.
+          const digits = view.state().chainLength - 2;
+          console.warn('[unfoldingPi] engine limit: string length at ' + digits + ' digits');
+          limitState = { kind: 'engine', reason: 'string length', digits };
+          stage.classList.remove('warte');
+          if (handle) handle.close();
+          return;
+        }
+        if (e instanceof UnfoldingView.DigitError) { fail(e.message); return; }
+        fail('Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+      }
+    }
+    function startFile() {
+      if (file) { file.close(); file = null; }
+      view.setRemote(null);
+      if (cid !== 'pi' || testCfg().file === false) return;
+      file = PiFile.create({
+        url: testCfg().fileUrl || FILE_URL, digits: FILE_DIGITS,
+        onError: (e) => fail('Pi-Datei: ' + e.message),
+        onChange: () => view.invalidate()
+      });
+      view.setRemote(file);
+    }
+    function startWorker() {
+      if (handle) { handle.close(); handle = null; }
+      startFile();
+      limitState = null;
+      requestedTotal = 0;
+      piError = null;
+      driftEl.disabled = false;
+      view.setLocked(false);
+      stage.classList.remove('warte', 'hinweis', 'fehler');
+      const old = document.getElementById('limit-hint');
+      if (old) old.remove();
+      piNotice = null;
+      startChain();
+      try {
+        handle = Irrational.open(cid, { onDigits, onLimit, onNotice: notice, onError: (e) => fail(e.message) }, window.unfoldingPiTest);
+      } catch (e) { fail('Rechner nicht startbar: ' + e.message); return; }
+      requestDigits(2000);
+    }
+    function requestDigits(total) {
+      if (!handle || piError || limitState || total <= requestedTotal) return;
+      const t = Math.min(total, deviceCap());
+      if (t <= requestedTotal) return;
+      requestedTotal = t;
+      handle.want(t);
+    }
+    function symbolOf(id) { return constOf(id).symbol; }
+    function setConstant(id) {
+      if (id === cid) return;
+      cid = id;
+      const u = new URL(location.href);
+      u.searchParams.set('c', id);
+      history.replaceState(null, '', u);
+      document.title = id === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(id);
+      showPlace();
+      startWorker();
+      view.rewind();
+    }
+
+    // ─── Boot ───
+    panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
+    panel.addSlider('drift', {
+      label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
+      onChange: (v) => { driftValue = +v || 0; }
+    });
+    driftEl = panel.bodyEl.querySelector('.ctrl-row[data-key="drift"] .ctrl-range');
+    driftEl.id = 'drift';
+    driftEl.setAttribute('aria-label', 'Sausen');
+    // Verdichtung je Abstand der Enden, Faktor 0..1 (siehe tools/unfolding-view.js). Reglerweg s: bis 0,5 linear, darueber
+    // kubisch auf 1 zu (f = 1 - 0,5 (2 (1 - s))^3), damit nahe 1 jeder Schritt feiner wird.
+    const factorTransform = {
+      toSliderValue(v) { const f = Math.max(0, Math.min(1, +v || 0)); return f <= 0.5 ? f : 1 - Math.cbrt(2 * (1 - f)) / 2; },
+      fromSliderValue(s) { const x = Math.max(0, Math.min(1, +s || 0)); return x <= 0.5 ? x : 1 - 0.5 * Math.pow(2 * (1 - x), 3); },
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
+    };
+    panel.addSlider('f', {
+      label: 'Verdichtungsfaktor', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
+      onChange: (v) => view.setFactor(+v || 0)
+    });
+    panel.addSelect('const', {
+      label: 'Konstante', value: cid,
+      options: CONSTS.map((k) => ({ value: k.id, label: k.symbol })),
+      onChange: setConstant
+    });
+    panel.addButton('notation', { label: 'change notation', onClick: () => setNotation(notation === 'zero' ? 'int' : 'zero') });
+    startChain();
+    if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
+    else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
+    if (!piError) startWorker();
+
+    // Nur lesende Zustandsabfrage für Tests.
+    window.unfoldingPi = {
+      state() {
+        return Object.assign(view.state(), {
+          constant: cid, limit: limitState, error: piError, notice: piNotice,
+          waiting: stage.classList.contains('warte'), requestedTotal
+        });
+      },
+      digits() { return view.digits(); },
+      shown() { return view.shown(); },
+      file() { return file ? Object.assign(file.stats(), { length: file.length }) : null; },
+      fileAt(i) { return file ? file.at(i) : null; },
+      fileWant(lo, hi) { if (file) file.want(lo, hi, 0); },
+      columns() { return view.columns(); },
+      renderLog() { return view.renderLog(); },
+      glyphAlpha() { return view.glyphAlpha(); },
+      glyphInk() { return view.glyphInk(); },
+      hover(x) { view.setHover(x); },
+      place() { return { text: placeEl.textContent, notation, info: pointerInfo }; },
+      controls: panel
+    };
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
