@@ -14,7 +14,10 @@
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
  *   view.setD(v)  view.setLocked(b)  view.invalidate()  view.refreshColor()
- *   view.state()  view.digits()         // nur lesend (Tests)
+ *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
+ *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
+ *                                       // Ziffern aus r (Index >= Kettenlaenge) sind dezent gedaempft, noch fehlende ein ruhiger Strich.
+ *   view.state()  view.digits()  view.shown()   // nur lesend (Tests)
  *   view.destroy()                      // Listener, Beobachter und Bildschleife weg
  *
  * Fehler werfen: appendDigits wirft UnfoldingView.DigitError bei Luecke/Widerspruch (Meldung ist fertig lesbar), sonst die
@@ -28,6 +31,8 @@
   const HIT = 20;            // halbe Trefferbreite (>= 40px breit)
   const GLYPHS = '0123456789.';
   const DEAD_ZONE = 0.02;    // |Regler| darunter gilt als Mitte: kein Kriechen
+  const FILE_ALPHA = 0.7;    // Ziffern aus der Quelle jenseits der Kette: leicht gedaempft
+  const PENDING_ALPHA = 0.1; // noch nicht geladene Stelle: leiser Strich statt einer Ziffer
   const rateOf = (s) => Math.sign(s) * (Math.pow(10, 10 * Math.abs(s)) - 1);
 
   class DigitError extends Error {}
@@ -69,10 +74,16 @@
     let last = 0;
     let rafId = 0;
     let destroyed = false;
+    let remote = null;
+    let step = 0, blur = 0, sausen = false;      // Versatz je Bild (Zeichen), Schleier (px), Fenster liegen auseinander
+    const dts = [];                              // letzte Bilddauern (ms): Takt der Anzeige
+    let period = 1 / 60;
+    let shownLo = 0, shownCodes = new Uint8Array(0), shownMark = new Uint8Array(0), shownN = 0;
 
     const deff = () => Math.max(0, Math.min(d, (W - 2 * MARGIN) / 2));
     const startIdx = () => (L + deff() - X0) / w;            // Index des ersten linear sichtbaren Zeichens
-    const avail = () => Math.max(0, chainLen - 2) * w;   // Länge aller Nachkommastellen
+    const total = () => remote ? Math.max(chainLen, remote.length) : chainLen;
+    const avail = () => Math.max(0, total() - 2) * w;   // Länge aller Nachkommastellen
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
     function refreshColor() {
@@ -205,30 +216,56 @@
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
       const K = stackCount(dd);
       const iLo = Math.max(0, iLinLo - 1 - K);
-      const iHi = Math.min(chainLen - 1, iLinHi + 1 + K);
+      const iHi = Math.min(total() - 1, iLinHi + 1 + K);
       // Die Ansicht meldet nur die echte Front; den Vorrat darüber legt der Besitzer fest.
       if (opts.onNeedDigits) opts.onNeedDigits(iLinHi + 2 + K + 100);
-      if (opts.onFront) opts.onFront(iLinHi >= chainLen - 3);
+      if (opts.onFront) opts.onFront(iLinHi >= total() - 3);
+      if (remote) remote.want(iLo, iHi, step);
       const wd = atlas['0'].wd, hd = atlas['0'].hd;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       let n = 0;
-      for (let i = iLo; i <= iHi; i++) {
-        const pa = X0 + i * w;
-        const xa = warp(pa, dd), xb = warp(pa + w, dd);
-        const nat = xb - xa;
-        const dw = Math.max(nat, inkMin);
-        let cx = (xa + xb) / 2;
-        cx = Math.max(Ld + dw / 2, Math.min(Rd - dw / 2, cx));
-        const g = atlas[String.fromCharCode(buf[i])];
-        if (!g) continue;
-        let wDev = dw * dpr, xDev = (cx - dw / 2) * dpr;
-        if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
-        // Unter Strichstärke: die Silhouette-Spalte auf Strichbreite ziehen.
-        if (nat < inkMin) { ctx.drawImage(g.bar, xDev, y0, wDev, hd); n++; continue; }
-        const k = Math.max(0, Math.min(g.levels.length - 1, Math.floor(Math.log2(wd / wDev))));
-        ctx.drawImage(g.levels[k], xDev, y0, wDev, hd);
-        n++;
+      if (shownCodes.length < iHi - iLo + 1) { shownCodes = new Uint8Array(Math.max(iHi - iLo + 1, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
+      shownMark.fill(0, 0, iHi - iLo + 1);
+      shownLo = iLo; shownN = Math.max(0, iHi - iLo + 1);
+      // Schleier in Fahrtrichtung: Abbilder hinter der Bewegung (Kette laeuft nach links bei step > 0, die Abbilder liegen rechts davon)
+      const passes = blur > 0 ? 4 : 1;
+      for (let pass = passes - 1; pass >= 0; pass--) {
+        const off = pass === 0 ? 0 : Math.sign(step) * blur * pass / (passes - 1);
+        const mul = pass === 0 ? 1 : 0.22 / pass;
+        n = 0;
+        for (let i = iLo; i <= iHi; i++) {
+          const pa = X0 + i * w;
+          const xa = warp(pa, dd), xb = warp(pa + w, dd);
+          const nat = xb - xa;
+          const dw = Math.max(nat, inkMin);
+          let cx = (xa + xb) / 2;
+          cx = Math.max(Ld + dw / 2, Math.min(Rd - dw / 2, cx));
+          const fromRemote = i >= chainLen;
+          const code = fromRemote ? (remote ? remote.at(i) : 0) : buf[i];
+          if (pass === 0) shownCodes[i - iLo] = code;
+          let wDev = dw * dpr, xDev = (cx - dw / 2 + off) * dpr;
+          if (!code) {
+            if (fromRemote && remote) {
+              ctx.globalAlpha = PENDING_ALPHA * mul;
+              if (pass === 0) shownMark[i - iLo] = Math.round(PENDING_ALPHA * 100);
+              ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
+              ctx.globalAlpha = 1;
+            }
+            continue;
+          }
+          const g = atlas[String.fromCharCode(code)];
+          if (!g) continue;
+          if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
+          ctx.globalAlpha = (fromRemote ? FILE_ALPHA : 1) * mul;
+          if (pass === 0) shownMark[i - iLo] = Math.round(ctx.globalAlpha * 100);
+          // Unter Strichstärke: die Silhouette-Spalte auf Strichbreite ziehen.
+          if (nat < inkMin) { ctx.drawImage(g.bar, xDev, y0, wDev, hd); n++; continue; }
+          const k = Math.max(0, Math.min(g.levels.length - 1, Math.floor(Math.log2(wd / wDev))));
+          ctx.drawImage(g.levels[k], xDev, y0, wDev, hd);
+          n++;
+        }
       }
+      ctx.globalAlpha = 1;
       drawnCount = n;
     }
 
@@ -335,9 +372,36 @@
       const sv = opts.drift ? (parseFloat(opts.drift()) || 0) : 0;
       const rate = locked || Math.abs(sv) < DEAD_ZONE ? 0 : rateOf(-sv);
       const before = startIdx();
+      let dtEff = dt;
+      if (remote) {
+        if (dt > 0) {
+          dts.push(dt * 1000); if (dts.length > 30) dts.shift();
+          const sorted = dts.slice().sort((a, b) => a - b);
+          // Der Takt aendert sich nur bei echter Abweichung (Hysterese): ein Wackeln um eine Millisekunde (16/17 ms)
+          // verschoebe sonst den Versatz je Bild und damit die vorausgeholte Bahn.
+          const est = Math.min(1 / 20, Math.max(1 / 240, sorted[sorted.length >> 1] / 1000));
+          if (Math.abs(est - period) > 0.12 * period) period = est;
+        }
+        // Sausen: rueckt die Kette je Bild weiter als das Fenster breit ist, liegen die Fenster auseinander. Dann haengt der
+        // Versatz am Bildtakt (ganze Takte), nicht an der Bilddauer: die Fenster liegen auf einem festen Raster und lassen sich
+        // vorausholen, auch wenn ein Bild ausfaellt.
+        const visW = Math.max(1, (R - L - 2 * deff()) / w);
+        const adv = Math.abs(rate) * dt;
+        const wasBlur = blur;
+        sausen = rate !== 0 && dt > 0 && adv > visW;
+        if (sausen) {
+          dtEff = Math.max(1, Math.round(dt / period)) * period;
+          step = rate * period;
+          blur = Math.min(1, Math.log2(adv / visW) / 3) * 0.8 * w;
+        } else {
+          step = rate * dt;
+          blur = 0;
+        }
+        if (blur !== wasBlur) dirty = true;
+      }
       if (rate !== 0 && dt > 0) {
         const prev = X0;
-        X0 -= rate * w * dt;   // links (rate > 0): Kette läuft nach links
+        X0 -= rate * w * dtEff;   // links (rate > 0): Kette läuft nach links
         if (rate < 0) X0 = Math.min(X0, Math.max(prev, L + deff()));   // rückwärts: stoppt, wenn die 3 vorn ist
         clampX0();
         settle(drag && drag.mode === 'three' ? 'three' : 'x');
@@ -346,6 +410,12 @@
       const after = startIdx();
       velocity = dt > 0 ? (after - before) / dt : 0;
       rafId = requestAnimationFrame(frame);
+    }
+
+    function setRemote(r) {
+      remote = r || null;
+      step = 0; blur = 0; sausen = false;
+      dirty = true;
     }
 
     // ─── Verdichtung ───
@@ -398,10 +468,12 @@
     }
 
     return {
-      setDigits, appendDigits, rewind, setD, destroy, refreshColor,
+      setDigits, appendDigits, rewind, setD, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       invalidate() { dirty = true; },
       digits() { return decoder.decode(buf.subarray(0, chainLen)); },
+      // Was das letzte Bild an Ziffern zeigte: ab Kettenindex lo, ASCII ('0' = nicht geladen), fromRemote = erster Index aus der Quelle
+      shown() { return { lo: shownLo, codes: decoder.decode(shownCodes.subarray(0, shownN).map((c) => c || 63)), fromRemote: chainLen, marks: Array.from(shownMark.subarray(0, shownN)) }; },
       state() {
         const dd = deff();
         const startIndex = Math.max(0, startIdx());
@@ -411,7 +483,7 @@
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,
-          chainLength: chainLen,
+          chainLength: chainLen, totalLength: total(), step, blur, sausen,
           inkTop: atlas ? inkTop / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,   // null bis zum ersten Bild
           inkBottom: atlas ? inkBottom / dpr + (H / 2 - atlas['0'].hd / dpr / 2) : null,
           minInk: minInk(),

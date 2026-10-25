@@ -12,6 +12,7 @@ with sync_playwright() as pw:
     c = br.new_context(viewport={'width': 1000, 'height': 600})
     if os.environ.get('MUT') == 'cap':
         c.add_init_script('window.unfoldingPiTest={failReserve:3};')
+    c.add_init_script('window.unfoldingPiTest=Object.assign(window.unfoldingPiTest||{},{file:false});')  # Geraetegrenze ohne Pi-Datei
     p = c.new_page(); errs = []
     p.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
     p.on('pageerror', lambda e: errs.append(str(e)))
