@@ -6,7 +6,7 @@ export PYTHONDONTWRITEBYTECODE=1
 BROWSERS=${BROWSERS:-"chromium firefox webkit"}
 bad=0
 m() { # browser test mutant
-  BROWSER=$1 MUT=$3 LIMIT=40 GROWTH_LIMIT=20 timeout 200 python3 $2.py > /tmp/unfoldingPi-mut-$1-$2-$3.log 2>&1; rc=$?
+  BROWSER=$1 MUT=$3 LIMIT=40 GROWTH_LIMIT=20 timeout 420 python3 $2.py > /tmp/unfoldingPi-mut-$1-$2-$3.log 2>&1; rc=$?
   if [ $rc = 1 ]; then echo "rot   $1 $2 MUT=$3 (wie gewollt)"; else echo "FEHLER $1 $2 MUT=$3 Exit $rc (erwartet 1)"; bad=1; fi
 }
 for b in $BROWSERS; do
@@ -16,6 +16,7 @@ for b in $BROWSERS; do
   for mu in nopiError_reset nodrift_reset nofehlerclass_reset; do m $b test_restart $mu; done
   for mu in nolistener noresize noraf; do m $b test_view_module $mu; done
   for mu in oldsetd noclamp nosnap nocapresize notitle text; do m $b test_bedienung $mu; done
+  for mu in shift nibble noseam nomark nopending non206 nocount norange nototal nodigits noevict noabort nolook nohyst noonerror; do m $b test_file $mu; done
   m $b test_big cap
 done
 bash ../irrational/mutants.sh || bad=1

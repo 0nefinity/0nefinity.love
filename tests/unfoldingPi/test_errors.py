@@ -38,6 +38,7 @@ with sync_playwright() as pw:
     c.close()
     # t2
     c = br.new_context(viewport={'width': 1000, 'height': 600})
+    c.add_init_script('window.unfoldingPiTest=Object.assign(window.unfoldingPiTest||{},{file:false});')  # Front-Wartezustand: ohne Pi-Datei
     c.route('**/irrational-worker.js', lambda r: r.fulfill(body=STUB_T2, content_type='application/javascript'))
     if MUT == 'ident': route_text(c, '**/unfoldingPi', lambda t: t, 'ident')
     elif MUT in M: mutate(c, '**/unfoldingPi', M[MUT][0], M[MUT][1], MUT)

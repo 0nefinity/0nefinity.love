@@ -14,6 +14,7 @@ with sync_playwright() as pw:
     br = getattr(pw, B).launch(); c = br.new_context(viewport={'width': 1000, 'height': 600})
     WM = {'norfall': ("const toBigInt = (why) => {", "const toBigInt = (why) => { return;"), 'nonotice': ("postMessage({ type: 'notice', message });", "")}.get(MUT)
     prepend_worker(c, NOWASM, WM)
+    c.add_init_script('window.unfoldingPiTest=Object.assign(window.unfoldingPiTest||{},{file:false});')  # BigInt-Grenze ohne Pi-Datei
     if MUT == 'nowarn': mutate(c, '**/unfoldingPi', "console.warn('[unfoldingPi] ' + message);", "", 'nowarn')
     if MUT == 'nohint': mutate(c, '**/unfoldingPi', "stage.classList.add('hinweis');", "", 'nohint')
     p = c.new_page(); warns = []; errs = []

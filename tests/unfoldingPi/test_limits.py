@@ -22,6 +22,7 @@ def run(br, name, init, expect):
     c = br.new_context(viewport={'width': 1000, 'height': 600})
     if init:
         c.add_init_script(init)
+    c.add_init_script('window.unfoldingPiTest=Object.assign(window.unfoldingPiTest||{},{file:false});')  # Limit-Hinweis gilt ohne Pi-Datei
     if MUT == 'invert':
         mutate(c, '**/unfoldingPi', "lim.kind === 'device'", "lim.kind !== 'device'", 'invert')
     elif MUT == 'always':

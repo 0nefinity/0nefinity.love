@@ -55,6 +55,7 @@
   </div>
 
   <script src="/tools/irrational.js"></script>
+  <script src="/tools/pi-file.js"></script>
   <script src="/tools/unfolding-view.js"></script>
   <script>
   (() => {
@@ -86,6 +87,10 @@
     let piNotice = null;
     let limitState = null;
     let handle = null;
+    let file = null;   // Pi-Stellendatei (tools/pi-file.js): nur fuer pi, traegt die Stellen jenseits der am Geraet gerechneten
+    const FILE_URL = '/pi-daten/pi-1e9.bcd', FILE_BYTES = 500000000;
+    const testCfg = () => window.unfoldingPiTest || {};
+    const deviceCap = () => (file ? (testCfg().deviceDigits || 100000) + 1 : Infinity);
     const startChain = () => view.setDigits(...chainStart());
     const chainStart = () => [constOf(cid) ? constOf(cid).intPart : '0', cid === 'pi' ? RESERVE.slice(1) : ''];
 
@@ -102,7 +107,7 @@
       drift: () => driftEl.value,
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
       onNeedDigits: (total) => requestDigits(total),
-      onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && atFront),
+      onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && !file && atFront),
       onD: (v) => { if (panel) panel.set('d', v); }
     });
 
@@ -129,6 +134,7 @@
     function onLimit(lim) {
       limitState = lim;
       stage.classList.remove('warte');
+      if (file) { if (handle) handle.close(); view.invalidate(); return; }   // Geraetegrenze: die Datei traegt weiter
       if (lim.kind === 'device' && !document.getElementById('limit-hint')) {
         const hint = document.createElement('div');
         hint.id = 'limit-hint';
@@ -156,8 +162,20 @@
         fail('Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
       }
     }
+    function startFile() {
+      if (file) { file.close(); file = null; }
+      view.setRemote(null);
+      if (cid !== 'pi' || testCfg().file === false) return;
+      file = PiFile.create({
+        url: testCfg().fileUrl || FILE_URL, bytes: FILE_BYTES,
+        onError: (e) => fail('Pi-Datei: ' + e.message),
+        onChange: () => view.invalidate()
+      });
+      view.setRemote(file);
+    }
     function startWorker() {
       if (handle) { handle.close(); handle = null; }
+      startFile();
       limitState = null;
       requestedTotal = 0;
       piError = null;
@@ -175,8 +193,10 @@
     }
     function requestDigits(total) {
       if (!handle || piError || limitState || total <= requestedTotal) return;
-      requestedTotal = total;
-      handle.want(total);
+      const t = Math.min(total, deviceCap());
+      if (t <= requestedTotal) return;
+      requestedTotal = t;
+      handle.want(t);
     }
     function symbolOf(id) { return constOf(id).symbol; }
     function setConstant(id) {
@@ -214,7 +234,11 @@
           waiting: stage.classList.contains('warte'), requestedTotal
         });
       },
-      digits() { return view.digits(); }
+      digits() { return view.digits(); },
+      shown() { return view.shown(); },
+      file() { return file ? Object.assign(file.stats(), { length: file.length }) : null; },
+      fileAt(i) { return file ? file.at(i) : null; },
+      fileWant(lo, hi) { if (file) file.want(lo, hi, 0); }
     };
   })();
   </script>
