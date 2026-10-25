@@ -238,8 +238,11 @@
       if (shownCodes.length < iHi - iLo + 1) { shownCodes = new Uint8Array(Math.max(iHi - iLo + 1, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
       shownMark.fill(0, 0, iHi - iLo + 1);
       shownLo = iLo; shownN = Math.max(0, iHi - iLo + 1);
-      // Schleier in Fahrtrichtung: Abbilder hinter der Bewegung (Kette laeuft nach links bei step > 0, die Abbilder liegen rechts davon)
+      // Schleier in Fahrtrichtung: Abbilder hinter der Bewegung (Kette laeuft nach links bei step > 0, die Abbilder liegen rechts davon).
+      // Nur lesbare Ziffern bekommen Abbilder, beschnitten auf die lineare Zone: versetzt abgelegte Stauchtinte wuerde wieder
+      // satt und ergaebe je Abbild einen eigenen Strich (frueher vier Striche, teils jenseits der Enden).
       const passes = blur > 0 ? 4 : 1;
+      const gLo = (L + dd) * dpr, gHi = (R - dd) * dpr;
       for (let pass = passes - 1; pass >= 0; pass--) {
         const off = pass === 0 ? 0 : Math.sign(step) * blur * pass / (passes - 1);
         const mul = pass === 0 ? 1 : 0.22 / pass;
@@ -260,10 +263,11 @@
               const fade = Math.max(0, Math.min(1, (nat / w - 0.5) / 0.5));
               if (fade > 0) {
                 ctx.globalAlpha = PENDING_ALPHA * mul * fade;
-                ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
+                if (pass === 0) ctx.drawImage(atlas['0'].bar, xDev + wDev * 0.4, y0, Math.max(1, wDev * 0.2), hd);
+                else drawCropped(atlas['0'].bar, xDev + wDev * 0.4, Math.max(1, wDev * 0.2), y0, hd, gLo, gHi);
                 ctx.globalAlpha = 1;
               }
-              if (fade < 1) deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade));
+              if (fade < 1 && pass === 0) deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade));
             }
             continue;
           }
@@ -274,9 +278,10 @@
           if (pass === 0) shownMark[i - iLo] = Math.round(al * 100);
           n++;
           // Gestaucht: die ganze Tinte der Ziffer in ihre Spalten (Tinte bleibt erhalten, kein Mindestmass).
-          if (wDev < wd * 0.999) { deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); continue; }
+          if (wDev < wd * 0.999) { if (pass === 0) deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); continue; }
           ctx.globalAlpha = al;
-          ctx.drawImage(g.img, xDev, y0, wDev, hd);
+          if (pass === 0) ctx.drawImage(g.img, xDev, y0, wDev, hd);
+          else drawCropped(g.img, xDev, wDev, y0, hd, gLo, gHi);
         }
       }
       ctx.globalAlpha = 1;
@@ -285,6 +290,13 @@
       drawnCount = n;
     }
 
+    // Bild (Breite wDev ab xDev) nur im Bereich [lo, hi) zeichnen: Quellausschnitt statt Clip-Pfad.
+    function drawCropped(img, xDev, wDev, y0, hd, lo, hi) {
+      const a = Math.max(xDev, lo), b = Math.min(xDev + wDev, hi);
+      if (!(b > a) || !(wDev > 0)) return;
+      const k = img.width / wDev;
+      ctx.drawImage(img, (a - xDev) * k, 0, (b - a) * k, img.height, a, y0, b - a, hd);
+    }
     // Ziffer t (Breite wDev Geraetepixel, ab xDev, Deckkraft al) gibt ihre ganze Tinte an die ueberdeckten Spalten ab.
     function mark(zone, c) { if (c < zone.lo) zone.lo = c; if (c > zone.hi) zone.hi = c; }
     function deposit(zone, t, xDev, wDev, al) {
