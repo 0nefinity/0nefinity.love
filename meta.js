@@ -39,7 +39,7 @@ applyTabTitle();
 // Geometrie wie drawFrameWithAngle in 0nefinity.js (Radius 30 %, Zeichen 25 %, ≡ 23 % auf den Kanten), weiß auf transparent wie /favicon.ico.
 // Tempo wie die Startseite: Auto-Speed-Stufen aus AUTO_SPEED_CONFIG in 0nefinity.js (°/Frame, Cosinus-Rampen), hier 1:1 kopiert und mit virtuellen 60-Hz-Frames aus der Zeit aufsummiert (Monitor-Hz egal). Auf der Startseite wird stattdessen der Winkel des Seiten-Symbols (window.__symbolAngle) gespiegelt.
 // 32 px = native Größe eines 16-px-Tab-Icons auf 2x-Displays und ~4x billigeres toDataURL pro Frame als 64 px; das Einlesen des Streams ist der Engpass, nicht das Zeichnen.
-// Test: ?favfps=<1-120> deckelt die Bildrate, ?favspeed=<Faktor> skaliert das Seiten-Tempo (Standard 1); beides bleibt im Tab (sessionStorage).
+// Test: ?favfps=<1-120> deckelt die Bildrate, ?favspeed=<Faktor> skaliert das Seiten-Tempo (Standard 1); ?favmode=ruhig dreht konstant 30°/s (mal favspeed) statt im Seiten-Tempo; alles bleibt im Tab (sessionStorage).
 const FAVICON_SIZE = 32;
 const FAVICON_VIRTUAL_HZ = 60;
 const FAVICON_SPEED_CONFIG = {
@@ -83,7 +83,7 @@ function faviconAutoSpeed(elapsed) {
     }
     return stepBase;
 }
-function favParam(name, min, max, fallback) {
+function favRaw(name) {
     let raw = null;
     try {
         const url = new URL(location.href);
@@ -93,6 +93,10 @@ function favParam(name, min, max, fallback) {
     } catch (err) {
         console.error('meta.js: ' + name + ' nicht aus sessionStorage lesbar/schreibbar', err);
     }
+    return raw;
+}
+function favParam(name, min, max, fallback) {
+    const raw = favRaw(name);
     if (raw === null || raw.trim() === '') return fallback;
     const value = Number(raw);
     if (!Number.isFinite(value) || value < min || value > max) {
@@ -132,6 +136,10 @@ function drawFaviconFrame(ctx, angleRad) {
     }
     ctx.restore();
 }
+// Das Symbol ist nicht 3-zählig symmetrisch (0, 1, ∞ sind verschiedene Zeichen), die Periode ist 360°. Frames liegen im 2°-Raster (180 Stück), werden beim ersten Bedarf gezeichnet und in Leerlauf-Häppchen vorab gefüllt.
+const FAVICON_STEP_DEG = 2;
+const FAVICON_FRAMES = 360 / FAVICON_STEP_DEG;
+const FAVICON_RUHIG_DEG_PER_S = 30;
 function startFaviconAnimation() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const link = document.querySelector('link[rel~="icon"]');
@@ -148,6 +156,28 @@ function startFaviconAnimation() {
     const speedFactor = favParam('favspeed', -1e6, 1e6, 1);
     link.type = 'image/png';
     link.removeAttribute('sizes');
+    const ruhig = favRaw('favmode') === 'ruhig';
+    const cache = new Array(FAVICON_FRAMES);
+    function frameUrl(idx) {
+        if (cache[idx] === undefined) {
+            drawFaviconFrame(ctx, idx * FAVICON_STEP_DEG * Math.PI / 180);
+            cache[idx] = canvas.toDataURL('image/png');
+        }
+        return cache[idx];
+    }
+    let warmIdx = 0;
+    function warm(deadline) {
+        const t0 = performance.now();
+        while (warmIdx < FAVICON_FRAMES && (deadline && deadline.timeRemaining ? deadline.timeRemaining() > 2 : performance.now() - t0 < 8)) frameUrl(warmIdx++);
+        if (warmIdx < FAVICON_FRAMES) schedule();
+    }
+    function schedule() {
+        if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 2000 });
+        else setTimeout(warm, 50);
+    }
+    schedule();
+    let shownIdx = -1;
+    let lastNow = null;
     let start = null;
     let last = -Infinity;
     let virtualFrame = 0;
@@ -159,7 +189,10 @@ function startFaviconAnimation() {
         last = now;
         const elapsed = (now - start) / 1000;
         const pageFresh = typeof window.__symbolAngle === 'number' && now - window.__symbolAngleT < 250;
-        if (pageFresh && speedFactor === 1) {
+        if (ruhig) {
+            if (lastNow !== null) angleDeg = (angleDeg + FAVICON_RUHIG_DEG_PER_S * speedFactor * (now - lastNow) / 1000) % 360;
+            lastNow = now;
+        } else if (pageFresh && speedFactor === 1) {
             angleDeg = window.__symbolAngle;
         } else {
             const due = Math.floor(elapsed * FAVICON_VIRTUAL_HZ);
@@ -171,8 +204,10 @@ function startFaviconAnimation() {
                 virtualFrame++;
             }
         }
-        drawFaviconFrame(ctx, angleDeg * Math.PI / 180);
-        link.href = canvas.toDataURL('image/png');
+        const idx = ((Math.round(angleDeg / FAVICON_STEP_DEG) % FAVICON_FRAMES) + FAVICON_FRAMES) % FAVICON_FRAMES;
+        if (idx === shownIdx) return;
+        shownIdx = idx;
+        link.href = frameUrl(idx);
     }
     requestAnimationFrame(tick);
 }
