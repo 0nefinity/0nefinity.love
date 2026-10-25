@@ -24,6 +24,11 @@
   </script>
 
   <style>
+    #shadows-controls .glyph-row { display: flex; align-items: center; gap: 6px; }
+    #shadows-controls .glyph-row > :first-child { flex: 0 0 auto; min-width: 1.2em; }
+    #shadows-controls .glyph-row input[type=text], #shadows-controls .glyph-row input:not([type]) { width: 3.2em; flex: 0 0 auto; }
+    #shadows-controls .glyph-rot { margin-left: auto; flex: 0 0 auto; }
+    #shadows-controls .glyph-rot .ctrl-range, #shadows-controls .glyph-rot .ctrl-config-trigger { display: none; }
     body {
       margin: 0; overflow: hidden;
     }
@@ -68,6 +73,7 @@
 
   let gebEnabled = true;  // 018 Mode ist immer aktiv
   let invertMode = false;
+  let shapeCube = false;   // Form: false = Kugel, true = Wuerfel (?form=wuerfel)
   let dualMode = false;   // GEB-Mode (Hofstadter): 2 stacked spheres. NOT gebEnabled (that is the glyph-cutout flag).
   let gebFiveLamps = false;  // ?geb=5: one wall lamp pair per sphere. Default (?geb=1): 3 lamps, wall lamps between the spheres.
 
@@ -230,6 +236,9 @@
       invertMode = true;
     }
 
+    // Form aus URL laden
+    if (urlParams.get('form') === 'wuerfel') shapeCube = true;
+
     // GEB-Mode aus URL laden
     const gebFromUrl = urlParams.get('geb');
     if (gebFromUrl === '1' || gebFromUrl === '5') {
@@ -272,6 +281,12 @@
       urlParams.set('font', currentFontKey);
     } else {
       urlParams.delete('font');
+    }
+
+    if (shapeCube) {
+      urlParams.set('form', 'wuerfel');
+    } else {
+      urlParams.delete('form');
     }
 
     // Invert-Mode in URL schreiben
@@ -539,6 +554,11 @@
 
     // Text zeichnen
     if (safeText.length > 0) {
+      // Leichte Kontur verdickt feine Striche (v.a. die duenne ∞-Schleife), damit der Schatten aus der Ferne lesbar bleibt
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = fontSize * 0.02;
+      ctx.strokeText(safeText, textOffsetX, yOffset);
       ctx.fillText(safeText, textOffsetX, yOffset);
     }
 
@@ -653,6 +673,7 @@
     uniform float uLightDistance;  // Distanz der Lichtquellen vom Zentrum
     uniform int uGebEnabled;
     uniform int uInvertMode;       // 0=normal (Löcher), 1=invertiert (nur Zeichen)
+    uniform int uShapeCube;        // 0=Kugel, 1=Wuerfel
     uniform vec3 uLightsActive;    // Welche Lichter aktiv sind (x=floor, y=back, z=side)
 
     varying vec3 vWorldPos;
@@ -665,7 +686,7 @@
       vec2 clamped = clamp(uv, 0.0, 1.0);
       // Außerhalb der Textur = kein Loch
       if (uv != clamped) return 0.0;
-      return texture2D(tex, uv).r;
+      return textureLod(tex, uv, 0.0).r;
     }
 
     // Prüft ob Punkt in einem der drei Glyph-Zylinder liegt
@@ -712,33 +733,81 @@
 
     // SDF für Kugel
     float sphereSDF(vec3 p) {
+      if (uShapeCube == 1) return max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
       return length(p) - 1.0;
+    }
+
+    // Aeussere Normale der Form (Kugel: radial, Wuerfel: Flaeche der groessten Komponente)
+    vec3 shapeNormal(vec3 p) {
+      if (uShapeCube == 1) {
+        vec3 a = abs(p);
+        if (a.x >= a.y && a.x >= a.z) return vec3(sign(p.x), 0.0, 0.0);
+        if (a.y >= a.z) return vec3(0.0, sign(p.y), 0.0);
+        return vec3(0.0, 0.0, sign(p.z));
+      }
+      return normalize(p);
+    }
+
+    // Strahl gegen die Form (Kugel oder Wuerfel mit Halbkante 1): tEnter/tExit, false = kein Treffer
+    bool shapeRange(vec3 ro, vec3 rd, out float tEnter, out float tExit) {
+      if (uShapeCube == 1) {
+        vec3 inv = 1.0 / (rd + vec3(1e-9));
+        vec3 t0 = (-vec3(1.0) - ro) * inv;
+        vec3 t1 = ( vec3(1.0) - ro) * inv;
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+        tEnter = max(tmin.x, max(tmin.y, tmin.z));
+        tExit = min(tmax.x, min(tmax.y, tmax.z));
+        return tEnter <= tExit;
+      }
+      float a = dot(rd, rd);
+      float b = 2.0 * dot(ro, rd);
+      float c = dot(ro, ro) - 1.0;
+      float disc = b * b - 4.0 * a * c;
+      if (disc < 0.0) return false;
+      float sq = sqrt(disc);
+      tEnter = (-b - sq) / (2.0 * a);
+      tExit = (-b + sq) / (2.0 * a);
+      return true;
+    }
+
+    // Weichgezeichnete Probe (Mip 2) nur fuer Normalen: der binaere Rand liefert sonst Zackenbaender
+    float sampleGlyphSoft(sampler2D tex, vec2 uv) {
+      vec2 clamped = clamp(uv, 0.0, 1.0);
+      if (uv != clamped) return 0.0;
+      return textureLod(tex, uv, 2.0).r;
+    }
+
+    // normalize(0) liefert NaN (Pixelrauschen): Fallback radial nach aussen ist hier nicht bekannt, daher Z-Achse
+    vec3 safeNormal(vec3 v) {
+      float l = length(v);
+      return l > 1e-5 ? v / l : vec3(0.0, 0.0, 1.0);
     }
 
     // Normale der Tunnel-Wand berechnen (Gradient der Glyph-Textur)
     // Zeigt NACH INNEN zum Tunnel (weg von der Wand)
     vec3 calcTunnelNormal(vec3 p, int holeAxis) {
       float glyphScale = uGlyphSize * 0.3;
-      float eps = 0.002;
+      float eps = 0.008;  // ~8 Texel: glatter Gradient statt 8-Bit-Treppen
 
       if (holeAxis == 1) {
         // X-Achsen-Tunnel: Normale in YZ-Ebene (gespiegelt)
         vec2 uv = vec2(1.0 - (p.z / glyphScale * 0.5 + 0.5), p.y / glyphScale * 0.5 + 0.5);
-        float gx = sampleGlyph(uGlyphTexX, uv + vec2(eps, 0.0)) - sampleGlyph(uGlyphTexX, uv - vec2(eps, 0.0));
-        float gy = sampleGlyph(uGlyphTexX, uv + vec2(0.0, eps)) - sampleGlyph(uGlyphTexX, uv - vec2(0.0, eps));
-        return normalize(vec3(0.0, gy, gx));  // Vorzeichen angepasst wegen Spiegelung
+        float gx = sampleGlyphSoft(uGlyphTexX, uv + vec2(eps, 0.0)) - sampleGlyphSoft(uGlyphTexX, uv - vec2(eps, 0.0));
+        float gy = sampleGlyphSoft(uGlyphTexX, uv + vec2(0.0, eps)) - sampleGlyphSoft(uGlyphTexX, uv - vec2(0.0, eps));
+        return safeNormal(vec3(0.0, gy, gx));  // Vorzeichen angepasst wegen Spiegelung
       } else if (holeAxis == 2) {
         // Y-Achsen-Tunnel: Normale in XZ-Ebene (gespiegelt)
         vec2 uv = vec2(p.x / glyphScale * 0.5 + 0.5, 1.0 - (p.z / glyphScale * 0.5 + 0.5));
-        float gx = sampleGlyph(uGlyphTexY, uv + vec2(eps, 0.0)) - sampleGlyph(uGlyphTexY, uv - vec2(eps, 0.0));
-        float gy = sampleGlyph(uGlyphTexY, uv + vec2(0.0, eps)) - sampleGlyph(uGlyphTexY, uv - vec2(0.0, eps));
-        return normalize(vec3(-gx, 0.0, gy));  // Vorzeichen angepasst wegen Spiegelung
+        float gx = sampleGlyphSoft(uGlyphTexY, uv + vec2(eps, 0.0)) - sampleGlyphSoft(uGlyphTexY, uv - vec2(eps, 0.0));
+        float gy = sampleGlyphSoft(uGlyphTexY, uv + vec2(0.0, eps)) - sampleGlyphSoft(uGlyphTexY, uv - vec2(0.0, eps));
+        return safeNormal(vec3(-gx, 0.0, gy));  // Vorzeichen angepasst wegen Spiegelung
       } else {
         // Z-Achsen-Tunnel: Normale in XY-Ebene (unverändert)
         vec2 uv = (p.xy / glyphScale) * 0.5 + 0.5;
-        float gx = sampleGlyph(uGlyphTexZ, uv + vec2(eps, 0.0)) - sampleGlyph(uGlyphTexZ, uv - vec2(eps, 0.0));
-        float gy = sampleGlyph(uGlyphTexZ, uv + vec2(0.0, eps)) - sampleGlyph(uGlyphTexZ, uv - vec2(0.0, eps));
-        return normalize(vec3(-gx, -gy, 0.0));
+        float gx = sampleGlyphSoft(uGlyphTexZ, uv + vec2(eps, 0.0)) - sampleGlyphSoft(uGlyphTexZ, uv - vec2(eps, 0.0));
+        float gy = sampleGlyphSoft(uGlyphTexZ, uv + vec2(0.0, eps)) - sampleGlyphSoft(uGlyphTexZ, uv - vec2(0.0, eps));
+        return safeNormal(vec3(-gx, -gy, 0.0));
       }
     }
 
@@ -793,16 +862,8 @@
       vec3 rayDir = normalize(vLocalPos - vCameraLocal);
 
       // Ray-Sphere Intersection für Start/End des Raymarchings
-      float a = dot(rayDir, rayDir);
-      float b = 2.0 * dot(rayOrigin, rayDir);
-      float c = dot(rayOrigin, rayOrigin) - 1.0;
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) discard;
-
-      float sqrtD = sqrt(discriminant);
-      float tEnter = (-b - sqrtD) / (2.0 * a);
-      float tExit = (-b + sqrtD) / (2.0 * a);
+      float tEnter, tExit;
+      if (!shapeRange(rayOrigin, rayDir, tEnter, tExit)) discard;
 
       if (tExit < 0.0) discard;
       tEnter = max(tEnter, 0.001);
@@ -815,14 +876,14 @@
 
       float t = tEnter;
       // Größerer baseStep für Invert-Modus (Objekt ist kleiner)
-      float baseStep = (uInvertMode == 1) ? 0.025 : 0.015;
+      float baseStep = (uInvertMode == 1) ? 0.018 : 0.012;
 
       bool wasInHole = false;
       int lastHoleAxis = 0;
       float lastT = t;
 
       // Reduzierte Iterationen: 80 statt 120 (mit adaptivem Stepping ausreichend)
-      for (int i = 0; i < 80; i++) {
+      for (int i = 0; i < 110; i++) {
         if (t > tExit) break;
 
         vec3 p = rayOrigin + rayDir * t;
@@ -863,7 +924,7 @@
             float hitDist = sphereSDF(hitPos);
             if (abs(hitDist) < 0.05) {
               // Auf Kugeloberfläche: Normale zeigt radial nach außen
-              hitNormal = normalize(hitPos);
+              hitNormal = shapeNormal(hitPos);
             } else {
               // An Tunnel-Wand: Berechne korrekte Normale basierend auf nächster Wand
               hitNormal = calcIntersectionNormal(hitPos, rayDir);
@@ -922,7 +983,7 @@
           // Kugeloberfläche (nicht im Loch)?
           if (abs(dist) < 0.01 && !inHole) {
             hitPos = p;
-            hitNormal = normalize(p);
+            hitNormal = shapeNormal(p);
             if (dot(hitNormal, rayDir) > 0.0) {
               hitNormal = -hitNormal;
               hitType = 1;  // Innenseite
@@ -1074,6 +1135,7 @@
     uniform sampler2D uGlyphTexZ;
     uniform int uGebEnabled;
     uniform int uInvertMode;
+    uniform int uShapeCube;
 
     varying vec3 vLocalPos;
     varying vec3 vLightLocal;
@@ -1083,7 +1145,7 @@
     float sampleGlyph(sampler2D tex, vec2 uv) {
       vec2 clamped = clamp(uv, 0.0, 1.0);
       if (uv != clamped) return 0.0;
-      return texture2D(tex, uv).r;
+      return textureLod(tex, uv, 0.0).r;
     }
 
     // Zählt in wie vielen Löchern der Punkt liegt (0-3)
@@ -1121,7 +1183,42 @@
     }
 
     float sphereSDF(vec3 p) {
+      if (uShapeCube == 1) return max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
       return length(p) - 1.0;
+    }
+
+    // Aeussere Normale der Form (Kugel: radial, Wuerfel: Flaeche der groessten Komponente)
+    vec3 shapeNormal(vec3 p) {
+      if (uShapeCube == 1) {
+        vec3 a = abs(p);
+        if (a.x >= a.y && a.x >= a.z) return vec3(sign(p.x), 0.0, 0.0);
+        if (a.y >= a.z) return vec3(0.0, sign(p.y), 0.0);
+        return vec3(0.0, 0.0, sign(p.z));
+      }
+      return normalize(p);
+    }
+
+    // Strahl gegen die Form (Kugel oder Wuerfel mit Halbkante 1): tEnter/tExit, false = kein Treffer
+    bool shapeRange(vec3 ro, vec3 rd, out float tEnter, out float tExit) {
+      if (uShapeCube == 1) {
+        vec3 inv = 1.0 / (rd + vec3(1e-9));
+        vec3 t0 = (-vec3(1.0) - ro) * inv;
+        vec3 t1 = ( vec3(1.0) - ro) * inv;
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+        tEnter = max(tmin.x, max(tmin.y, tmin.z));
+        tExit = min(tmax.x, min(tmax.y, tmax.z));
+        return tEnter <= tExit;
+      }
+      float a = dot(rd, rd);
+      float b = 2.0 * dot(ro, rd);
+      float c = dot(ro, ro) - 1.0;
+      float disc = b * b - 4.0 * a * c;
+      if (disc < 0.0) return false;
+      float sq = sqrt(disc);
+      tEnter = (-b - sq) / (2.0 * a);
+      tExit = (-b + sq) / (2.0 * a);
+      return true;
     }
 
     void main() {
@@ -1129,16 +1226,8 @@
       vec3 rayDir = normalize(vLocalPos - vLightLocal);
 
       // Ray-Sphere Intersection
-      float a = dot(rayDir, rayDir);
-      float b = 2.0 * dot(rayOrigin, rayDir);
-      float c = dot(rayOrigin, rayOrigin) - 1.0;
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) discard;
-
-      float sqrtD = sqrt(discriminant);
-      float tEnter = (-b - sqrtD) / (2.0 * a);
-      float tExit = (-b + sqrtD) / (2.0 * a);
+      float tEnter, tExit;
+      if (!shapeRange(rayOrigin, rayDir, tEnter, tExit)) discard;
 
       if (tExit < 0.0) discard;
       tEnter = max(tEnter, 0.001);
@@ -1253,6 +1342,7 @@
     uniform sampler2D uGlyphTexZ;
     uniform int uGebEnabled;
     uniform int uInvertMode;       // 0=normal (Löcher), 1=invertiert (nur Zeichen)
+    uniform int uShapeCube;        // 0=Kugel, 1=Wuerfel
     uniform float uFogDensity;     // Nebel-Sichtbarkeit (0=unsichtbar, 1=voll)
     uniform float uLightIntensity; // Licht-Intensität (0-1, normalisiert)
     uniform vec3 uFogColor;
@@ -1282,7 +1372,7 @@
       vec2 clamped = clamp(uv, 0.0, 1.0);
       // Außerhalb der Textur = kein Loch
       if (uv != clamped) return 0.0;
-      return texture2D(tex, uv).r;
+      return textureLod(tex, uv, 0.0).r;
     }
 
     // Zählt in wie vielen Löchern der Punkt liegt (0-3)
@@ -1339,29 +1429,38 @@
       vec3 rayDir = normalize(to - from);
       float rayLength = length(to - from);
 
-      // Ray-Sphere Intersection (in skalierten Koordinaten)
-      float a = dot(rayDir, rayDir);
-      float b = 2.0 * dot(rayOrigin, rayDir);
-      float c = dot(rayOrigin, rayOrigin) - uSphereRadius * uSphereRadius;
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) return false;  // Kein Treffer
-
-      float sqrtD = sqrt(discriminant);
-      float t1 = (-b - sqrtD) / (2.0 * a);
-      float t2 = (-b + sqrtD) / (2.0 * a);
-
-      // Prüfe ob Treffer zwischen from und to liegt
-      if (t2 < 0.0 || t1 > rayLength) return false;
-
-      float tEnter = max(t1, 0.0);
-      float tExit = min(t2, rayLength);
+      float tEnter, tExit;
+      if (uShapeCube == 1) {
+        vec3 inv = 1.0 / (rayDir + vec3(1e-9));
+        vec3 t0 = (-vec3(uSphereRadius) - rayOrigin) * inv;
+        vec3 t1 = ( vec3(uSphereRadius) - rayOrigin) * inv;
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+        float te = max(tmin.x, max(tmin.y, tmin.z));
+        float tx = min(tmax.x, min(tmax.y, tmax.z));
+        if (te > tx) return false;
+        if (tx < 0.0 || te > rayLength) return false;
+        tEnter = max(te, 0.0);
+        tExit = min(tx, rayLength);
+      } else {
+        float a = dot(rayDir, rayDir);
+        float b = 2.0 * dot(rayOrigin, rayDir);
+        float c = dot(rayOrigin, rayOrigin) - uSphereRadius * uSphereRadius;
+        float discriminant = b * b - 4.0 * a * c;
+        if (discriminant < 0.0) return false;
+        float sqrtD = sqrt(discriminant);
+        float t1 = (-b - sqrtD) / (2.0 * a);
+        float t2 = (-b + sqrtD) / (2.0 * a);
+        if (t2 < 0.0 || t1 > rayLength) return false;
+        tEnter = max(t1, 0.0);
+        tExit = min(t2, rayLength);
+      }
 
       if (tEnter >= tExit) return false;
 
       // EINFACHER ANSATZ: Kleine Schritte, viele Samples
       // Schrittgröße = 1% des Kugelradius = sehr fein
-      float step = uSphereRadius * 0.01;
+      float step = uSphereRadius * 0.006;
 
       if (uInvertMode == 1) {
         // INVERT-MODUS: Schnittmenge aller 3 Zylinder
@@ -1472,6 +1571,7 @@
         uGlyphTexZ: { value: glyphTextures.z },
         uGebEnabled: { value: gebEnabled ? 1 : 0 },
         uInvertMode: { value: invertMode ? 1 : 0 },
+        uShapeCube: { value: shapeCube ? 1 : 0 },
         uFogDensity: { value: 1.0 },
         uLightIntensity: { value: brightness },
         uFogColor: { value: textColorThree || new THREE.Color(1, 1, 1) },
@@ -1515,6 +1615,7 @@
       mat.uniforms.uGlyphTexZ.value = glyphTextures.z;
       mat.uniforms.uGebEnabled.value = gebEnabled ? 1 : 0;
       mat.uniforms.uInvertMode.value = invertMode ? 1 : 0;
+      mat.uniforms.uShapeCube.value = shapeCube ? 1 : 0;
       const angleDeg = (idx === 1 || idx === 2) ? wallLampAngleDeg() : (params.spotAngle ?? PARAMS_CONFIG.spotAngle.default);
       mat.uniforms.uSpotAngle.value = Math.cos(angleDeg * Math.PI / 180);
       mat.uniforms.uSpherePos.value.set(0, upperSphereY(), 0);
@@ -1578,8 +1679,16 @@
   // Baut eine einzelne Kugel mit eigenem sharedUniforms-Objekt und gibt
   // den spheres[]-Eintrag zurück. glyphCharsArg bestimmt die Glyphen;
   // yOffset positioniert die Kugel auf der Y-Achse.
+  function makeOutlineGeometry() {
+    return shapeCube ? new THREE.BoxGeometry(2.1, 2.1, 2.1) : new THREE.SphereGeometry(1.05, 32, 16);
+  }
+
+  function makeShapeGeometry() {
+    return shapeCube ? new THREE.BoxGeometry(2, 2, 2) : new THREE.SphereGeometry(1, 32, 24);
+  }
+
   function buildOneSphere(glyphCharsArg, yOffset) {
-    const geometry = new THREE.SphereGeometry(1, 32, 24);
+    const geometry = makeShapeGeometry();
 
     // Jede Kugel bekommt ein eigenes sharedUniforms-Objekt
     // (display material + depth material teilen sich dasselbe Objekt)
@@ -1590,6 +1699,7 @@
       uGlyphTexZ: { value: glyphTextures.z },
       uGebEnabled: { value: gebEnabled ? 1 : 0 },
       uInvertMode: { value: invertMode ? 1 : 0 },
+      uShapeCube: { value: shapeCube ? 1 : 0 },
       uModelMatrixInverse: { value: new THREE.Matrix4() }
     };
 
@@ -1674,6 +1784,7 @@
       const u = m.material.uniforms;
       u.uGebEnabled.value = gebEnabled ? 1 : 0;
       u.uInvertMode.value = invertMode ? 1 : 0;
+      u.uShapeCube.value = shapeCube ? 1 : 0;
       u.uAmbient.value = params.ambientIntensity ?? 0.5;
       u.uGlyphSize.value = params.glyphSize || 4;
       u.uBrightness.value = brightness;
@@ -1845,10 +1956,6 @@
     '---',
     'showLamps',
     { key: 'glyphSize',        label: 'Glyph Size',  sliderMin: 0,   sliderMax: 50,  step: 0.1, decimals: 1 },
-    'glyphTexts',
-    { key: 'glyphRot0',        label: 'Rot 0',       sliderMin: 0,   sliderMax: 360, step: 1,   decimals: 0 },
-    { key: 'glyphRot1',        label: 'Rot 1',       sliderMin: 0,   sliderMax: 360, step: 1,   decimals: 0 },
-    { key: 'glyphRotInf',      label: 'Rot ∞',       sliderMin: 0,   sliderMax: 360, step: 1,   decimals: 0 },
     'font',
   ];
 
@@ -1860,6 +1967,9 @@
     });
     panel.set('spotDecay', params.spotDecay);
     panel.set('gebMode', dualMode);
+    ROT_PARAMS.forEach((k) => panel.set(k, params[k]));
+    panel.set('invertMode', invertMode);
+    panel.set('shapeCube', shapeCube);
     Object.entries(GLYPH_PANEL_KEYS).forEach(([panelKey, charKey]) => panel.set(panelKey, glyphChars[charKey] ?? ''));
     panel.set('fontKey', currentFontKey);
   }
@@ -1947,10 +2057,40 @@
     updateURLFromParams();
   }
 
+  // Gemeinsamer Weg fuer Klick auf die Kugel und Panel-Schalter.
+  function setInvertMode(on) {
+    if (on === invertMode) return;
+    invertMode = on;
+    if (panel) panel.set('invertMode', on);
+    needsUniformUpdate = true;
+    updateURLFromParams();
+  }
+
+  // Form umschalten: tauscht nur Geometrie und Shader-Flag, alle Werte bleiben.
+  function setShapeCube(on) {
+    if (on === shapeCube) return;
+    shapeCube = on;
+    if (panel) panel.set('shapeCube', on);
+    spheres.forEach((entry) => {
+      const old = entry.mesh.geometry;
+      entry.mesh.geometry = makeShapeGeometry();
+      old.dispose();
+    });
+    if (outlineSphere) {
+      const oldO = outlineSphere.geometry;
+      outlineSphere.geometry = makeOutlineGeometry();
+      oldO.dispose();
+    }
+    updateFogUniforms();
+    needsUniformUpdate = true;
+    updateURLFromParams();
+  }
+
   function resetAll() {
     Object.entries(PARAMS_CONFIG).forEach(([key, cfg]) => { params[key] = cfg.default; });
 
     invertMode = false;  // per Klick auf die Kugel gesteuert
+    setShapeCube(false);
     glyphChars = { ...DEFAULT_GLYPH_CHARS };
     currentFontKey = DEFAULT_FONT_KEY;
     syncPanelFromParams();
@@ -1971,6 +2111,43 @@
     history.replaceState(null, '', window.location.pathname);
   }
 
+  // Oberste Panel-Zeilen: [Zeichen] [Textfeld] [Drehung - Wert +]. Die Drehung ist ein normaler Slider-Parameter
+  // (params.glyphRot*, URL r0/r1/rInf, Reset); hier wird nur seine Zeile in die Textzeile eingehaengt.
+  function addGlyphRows() {
+    [['glyph0', '0', 'left', 'glyphRot0'], ['glyph1', '1', 'right', 'glyphRot1'], ['glyphInf', '∞', 'floor', 'glyphRotInf']]
+      .forEach(([panelKey, label, charKey, rotKey]) => {
+        panel.addInput(panelKey, {
+          label,
+          value: glyphChars[charKey] ?? '',
+          // Leere Eingabe = nichts auf der Kugel (kein Fallback)
+          onChange: (v) => {
+            glyphChars[charKey] = v;
+            updateURLFromParams();
+            updateGlyphTextures();
+            needsUniformUpdate = true;
+          },
+        });
+        panel.addSlider(rotKey, {
+          label: '',
+          min: 0, max: 360, step: 1, decimals: 0,
+          value: params[rotKey],
+          onChange: (v) => onSliderInput(rotKey, v),
+        });
+        const inputRow = panel.bodyEl.querySelector(`[data-key="${panelKey}"]`);
+        const sliderRow = panel.bodyEl.querySelector(`[data-key="${rotKey}"]`);
+        const group = sliderRow.querySelector('.ctrl-slider-group');
+        const holder = document.createElement('div');
+        holder.dataset.key = rotKey;
+        holder.className = 'glyph-rot';
+        holder.title = 'Drehung (Grad)';
+        holder.appendChild(group);
+        inputRow.classList.add('glyph-row');
+        inputRow.appendChild(holder);
+        sliderRow.remove();
+      });
+    panel.addDivider();
+  }
+
   function setupUI() {
     panel = Controls.createPanel({
       id: 'shadows-controls',
@@ -1979,7 +2156,10 @@
     });
     panel.addResetButton({ title: 'Reset', onClick: resetAll });
 
+    addGlyphRows();
     panel.addToggle('gebMode', { label: 'GEB-Modus', value: dualMode, onChange: onGebToggle });
+    panel.addToggle('shapeCube', { label: 'Würfel (statt Kugel)', value: shapeCube, onChange: setShapeCube });
+    panel.addToggle('invertMode', { label: 'Invert (Kugel-Klick)', value: invertMode, onChange: setInvertMode });
     panel.addDivider();
 
     PANEL_SLIDERS.forEach((spec) => {
@@ -1993,20 +2173,6 @@
         });
       } else if (spec === 'showLamps') {
         panel.addToggle('showLamps', { label: 'Show Lamps', value: true, onChange: applyLampVisibility });
-      } else if (spec === 'glyphTexts') {
-        [['glyph0', '0', 'left'], ['glyph1', '1', 'right'], ['glyphInf', '∞', 'floor']].forEach(([panelKey, label, charKey]) => {
-          panel.addInput(panelKey, {
-            label,
-            value: glyphChars[charKey] ?? '',
-            // Leere Eingabe = nichts auf der Kugel (kein Fallback)
-            onChange: (v) => {
-              glyphChars[charKey] = v;
-              updateURLFromParams();
-              updateGlyphTextures();
-              needsUniformUpdate = true;
-            },
-          });
-        });
       } else if (spec === 'font') {
         panel.addSelect('fontKey', {
           label: 'Font',
@@ -2408,7 +2574,7 @@
     scene.add(outlineSide);
 
 
-    const sphereOutlineGeo = new THREE.SphereGeometry(1.05, 32, 16);
+    const sphereOutlineGeo = makeOutlineGeometry();
     const sphereOutlineMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       wireframe: true,
@@ -2884,9 +3050,7 @@
         const hit = hitTest(event);
         if (hit && hit.type === 'sphere') {
           // Klick auf Kugel: Invert-Modus togglen
-          invertMode = !invertMode;
-          needsUniformUpdate = true;
-          updateURLFromParams();
+          setInvertMode(!invertMode);
           stopCursorBlink();  // Fokus verlieren
           return;
         } else if (hit && hit.type === 'lamp') {
