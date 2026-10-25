@@ -8,6 +8,8 @@
   <title>(un)foldingPi</title>
   <style>
     html, body { height: 100%; overflow: hidden; touch-action: none; }
+    /* Sausen zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
+    .ctrl-row[data-key="drift"] .ctrl-value-input { width: 4.6em; }
     .stage {
       position: fixed; inset: 0;
       display: flex; flex-direction: column;
@@ -72,11 +74,22 @@
 
     const stage  = document.getElementById('stage');
     const canvas = document.getElementById('pi');
-    let panel = null;   // Regler (tools/controls.js): Sausen, Verdichtung, Konstante; im Boot angelegt
+    let panel = null;   // Regler (tools/controls.js): Sausen, Verdichtungsfaktor, Konstante; im Boot angelegt
     let driftEl = null, driftValue = 0;   // Sausen in Stellen/s: negativ = Regler links = vorwaerts
-    // Standardgrenze des Sausens: bei voller Auslenkung hoechstens eine halbe Stelle je Bild (60 Hz), kein Springen.
-    // Im Popup (min/max) beliebig weit verstellbar; die Kennlinie bleibt logarithmisch zwischen 0 und der Grenze.
-    const DRIFT_MAX = 30;
+    // Standardgrenze des Sausens: +-10.000 Stellen/s, Step 1. Im Popup (min/max) beliebig weit verstellbar;
+    // die Kennlinie bleibt logarithmisch zwischen 0 und der Grenze.
+    const DRIFT_MAX = 10000;
+    // Zahlen ausgeschrieben ohne Tausenderpunkt, nie in Exponentialschreibweise: 10000, 1000000, 0,5.
+    // Eingaben mit Tausenderpunkten (1.000.000) werden weiter verstanden.
+    const fmtDE = (v, decimals) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: Math.max(0, decimals | 0), useGrouping: false }).format(v);
+    function parseDE(text) {
+      let t = String(text ?? '').trim().replace(/\s/g, '');
+      // Mit Komma: Punkte sind Tausender. Ohne Komma: Punkte nur dann Tausender, wenn sie Dreiergruppen trennen (1.000.000).
+      if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+      else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+      const n = Number(t);
+      return t && Number.isFinite(n) ? n : NaN;
+    }
     const driftTransform = {
       toSliderValue(v, cfg) {
         const lim = (v > 0 ? cfg.max : -cfg.min);
@@ -88,7 +101,10 @@
         if (!(lim > 0) || Math.abs(s) < 0.02 * lim) return 0;   // Totzone um die Mitte: kein Kriechen
         return Math.sign(s) * Math.expm1(Math.min(1, Math.abs(s) / lim) * Math.log1p(lim));
       },
-      formatDisplayValue(v) { return Math.abs(v) >= 1e4 ? Number(v).toExponential(1) : null; }
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
     };
 
     // ─── Ansicht ───
@@ -99,8 +115,7 @@
       rate: () => -driftValue,
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
       onNeedDigits: (total) => requestDigits(total),
-      onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && !file && atFront),
-      onD: (v) => { if (panel) panel.set('d', v); }
+      onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && !file && atFront)
     });
 
     // ─── Konstanten-Rechner (tools/irrational.js) ───
@@ -206,15 +221,16 @@
     // ─── Boot ───
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
     panel.addSlider('drift', {
-      label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 0.1, value: 0, decimals: 1, transform: driftTransform,
+      label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
       onChange: (v) => { driftValue = +v || 0; }
     });
     driftEl = panel.bodyEl.querySelector('.ctrl-row[data-key="drift"] .ctrl-range');
     driftEl.id = 'drift';
     driftEl.setAttribute('aria-label', 'Sausen');
-    panel.addSlider('d', {
-      label: 'Verdichtung', min: 0, max: 400, step: 0.5, value: view.state().d, decimals: 1,
-      onChange: (v) => view.setD(v)
+    // Verdichtung je Abstand der Enden: Zonenbreite = Faktor x (Abstand - eine Ziffer), siehe tools/unfolding-view.js
+    panel.addSlider('f', {
+      label: 'Verdichtungsfaktor', min: 0, max: 0.5, step: 0.01, value: view.state().factor, decimals: 2,
+      onChange: (v) => view.setFactor(+v || 0)
     });
     panel.addSelect('const', {
       label: 'Konstante', value: cid,

@@ -7,14 +7,14 @@
  *     drift()           // optional: Reglerwert -1..1 (0 = Stillstand), exponentielle Kennlinie bis 1e10 Stellen/s
  *     onNeedDigits(n)   // optional: die Ansicht braucht Nachkommastellen bis n (Vorrat); der Besitzer rechnet/laedt nach
  *     onFront(atFront)  // optional: je Bild, true = sichtbares Fenster reicht an die letzte bekannte Stelle
- *     onD(d)            // optional: die Ansicht hat die Verdichtung selbst geaendert (Fensterwechsel)
+ *     factor            // optional: Verdichtungsfaktor 0..0.5 (Standard DEFAULT_FACTOR), siehe Auto-Verdichtung unten
  *     intPart, decimals // optional: Anfangskette (Ganzzahl, Nachkommastellen), schon beim ersten Layout da (sonst '0.')
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
  *   });
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
- *   view.setD(v)  view.setLocked(b)  view.invalidate()  view.refreshColor()
+ *   view.setFactor(f)  view.setLocked(b)  view.invalidate()  view.refreshColor()
  *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
  *                                       // Ziffern aus r (Index >= Kettenlaenge) sind dezent gedaempft, noch fehlende ein ruhiger Strich
@@ -28,6 +28,9 @@
  * Stauchzone: Tinte bleibt erhalten. Eine gestauchte Ziffer gibt ihre ganze Tinte (Flaeche der Glyphe) an die Spalten ab,
  * die sie ueberdeckt; je Geraetepixel addiert sich die Tinte zur Deckkraft (hoechstens 1). So wird die Zone schmaler und
  * satter, nie blasser, und bleibt bis zuletzt eine Haarlinie, solange dort Ziffern liegen (auch bei d = 0).
+ * Auto-Verdichtung: die Zonenbreite d folgt dem Abstand der Enden D = R - L, d = f * max(0, D - w) (hoechstens D/2). Beim
+ * Laden liegen die Enden eine Ziffer weit auseinander: nur die Ganzzahl ist lesbar, d = 0, der Rest liegt als Haarlinie an
+ * der Kommaposition. Je weiter die Enden auseinander, desto breiter die Zone; zusammengeschoben geht d stetig auf 0.
  */
 (() => {
   'use strict';
@@ -38,9 +41,16 @@
   const DEAD_ZONE = 0.02;    // |Regler| darunter gilt als Mitte: kein Kriechen
   const FILE_ALPHA = 0.7;    // Ziffern aus der Quelle jenseits der Kette: leicht gedaempft
   const PENDING_ALPHA = 0.1; // noch nicht geladene Stelle: leiser Strich statt einer Ziffer
+  const DEFAULT_FACTOR = 0.2;
   const rateOf = (s) => Math.sign(s) * (Math.pow(10, 10 * Math.abs(s)) - 1);
 
   class DigitError extends Error {}
+  // Ueber 0.5 waere die Zone breiter als der halbe Abstand der Enden; keine Zahl ist ein Fehler des Besitzers.
+  function clampFactor(f) {
+    const v = +f;
+    if (!Number.isFinite(v)) throw new TypeError('UnfoldingView: factor muss eine Zahl sein, war ' + f);
+    return Math.max(0, Math.min(0.5, v));
+  }
 
   function create(canvas, opts) {
     opts = opts || {};
@@ -69,7 +79,8 @@
     // ─── Zustand ───
     // L, R: Bildschirmpositionen der Enden; X0: lineare Position (linke Kante) von Zeichen 0; d: Verdichtungsdistanz.
     let W = 0, H = 0, dpr = 1, S = 40, w = 24;
-    let L = 0, R = 0, X0 = 0, d = 24;
+    let L = 0, R = 0, X0 = 0, d = 0;
+    let factor = clampFactor(opts.factor === undefined ? DEFAULT_FACTOR : opts.factor);
     let color = '#fff';
     let atlas = null, atlasKey = '', inkTop = 0, inkBottom = 0, atlasRgb = [0, 0, 0], gw = 1, gh = 1;
     // Stauchzone, einmal je Bild ausgegeben: ink[c * gh + y] traegt die Tinte gestauchter Ziffern ab 1 Geraetepixel Breite,
@@ -135,9 +146,19 @@
       return Math.min(4000, Math.ceil((dd / w) * Math.log(Math.max(dd * dpr, 1))) + 160);
     }
 
+    // Zonenbreite aus dem Abstand der Enden. Eingerollt ist L ein echtes Ende; offen folgt L der 3 (L = X0 - d), dann ist
+    // D = R - X0 + d, nach d aufgeloest d = f (R - X0 - w) / (1 - f). Beide Formeln stimmen am Uebergang ueberein: kein Sprung.
+    function autoD(unrolled) {
+      const f = factor;
+      d = unrolled ? Math.min(f * Math.max(0, R - X0 - w) / (1 - f), Math.max(0, R - X0))
+                   : Math.min(f * Math.max(0, R - L - w), Math.max(0, (R - L) / 2));
+    }
     function settle(mode) {
+      let unrolled = mode === 'three';
+      if (!unrolled) { autoD(false); unrolled = X0 > L + deff(); }
+      if (unrolled) autoD(true);
       const dd = deff();
-      R = Math.min(R, X0 + avail() + dd, W - MARGIN);   // erzwingt zugleich X0 >= R - dd - avail()
+      R = Math.min(R, X0 + Math.max(w, avail()) + dd, W - MARGIN);   // die Ganzzahl bleibt sichtbar; sonst X0 >= R - dd - avail()
       if (mode === 'three') {
         X0 = Math.min(X0, R - dd);
         L = Math.max(MARGIN, X0 - dd);
@@ -377,18 +398,13 @@
     function applySize(first) {
       const m = measure();
       const oldIdx = startIdx();
-      const wasDefaultD = Math.abs(d - w) < 0.01;
       W = m.cw; H = m.ch; dpr = m.ndpr; S = m.nS; w = m.nw;
       const cwDev = Math.max(1, Math.round(W * dpr)), chDev = Math.max(1, Math.round(H * dpr));
       if (canvas.width !== cwDev) canvas.width = cwDev;
       if (canvas.height !== chDev) canvas.height = chDev;
       if (first) {
-        d = w;
-        L = (W - 3 * w) / 2; X0 = L + d; R = X0 + w + d;
+        X0 = Math.round((W - w) / 2); L = X0; R = X0 + w;
       } else {
-        if (wasDefaultD) { d = w; if (opts.onD) opts.onD(d); }
-        const cap = (W - 2 * MARGIN) / 2;
-        if (d > cap) { d = cap; if (opts.onD) opts.onD(d); }   // sonst springt R beim Wiedervergroessern nach aussen
         const dd = deff();
         X0 = L + dd - oldIdx * w;
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
@@ -406,6 +422,9 @@
       if (!rolled && x >= X0 - HIT && x <= X0 + w) cands.push(['three', Math.abs(x - (X0 + w / 2))]);
       if (Math.abs(x - R) <= HIT) cands.push(['R', Math.abs(x - R)]);
       if (rolled && Math.abs(x - L) <= HIT) cands.push(['L', Math.abs(x - L)]);
+      // Zusammengeschoben liegen L und R aufeinander: die Seite des Zeigers entscheidet, sonst liesse sich L nie mehr greifen.
+      const nearR = Math.abs(x - R) <= HIT, nearL = Math.abs(x - L) <= HIT;
+      if (rolled && nearR && nearL) return x < (L + R) / 2 ? 'L' : 'R';
       if (cands.length) return cands.reduce((a, c) => (c[1] < a[1] ? c : a))[0];
       return x > L && x < R ? 'swipe' : null;
     }
@@ -429,7 +448,8 @@
       const dx = x - drag.x0, dd = deff();
       let mode = 'x';
       if (drag.mode === 'R') {
-        R = Math.max(L + 2 * dd, Math.min(W - MARGIN, drag.R + dx));
+        if (!rolledLeft()) mode = 'three';   // offen: die 3 bleibt, L folgt ihr mit der wachsenden Zone
+        R = Math.max(L, Math.min(W - MARGIN, drag.R + dx));   // bis ganz auf L: d schrumpft mit dem Abstand
         // Am Datenende (Sausen holt es schnell ein) deckelt settle R auf X0 + avail() + dd: die Kette rueckt nach, R folgt dem Zeiger.
         const end = X0 + avail() + dd;
         if (R > end) X0 = R - dd - avail();
@@ -437,13 +457,11 @@
         X0 = drag.X0 + dx;
         mode = 'three';
       } else if (drag.mode === 'L') {
-        const Lt = Math.max(MARGIN, Math.min(R - 2 * dd, drag.L + dx));
-        if (Lt + dd <= X0) {
-          drag.mode = 'three'; drag.x0 = x; X0 = Lt + dd; drag.X0 = X0;
-          mode = 'three';
-        } else {
-          L = Lt;
-        }
+        const Lt = Math.max(MARGIN, Math.min(R, drag.L + dx));
+        // Zone fuer das neue L (sie waechst mit dem Abstand): erreicht ihr Rand die 3, zieht L die 3 mit (X0 = L + d).
+        const dL = Math.max(0, Math.min(factor * Math.max(0, R - Lt - w), (R - Lt) / 2, (W - 2 * MARGIN) / 2));
+        if (Lt + dL <= X0) { L = Lt; X0 = Lt + dL; mode = 'three'; }
+        else L = Lt;
       } else {
         X0 = drag.X0 + dx;
         clampX0();
@@ -518,22 +536,11 @@
       dirty = true;
     }
 
-    // ─── Verdichtung ───
-    // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen, nichts springt. Was nicht passt, wird
-    // am Regler begrenzt: Eingerollt hoechstens der halbe Abstand der Enden, sonst auch noch der Platz rechts der 3.
-    // Ist nichts eingerollt, ist L unsichtbar und folgt der 3. Zeigt die Kette an die Front, rueckt nur R nach.
-    function maxD(unrolled) {
-      const cap = (W - 2 * MARGIN) / 2;
-      return Math.max(0, Math.min(cap, unrolled ? Math.min(R - X0, (R - MARGIN) / 2) : (R - L) / 2));
-    }
-    function setD(v) {
-      const unrolled = !rolledLeft();
-      const want = Math.max(0, v);
-      d = Math.min(want, maxD(unrolled));
-      if (unrolled) L = Math.max(MARGIN, X0 - deff());
-      R = Math.min(R, X0 + avail() + deff());
-      dirty = true;
-      if (d !== want && opts.onD) opts.onD(d);   // der Regler springt auf den moeglichen Wert zurueck
+    // ─── Verdichtungsfaktor ───
+    // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen. Offen folgt L der 3.
+    function setFactor(f) {
+      factor = clampFactor(f);
+      settle(rolledLeft() ? 'x' : 'three');
     }
     function rewind() {
       X0 = L + deff();
@@ -568,7 +575,7 @@
     }
 
     return {
-      setDigits, appendDigits, rewind, setD, destroy, refreshColor, setRemote,
+      setDigits, appendDigits, rewind, setFactor, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       invalidate() { dirty = true; },
       digits() { return decoder.decode(buf.subarray(0, chainLen)); },
@@ -579,7 +586,7 @@
         const startIndex = Math.max(0, startIdx());
         const endIndex = Math.max(0, (R - dd - X0) / w);
         return {
-          L, R, X0, d, dEff: dd, w, W, H, dpr,
+          L, R, X0, d, dEff: dd, factor, w, W, H, dpr,
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,
@@ -593,5 +600,5 @@
     };
   }
 
-  window.UnfoldingView = { create, DigitError };
+  window.UnfoldingView = { create, DigitError, DEFAULT_FACTOR };
 })();
