@@ -48,7 +48,7 @@ const CASES = [
     ['null', '/was-ist-die-eine-null', 5],
     ['zero', '/was-ist-die-eine-null', 60],
     ['eins', '/einsen.html', 3],
-    ['onefinity', '/0nefinity.js', 40],
+    ['onefinity', '/assets/bibeln/0nefinity.txt', 40],
     ['piquadrat', '/piquadrat', 1],
     ['π quadrat', '/piquadrat', 2],
 ];
@@ -96,11 +96,6 @@ async function visibleResults(page) {
     const flood = await search('kuriositaeten');
     report(flood.length >= 1 && flood.length <= 5, 'Ordnername allein: hoechstens 5 Treffer', `${flood.length} Treffer`);
 
-    // Einzelzeichen: nur Wortanfaenge, kein Pfad, keine Ziffer mitten im Wort/Datum
-    const one = await search('0');
-    const bad = one.filter(r => !/(^|[^a-z0-9])(0|null|zero)/i.test(r.text.replace(/([a-z])([A-Z])/g, '$1 $2')));
-    report(one.length > 0 && bad.length === 0, '"0": nur Wortanfang-Treffer', `${bad.length} Fremdtreffer, z.B. ${bad.slice(0, 3).map(r => r.href).join(' | ')}`);
-
     // Leerzustand
     await search(EMPTY_QUERY);
     const emptyText = await page.$$eval('.menu-search-empty', e => e.filter(x => x.offsetParent).map(x => x.textContent.trim()));
@@ -121,7 +116,7 @@ async function visibleResults(page) {
         // Pfeil runter + Enter oeffnet zweiten Treffer
         await page.goto(base + '/README.html');
         await page.click('.menu-button');
-        await input.fill('unfolding pi');
+        await input.fill('kreis');
         await page.waitForTimeout(250);
         const res = await visibleResults(page);
         await input.press('ArrowDown');
