@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ein Nullgespräch</title>
+  <style>
+    html, body { height: 100%; overflow: hidden; touch-action: none; }
+    .stage {
+      position: fixed; inset: 0;
+      background: var(--bg-color);
+      color: var(--text-color);
+      user-select: none; -webkit-user-select: none;
+      touch-action: none;
+    }
+    .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
+    #gespraech { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #gespraech.zieht { cursor: grabbing; }
+  </style>
+</head>
+<body>
+  <div class="stage _018" id="stage">
+    <canvas id="gespraech"></canvas>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // Jede Zeile k des Gesprächs liegt bei j = k - stelle (Periode p > 0: j auf (-p/2, p/2] gefaltet).
+    // Zeile j wird um j * winkel gedreht und entlang der gedrehten Senkrechten um j * verschiebung Zeilen versetzt.
+    // winkel 0, verschiebung 0: alles am Ursprung (Nullgebilde). winkel 0, verschiebung 1: der lesbare Dialog.
+    const DATA_URL = '/_nullgespraeche/1.json';
+    const DEG = Math.PI / 180;
+    const READABLE = { winkel: 0, verschiebung: 1 };
+    const NULL = { winkel: 0, verschiebung: 0 };
+
+    const stage = document.getElementById('stage');
+    const canvas = document.getElementById('gespraech');
+    const ctx = canvas.getContext('2d');
+
+    const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0 };
+    let messages = null;
+    let lines = [];            // { text, wer } oder null fuer die Leerzeile zwischen zwei Nachrichten
+    let W = 0, H = 0, dpr = 1, fontPx = 16, lh = 24, colW = 300;
+    let fontFamily = 'sans-serif';
+    let color = '', dirty = true, error = null, drawn = 0;
+    let panel = null, anim = null;
+
+    function fail(message) {
+      if (error) return;
+      error = message;
+      console.error('[EinNullgespraech] ' + message);
+      stage.classList.add('fehler');
+    }
+
+    // ─── Layout ───
+    function wrap(text) {
+      const out = [];
+      for (const para of text.split('\n')) {
+        if (!para.trim()) { out.push(''); continue; }
+        let cur = '';
+        for (let word of para.split(/ +/)) {
+          // Woerter breiter als die Spalte (lange Ziffernfolgen) zeichenweise brechen.
+          while (ctx.measureText(word).width > colW) {
+            let n = 1;
+            while (n < word.length && ctx.measureText(word.slice(0, n + 1)).width <= colW) n++;
+            if (cur) { out.push(cur); cur = ''; }
+            out.push(word.slice(0, n));
+            word = word.slice(n);
+          }
+          if (!word) continue;
+          const next = cur ? cur + ' ' + word : word;
+          if (cur && ctx.measureText(next).width > colW) { out.push(cur); cur = word; }
+          else cur = next;
+        }
+        out.push(cur);
+      }
+      return out;
+    }
+    function layout() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height; dpr = window.devicePixelRatio || 1;
+      const cw = Math.max(1, Math.round(W * dpr)), ch = Math.max(1, Math.round(H * dpr));
+      if (canvas.width !== cw) canvas.width = cw;
+      if (canvas.height !== ch) canvas.height = ch;
+      fontFamily = getComputedStyle(stage).fontFamily || 'sans-serif';
+      fontPx = W < 600 ? 15 : 16;
+      lh = Math.round(fontPx * 1.55);
+      colW = Math.min(W - 2 * Math.max(16, W * 0.05), fontPx * 34);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = fontPx + 'px ' + fontFamily;
+      const anchor = lines.length ? lineAt(st.stelle) : null;
+      lines = [];
+      if (messages) {
+        messages.forEach((m, i) => {
+          if (i > 0) lines.push(null);
+          for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i } : null);
+        });
+      }
+      if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg);
+      if (st.stelle < 0) st.stelle = 0;
+      if (panel) syncPanel();
+      dirty = true;
+    }
+    function lineAt(s) {
+      for (let k = Math.round(s); k < lines.length; k++) if (lines[k]) return lines[k];
+      return null;
+    }
+
+    // ─── Geometrie ───
+    function fold(j) {
+      const p = st.periode;
+      if (!(p > 0)) return j;
+      return j - p * Math.round(j / p);
+    }
+    // Lage der Zeile k: Mittelpunkt des Zeilenanfangs (Bildschirm, CSS-Pixel) und Drehung.
+    function place(k) {
+      const j = fold(k - st.stelle);
+      const a = j * st.winkel * DEG;
+      const off = j * st.verschiebung * lh;
+      const s = Math.sin(a), c = Math.cos(a);
+      // lokale x = -colW/2 (Zeilenanfang), lokale y = off; gedreht um a.
+      const lx = -colW / 2, ly = off;
+      return { x: W / 2 + lx * c - ly * s, y: H / 2 + lx * s + ly * c, a, j, off };
+    }
+
+    // ─── Zeichnen ───
+    function refreshColor() {
+      const cs = getComputedStyle(stage).color;
+      if (cs !== color) { color = cs; dirty = true; }
+    }
+    function draw() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = fontPx + 'px ' + fontFamily;
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = color;
+      const reach = Math.hypot(W, H) / 2 + colW + lh;
+      const c = dpr;
+      let n = 0;
+      for (let k = 0; k < lines.length; k++) {
+        const l = lines[k];
+        if (!l) continue;
+        const j = fold(k - st.stelle);
+        if (Math.abs(j * st.verschiebung * lh) > reach) continue;
+        const a = j * st.winkel * DEG;
+        const cos = Math.cos(a) * c, sin = Math.sin(a) * c;
+        // Ursprung Bildmitte, Achsen um a gedreht, dann lokal (-colW/2, off).
+        ctx.setTransform(cos, sin, -sin, cos, W / 2 * c, H / 2 * c);
+        ctx.globalAlpha = l.wer === 'claude' ? 0.58 : 0.94;
+        ctx.fillText(l.text, -colW / 2, j * st.verschiebung * lh);
+        n++;
+      }
+      ctx.globalAlpha = 1;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      drawn = n;
+    }
+    function frame(t) {
+      if (anim) stepAnim(t);
+      if (dirty && messages) { dirty = false; draw(); }
+      requestAnimationFrame(frame);
+    }
+
+    // ─── Zustand ───
+    function set(patch, fromPanel) {
+      for (const k of Object.keys(patch)) {
+        const v = Number(patch[k]);
+        if (!Number.isFinite(v)) continue;
+        if (k === 'periode') st.periode = Math.max(0, v);
+        else if (k === 'stelle') st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), v));
+        else if (k in st) st[k] = v;
+      }
+      if (!fromPanel && panel) syncPanel();
+      saveUrl();
+      dirty = true;
+    }
+    function syncPanel() {
+      panel.set('winkel', round(st.winkel, 3));
+      panel.set('verschiebung', round(st.verschiebung, 3));
+      panel.set('periode', st.periode);
+      panel.set('stelle', round(st.stelle, 1));
+    }
+    const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
+
+    let urlTimer = 0;
+    function saveUrl() {
+      clearTimeout(urlTimer);
+      urlTimer = setTimeout(() => {
+        const u = new URL(location.href);
+        const isNull = !st.winkel && !st.verschiebung && !st.periode && !st.stelle;
+        for (const k of Object.keys(st)) {
+          if (isNull) u.searchParams.delete(k);
+          else u.searchParams.set(k, String(round(st[k], 4)));
+        }
+        history.replaceState(null, '', u);
+      }, 250);
+    }
+    function loadUrl() {
+      const q = new URLSearchParams(location.search);
+      const patch = {};
+      for (const k of Object.keys(st)) if (q.has(k)) patch[k] = q.get(k);
+      return patch;
+    }
+
+    // Weiches Umschalten (Doppeltipp, Zuruecksetzen).
+    function animateTo(target, ms) {
+      anim = { from: { winkel: st.winkel, verschiebung: st.verschiebung }, to: target, t0: performance.now(), ms };
+    }
+    function stepAnim(t) {
+      const u = Math.min(1, (t - anim.t0) / anim.ms);
+      const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+      const patch = {};
+      for (const k of Object.keys(anim.to)) patch[k] = anim.from[k] + (anim.to[k] - anim.from[k]) * e;
+      if (u >= 1) anim = null;
+      set(patch);
+    }
+    const isReadable = () => Math.abs(st.winkel) < 1e-6 && Math.abs(st.verschiebung - 1) < 1e-6;
+
+    // ─── Ziehen ───
+    // Ein Finger / Maus: waagerecht Winkel, senkrecht Verschiebung. Zwei Finger, Mausrad: durch das Gespräch wandern.
+    const pointers = new Map();
+    let lastTap = 0, moved = 0, pairY = null;
+    const WINKEL_PRO_PX = 0.01, VERSCH_PRO_PX = 1 / 320;
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      anim = null;
+      moved = 0;
+      pairY = pointers.size === 2 ? avgY() : null;
+      canvas.classList.add('zieht');
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (pointers.size === 1) {
+        set({ winkel: st.winkel + dx * WINKEL_PRO_PX, verschiebung: st.verschiebung + dy * VERSCH_PRO_PX });
+      } else if (pointers.size === 2) {
+        const y = avgY();
+        if (pairY !== null) scrollBy(-(y - pairY));
+        pairY = y;
+      }
+    });
+    const end = (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      pairY = pointers.size === 2 ? avgY() : null;
+      if (!pointers.size) canvas.classList.remove('zieht');
+      if (e.type === 'pointerup' && !pointers.size && moved < 8) {
+        const now = performance.now();
+        if (now - lastTap < 320) { animateTo(isReadable() ? NULL : READABLE, 700); lastTap = 0; }
+        else lastTap = now;
+      }
+    };
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+    function avgY() { let s = 0; for (const p of pointers.values()) s += p.y; return s / pointers.size; }
+    function scrollBy(px) {
+      const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh;
+      set({ stelle: st.stelle + px / step });
+    }
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const px = e.deltaMode === 1 ? e.deltaY * lh : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
+      scrollBy(px);
+    }, { passive: false });
+    window.addEventListener('keydown', (e) => {
+      if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+      const k = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
+      if (k) { e.preventDefault(); set({ stelle: st.stelle + k }); }
+    });
+
+    // ─── Boot ───
+    function buildPanel() {
+      panel = Controls.createPanel({ position: 'left', id: 'ein-nullgespraech' });
+      panel.addSlider('winkel', { label: 'Winkel', min: -180, max: 180, step: 0.01, value: st.winkel, decimals: 2, onChange: (v) => set({ winkel: v }, true) });
+      panel.addSlider('verschiebung', { label: 'Verschiebung', min: 0, max: 4, step: 0.001, value: st.verschiebung, decimals: 3, onChange: (v) => set({ verschiebung: v }, true) });
+      panel.addSlider('periode', { label: 'Periode', min: 0, max: Math.max(1, lines.length), step: 1, value: st.periode, decimals: 0, onChange: (v) => set({ periode: v }, true) });
+      panel.addSlider('stelle', { label: 'Stelle', min: 0, max: Math.max(1, lines.length - 1), step: 0.1, value: st.stelle, decimals: 1, onChange: (v) => set({ stelle: v }, true) });
+      panel.addResetButton({ title: 'Nullgebilde', onClick: () => { set({ periode: 0 }); animateTo(NULL, 700); } });
+    }
+
+    window.einNullgespraech = {
+      state() { return Object.assign({}, st, { lines: lines.length, messages: messages ? messages.length : 0, drawn, lineHeight: lh, error, readable: isReadable(), width: W, height: H }); },
+      set(patch) { anim = null; set(patch); draw(); dirty = false; },
+      // Lage der k-ten Textzeile (Zaehlung ohne Leerzeilen) auf dem Bildschirm.
+      textLine(n) {
+        let seen = -1;
+        for (let k = 0; k < lines.length; k++) if (lines[k] && ++seen === n) return Object.assign({ k, text: lines[k].text, wer: lines[k].wer }, place(k));
+        return null;
+      }
+    };
+
+    fetch(DATA_URL, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status + ' fuer ' + DATA_URL); return r.json(); })
+      .then((data) => {
+        if (!Array.isArray(data) || !data.length || !data.every((m) => (m.wer === 'tim' || m.wer === 'claude') && typeof m.text === 'string')) {
+          throw new Error('Gespraechsdaten ungueltig');
+        }
+        messages = data;
+        layout();
+        buildPanel();
+        set(loadUrl());
+      })
+      .catch((e) => fail(e.message));
+
+    refreshColor();
+    const themeObs = new MutationObserver(refreshColor);
+    for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
+    window.addEventListener('resize', () => { if (messages) layout(); });
+    requestAnimationFrame(frame);
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
