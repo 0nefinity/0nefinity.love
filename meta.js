@@ -35,9 +35,10 @@ function applyTabTitle() {
 }
 applyTabTitle();
 
-// ─── Favicon: das rotierende 0 1 ∞ der Startseite ───
+// ─── Favicon: das rotierende 0 1 ∞ auf 018.html ───
+// Nur Seiten mit <html data-favicon="rotating"> (018.html) drehen das Icon; überall sonst bleibt das statische /favicon.ico.
 // Geometrie wie drawFrameWithAngle in 0nefinity.js (Radius 30 %, Zeichen 25 %, ≡ 23 % auf den Kanten), weiß auf transparent wie /favicon.ico.
-// Tempo wie die Startseite: Auto-Speed-Stufen aus AUTO_SPEED_CONFIG in 0nefinity.js (°/Frame, Cosinus-Rampen), hier 1:1 kopiert und mit virtuellen 60-Hz-Frames aus der Zeit aufsummiert (Monitor-Hz egal). Auf der Startseite wird stattdessen der Winkel des Seiten-Symbols (window.__symbolAngle) gespiegelt.
+// Tempo wie die Startseite: Auto-Speed-Stufen aus AUTO_SPEED_CONFIG in 0nefinity.js (°/Frame, Cosinus-Rampen), hier 1:1 kopiert und mit virtuellen 60-Hz-Frames aus der Zeit aufsummiert (Monitor-Hz egal). Auf 018.html (wie auf der Startseite) wird stattdessen der Winkel des Seiten-Symbols (window.__symbolAngle) gespiegelt.
 // 32 px = native Größe eines 16-px-Tab-Icons auf 2x-Displays und ~4x billigeres toDataURL pro Frame als 64 px; das Einlesen des Streams ist der Engpass, nicht das Zeichnen.
 // Test: ?favfps=<1-120> deckelt die Bildrate, ?favspeed=<Faktor> skaliert das Seiten-Tempo (Standard 1); ?favmode=ruhig dreht konstant 30°/s (mal favspeed) statt im Seiten-Tempo; alles bleibt im Tab (sessionStorage).
 const FAVICON_SIZE = 32;
@@ -141,6 +142,7 @@ const FAVICON_STEP_DEG = 2;
 const FAVICON_FRAMES = 360 / FAVICON_STEP_DEG;
 const FAVICON_RUHIG_DEG_PER_S = 30;
 function startFaviconAnimation() {
+    if (document.documentElement.dataset.favicon !== 'rotating') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const link = document.querySelector('link[rel~="icon"]');
     if (!link || !/\/favicon\.ico$/.test(new URL(link.href, location.href).pathname)) return;
