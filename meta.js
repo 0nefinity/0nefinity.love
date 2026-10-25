@@ -144,7 +144,7 @@ function initMenuSearch(menu, fileList) {
             const label = a.textContent || name;
             const dir = parts.join('/');
             const fields = [];
-            [[label, 0], [name, 0], [dir, 3]].forEach(([raw, pen]) => {
+            [[label, 0], [name, 0], [dir, 6]].forEach(([raw, pen]) => {
                 if (!raw) return;
                 const vs = [compact(raw, true)];
                 const flat = compact(raw, false);
@@ -167,25 +167,32 @@ function initMenuSearch(menu, fileList) {
 
     // Güte eines Begriffs in einem Eintrag: kleiner ist besser, null = kein Treffer.
     // Wortanfang 0, innerhalb 10, Tippfehler 20; +feld-Strafe (Pfad), +2 je Alias, +5 ohne Pfad-Wortanfang.
+    // Der Ordnerpfad zaehlt nur am Wortanfang (kein Teilstueck/Tippfehler im Pfad).
+    // Liefert [Güte, nurPfad]: nurPfad = der beste Treffer kam aus dem Ordnerpfad.
     function termScore(alts, entry, fuzzy) {
-        let best = null;
+        let best = null, viaPath = false;
         for (let a = 0; a < alts.length; a++) {
             const t = alts[a], ap = a ? 3 : 0;
             if (!t) continue;
             for (const f of entry.fields) {
+                const isPath = f.pen > 0;
                 let s = null;
                 if (f.c.startsWith(t)) s = f.c === t ? -3 : 0;
                 else if (f.b.some(p => f.c.startsWith(t, p))) s = 1;
-                else if (f.c.includes(t)) s = 10;
-                else if (fuzzy && t.length >= 4) {
+                else if (!isPath && f.c.includes(t)) s = 10;
+                else if (!isPath && fuzzy && t.length >= 4) {
                     const max = t.length >= 8 ? 2 : 1;
                     if (f.fuz.length >= t.length - max && fuzzyDist(phon(t), f.fuz) <= max) s = 20;
                 }
-                if (s !== null && (best === null || s + f.pen + ap < best)) best = s + f.pen + ap;
+                if (s !== null && (best === null || s + f.pen + ap < best)) { best = s + f.pen + ap; viaPath = isPath; }
             }
         }
-        return best;
+        return best === null ? null : [best, viaPath];
     }
+
+    // Treffer, die nur ueber den Ordnerpfad zustande kommen, stehen hinter allen Namenstreffern
+    // und sind auf PATH_ONLY_CAP begrenzt ("unfoldingpi" flutet nicht mit dem ganzen Ordner).
+    const PATH_ONLY_CAP = 5;
 
     function search(query) {
         if (!entries) buildIndex();
@@ -194,15 +201,18 @@ function initMenuSearch(menu, fileList) {
         function run(fuzzy) {
             const hits = [];
             for (const e of entries) {
-                let score = 0, ok = true;
+                let score = 0, ok = true, pathOnly = true;
                 for (const alts of altsList) {
-                    const s = termScore(alts, e, fuzzy);
-                    if (s === null) { ok = false; break; }
-                    score += s;
+                    const r = termScore(alts, e, fuzzy);
+                    if (r === null) { ok = false; break; }
+                    score += r[0];
+                    if (!r[1]) pathOnly = false;
                 }
-                if (ok) hits.push({ e, score: score + e.len / 1000 });
+                if (ok) hits.push({ e, pathOnly, score: score + (pathOnly ? 100 : 0) + e.len / 1000 });
             }
-            return hits.sort((x, y) => x.score - y.score);
+            hits.sort((x, y) => x.score - y.score);
+            let n = 0;
+            return hits.filter(h => !h.pathOnly || ++n <= PATH_ONLY_CAP);
         }
         let hits = run(false);
         if (hits.length < 5) hits = run(true);

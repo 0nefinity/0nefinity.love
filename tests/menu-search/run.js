@@ -24,6 +24,7 @@ const CASES = [
     ['(un)folding', '/unfoldingPi.html', 1],
     ['unfoldnigpi', '/unfoldingPi.html', 3],
     ['unfoldingpi.html', '/unfoldingPi.html', 1],
+    ['unfoldingpi', '/unfoldingPi.html', 1],
     ['koordinaten', '/co0rdinates.html', 8],
     ['co0rdinates', '/co0rdinates.html', 2],
     ['coordinates', '/co0rdinates.html', 8],
@@ -47,7 +48,7 @@ const CASES = [
     ['null', '/was-ist-die-eine-null', 5],
     ['zero', '/was-ist-die-eine-null', 60],
     ['eins', '/einsen.html', 3],
-    ['onefinity', '/0nefinity.js', 40],
+    ['onefinity', '/assets/bibeln/0nefinity.txt', 40],
     ['piquadrat', '/piquadrat', 1],
     ['π quadrat', '/piquadrat', 2],
 ];
@@ -91,6 +92,10 @@ async function visibleResults(page) {
             `Rang ${rank || 'nicht gefunden'} von ${res.length}; Top3: ${res.slice(0, 3).map(r => r.text).join(' | ')}`);
     }
 
+    // Pfad-Treffer fluten nicht: nur ueber den Ordnernamen gefunden -> hoechstens 5 Treffer
+    const flood = await search('kuriositaeten');
+    report(flood.length >= 1 && flood.length <= 5, 'Ordnername allein: hoechstens 5 Treffer', `${flood.length} Treffer`);
+
     // Leerzustand
     await search(EMPTY_QUERY);
     const emptyText = await page.$$eval('.menu-search-empty', e => e.filter(x => x.offsetParent).map(x => x.textContent.trim()));
@@ -111,7 +116,7 @@ async function visibleResults(page) {
         // Pfeil runter + Enter oeffnet zweiten Treffer
         await page.goto(base + '/README.html');
         await page.click('.menu-button');
-        await input.fill('unfolding pi');
+        await input.fill('kreis');
         await page.waitForTimeout(250);
         const res = await visibleResults(page);
         await input.press('ArrowDown');
