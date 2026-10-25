@@ -256,8 +256,9 @@
           const g = atlas[String.fromCharCode(code)];
           if (!g) continue;
           if (wDev > wd * 0.999) { wDev = wd; xDev = Math.round(xDev); }
-          ctx.globalAlpha = (fromRemote ? FILE_ALPHA : 1) * mul;
-          if (pass === 0) shownMark[i - iLo] = Math.round(ctx.globalAlpha * 100);
+          const al = (fromRemote ? FILE_ALPHA : 1) * mul;
+          ctx.globalAlpha = al;
+          if (pass === 0) shownMark[i - iLo] = Math.round(al * 100);
           // Unter Strichstärke: die Silhouette-Spalte auf Strichbreite ziehen.
           if (nat < inkMin) { ctx.drawImage(g.bar, xDev, y0, wDev, hd); n++; continue; }
           const k = Math.max(0, Math.min(g.levels.length - 1, Math.floor(Math.log2(wd / wDev))));
