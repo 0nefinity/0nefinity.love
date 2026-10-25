@@ -175,6 +175,14 @@ async function visibleResults(page) {
     rows = (await search('unstoflicher'), await contentRows());
     report(rows.length === 0, 'Volltext: kein Fuzzy (Tippfehler -> kein Inhaltstreffer)', JSON.stringify(rows.map(r => r.href)));
 
+    // Tippfehler-Treffer nur als Ersatz: "test" liefert nur Eintraege, die "test" wirklich enthalten
+    {
+        const res = await search('test');
+        const bad = res.filter(r => !r.href.toLowerCase().includes('test') && !(r.text || '').toLowerCase().includes('test'));
+        report(res.length > 0 && bad.length === 0, 'Namenssuche "test": nur echte Treffer (kein Tippfehler-Rauschen)', JSON.stringify(bad.map(r => r.href).slice(0, 5)));
+        report(['/biggercontext/test.html', '/biggercontext/test3.html'].every(h => res.some(r => r.href === h)), 'Namenssuche "test": test.html und test3.html bleiben auffindbar');
+    }
+
     // Namenstreffer erscheinen nicht doppelt; Namenstreffer stehen oben
     await search('pi');
     const order = await page.$$eval('#file-list > li.search-hit', ls => ls.filter(l => l.offsetParent).map(l =>
