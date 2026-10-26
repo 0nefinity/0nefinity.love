@@ -67,6 +67,7 @@
     }
     .ck-banner h2 { margin: 0; font-size: 1.125rem; font-weight: normal; }
     .ck-banner p { margin: 0; }
+    .ck-ask span { white-space: nowrap; color: color-mix(in srgb, var(--text-color) 60%, transparent); }
     /* a scrolling flex column would squeeze its rows into each other */
     .ck-banner > * { flex-shrink: 0; }
     .ck-row { display: flex; gap: 0.25rem; align-items: stretch; flex-wrap: nowrap; }
@@ -148,7 +149,7 @@
   <div class="ck-backdrop" id="ck-backdrop">
     <section class="ck-banner" role="dialog" aria-modal="true" aria-labelledby="ck-title">
       <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
-      <p id="ck-rate">1 Cookie = 1 €</p>
+      <p class="ck-ask">Wie viele Cookies wollen Sie? <span id="ck-rate">1 Cookie = 1 €</span></p>
 
       <div class="ck-row">
         <button type="button" class="ck-step" id="ck-div" aria-label="durch zehn">−−</button>
