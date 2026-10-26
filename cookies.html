@@ -330,7 +330,7 @@
     }
     var minor = parseMinor(countEl.value);
     if (minor === null) return { text: 'Das ist keine Anzahl.', buy: null };
-    if (minor === 0n) return { lines: [['0 Cookies', money(0n)]], sub: '', buy: null, zero: true };
+    if (minor < 100n) return { lines: [[cookies(minor), money(minor)]], sub: '', buy: null, zero: true };
     return { lines: [[cookies(minor), money(minor)]], sub: split(minor), buy: 'Kaufen', total: minor };
   }
 
