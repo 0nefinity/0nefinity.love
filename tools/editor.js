@@ -1,9 +1,11 @@
 // Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: oben im Menue
 // die Admin-Zeile (veroeffentlichen, Analytics, Ausloggen), oben links neben dem Menue eine Reihe kleiner
-// Symbole: bearbeiten ein/aus, rueckgaengig, wiederholen, Quelltext, Kommentare ein/aus, Aenderungen, jetzt speichern.
-// Texte sind eingeloggt direkt editierbar und gehen 1,5 s nach dem letzten Tippen auf dev (sofort sichtbar);
-// der Server committet und pusht gebuendelt im Hintergrund. Markierter Text bekommt eine kleine Leiste
-// (fett, kursiv, Link, Formatierung weg). Kommentare sind HTML-Kommentare in der Seite.
+// Symbole: rueckgaengig, wiederholen, bearbeiten ein/aus, Quelltext, Kommentare ein/aus, Aenderungen.
+// Grundsatz: die Oberflaeche reagiert sofort, alles Laengere laeuft im Hintergrund. Texte sind eingeloggt
+// direkt editierbar und gehen ~0,4 s nach dem letzten Tippen auf dev (kein Speichern-Knopf, keine Statusanzeige;
+// nur ein Fehler bleibt sichtbar, bis das Speichern wieder klappt). Der Server committet und pusht gebuendelt im
+// Hintergrund. Markierter Text bekommt eine kleine Leiste (fett, kursiv, Link, Kommentar, Formatierung weg).
+// Kommentare (HTML und JS) erscheinen mit der Sprechblase an ihrem Platz und sind dort direkt schreibbar.
 // Alle Knoepfe rendern aus einem Zustand (render()).
 // Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar unter den Symbolen.
 (function oneEditor() {
@@ -38,19 +40,24 @@
   let busy = 0;
   let overlay = null;
   let cmtOn = false;
-  let noteArmed = false;
-  let noteOpen = false;
   let source = null;
   let csrf = '';
   let iconSeq = 0;
-  const badgeNode = new WeakMap();
+  const badgeInfo = new WeakMap();
+  const fresh = new WeakSet();
+  let pubTimer = null;
+  let pubPoll = null;
+  let toast = null;
+  let toastTimer = null;
+  let lastTypeAt = 0;
+  let retryN = 0;
   // Autosave: so lange nach dem letzten Tippen wird gespeichert, also ein Commit pro Schreibpause.
-  const AUTOSAVE_MS = 1500;
+  const AUTOSAVE_MS = 400;
   let saveTimer = null;
   let saving = null;
   let saveAgain = false;
   let leaving = false;
-  let bar, status, extra, btnSave, btnCmt, btnNote, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
+  let bar, status, btnCmt, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
   // ready: Quelltext geladen; inline: Seite ist inline bearbeitbar; live: dev weicht von live ab.
   const st = { ready: false, inline: false, live: false };
   // Eigener Verlauf statt Browser-Undo: der kennt keine Autosave-Grenzen und vergisst alles, sobald
@@ -67,7 +74,7 @@
 
   // Live-Reload pausiert, solange bearbeitet wird, ein Fenster offen ist oder eine Anfrage laeuft:
   // ein Reload mitten im Speichern bricht die Antwort ab.
-  function syncPause() { window.__oneEditing = editing || !!overlay || noteOpen || cmtOn || busy > 0; }
+  function syncPause() { window.__oneEditing = editing || !!overlay || cmtOn || busy > 0 || !!pubTimer; }
 
   // Admin/Login: 0, oben eine kleine 1, die den Kreis schneidet.
   // Ausloggen: Power-Zeichen aus 0 und 1, die 1 schneidet sich ihren Spalt aus der 0.
@@ -75,8 +82,8 @@
     pencil: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
     code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
     bubble: 'M4 5h16v11h-9l-5 4v-4h-2z',
+    noteplus: 'M4 5h16v11h-9l-5 4v-4h-2zM12 7.5v6M9 10.5h6',
     diff: 'M12 4v8M8 8h8M8 18h8',
-    save: 'M12 4v10M7.5 9.5l4.5 4.5 4.5-4.5M5 19h14',
     undo: 'M9 15L4 10l5-5M4 10h10a5 5 0 0 1 0 10h-4',
     redo: 'M15 15l5-5-5-5M20 10H10a5 5 0 0 0 0 10h4',
     link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
@@ -116,7 +123,7 @@
   }
 
   async function request(method, route, body) {
-    const opts = { method, credentials: 'same-origin', keepalive: route === 'save', headers: { Accept: 'application/json' } };
+    const opts = { method, credentials: 'same-origin', keepalive: route === 'save' || route === 'publish', headers: { Accept: 'application/json' } };
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
       opts.headers['X-0ne-Edit'] = '1';
@@ -138,10 +145,58 @@
 
   function q(route) { return route + '?path=' + encodeURIComponent(pagePath); }
 
+  let sayTimer = null;
+  // Nur Fehler bleiben stehen; Bestaetigungen verschwinden nach 4 s. Solange das Speichern scheitert, bleibt
+  // seine Fehlermeldung oben, bis es wieder klappt.
   function say(text, kind) {
+    if (saveFailed && kind !== 'error' && text) return;
+    clearTimeout(sayTimer);
     status.textContent = text;
     status.dataset.kind = kind || '';
     if (kind === 'error') console.error('[editor] ' + text);
+    else if (text) sayTimer = setTimeout(() => { if (status.textContent === text && !saveFailed) say(''); }, 4000);
+  }
+
+  function saveOk() {
+    retryN = 0;
+    if (saveFailed) { saveFailed = false; say(''); }
+  }
+
+  // Fehlschlag: Meldung bleibt, bis es klappt; der Wiederholungsversuch laeuft von selbst (1 s, 2 s, ... 30 s).
+  function saveFail(e, again) {
+    saveFailed = true;
+    if (!leaving) say('nicht gespeichert, erneuter Versuch … (' + e.message + ')', 'error');
+    retryN++;
+    return setTimeout(again, Math.min(30000, 1000 * 2 ** Math.min(retryN, 5)));
+  }
+
+  function showToast(text, label, action, ms, kind) {
+    hideToast();
+    toast = document.createElement('div');
+    toast.className = 'oe-toast';
+    toast.dataset.oeUi = '';
+    toast.dataset.kind = kind || '';
+    toast.setAttribute('role', 'status');
+    toast.append(text);
+    if (action) {
+      const b = button(label, () => { const fn = action; hideToast(); fn(); });
+      b.classList.add('oe-small');
+      toast.append(b);
+    }
+    if (kind === 'error') {
+      const x = button('schließen', hideToast);
+      x.classList.add('oe-small');
+      toast.append(x);
+      console.error('[editor] ' + text);
+    }
+    document.body.appendChild(toast);
+    if (ms) toastTimer = setTimeout(hideToast, ms);
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    if (toast) toast.remove();
+    toast = null;
   }
 
   function setLive(differs) {
@@ -189,23 +244,7 @@
   }
 
   function guardClick(e) {
-    const badge = cmtOn && e.target.closest && e.target.closest('.oe-cmt');
-    if (badge) {
-      e.preventDefault();
-      e.stopPropagation();
-      const n = badgeNode.get(badge);
-      if (n) openCmtEdit(n.data, n);
-      return;
-    }
-    if (noteArmed) {
-      const el = e.target.closest && candidates().find((c) => c === e.target || c.contains(e.target));
-      if (el && !e.target.closest('[data-oe-ui]')) {
-        e.preventDefault();
-        e.stopPropagation();
-        openNote(el);
-      }
-      return;
-    }
+    if (e.target.closest && e.target.closest('.oe-cmt')) return;
     // Strg/Cmd-Klick folgt einem Link im bearbeitbaren Text.
     if (editing && !e.ctrlKey && !e.metaKey && e.target.closest && e.target.closest('[data-oe]')) e.preventDefault();
   }
@@ -265,8 +304,46 @@
       if (t === 'historyUndo') undo(); else redo();
       return;
     }
+    ownAt = lastTypeAt = performance.now();
     touch(e.currentTarget);
     snap(e.currentTarget, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force');
+  }
+
+  function inBadge() {
+    const sel = getSelection();
+    const n = sel.rangeCount && sel.anchorNode;
+    const el = n && (n.nodeType === 1 ? n : n.parentElement);
+    return el ? el.closest('.oe-cmt') : null;
+  }
+
+  function caretAfter(node) {
+    const r = document.createRange();
+    r.setStartAfter(node);
+    r.collapse(true);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  // Sprechblasen in einer Bearbeitungsstelle sind Teil von deren Editor: getippt wird dort, der Kommentarknoten
+  // zieht nach, und das normale Autosave der Stelle speichert ihn mit.
+  function onHostInput(e) {
+    const host = e.currentTarget;
+    for (const b of host.querySelectorAll('.oe-cmt')) {
+      const info = badgeInfo.get(b);
+      if (!info || info.host !== host) continue;
+      const t = cleanFor(info, b.textContent);
+      if (t === info.text) continue;
+      info.text = t;
+      if (t) {
+        info.node.data = ' ' + t + ' ';
+        clearTimeout(info.timer);
+        pendingItems.delete(info);
+      } else {
+        arm(info, 1500);
+      }
+    }
+    markDirty();
   }
 
   function editHost(node) {
@@ -295,13 +372,24 @@
     if (k === 'b') return () => fmt('bold');
     if (k === 'i') return () => fmt('italic');
     if (k === 'k') return openLink;
+    if (k === 'l' && e.shiftKey) return addComment;
     return null;
   }
 
-  // Strg+Z auch, wenn der Fokus gerade auf einem Editor-Symbol liegt statt im Text.
+  // Strg+S: stilles Sofort-Speichern (Autosave laeuft ohnehin). Strg+Z auch, wenn der Fokus gerade auf einem
+  // Editor-Symbol liegt statt im Text.
   function globalKeys(e) {
-    if (!editing || overlay || e.target.closest('[data-oe], input, textarea, .oe-sel')) return;
-    const k = (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase();
+    if (!editing || overlay) return;
+    const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+    if (mod && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      e.stopPropagation();
+      flushItems();
+      save();
+      return;
+    }
+    if (e.target.closest('[data-oe], input, textarea, .oe-sel, .oe-cmt')) return;
+    const k = mod && e.key.toLowerCase();
     if (k === 'z' || k === 'y') {
       e.preventDefault();
       e.stopPropagation();
@@ -324,6 +412,9 @@
       if (act) {
         e.preventDefault();
         act();
+      } else if (e.key === 'Enter' && inBadge()) {
+        e.preventDefault();
+        caretAfter(inBadge());
       } else if (e.key === 'Enter') {
         e.preventDefault();
         touch(e.currentTarget);
@@ -369,6 +460,7 @@
       selButton('B', 'fett (Strg+B)', () => fmt('bold'), 'oe-fb'),
       selButton('I', 'kursiv (Strg+I)', () => fmt('italic'), 'oe-fi'),
       selButton('link', 'Link (Strg+K)', openLink, 'oe-fl'),
+      selButton('noteplus', 'Kommentar einfügen (Strg+Umschalt+L)', addComment),
       selButton('clear', 'Formatierung entfernen', () => fmt('removeFormat')));
     linkRange = null;
   }
@@ -377,6 +469,8 @@
     const sel = getSelection();
     if (!editing || !sel.rangeCount || sel.isCollapsed) return null;
     const el = editHost(sel.anchorNode);
+    const ae = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+    if (ae && ae.closest('.oe-cmt')) return null;
     return el && el === editHost(sel.focusNode) ? el : null;
   }
 
@@ -470,7 +564,6 @@
     if (editing) {
       if (!(await flushed())) return;
       stopEditing();
-      say('');
     } else {
       editing = true;
       document.documentElement.classList.add('oe-editing');
@@ -484,12 +577,13 @@
         el.setAttribute('contenteditable', 'true');
         el.addEventListener('paste', plainPaste);
         el.addEventListener('beforeinput', onBeforeInput);
-        el.addEventListener('input', markDirty);
+        el.addEventListener('input', onHostInput);
         for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, keepKeys);
       }
       watcher = new MutationObserver(onForeignChange);
       watcher.observe(document.body, { subtree: true, childList: true, characterData: true });
     }
+    if (cmtOn) renderBadges();
     syncPause();
     render();
   }
@@ -499,18 +593,24 @@
     delete el.dataset.oe;
     el.removeEventListener('paste', plainPaste);
     el.removeEventListener('beforeinput', onBeforeInput);
-    el.removeEventListener('input', markDirty);
+    el.removeEventListener('input', onHostInput);
     for (const t of ['keydown', 'keyup', 'keypress']) el.removeEventListener(t, keepKeys);
   }
 
   function onForeignChange(muts) {
-    if (performance.now() - ownAt < 300) return;
+    const now = performance.now();
+    if (now - ownAt < 300) return;
     const ui = (n) => n.nodeType === 1 && n.matches('[data-oe-ui]');
     const gone = new Set();
     for (const m of muts) {
+      const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      if (t && t.closest('[data-oe-ui]')) continue;
       if ([...m.addedNodes, ...m.removedNodes].some(ui)) continue;
       const host = editHost(m.target);
-      if (host && !host.closest('[data-oe-ui]')) gone.add(host);
+      if (!host || host.closest('[data-oe-ui]')) continue;
+      // Wer gerade tippt, wird nie ausgesperrt (Handy: Tippen in Text mit Animation).
+      if (host === document.activeElement && now - lastTypeAt < 2000) continue;
+      gone.add(host);
     }
     for (const el of gone) {
       release(el);
@@ -544,14 +644,14 @@
   }
 
   function markDirty() {
+    ownAt = lastTypeAt = performance.now();
     clearTimeout(saveTimer);
     if (!dirty().length) {
       // Zurueck auf den gespeicherten Stand (z. B. per Rueckgaengig nach einem Fehler): dann ist nichts offen.
-      if (saveFailed) { saveFailed = false; say('gespeichert', 'ok'); }
+      saveOk();
       render();
       return;
     }
-    say('…');
     render();
     saveTimer = setTimeout(save, AUTOSAVE_MS);
   }
@@ -562,27 +662,22 @@
     if (saving) { saveAgain = true; return saving; }
     const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el)]);
     if (!pend.length) return true;
-    say('speichere …');
     saving = (async () => {
       try {
         const r = await api('POST', 'save', { path: pagePath, changes: pend.map(([, orig, neu]) => ({ orig, neu })) });
         for (const [el, , neu] of pend) originals.set(el, neu);
         setLive(r.live_differs);
-        if (cmtOn) await refreshComments();
-        saveFailed = false;
-        say('gespeichert', 'ok');
+        saveOk();
         watchCommit();
         return true;
       } catch (e) {
-        saveFailed = true;
-        if (!leaving) say('NICHT gespeichert: ' + e.message, 'error');
+        saveTimer = saveFail(e, save);
         return false;
       } finally {
         saving = null;
         render();
       }
     })();
-    render();
     const ok = await saving;
     if (saveAgain) {
       saveAgain = false;
@@ -604,28 +699,48 @@
   }
 
   async function flushed() {
-    while (saving) await saving;
+    for (;;) {
+      flushItems();
+      const open = [saving, ...itemSaves].filter(Boolean);
+      if (!open.length) break;
+      await Promise.all(open);
+    }
     if (dirty().length) await save();
-    return !dirty().length;
+    return !dirty().length && !pendingItems.size;
   }
 
   // Seite wird verlassen: was noch offen ist, geht ohne Rueckfrage raus. Speichern laeuft mit keepalive und
   // erreicht den Server auch nach dem Entladen; die abgebrochene Antwort im Browser ist dann kein Fehler.
   function flushOnLeave() {
     leaving = true;
+    flushItems();
     if (dirty().length && !saving) save();
+    if (pubTimer) firePublish(true);
   }
 
   // ------------------------------------------------------------ kommentare
+  // Kommentare liegen als Sprechblase an ihrem Platz und sind bei eingeschaltetem Bearbeiten direkt schreibbar.
+  // Im Text einer Bearbeitungsstelle laufen sie mit deren Autosave; ausserhalb (und JS) speichert jeder
+  // Kommentar fuer sich, hintereinander, mit dem exakten Quelltext als Anker. Leer = loeschen.
 
-  function lineAt(text, idx) {
-    let n = 1;
-    for (let i = text.indexOf('\n'); i !== -1 && i < idx; i = text.indexOf('\n', i + 1)) n++;
-    return n;
+  const pendingItems = new Set();
+  const itemSaves = new Set();
+  const CMT_EVENTS = ['beforeinput', 'input', 'keydown', 'keyup', 'keypress', 'paste'];
+
+  function oneLine(t) { return t.replace(/\s+/g, ' ').trim(); }
+
+  function cleanFor(info, t) {
+    t = oneLine(t.replace(/\u200b/g, ''));
+    return info.kind === 'html' ? t.replace(/-(?=-)/g, '- ') : t.replace(/\*\//g, '* /');
   }
 
-  // Kommentare in Skript-Code: Zeichenketten und Regex-Literale werden uebersprungen.
-  function jsComments(code, offset, out, full) {
+  function wrapper(info) {
+    if (info.kind === 'html') return (t) => '<!-- ' + t + ' -->';
+    return info.block ? (t) => '/* ' + t + ' */' : (t) => '// ' + t;
+  }
+
+  // Kommentare in Skript-Code: Zeichenketten und Regex-Literale werden uebersprungen. raw = exakter Quelltext.
+  function jsComments(code, out) {
     let i = 0;
     let prev = '';
     while (i < code.length) {
@@ -639,13 +754,14 @@
       } else if (c === '/' && n === '/') {
         const end = code.indexOf('\n', i);
         const e = end === -1 ? code.length : end;
-        out.push({ kind: 'js', line: lineAt(full, offset + i), text: code.slice(i + 2, e).trim() });
+        const raw = code.slice(i, e).replace(/\r$/, '');
+        out.push({ kind: 'js', block: false, raw, text: oneLine(raw.slice(2)) });
         i = e;
       } else if (c === '/' && n === '*') {
         const end = code.indexOf('*/', i + 2);
-        const e = end === -1 ? code.length : end;
-        out.push({ kind: 'js', line: lineAt(full, offset + i), text: code.slice(i + 2, e).replace(/^\s*\*+/gm, '').trim() });
-        i = e + 2;
+        if (end === -1) break;
+        out.push({ kind: 'js', block: true, raw: code.slice(i, end + 2), text: oneLine(code.slice(i + 2, end).replace(/^\s*\*+/gm, '')) });
+        i = end + 2;
       } else if (c === '/' && (prev === '' || '(,=:[!&|?{};+-*%<>~^'.includes(prev))) {
         i++;
         let cls = false;
@@ -664,18 +780,24 @@
     }
   }
 
-  function sourceComments(text) {
-    const out = [];
+  // JS-Kommentare je Inline-Skript und HTML-Kommentare vor <body> (die haben im Text keinen Platz).
+  function scanSource(text) {
+    const bi = Math.max(0, text.search(/<body\b/i));
+    const blocks = [];
+    const head = [];
     const re = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>|<style\b[^>]*>[\s\S]*?<\/style\s*>|<!--([\s\S]*?)-->/gi;
     let m;
     while ((m = re.exec(text))) {
       if (m[3] !== undefined) {
-        if (!m[3].startsWith('#')) out.push({ kind: 'html', line: lineAt(text, m.index), text: m[3].trim(), raw: m[3] });
+        if (m.index < bi && !m[3].startsWith('#') && m[3].trim()) head.push({ kind: 'html', raw: m[0], text: oneLine(m[3]) });
       } else if (m[2] !== undefined && !/\bsrc\s*=/i.test(m[1])) {
-        jsComments(m[2], m.index + m[0].indexOf('>') + 1, out, text);
+        const items = [];
+        jsComments(m[2], items);
+        const keep = items.filter((c) => c.text);
+        if (keep.length) blocks.push({ code: m[2], head: m.index < bi, items: keep });
       }
     }
-    return out.filter((c) => c.text);
+    return { blocks, head };
   }
 
   function bodyCommentNodes() {
@@ -683,199 +805,230 @@
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       const p = n.parentElement;
-      if (!n.data.trim() || (p && p.closest('#meta-nav, [data-oe-ui], .ctrl-panel'))) continue;
+      if ((!n.data.trim() && !fresh.has(n)) || (p && p.closest('#meta-nav, [data-oe-ui], .ctrl-panel'))) continue;
       nodes.push(n);
     }
     return nodes;
   }
 
   function clearBadges() {
-    document.querySelectorAll('.oe-cmt').forEach((b) => b.remove());
+    document.querySelectorAll('.oe-cmt, .oe-cmtgroup').forEach((b) => b.remove());
+  }
+
+  function makeBadge(info) {
+    const b = document.createElement('span');
+    b.className = 'oe-cmt';
+    b.dataset.oeUi = '';
+    b.textContent = info.text || '\u200b';
+    badgeInfo.set(b, info);
+    info.badge = b;
+    const can = editing && st.inline && !info.readonly;
+    if (can) {
+      try { b.contentEditable = 'plaintext-only'; } catch (e) { /* aelterer Browser */ }
+      if (b.contentEditable !== 'plaintext-only') b.contentEditable = 'true';
+    } else {
+      b.contentEditable = 'false';
+    }
+    b.title = can ? 'Kommentar: hier schreiben, leer lassen löscht' : 'Kommentar';
+    for (const t of CMT_EVENTS) b.addEventListener(t, onBadge);
+    b.addEventListener('blur', () => settle(info));
+    return b;
   }
 
   function renderBadges() {
+    flushItems();
     clearBadges();
     for (const n of bodyCommentNodes()) {
-      const b = document.createElement('span');
-      b.className = 'oe-cmt';
-      b.dataset.oeUi = '';
-      b.contentEditable = 'false';
-      b.textContent = n.data.trim();
-      b.title = 'antippen zum Ändern';
-      badgeNode.set(b, n);
-      n.after(b);
+      const host = editing ? editHost(n) : null;
+      const raw = '<!--' + n.data + '-->';
+      const text = oneLine(n.data);
+      const info = { kind: 'html', node: n, host, raw, text, shown: text,
+        readonly: !host && !!source && !source.text.includes(raw) };
+      n.after(makeBadge(info));
     }
+    renderSourceBadges();
   }
 
-  async function refreshComments() {
-    renderBadges();
-    try {
-      await loadSource();
-    } catch (e) { say(e.message, 'error'); return; }
-    const list = sourceComments(source.text);
-    extra.querySelector('.oe-cmtlist')?.remove();
-    const box = document.createElement('div');
-    box.className = 'oe-cmtlist';
-    const head = document.createElement('div');
-    head.className = 'oe-cmthead';
-    head.textContent = list.length ? list.length + ' Kommentare im Quelltext' : 'keine Kommentare im Quelltext';
-    if (source.inline) head.append(' ', btnNote);
-    box.appendChild(head);
-    for (const c of list) {
-      const row = document.createElement('div');
-      row.className = 'oe-cmtrow';
-      const meta = document.createElement('span');
-      meta.className = 'oe-cmtmeta';
-      meta.textContent = c.kind + ' ' + c.line;
-      const t = document.createElement('span');
-      t.textContent = c.text;
-      row.append(meta, t);
-      if (c.kind === 'html') {
-        row.classList.add('oe-cmtedit');
-        row.tabIndex = 0;
-        row.setAttribute('role', 'button');
-        row.title = 'ändern oder löschen';
-        const go = () => openCmtEdit(c.raw, null);
-        row.addEventListener('click', go);
-        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  function renderSourceBadges() {
+    if (!source) return;
+    const { blocks, head } = scanSource(source.text);
+    const scripts = [...document.scripts].filter((x) => !x.src && !x.closest('[data-oe-ui]'));
+    const used = new Set();
+    const group = () => {
+      const g = document.createElement('div');
+      g.className = 'oe-cmtgroup';
+      g.dataset.oeUi = '';
+      return g;
+    };
+    const fill = (g, list) => {
+      for (const c of list) g.append(makeBadge({ kind: c.kind, block: c.block, raw: c.raw, text: c.text, shown: c.text, node: null, host: null }));
+    };
+    const top = group();
+    fill(top, head);
+    for (const b of blocks) {
+      const dom = b.head ? null : scripts.find((x) => !used.has(x) && x.textContent === b.code);
+      if (dom) {
+        used.add(dom);
+        const g = group();
+        fill(g, b.items);
+        dom.after(g);
+      } else {
+        fill(top, b.items);
       }
-      box.appendChild(row);
     }
-    extra.prepend(box);
+    if (top.children.length) document.body.prepend(top);
   }
 
-  async function toggleComments() {
+  function arm(info, ms) {
+    clearTimeout(info.timer);
+    pendingItems.add(info);
+    info.timer = setTimeout(() => settle(info), ms);
+  }
+
+  // Tippen im Kommentar. Bearbeitungsstellen kennen ihn ueber den Kommentarknoten, der Rest speichert selbst.
+  function onBadge(e) {
+    e.stopPropagation();
+    const b = e.currentTarget;
+    const info = badgeInfo.get(b);
+    if (e.type === 'keydown') {
+      if (e.key === 'Enter') { e.preventDefault(); b.blur(); }
+      return;
+    }
+    if (e.type === 'beforeinput') {
+      const t = e.inputType || '';
+      if (/^insert(Paragraph|LineBreak)$/.test(t)) { e.preventDefault(); return; }
+      if (info.host && (t === 'historyUndo' || t === 'historyRedo')) {
+        e.preventDefault();
+        if (t === 'historyUndo') undo(); else redo();
+        return;
+      }
+      ownAt = lastTypeAt = performance.now();
+      if (info.host) {
+        touch(info.host);
+        snap(info.host, 'cmt');
+      }
+      return;
+    }
+    if (e.type !== 'input') return;
+    ownAt = lastTypeAt = performance.now();
+    const t = cleanFor(info, b.textContent);
+    info.text = t;
+    if (info.host) {
+      if (t) {
+        info.node.data = ' ' + t + ' ';
+        markDirty();
+        clearTimeout(info.timer);
+        pendingItems.delete(info);
+      } else {
+        arm(info, 1500);
+      }
+    } else {
+      arm(info, t ? AUTOSAVE_MS : 1500);
+    }
+  }
+
+  // Nach einer Pause oder beim Verlassen: Kommentar speichern, leer = entfernen.
+  function settle(info) {
+    clearTimeout(info.timer);
+    info.timer = null;
+    if (info.host) {
+      pendingItems.delete(info);
+      if (!info.text && info.node.isConnected) {
+        ownAt = performance.now();
+        info.node.remove();
+        info.badge.remove();
+        markDirty();
+      }
+      return;
+    }
+    if (info.text !== info.shown) commitItem(info); else pendingItems.delete(info);
+  }
+
+  function flushItems() {
+    for (const info of [...pendingItems]) settle(info);
+  }
+
+  function commitItem(info) {
+    if (info.busy) { info.again = true; return; }
+    info.busy = true;
+    const text = info.text;
+    const p = (async () => {
+      try {
+        const neu = text ? wrapper(info)(text) : '';
+        const r = await api('POST', 'save', { path: pagePath, changes: [{ orig: info.raw, neu }] });
+        info.raw = neu;
+        info.shown = text;
+        if (info.node) {
+          ownAt = performance.now();
+          if (text) info.node.data = ' ' + text + ' '; else info.node.remove();
+        }
+        if (!text) info.badge.remove();
+        if (info.text === text) pendingItems.delete(info);
+        setLive(r.live_differs);
+        saveOk();
+        watchCommit();
+      } catch (e) {
+        info.timer = saveFail(e, () => settle(info));
+      } finally {
+        info.busy = false;
+      }
+      if (info.again) {
+        info.again = false;
+        if (info.text !== info.shown) settle(info);
+      }
+    })();
+    itemSaves.add(p);
+    p.finally(() => itemSaves.delete(p));
+  }
+
+  function focusBadge(b) {
+    b.focus({ preventScroll: false });
+    if (b.closest('[data-oe]')) b.closest('[data-oe]').focus({ preventScroll: true });
+    const r = document.createRange();
+    r.selectNodeContents(b);
+    r.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  // Neuer Kommentar: hinter der Auswahl bzw. dem Cursor in einer Bearbeitungsstelle (Knopf in der Leiste oder Strg+Umschalt+L).
+  function addComment() {
+    if (!editing) return;
+    const sel = getSelection();
+    const host = sel.rangeCount ? editHost(sel.focusNode) : null;
+    const ae = sel.focusNode && (sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement);
+    if (!host || (ae && ae.closest('.oe-cmt'))) return;
+    const r = sel.getRangeAt(0).cloneRange();
+    r.collapse(false);
+    touch(host);
+    snap(host, 'force');
+    ownAt = performance.now();
+    const node = document.createComment('  ');
+    r.insertNode(node);
+    fresh.add(node);
+    if (!cmtOn) { cmtOn = true; syncPause(); }
+    renderBadges();
+    const b = [...document.querySelectorAll('.oe-cmt')].find((x) => badgeInfo.get(x).node === node);
+    if (b) focusBadge(b);
+    render();
+  }
+
+  function toggleComments() {
     cmtOn = !cmtOn;
     syncPause();
     if (cmtOn) {
-      await refreshComments();
+      renderBadges();
+      // JS-Kommentare brauchen den aktuellen Quelltext; er kommt nach, die Oberflaeche reagiert sofort.
+      loadSource().then(() => {
+        const a = document.activeElement;
+        if (cmtOn && !(a && a.closest && a.closest('.oe-cmt'))) renderBadges();
+      }).catch((e) => say(e.message, 'error'));
     } else {
+      flushItems();
       clearBadges();
-      noteArmed = false;
-      closeNote();
-      extra.querySelector('.oe-cmtlist')?.remove();
     }
     render();
-  }
-
-  async function armNote() {
-    if (!(await flushed())) return;
-    noteArmed = !noteArmed;
-    say(noteArmed ? 'Textstelle antippen, dahinter kommt die Notiz' : '');
-    document.documentElement.classList.toggle('oe-noting', noteArmed);
-    render();
-  }
-
-  function closeNote() {
-    extra.querySelector('.oe-note')?.remove();
-    noteOpen = false;
-    syncPause();
-  }
-
-  function openNote(el) {
-    noteArmed = false;
-    document.documentElement.classList.remove('oe-noting');
-    closeNote();
-    noteOpen = true;
-    syncPause();
-    render();
-    const box = document.createElement('form');
-    box.className = 'oe-note';
-    const label = document.createElement('div');
-    label.className = 'oe-cmthead';
-    label.textContent = 'Notiz zu „' + el.textContent.trim().slice(0, 40) + '“';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.setAttribute('aria-label', 'Notiz');
-    const ok = button('setzen', () => {});
-    ok.type = 'submit';
-    ok.classList.add('oe-primary');
-    const cancel = button('abbrechen', () => { closeNote(); say(''); });
-    const row = document.createElement('div');
-    row.className = 'oe-row';
-    row.append(input, ok, cancel);
-    box.append(label, row);
-    box.addEventListener('keydown', (e) => e.stopPropagation());
-    box.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const t = cleanNote(input.value);
-      if (!t) return;
-      const orig = cleanHTML(el);
-      say('speichere Notiz …');
-      try {
-        const r = await api('POST', 'save', { path: pagePath, changes: [{ orig, neu: orig + '<!-- ' + t + ' -->' }] });
-        ownAt = performance.now();
-        el.appendChild(document.createComment(' ' + t + ' '));
-        if (originals.has(el)) originals.set(el, cleanHTML(el));
-        setLive(r.live_differs);
-        closeNote();
-        await refreshComments();
-        say('Notiz gespeichert auf dev', 'ok');
-      } catch (err) {
-        say(err.message, 'error');
-      }
-    });
-    extra.appendChild(box);
-    input.focus();
-  }
-
-  function cleanNote(v) { return v.trim().replace(/--/g, '- -').replace(/-$/, '- '); }
-
-  // Bestehenden HTML-Kommentar aendern oder loeschen. Ersetzt wird genau dieser Kommentar im Quelltext;
-  // kommt er wortgleich mehrfach vor, meldet der Server text_ambiguous.
-  async function openCmtEdit(raw, node) {
-    if (!(await flushed())) return;
-    noteArmed = false;
-    document.documentElement.classList.remove('oe-noting');
-    closeNote();
-    noteOpen = true;
-    syncPause();
-    render();
-    const box = document.createElement('form');
-    box.className = 'oe-note';
-    const label = document.createElement('div');
-    label.className = 'oe-cmthead';
-    label.textContent = 'Kommentar ändern';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = raw.trim();
-    input.setAttribute('aria-label', 'Kommentar');
-    const ok = button('ändern', () => {});
-    ok.type = 'submit';
-    ok.classList.add('oe-primary');
-    const del = button('löschen', () => write(''));
-    const cancel = button('abbrechen', () => { closeNote(); say(''); });
-    const row = document.createElement('div');
-    row.className = 'oe-row';
-    row.append(input, ok, del, cancel);
-    box.append(label, row);
-    box.addEventListener('keydown', (e) => e.stopPropagation());
-    box.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const t = cleanNote(input.value);
-      if (t) write(t);
-    });
-    async function write(t) {
-      say(t ? 'speichere Kommentar …' : 'lösche Kommentar …');
-      try {
-        const r = await api('POST', 'save', { path: pagePath, changes: [{ orig: '<!--' + raw + '-->', neu: t ? '<!-- ' + t + ' -->' : '' }] });
-        const n = node || bodyCommentNodes().find((c) => c.data === raw);
-        if (n) {
-          const host = n.parentElement && n.parentElement.closest('[data-oe]');
-          if (t) n.data = ' ' + t + ' ';
-          else n.remove();
-          if (host && originals.has(host)) originals.set(host, cleanHTML(host));
-        }
-        setLive(r.live_differs);
-        closeNote();
-        await refreshComments();
-        say(t ? 'Kommentar geändert auf dev' : 'Kommentar gelöscht auf dev', 'ok');
-      } catch (err) {
-        say(err.message, 'error');
-      }
-    }
-    extra.appendChild(box);
-    input.focus();
   }
 
   // ------------------------------------------------------------ fenster: quelltext, aenderungen
@@ -896,6 +1049,8 @@
     syncPause();
     render();
     return {
+      wrap,
+      title: (t) => { wrap.querySelector('.oe-ov-title').textContent = t; },
       head: wrap.querySelector('.oe-ov-head'),
       body: wrap.querySelector('.oe-ov-body'),
       msg: (text, kind) => {
@@ -914,17 +1069,81 @@
     render();
   }
 
+  // Oberstes sichtbares Textstueck der Seite: erste Woerter und wievieltes gleiches davor liegt.
+  function topVisibleText() {
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.data.trim() && n.parentElement && !n.parentElement.closest(SKIP)
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+    });
+    const seen = new Map();
+    const range = document.createRange();
+    let best = null;
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const words = n.data.trim().split(/\s+/).slice(0, 5);
+      const key = words.join(' ');
+      const k = seen.get(key) || 0;
+      seen.set(key, k + 1);
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        if (r.width > 0 && r.height > 0 && r.bottom > 4 && r.top < innerHeight && (!best || r.top < best.top)) {
+          best = { top: r.top, words, k };
+        }
+      }
+    }
+    return best;
+  }
+
+  function findInSource(text, target) {
+    const start = Math.max(0, text.search(/<body\b/i));
+    for (let n = target.words.length; n >= 1; n--) {
+      const re = new RegExp(target.words.slice(0, n).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'g');
+      re.lastIndex = start;
+      let m;
+      let k = 0;
+      while ((m = re.exec(text))) {
+        if (k === target.k) return { idx: m.index, len: m[0].length };
+        k++;
+      }
+    }
+    return { idx: 0, len: 0 };
+  }
+
+  function jumpTo(ta, idx, len) {
+    const text = ta.value;
+    ta.value = text.slice(0, idx);
+    const h = ta.scrollHeight;
+    ta.value = text;
+    ta.scrollTop = Math.max(0, h - 60);
+    ta.focus({ preventScroll: true });
+    ta.setSelectionRange(idx, idx + len);
+    if (len) {
+      setTimeout(() => {
+        if (document.activeElement === ta && ta.selectionStart === idx && ta.selectionEnd === idx + len) ta.setSelectionRange(idx, idx);
+      }, 1500);
+    }
+  }
+
+  // Das Fenster steht sofort da; Speichern und Laden folgen dahinter.
   async function openSource() {
-    if (!(await flushed())) return;
+    if (overlay) return;
+    const target = topVisibleText();
+    const ov = openOverlay('Quelltext …');
+    ov.head.append(button('abbrechen', closeOverlay));
+    ov.msg('lädt …');
     let src;
-    try { src = await loadSource(); } catch (e) { say(e.message, 'error'); return; }
-    const ov = openOverlay(src.file);
+    try {
+      if (!(await flushed())) throw new Error('Änderungen noch nicht gespeichert');
+      src = await loadSource();
+    } catch (e) { ov.msg(e.message, 'error'); return; }
+    if (overlay !== ov.wrap) return;
+    ov.msg('');
+    ov.title(src.file);
     const ta = document.createElement('textarea');
     ta.spellcheck = false;
     ta.setAttribute('aria-label', 'Quelltext');
     ta.value = src.text;
     ov.body.appendChild(ta);
-    ov.head.append(button('abbrechen', closeOverlay), Object.assign(button('speichern', async () => {
+    ov.head.append(Object.assign(button('speichern', async () => {
       ov.msg('speichere …');
       try {
         const r = await api('POST', 'source', { path: pagePath, text: ta.value, sha: src.sha });
@@ -933,7 +1152,8 @@
         location.reload();
       } catch (err) { ov.msg(err.message, 'error'); }
     }), { className: 'oe-btn oe-primary' }));
-    ta.focus();
+    const at = target ? findInSource(src.text, target) : { idx: 0, len: 0 };
+    jumpTo(ta, at.idx, at.len);
   }
 
   // Wort-genaue Markierung: gemeinsamer Anfang und Ende bleiben, die Mitte ist die Aenderung.
@@ -1012,31 +1232,24 @@
   }
 
   async function openChanges(forPublish) {
-    if (!(await flushed())) return;
+    if (overlay) return;
+    const ov = openOverlay((forPublish ? 'veröffentlichen' : 'Änderungen') + ' …');
+    ov.head.appendChild(button('schließen', closeOverlay));
+    ov.msg('lädt …');
     let pending, hist;
     try {
+      if (!(await flushed())) throw new Error('Änderungen noch nicht gespeichert');
       [pending, hist] = await Promise.all([api('GET', q('diff')), api('GET', q('history'))]);
-    } catch (e) { say(e.message, 'error'); return; }
-    const ov = openOverlay(forPublish ? 'veröffentlichen: ' + hist.file : 'Änderungen: ' + hist.file);
-    ov.head.appendChild(button('schließen', closeOverlay));
+    } catch (e) { ov.msg(e.message, 'error'); return; }
+    if (overlay !== ov.wrap) return;
+    ov.msg('');
+    ov.title((forPublish ? 'veröffentlichen: ' : 'Änderungen: ') + hist.file);
     const h1 = document.createElement('h3');
     h1.className = 'oe-ov-h';
     h1.textContent = 'dev gegenüber live';
     ov.body.append(h1, renderDiff(pending.diff));
-    if (hist.live_differs) {
-      const go = button('jetzt veröffentlichen', async () => {
-        go.disabled = true;
-        ov.msg('veröffentliche …');
-        try {
-          const r = await api('POST', 'publish', { path: pagePath });
-          setLive(r.live_differs);
-          closeOverlay();
-          say('live auf 0nefinity.love', 'ok');
-        } catch (err) {
-          go.disabled = false;
-          ov.msg(err.message, 'error');
-        }
-      });
+    if (hist.live_differs && !pubTimer) {
+      const go = button('jetzt veröffentlichen', () => { closeOverlay(); startPublish(); });
       go.classList.add('oe-primary');
       ov.head.appendChild(go);
       if (forPublish) go.focus();
@@ -1048,12 +1261,12 @@
     for (const c of hist.commits) {
       const d = document.createElement('details');
       d.className = 'oe-commit';
-      const s = document.createElement('summary');
+      const sm = document.createElement('summary');
       const when = document.createElement('span');
       when.className = 'oe-cmtmeta';
       when.textContent = fmtDate(c.date);
-      s.append(when, ' ' + c.subject);
-      d.appendChild(s);
+      sm.append(when, ' ' + c.subject);
+      d.appendChild(sm);
       d.addEventListener('toggle', async () => {
         if (!d.open || d.dataset.loaded) return;
         d.dataset.loaded = '1';
@@ -1065,6 +1278,58 @@
       ov.body.appendChild(d);
     }
     if (!hist.commits.length) ov.body.append('noch keine Commits');
+  }
+
+  // Veröffentlichen wie bei Gmail: ein Klick, sofort "veröffentlicht · rückgängig"; erst nach 5 s geht der
+  // Auftrag an den Server, der kopiert, committet und pusht im Hintergrund. Rückgängig im Fenster bricht ab.
+  const PUBLISH_UNDO_MS = 5000;
+
+  function startPublish() {
+    if (pubTimer || !st.live) return;
+    st.live = false;
+    pubTimer = setTimeout(() => firePublish(false), PUBLISH_UNDO_MS);
+    showToast('veröffentlicht', 'rückgängig', cancelPublish, PUBLISH_UNDO_MS + 400);
+    syncPause();
+    render();
+  }
+
+  function cancelPublish() {
+    clearTimeout(pubTimer);
+    pubTimer = null;
+    st.live = true;
+    syncPause();
+    render();
+  }
+
+  async function firePublish(leave) {
+    if (!pubTimer) return;
+    clearTimeout(pubTimer);
+    pubTimer = null;
+    hideToast();
+    syncPause();
+    try {
+      if (!leave && !(await flushed())) throw new Error('Änderungen noch nicht gespeichert');
+      await api('POST', 'publish', { path: pagePath });
+      pollPublish(0);
+    } catch (e) { publishFailed(e.message); }
+  }
+
+  function publishFailed(msg) {
+    st.live = true;
+    render();
+    showToast('nicht veröffentlicht: ' + msg, 'erneut', startPublish, 0, 'error');
+  }
+
+  function pollPublish(n) {
+    clearTimeout(pubPoll);
+    pubPoll = setTimeout(async () => {
+      let r;
+      try { r = await request('GET', 'status'); } catch (e) { publishFailed(e.message); return; }
+      const j = r.publish || {};
+      if (j.state === 'error') publishFailed(j.error || 'unbekannter Fehler');
+      else if ((j.state === 'queued' || j.state === 'running') && n < 120) pollPublish(n + 1);
+      else if (j.state === 'queued' || j.state === 'running') publishFailed('dauert ungewöhnlich lange');
+    }, n ? 1000 : 400);
   }
 
   // ------------------------------------------------------------ leiste, menue
@@ -1112,22 +1377,24 @@ body.menu-open #oe-bar{display:none}
 .oe-sel input{width:min(220px,60vw);min-height:32px;font-size:16px;padding:0 8px;border:0;border-radius:4px;box-sizing:border-box;
   color:var(--text-color,#fff);background:color-mix(in srgb,var(--text-color,#fff) 10%,transparent)}
 .oe-btn[hidden]{display:none!important}
-.oe-extra:empty{display:none}
-.oe-extra{width:min(420px,calc(100vw - 92px));max-height:50vh;overflow:auto;padding:4px;box-sizing:border-box;border-radius:6px;
-  border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent);background:var(--bg-color,#000)}
-.oe-cmtlist,.oe-note{border-top:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent);padding:4px 4px 0}
-.oe-cmthead{padding:2px 4px 4px}
-.oe-cmtrow{display:flex;gap:8px;padding:2px 4px;white-space:pre-wrap;overflow-wrap:anywhere}
 .oe-cmtmeta{flex:none;opacity:.55;font-variant-numeric:tabular-nums}
-.oe-note input{flex:1 1 140px;min-width:0;min-height:44px;font-size:16px;padding:0 8px;border:0;border-radius:4px;box-sizing:border-box;
-  color:var(--text-color,#fff);background:color-mix(in srgb,var(--text-color,#fff) 10%,transparent)}
 .oe-cmt{display:inline;margin:0 3px;padding:0 4px;border:1px dashed currentColor;border-radius:3px;
-  font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;opacity:.8;cursor:pointer}
-.oe-cmtrow.oe-cmtedit{cursor:pointer;min-height:44px;align-items:center;border-radius:3px}
-.oe-cmtrow.oe-cmtedit:hover,.oe-cmtrow.oe-cmtedit:focus-visible{outline:1px solid var(--text-color,#fff)}
+  font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;opacity:.8;text-align:left;
+  text-transform:none;letter-spacing:normal;-webkit-user-select:text;user-select:text}
+.oe-cmt:empty::before{content:"\\200b"}
+.oe-cmt[contenteditable=true],.oe-cmt[contenteditable=plaintext-only]{cursor:text;opacity:1}
+.oe-cmt:focus{outline:1px solid currentColor;outline-offset:1px}
+.oe-cmtgroup{display:block;margin:4px 0;text-align:left}
+.oe-cmtgroup .oe-cmt{display:block;width:fit-content;max-width:100%;margin:2px 0}
+html.oe-editing #interactionLayer{pointer-events:none!important}
+.oe-toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:2147483003;
+  display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:4px 6px 4px 12px;border-radius:6px;box-sizing:border-box;
+  border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);color:var(--text-color,#fff);
+  font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-wrap:anywhere}
+.oe-toast[data-kind=error]{background:var(--text-color,#fff);color:var(--bg-color,#000);font-weight:600}
+.oe-toast[data-kind=error] .oe-btn{color:var(--bg-color,#000)!important;border-color:var(--bg-color,#000)!important}
 .oe-editing [data-oe]{outline:1px dashed color-mix(in srgb,var(--text-color,#fff) 40%,transparent);outline-offset:2px;cursor:text}
 .oe-editing [data-oe]:focus{outline:1px solid var(--text-color,#fff)}
-.oe-noting body *{cursor:crosshair}
 .oe-overlay{position:fixed;inset:0;z-index:2147483001;display:flex;flex-direction:column;background:var(--bg-color,#000);
   color:var(--text-color,#fff);font:14px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .oe-ov-head{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px;border-bottom:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent)}
@@ -1161,7 +1428,6 @@ body.menu-open #oe-bar{display:none}
 #oe-admin .oe-login{border-color:transparent!important;opacity:.6}
 @media (hover:hover){#oe-admin .oe-login:hover{opacity:1}}
 .oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
-.oe-extra>:first-child{border-top:0}
 #oe-admin .oe-narrow{display:none!important}
 /* Handy: eine Reihe zwischen Zurueck- und Menueknopf (bei 320 px 166 px frei), Quelltext und Aenderungen
    wandern dafuer in die Admin-Zeile im Menue. */
@@ -1169,8 +1435,7 @@ body.menu-open #oe-bar{display:none}
   #oe-bar .oe-btn.oe-mini{width:30px;min-width:30px!important}
   #oe-bar .oe-wide{display:none!important}
   #oe-admin .oe-narrow{display:inline-flex!important}
-  #oe-admin{gap:0;padding:4px 8px}
-  .oe-extra{position:fixed;left:8px;right:8px;top:calc(var(--visible-viewport-top,0px) + 80px);width:auto}}`;
+  #oe-admin{gap:0;padding:4px 8px}}`;
     document.head.appendChild(s);
   }
 
@@ -1206,12 +1471,10 @@ body.menu-open #oe-bar{display:none}
     set(btnSrc, off || !!overlay);
     set(btnCmt, off, cmtOn);
     set(btnDiff, off || !!overlay);
-    set(btnSave, off || !!saving || !dirty().length);
-    set(btnNote, false, noteArmed);
     if (btnPub) {
       set(menuSrc, off || !!overlay);
       set(menuDiff, off || !!overlay);
-      set(btnPub, off || !st.live);
+      set(btnPub, off || !st.live || !!pubTimer);
       btnPub.title = st.live ? 'diese Seite nach 0nefinity.love' : 'live ist auf demselben Stand';
     }
   }
@@ -1240,17 +1503,13 @@ body.menu-open #oe-bar{display:none}
     btnCmt = mini('bubble', 'Kommentare ein/aus', toggleComments);
     btnDiff = mini('diff', 'Änderungen', () => openChanges(false));
     btnDiff.classList.add('oe-wide');
-    btnSave = mini('save', 'jetzt speichern', save);
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
-    btnNote = button('notiz setzen', armNote);
-    btnNote.classList.add('oe-small');
     const head = document.createElement('div');
     head.className = 'oe-head';
-    head.append(btnEdit, btnUndo, btnRedo, btnSrc, btnCmt, btnDiff, btnSave);
-    extra = document.createElement('div');
-    extra.className = 'oe-extra';
-    bar.append(head, status, extra);
+    // Feste Reihenfolge, rechts verankert: das Stift-Symbol bleibt beim Umschalten an seinem Platz.
+    head.append(btnUndo, btnRedo, btnEdit, btnSrc, btnCmt, btnDiff);
+    bar.append(head, status);
     bar.addEventListener('keydown', (e) => e.stopPropagation());
     document.body.appendChild(bar);
     render();
@@ -1296,7 +1555,7 @@ body.menu-open #oe-bar{display:none}
     const sec = document.createElement('div');
     sec.id = 'oe-admin';
     sec.dataset.oeUi = '';
-    btnPub = button('veröffentlichen', () => openChanges(true));
+    btnPub = button('veröffentlichen', startPublish);
     const analytics = document.createElement('a');
     analytics.className = 'oe-btn';
     analytics.href = ANALYTICS;
@@ -1313,6 +1572,15 @@ body.menu-open #oe-bar{display:none}
     out.title = 'ausloggen';
     sec.append(menuSrc, menuDiff, btnPub, analytics, out);
     wrap.prepend(sec);
+  }
+
+  // Ein Veroeffentlichen, das im Hintergrund scheiterte, nachdem die Seite weg war, steht beim naechsten Laden da.
+  async function checkPublishError() {
+    try {
+      const r = await request('GET', 'status');
+      const j = r.publish || {};
+      if (j.state === 'error' && Date.now() / 1000 - (j.at || 0) < 600) publishFailed(j.error || 'unbekannter Fehler');
+    } catch (e) { /* kein Fehlerbild: der Status ist nur eine Zusatzabfrage */ }
   }
 
   async function init() {
@@ -1332,7 +1600,11 @@ body.menu-open #oe-bar{display:none}
     render();
     document.addEventListener('click', guardClick, true);
     document.addEventListener('keydown', globalKeys, true);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty().length) save(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'hidden') return;
+      flushItems();
+      if (dirty().length) save();
+    });
     window.addEventListener('pagehide', flushOnLeave);
 
     try {
@@ -1340,7 +1612,8 @@ body.menu-open #oe-bar{display:none}
       st.ready = true;
       st.inline = !!source.inline;
       render();
-      if (st.inline && stored('oe-edit') !== '0') toggleEdit();
+      checkPublishError();
+      if (st.inline && stored('oe-edit') === '1') toggleEdit();
     } catch (e) {
       st.ready = false;
       render();
