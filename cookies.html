@@ -173,6 +173,7 @@
         <p id="ck-zero" class="is-off">Mindestabnahme auf 0nefinity.com: 1 Cookie.<br>Anders als bei <a href="https://0nefinity.love">0nefinity.love</a> sind wir hier nicht bei der Wohlfahrt</p>
         <p id="ck-crumbs" class="is-off">Nur ganze Cookies. Wir verkaufen hier keine Brösel.</p>
         <p id="ck-invalid" class="is-off">Das ist keine Anzahl.</p>
+        <p id="ck-sum" class="is-off"></p>
       </div>
 
       <button type="button" class="ck-primary" id="ck-pay-now">Jetzt bezahlen</button>
@@ -207,8 +208,8 @@
 (function () {
   'use strict';
 
-  // Stripe's amount field holds at most eight digits in the smallest unit: 999999,99
-  var MAX_MINOR = 99999999n;
+  // one card payment is at most 999.999 (Stripe allows eight digits in cents); larger sums are split
+  var MAX_PAYMENT = 999999n;
   var SYMBOL = { EUR: '€', USD: '$' };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -234,9 +235,8 @@
     return /^\d+$/.test(v) ? BigInt(v) : null;
   }
 
-  function money(minor) {
-    var str = (minor / 100n).toString() + '.' + (minor % 100n).toString().padStart(2, '0');
-    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, useGrouping: false }).format(str);
+  function money(amount) {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(amount);
   }
 
   // transfer reference: 256 random bits as 64 uppercase hex, fits the 140-char SEPA field
@@ -251,16 +251,20 @@
   function renderNext(count) {
     if (infinite) {
       $('ck-bank-ask').textContent = 'Bitte überweisen Sie ∞ ' + SYMBOL[cur] + ' auf folgendes Konto.';
-      $('ck-card-line').textContent = 'Zahlung 1 von ∞: ' + money(MAX_MINOR);
+      $('ck-card-line').textContent = 'Zahlung 1 von ∞: ' + money(MAX_PAYMENT);
       return;
     }
-    var minor = count * 100n;
-    var payments = (minor + MAX_MINOR - 1n) / MAX_MINOR;
-    $('ck-bank-ask').textContent = 'Bitte überweisen Sie ' + money(minor) + ' auf folgendes Konto.';
-    $('ck-card-line').textContent = 'Zahlung 1 von ' + payments + ': ' + money(minor < MAX_MINOR ? minor : MAX_MINOR);
+    var payments = (count + MAX_PAYMENT - 1n) / MAX_PAYMENT;
+    $('ck-bank-ask').textContent = 'Bitte überweisen Sie ' + money(count) + ' auf folgendes Konto.';
+    $('ck-card-line').textContent = 'Zahlung 1 von ' + payments + ': ' + money(count < MAX_PAYMENT ? count : MAX_PAYMENT);
   }
 
-  // long numbers shrink down to 11px, beyond that the field scrolls
+  function renderSum(count) {
+    $('ck-sum').textContent = infinite
+      ? 'Sie erhalten ∞ Cookies für nur ∞ ' + SYMBOL[cur]
+      : 'Sie erhalten ' + new Intl.NumberFormat('de-DE').format(count) + (count === 1n ? ' Cookie' : ' Cookies') + ' für nur ' + money(count);
+  }
+
   // shrink the digits until the whole number shows (13 digits fit at 320 px); below 6px the field scrolls
   var measure = document.createElement('canvas').getContext('2d');
   function fitField() {
@@ -282,8 +286,9 @@
       b.setAttribute('aria-pressed', b.dataset.cur === cur ? 'true' : 'false');
     });
     $('ck-inf').setAttribute('aria-pressed', infinite ? 'true' : 'false');
-    var hint = crumbsOn ? 'ck-crumbs' : ok ? '' : count === null ? 'ck-invalid' : 'ck-zero';
-    ['ck-zero', 'ck-crumbs', 'ck-invalid'].forEach(function (id) { $(id).classList.toggle('is-off', id !== hint); });
+    var hint = crumbsOn ? 'ck-crumbs' : ok ? 'ck-sum' : count === null ? 'ck-invalid' : 'ck-zero';
+    if (ok) renderSum(count);
+    ['ck-zero', 'ck-crumbs', 'ck-invalid', 'ck-sum'].forEach(function (id) { $(id).classList.toggle('is-off', id !== hint); });
     $('ck-pay-now').disabled = !ok;
     if (!ok) next.hidden = true;
     if (!next.hidden) renderNext(count);
