@@ -1,8 +1,10 @@
 // Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: oben im Menue
-// die Admin-Zeile (veroeffentlichen, Analytics, Ausloggen), oben links neben dem Menue kleine Symbole:
-// bearbeiten ein/aus, Quelltext, Kommentare ein/aus, Aenderungen (Diff), jetzt speichern.
-// Texte sind eingeloggt direkt editierbar und werden 1,5 s nach dem letzten Tippen auf claude-dev
-// committet (ein Commit pro Schreibpause); Kommentare sind HTML-Kommentare in der Seite.
+// die Admin-Zeile (veroeffentlichen, Analytics, Ausloggen), oben links neben dem Menue eine Reihe kleiner
+// Symbole: bearbeiten ein/aus, rueckgaengig, wiederholen, Quelltext, Kommentare ein/aus, Aenderungen, jetzt speichern.
+// Texte sind eingeloggt direkt editierbar und gehen 1,5 s nach dem letzten Tippen auf dev (sofort sichtbar);
+// der Server committet und pusht gebuendelt im Hintergrund. Markierter Text bekommt eine kleine Leiste
+// (fett, kursiv, Link, Formatierung weg). Kommentare sind HTML-Kommentare in der Seite.
+// Alle Knoepfe rendern aus einem Zustand (render()).
 // Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar unter den Symbolen.
 (function oneEditor() {
   if (!location.hostname.startsWith('dev.')) return;
@@ -48,7 +50,20 @@
   let saving = null;
   let saveAgain = false;
   let leaving = false;
-  let bar, status, extra, btnSave, btnCmt, btnNote, btnDiff, btnPub, btnEdit, btnSrc;
+  let bar, status, extra, btnSave, btnCmt, btnNote, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
+  // ready: Quelltext geladen; inline: Seite ist inline bearbeitbar; live: dev weicht von live ab.
+  const st = { ready: false, inline: false, live: false };
+  // Eigener Verlauf statt Browser-Undo: der kennt keine Autosave-Grenzen und vergisst alles, sobald
+  // innerHTML gesetzt wird. Eintrag = Element + Inhalt davor; Tippen am selben Element ohne 1 s Pause ist ein Schritt.
+  let undoStack = [];
+  let redoStack = [];
+  let lastSnap = { el: null, kind: '', t: 0 };
+  let commitPoll = null;
+  // Text, den ein Skript der Seite laufend umschreibt (Animationen), ist nicht bearbeitbar: sonst
+  // speichert das Autosave einen zufaelligen Animationsstand. Eigene Aenderungen setzen ownAt.
+  let ownAt = 0;
+  let saveFailed = false;
+  let watcher = null;
 
   // Live-Reload pausiert, solange bearbeitet wird, ein Fenster offen ist oder eine Anfrage laeuft:
   // ein Reload mitten im Speichern bricht die Antwort ab.
@@ -62,6 +77,10 @@
     bubble: 'M4 5h16v11h-9l-5 4v-4h-2z',
     diff: 'M12 4v8M8 8h8M8 18h8',
     save: 'M12 4v10M7.5 9.5l4.5 4.5 4.5-4.5M5 19h14',
+    undo: 'M9 15L4 10l5-5M4 10h10a5 5 0 0 1 0 10h-4',
+    redo: 'M15 15l5-5-5-5M20 10H10a5 5 0 0 0 0 10h4',
+    link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+    clear: 'M6 5h12M12 5v14M5 19L19 5',
   };
 
   function icon(kind) {
@@ -126,8 +145,8 @@
   }
 
   function setLive(differs) {
-    btnPub.disabled = !differs;
-    btnPub.title = differs ? 'diese Seite nach 0nefinity.love' : 'live ist auf demselben Stand';
+    st.live = !!differs;
+    render();
   }
 
   async function loadSource() {
@@ -197,23 +216,254 @@
     touched.add(el);
   }
 
-  function onBeforeInput(e) { touch(e.currentTarget); }
+  function snap(el, kind) {
+    const now = Date.now();
+    if (kind !== 'force' && lastSnap.el === el && lastSnap.kind === kind && now - lastSnap.t < 1000) {
+      lastSnap.t = now;
+      return;
+    }
+    ownAt = performance.now();
+    undoStack.push({ el, html: cleanHTML(el) });
+    if (undoStack.length > 300) undoStack.shift();
+    redoStack = [];
+    lastSnap = { el, kind, t: now };
+    render();
+  }
+
+  function caretToEnd(el) {
+    el.focus({ preventScroll: true });
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  function step(from, to) {
+    let e;
+    while ((e = from.pop()) && !e.el.isConnected);
+    if (!e) return;
+    touch(e.el);
+    to.push({ el: e.el, html: cleanHTML(e.el) });
+    ownAt = performance.now();
+    e.el.innerHTML = e.html;
+    lastSnap = { el: null, kind: '', t: 0 };
+    if (cmtOn) renderBadges();
+    caretToEnd(e.el);
+    markDirty();
+    render();
+  }
+
+  function undo() { if (editing) step(undoStack, redoStack); }
+  function redo() { if (editing) step(redoStack, undoStack); }
+
+  function onBeforeInput(e) {
+    const t = e.inputType || '';
+    if (t === 'historyUndo' || t === 'historyRedo') {
+      e.preventDefault();
+      if (t === 'historyUndo') undo(); else redo();
+      return;
+    }
+    touch(e.currentTarget);
+    snap(e.currentTarget, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force');
+  }
+
+  function editHost(node) {
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    return el && el.closest('[data-oe]');
+  }
+
+  // Formatierung ueber execCommand: der Browser setzt b, i, a, die alle als Inline-Text gelten.
+  function fmt(cmd, value) {
+    const sel = getSelection();
+    const el = sel.rangeCount && editHost(sel.anchorNode);
+    if (!el || el !== editHost(sel.focusNode)) return;
+    touch(el);
+    snap(el, 'force');
+    document.execCommand(cmd, false, value);
+    if (cmd === 'removeFormat') document.execCommand('unlink');
+    markDirty();
+    syncSelBar();
+  }
+
+  function shortcut(e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+    const k = e.key.toLowerCase();
+    if (k === 'z') return e.shiftKey ? redo : undo;
+    if (k === 'y') return redo;
+    if (k === 'b') return () => fmt('bold');
+    if (k === 'i') return () => fmt('italic');
+    if (k === 'k') return openLink;
+    return null;
+  }
+
+  // Strg+Z auch, wenn der Fokus gerade auf einem Editor-Symbol liegt statt im Text.
+  function globalKeys(e) {
+    if (!editing || overlay || e.target.closest('[data-oe], input, textarea, .oe-sel')) return;
+    const k = (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase();
+    if (k === 'z' || k === 'y') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (k === 'z' && !e.shiftKey) undo(); else redo();
+    }
+  }
 
   function plainPaste(e) {
     e.preventDefault();
     touch(e.currentTarget);
+    snap(e.currentTarget, 'force');
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     document.execCommand('insertText', false, text);
   }
 
   // Tasten bleiben im Text: Seiten-Shortcuts (Leertaste, Pfeile, Controls) sehen sie nicht.
   function keepKeys(e) {
-    if (e.type === 'keydown' && e.key === 'Enter' && !e.isComposing && e.currentTarget.dataset.oe !== undefined) {
-      e.preventDefault();
-      touch(e.currentTarget);
-      document.execCommand('insertLineBreak');
+    if (e.type === 'keydown' && !e.isComposing && e.currentTarget.dataset.oe !== undefined) {
+      const act = shortcut(e);
+      if (act) {
+        e.preventDefault();
+        act();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        touch(e.currentTarget);
+        snap(e.currentTarget, 'force');
+        document.execCommand('insertLineBreak');
+      }
     }
     e.stopPropagation();
+  }
+
+  // ------------------------------------------------------------ auswahl-leiste
+
+  let linkRange = null;
+
+  function selButton(label, title, fn, cls) {
+    const b = button('', fn);
+    b.classList.add('oe-mini');
+    if (cls) b.classList.add(cls);
+    if (LINES[label]) b.innerHTML = icon(label); else b.textContent = label;
+    b.setAttribute('aria-label', title);
+    b.title = title;
+    b.addEventListener('pointerdown', (e) => e.preventDefault());
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    return b;
+  }
+
+  function buildSelBar() {
+    selBar = document.createElement('div');
+    selBar.className = 'oe-sel';
+    selBar.dataset.oeUi = '';
+    selBar.setAttribute('role', 'toolbar');
+    selBar.setAttribute('aria-label', 'Formatierung');
+    selBar.hidden = true;
+    selBar.addEventListener('keydown', (e) => e.stopPropagation());
+    document.body.appendChild(selBar);
+    fillSelBar();
+    document.addEventListener('selectionchange', syncSelBar);
+    window.addEventListener('scroll', syncSelBar, { passive: true });
+  }
+
+  function fillSelBar() {
+    selBar.replaceChildren(
+      selButton('B', 'fett (Strg+B)', () => fmt('bold'), 'oe-fb'),
+      selButton('I', 'kursiv (Strg+I)', () => fmt('italic'), 'oe-fi'),
+      selButton('link', 'Link (Strg+K)', openLink, 'oe-fl'),
+      selButton('clear', 'Formatierung entfernen', () => fmt('removeFormat')));
+    linkRange = null;
+  }
+
+  function selectionHost() {
+    const sel = getSelection();
+    if (!editing || !sel.rangeCount || sel.isCollapsed) return null;
+    const el = editHost(sel.anchorNode);
+    return el && el === editHost(sel.focusNode) ? el : null;
+  }
+
+  function linkAt(node) {
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    const a = el && el.closest('a');
+    return a && a.closest('[data-oe]') ? a : null;
+  }
+
+  function placeSelBar(rect) {
+    const w = selBar.offsetWidth;
+    const h = selBar.offsetHeight;
+    // Am Handy liegt das Kontextmenue des Systems ueber der Auswahl, die Leiste deshalb darunter.
+    const below = matchMedia('(pointer:coarse)').matches || rect.top < h + 16;
+    const top = below ? rect.bottom + 8 : rect.top - h - 8;
+    const left = Math.min(Math.max(rect.left + rect.width / 2 - w / 2, 8), innerWidth - w - 8);
+    selBar.style.top = Math.round(top) + 'px';
+    selBar.style.left = Math.round(left) + 'px';
+  }
+
+  function syncSelBar() {
+    if (!selBar || linkRange) return;
+    const host = selectionHost();
+    if (!host) { selBar.hidden = true; return; }
+    const sel = getSelection();
+    selBar.hidden = false;
+    selBar.querySelector('.oe-fb').setAttribute('aria-pressed', String(document.queryCommandState('bold')));
+    selBar.querySelector('.oe-fi').setAttribute('aria-pressed', String(document.queryCommandState('italic')));
+    const inLink = !!(linkAt(sel.anchorNode) || linkAt(sel.focusNode));
+    const fl = selBar.querySelector('.oe-fl');
+    fl.setAttribute('aria-pressed', String(inLink));
+    fl.title = inLink ? 'Link entfernen (Strg+K)' : 'Link (Strg+K)';
+    fl.setAttribute('aria-label', fl.title);
+    placeSelBar(sel.getRangeAt(0).getBoundingClientRect());
+  }
+
+  function openLink() {
+    const host = selectionHost();
+    if (!host) return;
+    const sel = getSelection();
+    if (linkAt(sel.anchorNode) || linkAt(sel.focusNode)) { fmt('unlink'); return; }
+    const range = sel.getRangeAt(0).cloneRange();
+    const rect = range.getBoundingClientRect();
+    linkRange = range;
+    const form = document.createElement('form');
+    form.className = 'oe-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'url';
+    input.setAttribute('aria-label', 'Adresse');
+    input.placeholder = 'https://';
+    const ok = button('setzen', () => {});
+    ok.type = 'submit';
+    ok.classList.add('oe-small', 'oe-primary');
+    form.append(input, ok);
+    form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeLink(true); } });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      let url = input.value.trim();
+      if (!url) return;
+      if (!/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(url)) url = 'https://' + url;
+      if (/^javascript:/i.test(url)) return;
+      const r = linkRange;
+      closeLink(false);
+      host.focus({ preventScroll: true });
+      const sel2 = getSelection();
+      sel2.removeAllRanges();
+      sel2.addRange(r);
+      fmt('createLink', url);
+    });
+    selBar.replaceChildren(form);
+    selBar.hidden = false;
+    placeSelBar(rect);
+    input.focus();
+  }
+
+  function closeLink(restore) {
+    const r = linkRange;
+    fillSelBar();
+    if (restore && r) {
+      const host = editHost(r.startContainer);
+      if (host) host.focus({ preventScroll: true });
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    syncSelBar();
   }
 
   async function toggleEdit() {
@@ -226,6 +476,8 @@
       document.documentElement.classList.add('oe-editing');
       originals = new Map();
       touched = new Set();
+      undoStack = [];
+      redoStack = [];
       for (const el of candidates()) {
         originals.set(el, cleanHTML(el));
         el.dataset.oe = '';
@@ -235,26 +487,56 @@
         el.addEventListener('input', markDirty);
         for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, keepKeys);
       }
+      watcher = new MutationObserver(onForeignChange);
+      watcher.observe(document.body, { subtree: true, childList: true, characterData: true });
     }
     syncPause();
-    syncButtons();
+    render();
+  }
+
+  function release(el) {
+    el.removeAttribute('contenteditable');
+    delete el.dataset.oe;
+    el.removeEventListener('paste', plainPaste);
+    el.removeEventListener('beforeinput', onBeforeInput);
+    el.removeEventListener('input', markDirty);
+    for (const t of ['keydown', 'keyup', 'keypress']) el.removeEventListener(t, keepKeys);
+  }
+
+  function onForeignChange(muts) {
+    if (performance.now() - ownAt < 300) return;
+    const ui = (n) => n.nodeType === 1 && n.matches('[data-oe-ui]');
+    const gone = new Set();
+    for (const m of muts) {
+      if ([...m.addedNodes, ...m.removedNodes].some(ui)) continue;
+      const host = editHost(m.target);
+      if (host && !host.closest('[data-oe-ui]')) gone.add(host);
+    }
+    for (const el of gone) {
+      release(el);
+      originals.delete(el);
+      touched.delete(el);
+      el.blur();
+    }
+    if (!gone.size) return;
+    undoStack = undoStack.filter((e) => !gone.has(e.el));
+    redoStack = redoStack.filter((e) => !gone.has(e.el));
+    render();
   }
 
   function stopEditing() {
-    for (const el of originals.keys()) {
-      el.removeAttribute('contenteditable');
-      delete el.dataset.oe;
-      el.removeEventListener('paste', plainPaste);
-      el.removeEventListener('beforeinput', onBeforeInput);
-      el.removeEventListener('input', markDirty);
-      for (const t of ['keydown', 'keyup', 'keypress']) el.removeEventListener(t, keepKeys);
-    }
+    if (watcher) watcher.disconnect();
+    watcher = null;
+    for (const el of originals.keys()) release(el);
     originals = new Map();
     touched = new Set();
+    undoStack = [];
+    redoStack = [];
     editing = false;
+    if (selBar) { fillSelBar(); selBar.hidden = true; }
     document.documentElement.classList.remove('oe-editing');
     syncPause();
-    syncButtons();
+    render();
   }
 
   function dirty() {
@@ -263,9 +545,14 @@
 
   function markDirty() {
     clearTimeout(saveTimer);
-    if (!dirty().length) return;
-    btnSave.disabled = false;
+    if (!dirty().length) {
+      // Zurueck auf den gespeicherten Stand (z. B. per Rueckgaengig nach einem Fehler): dann ist nichts offen.
+      if (saveFailed) { saveFailed = false; say('gespeichert', 'ok'); }
+      render();
+      return;
+    }
     say('…');
+    render();
     saveTimer = setTimeout(save, AUTOSAVE_MS);
   }
 
@@ -275,7 +562,6 @@
     if (saving) { saveAgain = true; return saving; }
     const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el)]);
     if (!pend.length) return true;
-    btnSave.disabled = true;
     say('speichere …');
     saving = (async () => {
       try {
@@ -283,22 +569,38 @@
         for (const [el, , neu] of pend) originals.set(el, neu);
         setLive(r.live_differs);
         if (cmtOn) await refreshComments();
+        saveFailed = false;
         say('gespeichert', 'ok');
+        watchCommit();
         return true;
       } catch (e) {
+        saveFailed = true;
         if (!leaving) say('NICHT gespeichert: ' + e.message, 'error');
         return false;
       } finally {
         saving = null;
-        btnSave.disabled = !dirty().length;
+        render();
       }
     })();
+    render();
     const ok = await saving;
     if (saveAgain) {
       saveAgain = false;
       if (ok && dirty().length) return save();
     }
     return ok;
+  }
+
+  // Der Server committet und pusht im Hintergrund; scheitert das, steht es hier sichtbar.
+  function watchCommit(tries = 0) {
+    clearTimeout(commitPoll);
+    commitPoll = setTimeout(async () => {
+      let r;
+      try { r = await request('GET', 'status'); } catch (e) { say('Commit-Status: ' + e.message, 'error'); return; }
+      if (r.error) say('auf dev gespeichert, aber Commit/Push hängt: ' + r.error, 'error');
+      else if (r.pending.length && tries < 20) watchCommit(tries + 1);
+      else if (r.pending.length) say('auf dev gespeichert, Commit steht seit über einer Minute aus', 'error');
+    }, tries ? 3000 : 4500);
   }
 
   async function flushed() {
@@ -453,7 +755,7 @@
       closeNote();
       extra.querySelector('.oe-cmtlist')?.remove();
     }
-    syncButtons();
+    render();
   }
 
   async function armNote() {
@@ -461,7 +763,7 @@
     noteArmed = !noteArmed;
     say(noteArmed ? 'Textstelle antippen, dahinter kommt die Notiz' : '');
     document.documentElement.classList.toggle('oe-noting', noteArmed);
-    syncButtons();
+    render();
   }
 
   function closeNote() {
@@ -476,7 +778,7 @@
     closeNote();
     noteOpen = true;
     syncPause();
-    syncButtons();
+    render();
     const box = document.createElement('form');
     box.className = 'oe-note';
     const label = document.createElement('div');
@@ -502,6 +804,7 @@
       say('speichere Notiz …');
       try {
         const r = await api('POST', 'save', { path: pagePath, changes: [{ orig, neu: orig + '<!-- ' + t + ' -->' }] });
+        ownAt = performance.now();
         el.appendChild(document.createComment(' ' + t + ' '));
         if (originals.has(el)) originals.set(el, cleanHTML(el));
         setLive(r.live_differs);
@@ -527,7 +830,7 @@
     closeNote();
     noteOpen = true;
     syncPause();
-    syncButtons();
+    render();
     const box = document.createElement('form');
     box.className = 'oe-note';
     const label = document.createElement('div');
@@ -591,6 +894,7 @@
     document.body.appendChild(wrap);
     overlay = wrap;
     syncPause();
+    render();
     return {
       head: wrap.querySelector('.oe-ov-head'),
       body: wrap.querySelector('.oe-ov-body'),
@@ -607,6 +911,7 @@
     if (overlay) overlay.remove();
     overlay = null;
     syncPause();
+    render();
   }
 
   async function openSource() {
@@ -787,14 +1092,25 @@ body.menu-open #oe-bar{display:none}
   color:var(--text-color,#fff)!important;font:inherit!important;box-shadow:none!important;scale:none!important;
   cursor:pointer;display:inline-flex!important;align-items:center;justify-content:center;gap:6px;text-decoration:none!important;
   transition:border-color .15s,background .15s,opacity .15s}
-.oe-btn:hover:not(:disabled){border-color:var(--text-color,#fff)!important;background:transparent!important;color:var(--text-color,#fff)!important}
+/* Hover nur mit echter Maus: am Handy bleibt :hover nach dem Antippen haengen. Aktiv = invertiert. */
+@media (hover:hover){.oe-btn:not([aria-pressed=true]):not(.oe-primary):hover:not(:disabled){border-color:var(--text-color,#fff)!important}
+  .oe-btn.oe-mini:hover:not(:disabled){opacity:1}}
+.oe-btn:focus{outline:none!important}
 .oe-btn:focus-visible{outline:2px solid var(--text-color,#fff)!important;outline-offset:1px}
-.oe-btn:disabled{opacity:.35!important;cursor:default}
-.oe-btn[aria-pressed=true],.oe-primary,.oe-primary:hover:not(:disabled){background:var(--text-color,#fff)!important;color:var(--bg-color,#000)!important;border-color:var(--text-color,#fff)!important}
-.oe-btn.oe-mini{width:32px;height:32px;min-width:32px!important;min-height:32px!important;padding:0!important;
-  border-color:transparent!important;opacity:.55}
-.oe-btn.oe-mini:hover:not(:disabled),.oe-btn.oe-mini:focus-visible,.oe-btn.oe-mini[aria-pressed=true]{opacity:1}
-.oe-btn.oe-mini:disabled{opacity:.2!important}
+.oe-btn:disabled{opacity:.3!important;cursor:default}
+.oe-btn[aria-pressed=true],.oe-primary{background:var(--text-color,#fff)!important;color:var(--bg-color,#000)!important;border-color:var(--text-color,#fff)!important}
+.oe-btn.oe-mini{width:32px;height:32px;min-width:32px!important;min-height:32px!important;padding:0!important;opacity:.6}
+.oe-btn.oe-mini:not([aria-pressed=true]){border-color:transparent!important}
+.oe-btn.oe-mini:focus-visible,.oe-btn.oe-mini[aria-pressed=true]{opacity:1}
+.oe-btn.oe-mini:disabled{opacity:.25!important}
+.oe-sel{position:fixed;z-index:2147483002;display:flex;gap:2px;padding:2px;border-radius:6px;
+  border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent);background:var(--bg-color,#000);color:var(--text-color,#fff);
+  font:15px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.oe-sel[hidden]{display:none}
+.oe-sel .oe-fb{font-weight:700!important}
+.oe-sel .oe-fi{font-style:italic!important;font-family:Georgia,serif!important}
+.oe-sel input{width:min(220px,60vw);min-height:32px;font-size:16px;padding:0 8px;border:0;border-radius:4px;box-sizing:border-box;
+  color:var(--text-color,#fff);background:color-mix(in srgb,var(--text-color,#fff) 10%,transparent)}
 .oe-btn[hidden]{display:none!important}
 .oe-extra:empty{display:none}
 .oe-extra{width:min(420px,calc(100vw - 92px));max-height:50vh;overflow:auto;padding:4px;box-sizing:border-box;border-radius:6px;
@@ -838,16 +1154,23 @@ body.menu-open #oe-bar{display:none}
   border-bottom:1px solid color-mix(in srgb,var(--text-color,#fff) 25%,transparent);
   font:14px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 #oe-admin .oe-btn{border-color:transparent!important;opacity:.7}
-#oe-admin .oe-btn:hover:not(:disabled),#oe-admin .oe-btn:focus-visible{opacity:1}
+@media (hover:hover){#oe-admin .oe-btn:hover:not(:disabled){opacity:1}}
+#oe-admin .oe-btn:focus-visible{opacity:1}
 #oe-admin .oe-btn:disabled{opacity:.3!important}
 #oe-admin .oe-pwr{width:20px;height:20px}
 #oe-admin .oe-login{border-color:transparent!important;opacity:.6}
-#oe-admin .oe-login:hover{opacity:1}
+@media (hover:hover){#oe-admin .oe-login:hover{opacity:1}}
 .oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
 .oe-extra>:first-child{border-top:0}
-@media (max-width:480px){#oe-bar{right:22px;top:calc(var(--visible-viewport-top,0px) + 56px)}
-  .oe-head{flex-direction:column}
-  .oe-extra{position:fixed;left:8px;right:60px;top:calc(var(--visible-viewport-top,0px) + 56px);width:auto}}`;
+#oe-admin .oe-narrow{display:none!important}
+/* Handy: eine Reihe zwischen Zurueck- und Menueknopf (bei 320 px 166 px frei), Quelltext und Aenderungen
+   wandern dafuer in die Admin-Zeile im Menue. */
+@media (max-width:480px){#oe-bar{right:79px;top:calc(var(--visible-viewport-top,0px) + 22px);max-width:calc(100vw - 87px)}
+  #oe-bar .oe-btn.oe-mini{width:30px;min-width:30px!important}
+  #oe-bar .oe-wide{display:none!important}
+  #oe-admin .oe-narrow{display:inline-flex!important}
+  #oe-admin{gap:0;padding:4px 8px}
+  .oe-extra{position:fixed;left:8px;right:8px;top:calc(var(--visible-viewport-top,0px) + 80px);width:auto}}`;
     document.head.appendChild(s);
   }
 
@@ -868,10 +1191,29 @@ body.menu-open #oe-bar{display:none}
     return null;
   }
 
-  function syncButtons() {
-    btnCmt.setAttribute('aria-pressed', String(cmtOn));
-    btnNote.setAttribute('aria-pressed', String(noteArmed));
-    btnEdit.setAttribute('aria-pressed', String(editing));
+  // Einziger Ort, der Knopf-Zustaende setzt.
+  function render() {
+    if (!bar) return;
+    const off = !st.ready;
+    const set = (b, disabled, pressed) => {
+      b.disabled = !!disabled;
+      if (pressed !== undefined) b.setAttribute('aria-pressed', String(!!pressed));
+    };
+    set(btnEdit, off || !st.inline, editing);
+    set(btnUndo, !editing || !undoStack.length);
+    set(btnRedo, !editing || !redoStack.length);
+    btnUndo.hidden = btnRedo.hidden = !editing;
+    set(btnSrc, off || !!overlay);
+    set(btnCmt, off, cmtOn);
+    set(btnDiff, off || !!overlay);
+    set(btnSave, off || !!saving || !dirty().length);
+    set(btnNote, false, noteArmed);
+    if (btnPub) {
+      set(menuSrc, off || !!overlay);
+      set(menuDiff, off || !!overlay);
+      set(btnPub, off || !st.live);
+      btnPub.title = st.live ? 'diese Seite nach 0nefinity.love' : 'live ist auf demselben Stand';
+    }
   }
 
   function mini(kind, label, fn) {
@@ -894,21 +1236,24 @@ body.menu-open #oe-bar{display:none}
     status.setAttribute('role', 'status');
     btnEdit = mini('pencil', 'bearbeiten ein/aus', () => { stored('oe-edit', editing ? '0' : '1'); toggleEdit(); });
     btnSrc = mini('code', 'Quelltext', openSource);
+    btnSrc.classList.add('oe-wide');
     btnCmt = mini('bubble', 'Kommentare ein/aus', toggleComments);
     btnDiff = mini('diff', 'Änderungen', () => openChanges(false));
+    btnDiff.classList.add('oe-wide');
     btnSave = mini('save', 'jetzt speichern', save);
-    btnSave.disabled = true;
+    btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
+    btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
     btnNote = button('notiz setzen', armNote);
     btnNote.classList.add('oe-small');
     const head = document.createElement('div');
     head.className = 'oe-head';
-    head.append(btnEdit, btnSrc, btnCmt, btnDiff, btnSave);
+    head.append(btnEdit, btnUndo, btnRedo, btnSrc, btnCmt, btnDiff, btnSave);
     extra = document.createElement('div');
     extra.className = 'oe-extra';
     bar.append(head, status, extra);
     bar.addEventListener('keydown', (e) => e.stopPropagation());
     document.body.appendChild(bar);
-    syncButtons();
+    render();
   }
 
   function menuWrap() {
@@ -959,11 +1304,14 @@ body.menu-open #oe-bar{display:none}
     analytics.rel = 'noopener';
     analytics.textContent = 'analytics';
     const out = button('', logout);
+    menuSrc = mini('code', 'Quelltext', openSource);
+    menuDiff = mini('diff', 'Änderungen', () => openChanges(false));
+    for (const b of [menuSrc, menuDiff]) b.classList.add('oe-narrow');
     for (const b of [btnPub, analytics, out]) b.classList.add('oe-small');
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(btnPub, analytics, out);
+    sec.append(menuSrc, menuDiff, btnPub, analytics, out);
     wrap.prepend(sec);
   }
 
@@ -979,18 +1327,23 @@ body.menu-open #oe-bar{display:none}
 
     css();
     buildBar();
+    buildSelBar();
     buildAdminMenu();
-    syncButtons();
+    render();
     document.addEventListener('click', guardClick, true);
+    document.addEventListener('keydown', globalKeys, true);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty().length) save(); });
     window.addEventListener('pagehide', flushOnLeave);
 
     try {
       await loadSource();
-      if (!source.inline) btnEdit.disabled = true;
-      else if (stored('oe-edit') !== '0') toggleEdit();
+      st.ready = true;
+      st.inline = !!source.inline;
+      render();
+      if (st.inline && stored('oe-edit') !== '0') toggleEdit();
     } catch (e) {
-      for (const b of [btnEdit, btnSave, btnSrc, btnPub, btnCmt, btnDiff]) b.disabled = true;
+      st.ready = false;
+      render();
       say(e.message, 'error');
     }
   }
