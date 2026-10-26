@@ -107,7 +107,7 @@
     .ck-bank dt { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
     .ck-bank dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
     .ck-key {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; line-height: 1.5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; line-height: 1.5;
       word-spacing: 0.3em;
     }
     .ck-label { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
@@ -307,9 +307,9 @@
     }
   }
 
-  // transfer reference: 512 random bits as 128 uppercase hex, fits the 140-char SEPA field
+  // transfer reference: 256 random bits as 64 uppercase hex, fits the 140-char SEPA field
   function makeKey() {
-    var bytes = new Uint8Array(64);
+    var bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     return Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('').toUpperCase();
   }
