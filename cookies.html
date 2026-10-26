@@ -85,7 +85,9 @@
       color: var(--text-color); border: 0; border-radius: 6px;
     }
     .ck-field:focus-visible, .ck-banner button:focus-visible, .ck-shop button:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
-    .ck-seg { display: flex; align-self: flex-start; border: 1px solid var(--ui-border-strong); border-radius: 6px; overflow: hidden; }
+    .ck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+    .ck-head h2 { flex: 1 1 auto; min-width: 0; padding-top: 0.6rem; }
+    .ck-seg { display: flex; flex: 0 0 auto; border: 1px solid var(--ui-border-strong); border-radius: 6px; overflow: hidden; }
     .ck-seg button {
       width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0; font-size: 1.05rem;
       background: transparent; color: var(--text-color);
@@ -148,7 +150,13 @@
 
   <div class="ck-backdrop" id="ck-backdrop">
     <section class="ck-banner" role="dialog" aria-modal="true" aria-labelledby="ck-title">
-      <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
+      <div class="ck-head">
+        <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
+        <div class="ck-seg" role="group" aria-label="Währung">
+          <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
+          <button type="button" data-cur="USD" aria-pressed="false" aria-label="US-Dollar">$</button>
+        </div>
+      </div>
       <p class="ck-ask">Wie viele Cookies wollen Sie? <span id="ck-rate">1 Cookie = 1 €</span></p>
 
       <div class="ck-row">
@@ -160,10 +168,6 @@
         <button type="button" class="ck-step" id="ck-inf" aria-label="unendlich viele Cookies" aria-pressed="false">∞</button>
       </div>
 
-      <div class="ck-seg" role="group" aria-label="Währung">
-        <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
-        <button type="button" data-cur="USD" aria-pressed="false" aria-label="US-Dollar">$</button>
-      </div>
 
       <div class="ck-hint" aria-live="polite">
         <p id="ck-zero" class="is-off">Anders als bei <a href="https://0nefinity.love">0nefinity.love</a>, dort gibt es keine Cookies. Für Zugang zu 0nefinity.com kaufen Sie mindestens einen. Wir sind hier nicht bei der Wohlfahrt.</p>
