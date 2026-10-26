@@ -12,7 +12,15 @@
  *                       // {kind:'right', lo} (bis zur letzten Stelle und darueber hinaus) oder {kind:'all'} (nichts lesbar)
  *     intPart, decimals // optional: Anfangskette (Ganzzahl, Nachkommastellen), schon beim ersten Layout da (sonst '0.')
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
+ *     dir               // optional: 'r' (Standard) oder 'l': gespiegelt, die Kette laeuft nach links, Ziffern bleiben aufrecht
+ *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum, z. B. als Kreis)
+ *     origin            // optional: Lage der Ganzzahl beim Start (CSS-px ab Anfang der Achse; Standard: Mitte)
+ *     unrolled          // optional: true = ausgerollt starten (R am Rand), bis zum ersten Ziehen/Rad
+ *     fontPx            // optional: Schriftgroesse in CSS-px (Zahl oder Funktion); Standard 6 % der Fensterbreite, 28..56
+ *     localX(e)         // optional: Zeigerlage auf der Achse (CSS-px, ungespiegelt) fuer gedrehte Canvas; die Groesse kommt
+ *                       // dann aus dem Layout (clientWidth/clientHeight), nicht aus der gedrehten Huelle
  *   });
+ *   view.resize()                       // neu messen, nachdem der Besitzer die Canvas umgelegt hat
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
@@ -72,17 +80,26 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('UnfoldingView.create: kein 2D-Kontext');
     const colorEl = opts.colorElement || canvas;
+    if (opts.dir !== undefined && opts.dir !== 'l' && opts.dir !== 'r') throw new TypeError("UnfoldingView: dir muss 'l' oder 'r' sein, war " + opts.dir);
+    const mirror = opts.dir === 'l';
+    function fontOf() {
+      const v = +(typeof opts.fontPx === 'function' ? opts.fontPx() : opts.fontPx);
+      if (!(v > 0) || !Number.isFinite(v)) throw new TypeError('UnfoldingView: fontPx muss eine positive Zahl sein, war ' + v);
+      return v;
+    }
+    let unroll = !!opts.unrolled;
     const decoder = new TextDecoder('latin1');
 
     // Die Kette liegt als Bytes (ASCII): Ganzzahl, ".", Nachkommastellen. Index 0 = Ganzzahl. Kein String: keine Stringgrenze,
     // ein Byte je Stelle; chainLen zaehlt die belegten Bytes, buf waechst durch Verdoppeln.
-    let buf = new Uint8Array(64), chainLen = 0;
+    let buf = new Uint8Array(64), chainLen = 0, headLen = 2;
     let cpre = new Uint32Array(0), cpreN = 0;   // Praefixsummen der Kette je Zeichen, siehe chainPre
     function setChain(intPart, decimals) {
       const head = String(intPart) + '.' + (decimals || '');
       if (buf.length < head.length) buf = new Uint8Array(Math.max(head.length, 64));
       for (let i = 0; i < head.length; i++) buf[i] = head.charCodeAt(i);
       chainLen = head.length;
+      headLen = String(intPart).length + 1;
       cpreN = 0;
     }
     function reserve(n) {
@@ -146,22 +163,30 @@
     // ─── Ziffern ───
     function setDigits(intPart, decimals) {
       setChain(intPart, decimals);
+      keepUnrolled();
       dirty = true;
+    }
+    // Ausgerollt starten: settle deckelt R auf die vorhandene Kette, also nach jedem Nachladen wieder an den Rand.
+    function keepUnrolled() {
+      if (!unroll || !(W > 0)) return;
+      R = W - MARGIN;
+      settle('three');
     }
     function appendDigits(u8, offset) {
       if (!(u8 instanceof Uint8Array)) throw new TypeError('appendDigits erwartet ein Uint8Array');
-      const have = chainLen - 2;
+      const have = chainLen - headLen;
       if (offset > have) throw new DigitError('Luecke in den Stellen bei ' + have);
       const skip = have - offset;
       if (skip > 0) {
         const ov = Math.min(skip, u8.length);
-        for (let k = 0; k < ov; k++) if (u8[k] !== buf[2 + offset + k]) throw new DigitError('Stellen widersprechen den bekannten Stellen');
+        for (let k = 0; k < ov; k++) if (u8[k] !== buf[headLen + offset + k]) throw new DigitError('Stellen widersprechen den bekannten Stellen');
       }
       if (skip >= u8.length) return;
       const add = u8.length - skip;
       reserve(chainLen + add);
       buf.set(u8.subarray(skip), chainLen);
       chainLen += add;
+      keepUnrolled();
       dirty = true;
     }
 
@@ -231,7 +256,8 @@
         g.fillStyle = color;
         g.font = (S * dpr) + 'px ' + fam;
         g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(ch, wd / 2, hd / 2);
+        if (mirror) g.setTransform(-1, 0, 0, 1, wd, 0);
+        if (ch !== '.' || opts.dot !== false) g.fillText(ch, wd / 2, hd / 2);
         const data = g.getImageData(0, 0, wd, hd).data;
         // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (ruhiger Strich fuer fehlende Stellen).
         const rowMax = rowMaxAlpha(data, wd, hd);
@@ -416,7 +442,8 @@
       const tStart = performance.now();
       dirty = false;
       if (!atlas || atlasKey !== color + '|' + S + '|' + dpr + '|' + w) buildAtlas();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (mirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
+      else ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = true;
       prep();
@@ -581,9 +608,9 @@
 
     // ─── Layout ───
     function measure() {
-      const r = canvas.getBoundingClientRect();
+      const r = opts.localX ? { width: canvas.clientWidth, height: canvas.clientHeight } : canvas.getBoundingClientRect();
       const ndpr = window.devicePixelRatio || 1;
-      const nS = Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
+      const nS = opts.fontPx ? fontOf() : Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
       ctx.font = (nS * ndpr) + 'px "Courier New", Courier, monospace';
       const nw = Math.max(1, Math.round(ctx.measureText('0').width)) / ndpr;
       return { cw: r.width, ch: r.height, ndpr, nS, nw };
@@ -596,17 +623,25 @@
       if (canvas.width !== cwDev) canvas.width = cwDev;
       if (canvas.height !== chDev) canvas.height = chDev;
       if (first) {
-        X0 = Math.round((W - w) / 2); L = X0; R = X0 + w;
+        X0 = opts.origin !== undefined ? +opts.origin : Math.round((W - w) / 2); L = X0; R = X0 + w;
+        if (!Number.isFinite(X0)) throw new TypeError('UnfoldingView: origin muss eine Zahl sein, war ' + opts.origin);
+        if (opts.unrolled) R = W - MARGIN;
       } else {
         X0 = L - hOf(oldIdx * w, deff());
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
+      keepUnrolled();
       if (drag) drag.rebase = true;   // der nächste pointermove setzt die Zugwerte neu, sonst springt er
     }
 
     // ─── Interaktion ───
     const rect = () => canvas.getBoundingClientRect();
+    function local(e) {
+      let x = opts.localX ? +opts.localX(e) : e.clientX - rect().left;
+      if (mirror) x = W - x;
+      return x;
+    }
     // Der nächste Griff gewinnt: die 3 (nur solange links nichts eingerollt ist), R, L (nur wenn eingerollt).
     function hitTest(x) {
       const rolled = rolledLeft();
@@ -630,18 +665,19 @@
       if (v !== hoverX) { hoverX = v; dirty = true; }
     }
     function onDown(e) {
-      const x = e.clientX - rect().left;
+      const x = local(e);
       if (e.pointerType !== 'mouse') tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
       if (drag || locked) return;
       const mode = hitTest(x);
       if (!mode) return;
       drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse' };
+      unroll = false;
       setHover(x);   // Greifen zeigt die Stelle unter dem Finger, auch auf dem Handy
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     }
     function onMove(e) {
-      const x = e.clientX - rect().left;
+      const x = local(e);
       if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
       if (e.pointerType === 'mouse' || (drag && drag.id === e.pointerId)) setHover(x);
       if (!drag || drag.id !== e.pointerId) {
@@ -702,6 +738,7 @@
     function onWheel(e) {
       e.preventDefault();
       if (locked) return;
+      unroll = false;
       const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? W : 1);
       const delta = (e.deltaY + e.deltaX) * unit;
       if (!delta) return;
@@ -774,6 +811,7 @@
       factor = clampFactor(f);
       settle(rolledLeft() ? 'x' : 'three');
     }
+    function resize() { applySize(false); }
     function rewind() {
       X0 = L;
       settle('three');
@@ -817,7 +855,7 @@
     }
 
     return {
-      setDigits, appendDigits, rewind, setFactor, destroy, refreshColor, setRemote,
+      setDigits, appendDigits, rewind, resize, setFactor, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       setHover,
       // Testhaken: ein Bild rendern und je Stauchspalte festhalten, was dort gezaehlt wurde (Kettenbereich a..b, Zahl je Zeichen
