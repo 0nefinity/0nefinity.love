@@ -22,6 +22,8 @@
 
   async function check() {
     if (document.hidden) return;
+    // Editor (tools/editor.js) im Bearbeiten-Modus: kein Reload, sonst gehen Eingaben verloren.
+    if (window.__oneEditing) return;
     try {
       const res = await fetch('/_devmtime.php?_lr=' + Date.now(), { cache: 'no-store' });
       if (!res.ok) { fail('HTTP ' + res.status); return; }
