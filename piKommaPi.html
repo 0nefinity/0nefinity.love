@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pi,pi</title>
+  <style>
+    .pp, .pp * { white-space: normal; box-sizing: border-box; }
+    .pp {
+      width: 100%;
+      max-width: 46rem;
+      padding: 72px 16px 120px;
+      text-align: left;
+      text-shadow: none;
+      color: var(--text-color);
+    }
+    .pp h1 { font-size: 2.25rem; font-weight: 400; margin: 0 0 4px; letter-spacing: 0.02em; }
+    .pp .unter { margin: 0 0 32px; color: var(--ui-text-40); font-size: 0.9375rem; }
+    .pp h2 { font-size: 0.8125rem; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ui-text-40); margin: 56px 0 16px; }
+    .pp p { margin: 0 0 12px; }
+
+    /* Zahlen im Text */
+    .n { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .c {
+      display: inline-block;
+      width: 0.36em; height: 0.36em;
+      border: max(1.5px, 0.07em) solid currentColor;
+      border-radius: 50%;
+      margin: 0 0.1em;
+      vertical-align: 0.1em;
+      flex: 0 0 auto;
+    }
+
+    /* Baukasten */
+    .bau { margin: 0 0 8px; }
+    .kette {
+      display: flex; align-items: center;
+      width: 100%; height: clamp(72px, 16vw, 120px);
+      overflow: hidden;
+      font-variant-numeric: tabular-nums;
+    }
+    .kette.quad { height: clamp(48px, 10vw, 80px); }
+    .kette.fehler { box-shadow: inset 0 0 0 2px #c33; }
+    .seg { display: flex; align-items: center; height: 100%; overflow: hidden; flex: 0 0 auto; }
+    .seg.l { flex-direction: row-reverse; }
+    .d { display: inline-block; flex: 0 0 auto; overflow: hidden; text-align: center; line-height: 1; }
+    .kette > .c { border-width: max(1.5px, 0.08em); }
+    .quadname { font-size: 0.8125rem; color: var(--ui-text-40); margin: 8px 0 0; }
+    .lese {
+      overflow-x: auto; white-space: nowrap;
+      font-size: 0.875rem; color: var(--ui-text-70);
+      font-variant-numeric: tabular-nums;
+      padding: 6px 0 10px;
+      scrollbar-width: thin;
+    }
+    .lese * { white-space: nowrap; }
+
+    .werkzeug { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0 0; }
+    .glied { display: flex; gap: 4px; align-items: center; }
+    .sep { color: var(--ui-text-40); display: inline-flex; align-items: center; font-size: 1.25rem; }
+    .pp button, .pp select {
+      min-height: 44px; min-width: 44px;
+      font: inherit; font-size: 16px;
+      color: var(--text-color);
+      background: var(--ui-fill-08);
+      border: 0; border-radius: 6px;
+      padding: 0 12px;
+      cursor: pointer;
+      transition: background-color 150ms ease;
+    }
+    .pp select { padding-right: 8px; color-scheme: dark; }
+    .pp select option { background: var(--bg-color); color: var(--text-color); }
+    .pp button:hover, .pp select:hover { background: var(--ui-fill-14); }
+    .pp button[aria-pressed="true"] { background: var(--ui-fill-25); }
+    .pp button:focus-visible, .pp select:focus-visible { outline: 1.5px solid var(--ui-border-stronger); outline-offset: 2px; }
+    .pp .richtung { color: var(--ui-text-70); }
+    .pp .richtung .pfeil { color: var(--text-color); }
+    .pp .weg { color: var(--ui-text-40); padding: 0; }
+    .werkzeug.zwei { margin-top: 8px; }
+
+    /* Gespraech */
+    .rede { margin: 0 0 20px; }
+    .wer { display: block; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ui-text-40); margin: 0 0 4px; }
+    .rede.claude p, .rede.claude li { color: var(--ui-text-70); }
+    .rede ul { margin: 0 0 12px; padding-left: 1.1em; }
+    .rede li { margin: 0 0 8px; }
+    .rede blockquote { margin: 0 0 12px; padding: 0; font-size: 1.125rem; line-height: 1.55; }
+    .rede .lesart { color: var(--text-color); }
+  </style>
+</head>
+<body>
+<main class="pp">
+  <h1>π<span class="n">,</span>π</h1>
+  <p class="unter">Tim und Claude über irrationale Zahlen, am Kreis gespiegelt</p>
+
+  <section class="bau" aria-label="Baukasten">
+    <div class="kette" id="kette" data-rolle="kette"></div>
+    <div class="lese" id="lese"></div>
+    <div id="quadbox" hidden>
+      <p class="quadname">stellenweise quadriert, d ↦ d² mod 10</p>
+      <div class="kette quad" id="kette2" data-rolle="quad"></div>
+      <div class="lese" id="lese2"></div>
+    </div>
+    <div class="werkzeug" id="glieder"></div>
+    <div class="werkzeug zwei">
+      <button type="button" id="dazu" aria-label="Kreis hinzufügen">+ <i class="c"></i></button>
+      <button type="button" id="ganz" aria-pressed="true">Ganzzahl am centrum</button>
+      <button type="button" id="quad" aria-pressed="false">x² stellenweise</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>DAS CENTRUM</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Pi wird mit einem kleinen Kreis in der Mitte geschrieben, dem centrum of pi (a little circle). Links die 3, rechts <span class="n"><i class="c"></i>1415…</span></p>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Der Kreis ist die einzige Stelle, die nicht gezählt wird. Von ihm aus zählt alles: nach links die Ganzen, nach rechts die Teile.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>AM CENTRUM GESPIEGELT</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Pi am centrum spiegeln: π,π = <span class="n">…951413<i class="c"></i>14159…</span></p>
+      <p>Oder ohne die 3: <span class="n">…5141<i class="c"></i>1415…</span> Perfekt spiegelsymmetrisch. Die 3 geht im Kreis auf. 3 = 0, 1, ∞, der Anzahl nach.</p>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Links stehen die Stellen von π rückwärts, rechts vorwärts. Beide Seiten laufen ins Unendliche, fest bleibt nur der Kreis.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>BASIS 10</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Ein Zahlensystem mit Basis π,π. Dort heißt die Basis selbst 10.</p>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Wie jede Basis: Zwei schreibt sich im Binärsystem 10, π im System zur Basis π auch. Von innen ist jede Basis eine 1 und eine 0.</p>
+      <p>Mein Einwand: Eine Basis ist der Faktor, mit dem jede Stelle mehr wert ist als die nächste. Dafür braucht sie eine Größe. π,π hat eine Gestalt, aber keine Größe. Die 10 ist dort zuerst ein Name.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>ZWEI LESARTEN, BEIDE STIMMEN</h2>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <ul>
+        <li><span class="lesart">Erweiterte reelle Zahlen.</span> Links wächst die Zahl mit jeder Stelle über jede Grenze. Also π,π = ∞ und (π,π)² = ∞. Jede solche Zahl wird dasselbe ∞: π,π und e,e sind dort nicht zu unterscheiden.</li>
+        <li><span class="lesart">10-adisch.</span> In den 10-adischen Zahlen dürfen unendlich viele Stellen nach links laufen. <span class="n">…951413</span> ist dort eine gewöhnliche Zahl, keine unendlich große. Für Stellen auf beiden Seiten kommt der 10-adische Solenoid in Frage: Eine zweiseitige Ziffernfolge lässt sich dort als Punkt lesen, und den Kreis um eine Stelle verschieben heißt mal 10. Die Stellen bleiben erhalten. Die Zahl hat Gestalt, aber keine Größe.</li>
+      </ul>
+      <p>Beim Solenoid bleibe ich vorsichtig. Er ist eine Gruppe: Addieren geht, der Übertrag läuft über den Kreis hinweg. Ein Malnehmen zweier solcher Zahlen bringt er nicht von selbst mit, und manche Folge hat zwei Schreibweisen, so wie 0,999… = 1. Wie weit das Bild trägt, behaupte ich nicht.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>MALNEHMEN</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p><span class="n">5141<i class="c"></i>1415² = 26431335<i class="c"></i>92302225</span></p>
+      <p><span class="n">95141<i class="c"></i>14159² = 9051836823<i class="c"></i>0484277281</span></p>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Mit Übertrag gibt es keinen Grenzwert. Eine Stelle mehr außen, und die Stellen am Kreis kippen: rechts erst <span class="n">923…</span>, dann <span class="n">048…</span> Es setzt sich nichts fest.</p>
+      <p>Stellenweise ohne Übertrag geht es. Jede Stelle wird für sich quadriert, der Übertrag fällt weg (d ↦ d² mod 10):</p>
+      <p>(π,π)² = <span class="n">…564151619<i class="c"></i>16151465…</span></p>
+      <p>Die Spiegelung bleibt.</p>
+    </div>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Wie genau man malnehmen kann, hängt von der verfügbaren Rechenkapazität ab. Aber der Punkt ist, dass es sich definieren lässt.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>DIE POINTE</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <blockquote>Die Pointe aller irrationalen Zahlen ist, dass sie im irrationalen Komma gespiegelt, unter irrationaler Berücksichtigung aller irrationalen Dezimalstellen eine irrational exakt definierbare irrational unendlich große Zahl mit einer irrationalen Anzahl Dezimalstellen ergibt. Empfinde ich als ziemlich rational.</blockquote>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Ratio heißt Verhältnis. Und die Anzahl der Stellen ist abzählbar unendlich: Man kann sie durchnummerieren, 1, 2, 3, …</p>
+    </div>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Sie ist zwar abzählbar unendlich, aber es wäre irrational, dies tatsächlich zu tun.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>MEHR KOMMAS</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Nicht nur π,π. Auch e,e oder e,π. Unendlich viele irrationale Zahlen ergeben noch mehr unendlich viele Kombinationen. Und warum auf ein Komma beschränken? π,π,π. Das tut nur die euklidische Algebra.</p>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Bei π,π,π liegen zwischen zwei Kreisen unendlich viele Stellen, und dahinter geht es weiter. Eine reelle Zahl kann das nicht, als Folge von Stellen ist es sauber definiert und bleibt abzählbar.</p>
+      <p>Der Größe nach sind die Ketten übrigens genauso viele wie die irrationalen Zahlen selbst, beide sind Kontinuum. Der Gestalt nach sind es mehr: Jede Kette ist eine neue Zahl.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>GRUNDSATZ</h2>
+    <div class="rede tim"><span class="wer">TIM</span>
+      <p>Der Mathematik nichts wegnehmen außer ihrer Kleingeistigkeit. Nur hinzufügen. Teils interessant, mindblown, absurd, sinnlos, teilweise weise.</p>
+    </div>
+    <div class="rede claude"><span class="wer">CLAUDE</span>
+      <p>Weggenommen ist hier nichts. In den reellen Zahlen bleibt π,π = ∞. Dazu kommt nur, was die Stellen von selbst hergeben.</p>
+    </div>
+  </section>
+</main>
+
+<script src="/tools/irrational.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // Ein Glied haengt an einem Rand (Kreis oder offenes Ende) und laeuft vom Rand weg:
+  // 'r' (normal) haengt am linken Rand und laeuft nach rechts, 'l' (gespiegelt) haengt am rechten Rand und laeuft nach links.
+  // Die Stellen werden je Schritt um den Faktor q kleiner; q ist so gewaehlt, dass die unendliche Summe
+  // der Stellenbreiten genau die Breite des Glieds ergibt: das Unendliche endet am naechsten Kreis.
+  const NEED = 600;
+  const MIN_PX = 0.35;
+  const CONST = Irrational.constants;
+  const byId = Object.fromEntries(CONST.map((c) => [c.id, c]));
+  const DEFAULT = [{ id: 'pi', dir: 'l' }, { id: 'pi', dir: 'r' }];
+
+  const el = (id) => document.getElementById(id);
+  const kette = el('kette'), kette2 = el('kette2'), lese = el('lese'), lese2 = el('lese2');
+  const quadbox = el('quadbox'), gliederBox = el('glieder');
+  const bGanz = el('ganz'), bQuad = el('quad'), bDazu = el('dazu');
+
+  const st = { glieder: DEFAULT.map((g) => ({ ...g })), ganz: true, quad: false };
+  const digits = {};   // id -> string der Nachkommastellen
+  const loading = {};
+  let error = null;
+
+  function fail(msg) {
+    console.error('[piKommaPi] ' + msg);
+    if (!error) error = msg;
+    kette.classList.add('fehler');
+  }
+
+  // ─── Stellen ───
+  function load(id) {
+    if (digits[id] || loading[id]) return;
+    const buf = [];
+    let have = 0;
+    loading[id] = Irrational.open(id, {
+      onDigits(u8, offset) {
+        if (offset !== have) { fail(id + ': Stellen nicht lueckenlos (offset ' + offset + ', erwartet ' + have + ')'); return; }
+        let s = '';
+        for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+        buf.push(s);
+        have += u8.length;
+        if (have >= NEED && !digits[id]) {
+          digits[id] = buf.join('');
+          loading[id].close();
+          delete loading[id];
+          render();
+        }
+      },
+      onLimit(l) { fail(id + ': Grenze erreicht (' + l.kind + ', ' + l.reason + ') bei ' + l.digits + ' Stellen'); },
+      onError(e) { fail(id + ': ' + e.message); },
+    });
+    loading[id].want(NEED);
+  }
+
+  // Stellen eines Glieds vom Rand nach aussen gelesen.
+  function outward(g, sq) {
+    const frac = digits[g.id];
+    if (!frac) return null;
+    let s = (g.dir === 'l' && st.ganz ? byId[g.id].intPart : '') + frac;
+    if (sq) s = s.replace(/\d/g, (d) => String((d * d) % 10));
+    return s;
+  }
+
+  // ─── Zeichnen ───
+  let advance = 0.62;
+  function measureAdvance() {
+    const ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = '100px ' + getComputedStyle(kette).fontFamily;
+    const w = ctx.measureText('0').width / 100;
+    if (w > 0.2 && w < 1.2) advance = w;
+  }
+
+  function drawChain(box, sq) {
+    box.textContent = '';
+    const n = st.glieder.length;
+    const W = box.clientWidth;
+    const H = box.clientHeight;
+    if (!(W > 0)) return;
+    // erste Schaetzung der Stellengroesse, dann Kreise davon abziehen
+    let s0 = Math.min(H * 0.62, Math.max(14, (W / n) * 0.11));
+    const cSize = Math.max(6, s0 * 0.34);
+    const cGap = s0 * 0.14;
+    const cTotal = cSize + 2 * cGap;
+    const seg = (W - (n - 1) * cTotal) / n;
+    s0 = Math.min(s0, seg * 0.3);
+    const w0 = s0 * advance;
+    const q = Math.min(0.985, Math.max(0.4, 1 - w0 / seg));
+    st.glieder.forEach((g, i) => {
+      if (i > 0) {
+        const c = document.createElement('i');
+        c.className = 'c';
+        c.style.cssText = `width:${cSize}px;height:${cSize}px;margin:0 ${cGap}px;font-size:${s0}px`;
+        box.appendChild(c);
+      }
+      const d = document.createElement('div');
+      d.className = 'seg ' + g.dir;
+      d.style.width = seg + 'px';
+      d.dataset.id = g.id;
+      d.dataset.dir = g.dir;
+      const s = outward(g, sq);
+      if (s) {
+        let size = s0, k = 0;
+        const frag = document.createDocumentFragment();
+        while (k < s.length && size >= MIN_PX) {
+          const sp = document.createElement('span');
+          sp.className = 'd';
+          sp.textContent = s[k];
+          const a = 0.28 + 0.72 * Math.sqrt(size / s0);
+          sp.style.cssText = `font-size:${size}px;width:${size * advance}px;opacity:${a.toFixed(3)}`;
+          frag.appendChild(sp);
+          size *= q;
+          k++;
+        }
+        d.appendChild(frag);
+        d.dataset.digits = s.slice(0, k);
+      }
+      box.appendChild(d);
+    });
+  }
+
+  function drawLese(box, sq) {
+    const LEN = 40;
+    box.textContent = '';
+    st.glieder.forEach((g, i) => {
+      if (i > 0) { const c = document.createElement('i'); c.className = 'c'; box.appendChild(c); }
+      const s = outward(g, sq);
+      if (!s) return;
+      const t = s.slice(0, LEN);
+      const span = document.createElement('span');
+      span.textContent = g.dir === 'l' ? '…' + [...t].reverse().join('') : t + '…';
+      box.appendChild(span);
+    });
+  }
+
+  function drawControls() {
+    gliederBox.textContent = '';
+    const n = st.glieder.length;
+    st.glieder.forEach((g, i) => {
+      if (i > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'sep';
+        sep.innerHTML = '<i class="c"></i>';
+        gliederBox.appendChild(sep);
+      }
+      const box = document.createElement('div');
+      box.className = 'glied';
+      box.dataset.index = i;
+
+      const sel = document.createElement('select');
+      sel.setAttribute('aria-label', 'Konstante ' + (i + 1));
+      for (const c of CONST) {
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = c.symbol;
+        if (c.id === g.id) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.addEventListener('change', () => { g.id = sel.value; update(); });
+
+      const dir = document.createElement('button');
+      dir.type = 'button';
+      dir.className = 'richtung';
+      dir.innerHTML = g.dir === 'l' ? '<span class="pfeil">∞ ←</span> umdrehen' : 'umdrehen <span class="pfeil">→ ∞</span>';
+      dir.setAttribute('aria-label', 'Glied ' + (i + 1) + ' umdrehen, läuft jetzt ' + (g.dir === 'l' ? 'nach links' : 'nach rechts'));
+      dir.title = g.dir === 'l' ? 'läuft nach links ins Unendliche' : 'läuft nach rechts ins Unendliche';
+      dir.addEventListener('click', () => { g.dir = g.dir === 'l' ? 'r' : 'l'; update(); });
+
+      box.append(sel, dir);
+      if (n > 1) {
+        const weg = document.createElement('button');
+        weg.type = 'button';
+        weg.className = 'weg';
+        weg.textContent = '×';
+        weg.setAttribute('aria-label', 'Glied ' + (i + 1) + ' entfernen');
+        weg.addEventListener('click', () => { st.glieder.splice(i, 1); update(); });
+        box.appendChild(weg);
+      }
+      gliederBox.appendChild(box);
+    });
+    bGanz.setAttribute('aria-pressed', String(st.ganz));
+    bQuad.setAttribute('aria-pressed', String(st.quad));
+  }
+
+  function render() {
+    drawChain(kette, false);
+    drawLese(lese, false);
+    quadbox.hidden = !st.quad;
+    if (st.quad) { drawChain(kette2, true); drawLese(lese2, true); }
+  }
+
+  // ─── Zustand ───
+  function update() {
+    for (const g of st.glieder) load(g.id);
+    drawControls();
+    render();
+    saveUrl();
+  }
+
+  function saveUrl() {
+    const u = new URL(location.href);
+    const k = st.glieder.map((g) => g.id + '-' + g.dir).join('.');
+    const isDefault = k === 'pi-l.pi-r' && st.ganz && !st.quad;
+    if (isDefault) { u.searchParams.delete('kette'); u.searchParams.delete('ganz'); u.searchParams.delete('quad'); }
+    else { u.searchParams.set('kette', k); u.searchParams.set('ganz', st.ganz ? '1' : '0'); u.searchParams.set('quad', st.quad ? '1' : '0'); }
+    history.replaceState(null, '', u);
+  }
+
+  function loadUrl() {
+    const q = new URLSearchParams(location.search);
+    if (q.has('kette')) {
+      const gl = [];
+      for (const part of q.get('kette').split('.')) {
+        const m = /^([a-z0-9]+)-([lr])$/.exec(part);
+        if (!m || !byId[m[1]]) { fail('URL: unbekanntes Glied "' + part + '"'); continue; }
+        gl.push({ id: m[1], dir: m[2] });
+      }
+      if (gl.length) st.glieder = gl;
+    }
+    if (q.has('ganz')) st.ganz = q.get('ganz') !== '0';
+    if (q.has('quad')) st.quad = q.get('quad') === '1';
+  }
+
+  bDazu.addEventListener('click', () => {
+    const last = st.glieder[st.glieder.length - 1];
+    st.glieder.push({ id: last ? last.id : 'pi', dir: 'r' });
+    update();
+  });
+  bGanz.addEventListener('click', () => { st.ganz = !st.ganz; update(); });
+  bQuad.addEventListener('click', () => { st.quad = !st.quad; update(); });
+
+  window.piKommaPi = {
+    state() {
+      const seg = (box) => [...box.querySelectorAll('.seg')].map((d) => ({ id: d.dataset.id, dir: d.dataset.dir, digits: d.dataset.digits || '' }));
+      return {
+        glieder: st.glieder.map((g) => ({ ...g })), ganz: st.ganz, quad: st.quad, error,
+        ready: st.glieder.every((g) => digits[g.id]),
+        kette: seg(kette), quadKette: st.quad ? seg(kette2) : [],
+        lese: lese.textContent,
+      };
+    },
+  };
+
+  loadUrl();
+  measureAdvance();
+  update();
+  new ResizeObserver(() => render()).observe(kette);
+  if (document.fonts) document.fonts.ready.then(() => { measureAdvance(); render(); });
+})();
+</script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
