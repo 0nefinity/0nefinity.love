@@ -8,6 +8,8 @@
   <style>
     body.ck-locked { overflow: hidden; }
 
+    /* meta.css sets * { white-space: pre-wrap }; markup indentation would render as blank lines */
+    .ck-shop, .ck-shop *, .ck-backdrop, .ck-backdrop * { white-space: normal; }
     .ck-shop {
       width: min(56rem, 100%);
       box-sizing: border-box;
