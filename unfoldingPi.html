@@ -382,10 +382,15 @@
         });
         return;
       }
-      const cx = SW / 2, cy = SH / 2, BH = Math.round(3 * fontSize());
+      // Desktop: das Bedienfeld links unten deckt sonst das Ende eines Strahls; der Stern nutzt nur den Raum rechts davon
+      let xmin = 0;
+      const pr = panel && panel.el ? panel.el.getBoundingClientRect() : null, sr = stage.getBoundingClientRect();
+      if (pr && pr.width > 0 && pr.width < SW * 0.5 && pr.left - sr.left < 50) xmin = Math.min(pr.right - sr.left + 8, SW * 0.5);
+      const cx = (xmin + SW) / 2, cy = SH / 2, BH = Math.round(3 * fontSize());
+      multi.cx = cx; multi.cy = cy;
       multi.items.forEach((it, k) => {
         const th = 360 * k / n, rad = th * Math.PI / 180, co = Math.cos(rad), si = Math.sin(rad);
-        const tx = co > 1e-9 ? (SW - cx) / co : co < -1e-9 ? cx / -co : Infinity;
+        const tx = co > 1e-9 ? (SW - cx) / co : co < -1e-9 ? (cx - xmin) / -co : Infinity;
         const ty = si > 1e-9 ? (SH - cy) / si : si < -1e-9 ? cy / -si : Infinity;
         const CW = Math.max(2 * p0, Math.min(tx, ty) - 4 + p0);
         const flip = th > 90 && th < 270;
@@ -399,10 +404,10 @@
         });
       });
     }
-    // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab Buehnenmitte) auf die Achsrichtung
+    // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
     function starLocal(it, e) {
       const r = stage.getBoundingClientRect(), a = it.rot * Math.PI / 180;
-      return it.cl + (e.clientX - r.left - r.width / 2) * Math.cos(a) + (e.clientY - r.top - r.height / 2) * Math.sin(a);
+      return it.cl + (e.clientX - r.left - multi.cx) * Math.cos(a) + (e.clientY - r.top - multi.cy) * Math.sin(a);
     }
     function buildMulti() {
       teardownMulti();
@@ -430,7 +435,7 @@
       for (const it of m.items) {
         it.view = UnfoldingView.create(it.canvas, {
           intPart: '', decimals: it.c === 'pi' ? RESERVE.slice(1) : '',
-          dot: 'circle', origin: MARGIN, unrolled: true, fontPx: fontSize, dir: it.dir, factor: factorValue,
+          origin: MARGIN, unrolled: true, fixedStart: true, fontPx: fontSize, dir: it.dir, factor: factorValue,
           colorElement: stage,
           localX: form === 'stern' ? (e) => starLocal(it, e) : undefined,
           rate: () => -driftValue,
@@ -499,6 +504,7 @@
 
     // ─── Boot ───
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
+    if (window.ResizeObserver && panel.el) new ResizeObserver(() => { if (multi) { layoutMulti(); for (const it of multi.items) if (it.view) it.view.resize(); } }).observe(panel.el);
     panel.addSlider('drift', {
       label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
       onChange: (v) => { driftValue = +v || 0; }
