@@ -56,7 +56,7 @@ function setup_mode_active(): bool {
 function require_auth(): array {
   auth_session_start();
   if (empty($_SESSION['uid'])) {
-    $next = $_SERVER['REQUEST_URI'] ?? '/admin';
+    $next = $_SERVER['REQUEST_URI'] ?? '/';
     header('Location: /enternity?next=' . urlencode($next));
     exit;
   }
