@@ -80,14 +80,21 @@
       color: var(--text-color); border: 0; border-radius: 6px;
     }
     .ck-field:focus-visible, .ck-banner button:focus-visible, .ck-shop button:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
-    select.ck-field { text-align: left; flex: 0 1 11rem; }
-    .ck-quick { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .ck-chip {
-      min-height: 44px; padding: 0 0.9rem; font-size: 0.95rem; border-width: 1px; border-radius: 6px;
-      border-color: var(--ui-border-strong);
+    .ck-step[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
+    .ck-rate-row { align-items: center; justify-content: space-between; }
+    .ck-seg { display: flex; flex: 0 0 auto; border: 1px solid var(--ui-border-strong); border-radius: 6px; overflow: hidden; }
+    .ck-seg button {
+      width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0; font-size: 1.05rem;
+      background: transparent; color: var(--text-color);
     }
-    .ck-chip:hover { scale: 1; }
-    .ck-chip[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
+    .ck-seg button + button { border-left: 1px solid var(--ui-border-strong); }
+    .ck-seg button:hover { scale: 1; }
+    .ck-seg button[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); }
+    /* all hints share one cell, so the tallest one reserves the space from the start */
+    .ck-hint { display: grid; }
+    .ck-hint p { grid-area: 1 / 1; margin: 0; font-size: 0.9rem; color: color-mix(in srgb, var(--text-color) 75%, transparent); }
+    .ck-hint .is-off { visibility: hidden; }
+    .ck-hint a { color: var(--text-color); }
     .ck-sum {
       margin: 0; padding: 0.6rem 0.7rem; border-radius: 6px;
       background: color-mix(in srgb, var(--text-color) 5%, transparent);
@@ -96,18 +103,21 @@
     .ck-sum small { display: block; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
     .ck-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.75rem; }
     .ck-lines span:nth-child(even) { text-align: right; white-space: nowrap; }
-    .ck-zero { margin: 0; font-size: 0.95rem; }
-    .ck-zero[hidden] { display: none; }
-    .ck-zero a { color: var(--text-color); }
     .ck-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
     .ck-buttons button { min-height: 44px; padding: 0.5rem 1.1rem; }
     .ck-buttons button:hover { scale: 1; }
-    .ck-buttons button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .ck-buttons button:disabled, .ck-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+    .ck-primary {
+      width: 100%; min-height: 44px; padding: 0.5rem 1.1rem; border-radius: 6px;
+      background: var(--text-color); color: var(--bg-color); border: 1px solid var(--text-color);
+    }
+    .ck-primary:hover { scale: 1; }
     .ck-quiet { border-color: var(--ui-border-strong); }
     .ck-draft {
       padding: 0.6rem 0.7rem; border: 1px dashed var(--ui-border-strong); border-radius: 6px;
       font-size: 0.9rem;
     }
+    .ck-panel { display: flex; flex-direction: column; gap: 0.75rem; }
     .ck-panel[hidden] { display: none; }
     .ck-bank { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem 0.9rem; }
     .ck-bank dt { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
@@ -118,10 +128,6 @@
     }
     .ck-label { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
 
-    @media (max-width: 400px) {
-      .ck-row.ck-currency { flex-wrap: wrap; }
-      select.ck-field { flex: 1 1 100%; }
-    }
   </style>
 </head>
 <body>
@@ -145,36 +151,38 @@
     <section class="ck-banner" role="dialog" aria-modal="true" aria-labelledby="ck-title">
 
       <div class="ck-panel" id="ck-choose">
-        <h2 id="ck-title">Diese Seite verwendet Cookies.</h2>
-        <p>Wie viele möchten Sie kaufen?</p>
+        <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
+        <div class="ck-row ck-rate-row">
+          <p id="ck-rate">1 Cookie = 1 €</p>
+          <div class="ck-seg" role="group" aria-label="Währung">
+            <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
+            <button type="button" data-cur="USD" aria-pressed="false" aria-label="US-Dollar">$</button>
+          </div>
+        </div>
 
-        <div class="ck-row" style="margin-top:0.75rem">
+        <div class="ck-row">
           <button type="button" class="ck-step" id="ck-minus" aria-label="ein Cookie weniger">−</button>
           <input class="ck-field" id="ck-count" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Anzahl Cookies" value="1">
           <button type="button" class="ck-step" id="ck-plus" aria-label="ein Cookie mehr">+</button>
-        </div>
-        <p class="ck-note" id="ck-crumbs" style="margin-top:0.5rem" aria-live="polite" hidden>Nur ganze Cookies. Wir verkaufen hier keine Brösel.</p>
-
-        <div class="ck-quick" style="margin-top:0.5rem">
-          <button type="button" class="ck-chip" data-set="0">0</button>
-          <button type="button" class="ck-chip" data-set="1">1 empfohlen</button>
-          <button type="button" class="ck-chip" data-set="inf">∞</button>
+          <button type="button" class="ck-step" id="ck-inf" aria-label="unendlich viele Cookies" aria-pressed="false">∞</button>
         </div>
 
-        <div class="ck-row ck-currency" style="margin-top:0.75rem">
-          <label class="ck-label" for="ck-currency" style="align-self:center;flex:1 1 auto">Währung</label>
-          <select class="ck-field" id="ck-currency"></select>
+        <div class="ck-hint" aria-live="polite">
+          <p id="ck-zero" class="is-off">Anders als bei <a href="https://0nefinity.love">0nefinity.love</a>, dort gibt es keine Cookies. Für Zugang zu 0nefinity.com kaufen Sie mindestens einen. Wir sind hier nicht bei der Wohlfahrt.</p>
+          <p id="ck-crumbs" class="is-off">Nur ganze Cookies. Wir verkaufen hier keine Brösel.</p>
+          <p id="ck-invalid" class="is-off">Das ist keine Anzahl.</p>
         </div>
 
+        <button type="button" class="ck-primary" id="ck-pay-now">Jetzt bezahlen</button>
+      </div>
 
-        <div class="ck-sum" id="ck-sum" style="margin-top:0.75rem" aria-live="polite"></div>
-        <p class="ck-zero" id="ck-zero" style="margin-top:0.75rem" hidden>Anders als bei <a href="https://0nefinity.love">0nefinity.love</a>, dort gibt es keine Cookies. Für Zugang zu 0nefinity.com kaufen Sie mindestens einen. Wir sind hier nicht bei der Wohlfahrt.</p>
-
-        <div class="ck-buttons" style="margin-top:0.9rem">
-          <button type="button" class="ck-quiet" id="ck-all">Alle akzeptieren</button>
-          <button type="button" class="ck-quiet" id="ck-none">Ablehnen</button>
-          <button type="button" class="ck-quiet" id="ck-transfer">Überweisen</button>
-          <button type="button" id="ck-buy">Kaufen</button>
+      <div class="ck-panel" id="ck-method" hidden>
+        <h2>Bezahlen</h2>
+        <div class="ck-sum" id="ck-sum"></div>
+        <div class="ck-buttons">
+          <button type="button" class="ck-quiet" id="ck-method-back">Zurück</button>
+          <button type="button" class="ck-quiet" id="ck-transfer">Überweisung</button>
+          <button type="button" id="ck-card">Karte</button>
         </div>
       </div>
 
@@ -223,18 +231,9 @@
   var $ = function (id) { return document.getElementById(id); };
   var backdrop = $('ck-backdrop');
   var countEl = $('ck-count');
-  var curEl = $('ck-currency');
+  var cur = 'EUR';
+  var SYMBOL = { EUR: '€', USD: '$' };
   var sumEl = $('ck-sum');
-
-  var names;
-  try { names = new Intl.DisplayNames(['de'], { type: 'currency' }); } catch (e) { names = null; }
-  CURRENCIES.forEach(function (code) {
-      var o = document.createElement('option');
-      o.value = code;
-      o.textContent = code + (names ? ' · ' + names.of(code) : '');
-      curEl.appendChild(o);
-  });
-  curEl.value = 'EUR';
 
   var infinite = false;
 
@@ -268,9 +267,9 @@
     var p = 10n ** BigInt(d);
     var str = (a / p).toString() + (d ? '.' + (a % p).toString().padStart(d, '0') : '');
     try {
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: curEl.value, minimumFractionDigits: d, maximumFractionDigits: d }).format(str);
+      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, minimumFractionDigits: d, maximumFractionDigits: d }).format(str);
     } catch (e) {
-      return str + ' ' + curEl.value;
+      return str + ' ' + cur;
     }
   }
 
@@ -316,9 +315,9 @@
   var BANK_STEP = 1000000n;
   function round(units) {
     try {
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: curEl.value, maximumFractionDigits: 0 }).format(units.toString());
+      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(units.toString());
     } catch (e) {
-      return int(units) + ' ' + curEl.value;
+      return int(units) + ' ' + cur;
     }
   }
 
@@ -344,39 +343,34 @@
     return { lines: [[cookies(minor), money(minor)]], sub: split(minor), buy: 'Kaufen', total: minor };
   }
 
+  function renderSum() {
+    var s = summary();
+    sumEl.textContent = '';
+    var grid = document.createElement('div');
+    grid.className = 'ck-lines';
+    s.lines[0].forEach(function (t) {
+      var span = document.createElement('span');
+      span.textContent = t;
+      grid.appendChild(span);
+    });
+    sumEl.appendChild(grid);
+    var sm = document.createElement('small');
+    sm.textContent = s.sub;
+    sumEl.appendChild(sm);
+  }
+
+  var crumbsOn = false;
   function render() {
     if (infinite) countEl.value = '∞';
     var s = summary();
-    sumEl.textContent = '';
-    if (s.text) sumEl.append(s.text);
-    if (s.lines) {
-      var grid = document.createElement('div');
-      grid.className = 'ck-lines';
-      s.lines.forEach(function (l) {
-        [l[0], l[1]].forEach(function (t) {
-          var span = document.createElement('span');
-          span.textContent = t;
-          if (l[2]) span.className = l[2];
-          grid.appendChild(span);
-        });
-      });
-      sumEl.appendChild(grid);
-    }
-    if (s.sub) {
-      var sm = document.createElement('small');
-      sm.textContent = s.sub;
-      sumEl.appendChild(sm);
-    }
-    $('ck-zero').hidden = !s.zero;
-    $('ck-buy').textContent = s.buy || 'Kaufen';
-    $('ck-buy').disabled = !s.buy;
-    $('ck-transfer').disabled = !s.buy;
-    var minor = infinite ? null : parseMinor(countEl.value);
-    document.querySelectorAll('.ck-chip').forEach(function (c) {
-      var v = c.dataset.set;
-      var on = v === 'inf' ? infinite : (!infinite && minor !== null && minor === BigInt(v) * 10n ** BigInt(decimals()));
-      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('ck-rate').textContent = '1 Cookie = 1 ' + SYMBOL[cur];
+    document.querySelectorAll('[data-cur]').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.cur === cur ? 'true' : 'false');
     });
+    $('ck-inf').setAttribute('aria-pressed', infinite ? 'true' : 'false');
+    var hint = crumbsOn ? 'ck-crumbs' : s.text ? 'ck-invalid' : s.zero ? 'ck-zero' : '';
+    ['ck-zero', 'ck-crumbs', 'ck-invalid'].forEach(function (id) { $(id).classList.toggle('is-off', id !== hint); });
+    $('ck-pay-now').disabled = !s.buy;
   }
 
   function setCount(v) {
@@ -385,8 +379,9 @@
     render();
   }
 
+  // ∞ minus one is still ∞, so minus leaves ∞ for the start value
   function step(delta) {
-    if (infinite) return;
+    if (infinite) { if (delta < 0n) setCount('1'); return; }
     var p = 10n ** BigInt(decimals());
     var minor = parseMinor(countEl.value) || 0n;
     var next = (minor / p) + delta;
@@ -395,7 +390,7 @@
   }
 
   function show(panel) {
-    ['ck-choose', 'ck-pay', 'ck-bank'].forEach(function (id) { $(id).hidden = id !== panel; });
+    ['ck-choose', 'ck-method', 'ck-pay', 'ck-bank'].forEach(function (id) { $(id).hidden = id !== panel; });
   }
 
   function open() {
@@ -419,33 +414,32 @@
     var w = wholePart(countEl.value);
     if (w.cut || countEl.value.indexOf('.') >= 0) countEl.value = w.value;
     if (w.cut) {
-      var hint = $('ck-crumbs');
-      hint.hidden = false;
+      crumbsOn = true;
       clearTimeout(crumbsTimer);
-      crumbsTimer = setTimeout(function () { hint.hidden = true; }, 2500);
+      crumbsTimer = setTimeout(function () { crumbsOn = false; render(); }, 2500);
     }
     render();
   }
 
-  // while typing, "1.0" may still become "1.000", so dots settle after a short pause;
-  // a comma, a paste or a drop settles at once
+  // while typing, "1,7" may still become "1,75" and "1.0" may become "1.000",
+  // so typed input settles after a short pause; a paste or a drop settles at once
   countEl.addEventListener('input', function (e) {
     infinite = /∞|inf/i.test(countEl.value);
     clearTimeout(settleTimer);
-    if (/^insert(FromPaste|FromDrop)$/.test(e.inputType || '') || countEl.value.indexOf(',') >= 0) settle();
+    if (/^insert(FromPaste|FromDrop)$/.test(e.inputType || '')) settle();
     else { settleTimer = setTimeout(settle, 800); render(); }
   });
   countEl.addEventListener('change', settle);
   countEl.addEventListener('focus', function () { if (infinite) countEl.select(); });
-  curEl.addEventListener('change', render);
+  document.querySelectorAll('[data-cur]').forEach(function (b) {
+    b.addEventListener('click', function () { cur = b.dataset.cur; render(); });
+  });
   $('ck-minus').addEventListener('click', function () { step(-1n); });
   $('ck-plus').addEventListener('click', function () { step(1n); });
-  document.querySelectorAll('.ck-chip').forEach(function (c) {
-    c.addEventListener('click', function () { setCount(c.dataset.set); });
-  });
-  $('ck-all').addEventListener('click', function () { setCount('inf'); });
-  $('ck-none').addEventListener('click', function () { setCount('0'); });
-  $('ck-buy').addEventListener('click', function () {
+  $('ck-inf').addEventListener('click', function () { setCount('inf'); });
+  $('ck-pay-now').addEventListener('click', function () { renderSum(); show('ck-method'); });
+  $('ck-method-back').addEventListener('click', function () { show('ck-choose'); });
+  $('ck-card').addEventListener('click', function () {
     var f = firstPayment(infinite ? null : summary().total);
     var box = $('ck-pay-sum');
     box.textContent = '';
@@ -467,9 +461,6 @@
       sm.textContent = '(weitere ∞ Zahlungen in Höhe von ' + round(BANK_STEP) + ' ausstehend)';
       ask.appendChild(sm);
       $('ck-bank-amount').textContent = round(BANK_STEP);
-    } else if (minor === 0n) {
-      ask.append('Überweisen Sie einen beliebigen Betrag.');
-      $('ck-bank-amount').textContent = 'beliebig';
     } else {
       ask.append('Bitte überweisen Sie ' + money(minor));
       $('ck-bank-amount').textContent = money(minor);
@@ -478,7 +469,7 @@
     $('ck-copy-note').textContent = '';
     show('ck-bank');
   });
-  $('ck-bank-back').addEventListener('click', function () { show('ck-choose'); });
+  $('ck-bank-back').addEventListener('click', function () { show('ck-method'); });
   $('ck-bank-done').addEventListener('click', close);
   $('ck-copy').addEventListener('click', function () {
     var note = $('ck-copy-note');
@@ -488,7 +479,7 @@
       function () { note.textContent = 'Kopieren ging nicht, bitte den Schlüssel markieren und kopieren.'; }
     );
   });
-  $('ck-pay-back').addEventListener('click', function () { show('ck-choose'); });
+  $('ck-pay-back').addEventListener('click', function () { show('ck-method'); });
   $('ck-pay-done').addEventListener('click', close);
   $('ck-reopen').addEventListener('click', open);
 
