@@ -5,15 +5,16 @@ require_once __DIR__ . '/.auth/csrf.php';
 
 auth_session_start();
 
-// Already logged in? → /admin
+$next  = $_GET['next'] ?? '/';
+$next  = preg_match('#^/(?!/)[A-Za-z0-9/_.%~-]*$#', $next) ? $next : '/';
+
+// Already logged in? Back to where the login was asked for.
 if (!empty($_SESSION['uid'])) {
-  header('Location: /admin');
+  header('Location: ' . $next);
   exit;
 }
 
 $setup = setup_mode_active();
-$next  = $_GET['next'] ?? '/admin';
-$next  = preg_match('#^/[a-zA-Z0-9/_-]*$#', $next) ? $next : '/admin';
 
 $csrf = csrf_token();
 ?>
@@ -23,7 +24,7 @@ $csrf = csrf_token();
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= $setup ? 'Setup' : 'Enter' ?> 0nefinity</title>
-  <link rel="stylesheet" href="/meta.css">
+<?php readfile(__DIR__ . '/includes/something-in-the-head.html'); ?>
   <style>
     .enter-wrap { display:flex; min-height:100svh; align-items:center; justify-content:center; padding:4vw; }
     .enter-card { max-width:360px; width:100%; padding:2rem; border:1px solid var(--text-color); border-radius:4px; }
@@ -56,6 +57,7 @@ $csrf = csrf_token();
   </style>
 </head>
 <body>
+<?php readfile(__DIR__ . '/includes/something-in-the-body.html'); ?>
   <div class="enter-wrap">
     <form class="enter-card" id="enter-form"
           method="post"
@@ -125,7 +127,7 @@ $csrf = csrf_token();
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.ok) {
-        window.location.href = j.redirect || '/admin';
+        window.location.href = j.redirect || '/';
         return;
       }
       err.textContent = j.error || 'Falsche Logindaten';

@@ -73,4 +73,4 @@ try {
 session_regenerate_id(true);
 $_SESSION['uid'] = $uid;
 
-json_response(['ok' => true, 'redirect' => '/admin']);
+json_response(['ok' => true, 'redirect' => '/']);

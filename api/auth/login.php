@@ -19,8 +19,8 @@ if (!csrf_verify($in['csrf'] ?? '')) {
 
 $username = trim((string)($in['username'] ?? ''));
 $password = (string)($in['password'] ?? '');
-$next     = (string)($in['next'] ?? '/admin');
-if (!preg_match('#^/[a-zA-Z0-9/_-]*$#', $next)) $next = '/admin';
+$next     = (string)($in['next'] ?? '/');
+if (!preg_match('#^/(?!/)[A-Za-z0-9/_.%~-]*$#', $next)) $next = '/';
 
 $ip = client_ip();
 
