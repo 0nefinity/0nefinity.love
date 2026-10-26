@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cookies</title>
+  <style>
+    body.ck-locked { overflow: hidden; }
+
+    .ck-shop {
+      width: min(56rem, 100%);
+      box-sizing: border-box;
+      padding: 4.5rem 1rem 3rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+    }
+    .ck-shop h1 { margin: 0; font-weight: normal; letter-spacing: 0.05em; }
+    .ck-works {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      width: 100%;
+    }
+    .ck-works img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border: 1px solid var(--ui-border-soft);
+      border-radius: 6px;
+    }
+    .ck-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; }
+    .ck-note { min-height: 1.5em; margin: 0; color: color-mix(in srgb, var(--text-color) 65%, transparent); font-size: 0.875rem; }
+    .ck-reopen {
+      background: none; border: 0; padding: 0.5rem 0.75rem; min-height: 44px;
+      color: color-mix(in srgb, var(--text-color) 55%, transparent);
+      font-size: 0.875rem; text-decoration: underline; border-radius: 4px;
+    }
+    .ck-reopen:hover { background: none; color: var(--text-color); scale: 1; }
+
+    /* banner */
+    .ck-backdrop {
+      position: fixed; inset: 0; z-index: 9000;
+      background: color-mix(in srgb, var(--bg-color) 70%, transparent);
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .ck-backdrop[hidden] { display: none; }
+    .ck-banner {
+      width: min(34rem, 100%);
+      max-height: 100%;
+      overflow: auto;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 1.25rem 1rem 1rem;
+      background: var(--ui-surface-strong);
+      border: 1px solid var(--ui-border);
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+      display: flex; flex-direction: column; gap: 0.9rem;
+      text-align: left;
+    }
+    .ck-banner h2 { margin: 0; font-size: 1.125rem; font-weight: normal; }
+    .ck-banner p { margin: 0; }
+    .ck-row { display: flex; gap: 0.5rem; align-items: stretch; }
+    .ck-step {
+      flex: 0 0 44px; height: 44px; padding: 0; font-size: 1.25rem; border-width: 1px; border-radius: 6px;
+    }
+    .ck-step:hover { scale: 1; }
+    .ck-field {
+      flex: 1 1 auto; min-width: 0; height: 44px; box-sizing: border-box;
+      padding: 0 0.6rem; font: inherit; font-size: 16px; text-align: center;
+      font-variant-numeric: tabular-nums;
+      background: color-mix(in srgb, var(--text-color) 8%, transparent);
+      color: var(--text-color); border: 0; border-radius: 6px;
+    }
+    .ck-field:focus-visible, .ck-banner button:focus-visible, .ck-shop button:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
+    select.ck-field { text-align: left; flex: 0 1 11rem; }
+    .ck-quick { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .ck-chip {
+      min-height: 44px; padding: 0 0.9rem; font-size: 0.95rem; border-width: 1px; border-radius: 6px;
+      border-color: var(--ui-border-strong);
+    }
+    .ck-chip:hover { scale: 1; }
+    .ck-chip[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
+    .ck-sum {
+      margin: 0; padding: 0.6rem 0.7rem; border-radius: 6px;
+      background: color-mix(in srgb, var(--text-color) 5%, transparent);
+      font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+    }
+    .ck-sum small { display: block; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
+    .ck-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+    .ck-buttons button { min-height: 44px; padding: 0.5rem 1.1rem; }
+    .ck-buttons button:hover { scale: 1; }
+    .ck-quiet { border-color: var(--ui-border-strong); }
+    .ck-draft {
+      padding: 0.6rem 0.7rem; border: 1px dashed var(--ui-border-strong); border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .ck-cancel {
+      background: none; border: 0; padding: 0.5rem 0; min-height: 44px; border-radius: 0;
+      color: var(--text-color); text-decoration: underline; font-size: 1rem; text-align: left;
+    }
+    .ck-cancel:hover { background: none; color: var(--text-color); scale: 1; }
+    .ck-abo[hidden], .ck-panel[hidden] { display: none; }
+    .ck-label { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
+
+    @media (max-width: 400px) {
+      .ck-row.ck-currency { flex-wrap: wrap; }
+      select.ck-field { flex: 1 1 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="ck-shop">
+    <h1>0nefinity</h1>
+    <div class="ck-works">
+      <img src="/assets/cookies/herz-fraktal.webp" alt="Herz, fraktal in sich gedreht" width="800" height="800">
+      <img src="/assets/cookies/kaleidoskop.webp" alt="Herz im Kaleidoskop" width="800" height="800">
+      <img src="/assets/cookies/kreis-fraktal.webp" alt="Kreis, fraktal nach innen und außen" width="800" height="800">
+      <img src="/assets/cookies/moire.webp" alt="verdrehte Linienschar, Moiré" width="800" height="800">
+    </div>
+    <div class="ck-actions">
+      <button type="button" data-draft="Print">Print</button>
+      <button type="button" data-draft="Warteliste">Pro: Warteliste</button>
+    </div>
+    <p class="ck-note" id="ck-shop-note" aria-live="polite"></p>
+    <button type="button" class="ck-reopen" id="ck-reopen">Cookies</button>
+  </main>
+
+  <div class="ck-backdrop" id="ck-backdrop">
+    <section class="ck-banner" role="dialog" aria-modal="true" aria-labelledby="ck-title">
+
+      <div class="ck-panel" id="ck-choose">
+        <h2 id="ck-title">Diese Seite verwendet Cookies.</h2>
+        <p>Wie viele möchtest du kaufen?</p>
+
+        <div class="ck-row" style="margin-top:0.75rem">
+          <button type="button" class="ck-step" id="ck-minus" aria-label="ein Cookie weniger">−</button>
+          <input class="ck-field" id="ck-count" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Anzahl Cookies" value="1">
+          <button type="button" class="ck-step" id="ck-plus" aria-label="ein Cookie mehr">+</button>
+        </div>
+
+        <div class="ck-quick" style="margin-top:0.5rem">
+          <button type="button" class="ck-chip" data-set="0">0</button>
+          <button type="button" class="ck-chip" data-set="1">1 empfohlen</button>
+          <button type="button" class="ck-chip" data-set="inf">∞</button>
+        </div>
+
+        <div class="ck-row ck-currency" style="margin-top:0.75rem">
+          <label class="ck-label" for="ck-currency" style="align-self:center;flex:1 1 auto">Währung</label>
+          <select class="ck-field" id="ck-currency"></select>
+        </div>
+
+        <div class="ck-abo" id="ck-abo" hidden>
+          <div class="ck-row" style="margin-top:0.75rem">
+            <label class="ck-label" for="ck-interval" style="align-self:center;flex:1 1 auto">Abbuchung</label>
+            <select class="ck-field" id="ck-interval">
+              <option value="day">täglich</option>
+              <option value="week">wöchentlich</option>
+              <option value="month" selected>monatlich</option>
+              <option value="year">jährlich</option>
+            </select>
+          </div>
+        </div>
+
+        <p class="ck-sum" id="ck-sum" style="margin-top:0.75rem" aria-live="polite"></p>
+
+        <div class="ck-buttons" style="margin-top:0.9rem">
+          <button type="button" class="ck-quiet" id="ck-all">Alle akzeptieren</button>
+          <button type="button" class="ck-quiet" id="ck-none">Ablehnen</button>
+          <button type="button" id="ck-buy">Kaufen</button>
+        </div>
+        <button type="button" class="ck-cancel" id="ck-cancel-open">Verträge hier kündigen</button>
+      </div>
+
+      <div class="ck-panel" id="ck-pay" hidden>
+        <h2>Bezahlen</h2>
+        <p class="ck-sum" id="ck-pay-sum"></p>
+        <p class="ck-draft">Entwurf: Stripe ist noch nicht verbunden. Es wird nichts abgebucht.</p>
+        <div class="ck-buttons">
+          <button type="button" class="ck-quiet" id="ck-pay-back">Zurück</button>
+          <button type="button" id="ck-pay-done">Weiter</button>
+        </div>
+      </div>
+
+      <div class="ck-panel" id="ck-cancel" hidden>
+        <h2>Verträge kündigen</h2>
+        <p>Dein ∞-Cookie-Abo endet sofort. Bereits gegessene Cookies bleiben gegessen.</p>
+        <p class="ck-draft">Entwurf: Kündigung über Stripe ist noch nicht verbunden.</p>
+        <div class="ck-buttons">
+          <button type="button" class="ck-quiet" id="ck-cancel-back">Zurück</button>
+          <button type="button" id="ck-cancel-now">Jetzt kündigen</button>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+<!--#include virtual="/includes/something-in-the-body.html" -->
+<script>
+(function () {
+  'use strict';
+
+  // Stripe presentment currencies (docs.stripe.com/currencies); zero-decimal ones carry no cents
+  var CURRENCIES = 'USD AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BIF BMD BND BOB BRL BSD BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CVE CZK DJF DKK DOP DZD EGP ETB EUR FJD FKP GBP GEL GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR ISK JMD JPY KES KGS KHR KMF KRW KYD KZT LAK LBP LKR LRD LSL MAD MDL MGA MKD MMK MNT MOP MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SEK SGD SHP SLE SOS SRD STD SZL THB TJS TOP TRY TTD TWD TZS UAH UGX UYU UZS VND VUV WST XAF XCD XOF XPF YER ZAR ZMW'.split(' ');
+  var ZERO_DECIMAL = 'BIF CLP DJF GNF JPY KMF KRW MGA PYG RWF UGX VND VUV XAF XOF XPF'.split(' ');
+  // Stripe's amount field holds at most eight digits in the smallest unit: 999.999,99 USD
+  var MAX_MINOR = 99999999n;
+  var INTERVALS = { day: 'täglich', week: 'wöchentlich', month: 'monatlich', year: 'jährlich' };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var backdrop = $('ck-backdrop');
+  var countEl = $('ck-count');
+  var curEl = $('ck-currency');
+  var intervalEl = $('ck-interval');
+  var sumEl = $('ck-sum');
+
+  var names;
+  try { names = new Intl.DisplayNames(['de'], { type: 'currency' }); } catch (e) { names = null; }
+  CURRENCIES.slice().sort(function (a, b) { return a === 'EUR' ? -1 : b === 'EUR' ? 1 : a.localeCompare(b); })
+    .forEach(function (code) {
+      var o = document.createElement('option');
+      o.value = code;
+      o.textContent = code + (names ? ' · ' + names.of(code) : '');
+      curEl.appendChild(o);
+    });
+  curEl.value = 'EUR';
+
+  var infinite = false;
+
+  function decimals() { return ZERO_DECIMAL.indexOf(curEl.value) >= 0 ? 0 : 2; }
+
+  // count string -> BigInt minor units, or null if unreadable
+  function parseMinor(str) {
+    var s = String(str).trim().replace(/[\s.'’]/g, '').replace(',', '.');
+    if (s === '') return 0n;
+    if (!/^\d*\.?\d*$/.test(s) || s === '.') return null;
+    var parts = s.split('.');
+    var d = decimals();
+    var frac = (parts[1] || '').slice(0, d);
+    while (frac.length < d) frac += '0';
+    return BigInt((parts[0] || '0') + frac);
+  }
+
+  function money(minor) {
+    var d = decimals();
+    var neg = minor < 0n;
+    var a = neg ? -minor : minor;
+    var p = 10n ** BigInt(d);
+    var str = (a / p).toString() + (d ? '.' + (a % p).toString().padStart(d, '0') : '');
+    try {
+      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: curEl.value, minimumFractionDigits: d, maximumFractionDigits: d }).format(str);
+    } catch (e) {
+      return str + ' ' + curEl.value;
+    }
+  }
+
+  function int(n) { return new Intl.NumberFormat('de-DE').format(n); }
+
+  function plural(n, one, many) { return n === 1n ? one : many; }
+
+  // "= N Zahlungen à Max + Rest"
+  function split(minor) {
+    if (minor === 0n) return 'gratis';
+    if (minor <= MAX_MINOR) return '= 1 Zahlung';
+    var full = minor / MAX_MINOR;
+    var rest = minor % MAX_MINOR;
+    var line = '= ' + int(full) + ' ' + plural(full, 'Zahlung', 'Zahlungen') + ' à ' + money(MAX_MINOR);
+    if (rest > 0n) line += ' + ' + money(rest);
+    return line;
+  }
+
+  function cookies(minor) {
+    var p = 10n ** BigInt(decimals());
+    var whole = minor % p === 0n;
+    var n = whole ? int(minor / p) : String(countEl.value).trim();
+    return n + ' ' + (minor === p ? 'Cookie' : 'Cookies');
+  }
+
+  function summary() {
+    if (infinite) {
+      return {
+        main: '∞ Cookies',
+        sub: '= ∞ Zahlungen à ' + money(MAX_MINOR) + ', ' + INTERVALS[intervalEl.value] + ', ohne Enddatum. Kündbar jederzeit, ein Klick.',
+        buy: '∞ kaufen'
+      };
+    }
+    var minor = parseMinor(countEl.value);
+    if (minor === null) return { main: 'Das ist keine Anzahl.', sub: '', buy: null };
+    return {
+      main: cookies(minor) + ' · ' + money(minor),
+      sub: split(minor),
+      buy: minor === 0n ? null : 'Kaufen'
+    };
+  }
+
+  function render() {
+    $('ck-abo').hidden = !infinite;
+    if (infinite) countEl.value = '∞';
+    var s = summary();
+    sumEl.textContent = '';
+    sumEl.append(s.main);
+    if (s.sub) {
+      var sm = document.createElement('small');
+      sm.textContent = s.sub;
+      sumEl.appendChild(sm);
+    }
+    $('ck-buy').textContent = s.buy || 'Kaufen';
+    $('ck-buy').disabled = !s.buy;
+    var minor = infinite ? null : parseMinor(countEl.value);
+    document.querySelectorAll('.ck-chip').forEach(function (c) {
+      var v = c.dataset.set;
+      var on = v === 'inf' ? infinite : (!infinite && minor !== null && minor === BigInt(v) * 10n ** BigInt(decimals()));
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function setCount(v) {
+    infinite = v === 'inf';
+    if (!infinite) countEl.value = v;
+    render();
+  }
+
+  function step(delta) {
+    if (infinite) return;
+    var p = 10n ** BigInt(decimals());
+    var minor = parseMinor(countEl.value) || 0n;
+    var next = (minor / p) + delta;
+    if (next < 0n) next = 0n;
+    setCount(next.toString());
+  }
+
+  function show(panel) {
+    ['ck-choose', 'ck-pay', 'ck-cancel'].forEach(function (id) { $(id).hidden = id !== panel; });
+  }
+
+  function open() {
+    show('ck-choose');
+    backdrop.hidden = false;
+    document.body.classList.add('ck-locked');
+    render();
+  }
+
+  function close() {
+    backdrop.hidden = true;
+    document.body.classList.remove('ck-locked');
+    $('ck-reopen').focus();
+  }
+
+  countEl.addEventListener('input', function () { infinite = /∞|inf/i.test(countEl.value); render(); });
+  countEl.addEventListener('focus', function () { if (infinite) countEl.select(); });
+  curEl.addEventListener('change', render);
+  intervalEl.addEventListener('change', render);
+  $('ck-minus').addEventListener('click', function () { step(-1n); });
+  $('ck-plus').addEventListener('click', function () { step(1n); });
+  document.querySelectorAll('.ck-chip').forEach(function (c) {
+    c.addEventListener('click', function () { setCount(c.dataset.set); });
+  });
+  $('ck-all').addEventListener('click', function () { setCount('inf'); });
+  $('ck-none').addEventListener('click', function () { setCount('0'); close(); });
+  $('ck-buy').addEventListener('click', function () {
+    var s = summary();
+    var box = $('ck-pay-sum');
+    box.textContent = '';
+    box.append(s.main);
+    var sm = document.createElement('small');
+    sm.textContent = s.sub;
+    box.appendChild(sm);
+    show('ck-pay');
+  });
+  $('ck-pay-back').addEventListener('click', function () { show('ck-choose'); });
+  $('ck-pay-done').addEventListener('click', close);
+  $('ck-cancel-open').addEventListener('click', function () { show('ck-cancel'); });
+  $('ck-cancel-back').addEventListener('click', function () { show('ck-choose'); });
+  $('ck-cancel-now').addEventListener('click', function () { setCount('0'); close(); });
+  backdrop.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  $('ck-reopen').addEventListener('click', open);
+
+  document.querySelectorAll('[data-draft]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $('ck-shop-note').textContent = 'Entwurf: ' + b.dataset.draft + ' ist noch nicht verbunden.';
+    });
+  });
+
+  open();
+})();
+</script>
+</body>
+</html>
