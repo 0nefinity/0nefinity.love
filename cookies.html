@@ -96,8 +96,6 @@
     .ck-sum small { display: block; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
     .ck-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.75rem; }
     .ck-lines span:nth-child(even) { text-align: right; white-space: nowrap; }
-    .ck-lines .ck-total { border-top: 1px solid var(--ui-border-soft); padding-top: 0.25rem; }
-    .ck-lines .ck-raised { color: color-mix(in srgb, var(--text-color) 65%, transparent); font-size: 0.875rem; }
     .ck-zero { margin: 0; font-size: 0.95rem; }
     .ck-zero[hidden] { display: none; }
     .ck-zero a { color: var(--text-color); }
@@ -216,13 +214,10 @@
 (function () {
   'use strict';
 
-  // Stripe presentment currencies (docs.stripe.com/currencies); zero-decimal ones carry no cents
-  var CURRENCIES = 'USD AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BIF BMD BND BOB BRL BSD BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CVE CZK DJF DKK DOP DZD EGP ETB EUR FJD FKP GBP GEL GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR ISK JMD JPY KES KGS KHR KMF KRW KYD KZT LAK LBP LKR LRD LSL MAD MDL MGA MKD MMK MNT MOP MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SEK SGD SHP SLE SOS SRD STD SZL THB TJS TOP TRY TTD TWD TZS UAH UGX UYU UZS VND VUV WST XAF XCD XOF XPF YER ZAR ZMW'.split(' ');
-  var ZERO_DECIMAL = 'BIF CLP DJF GNF JPY KMF KRW MGA PYG RWF UGX VND VUV XAF XOF XPF'.split(' ');
-  // Stripe's amount field holds at most eight digits in the smallest unit: 999.999,99 USD
+  // 1 cookie = 1 EUR or 1 USD
+  var CURRENCIES = ['EUR', 'USD'];
+  // Stripe's amount field holds at most eight digits in the smallest unit: 999.999,99
   var MAX_MINOR = 99999999n;
-  // units per 1 EUR; other currencies need live rates from Stripe, until then fee and minimum show as EUR equivalents
-  var RATES = { EUR: '1' };
 
   var $ = function (id) { return document.getElementById(id); };
   var backdrop = $('ck-backdrop');
@@ -232,18 +227,17 @@
 
   var names;
   try { names = new Intl.DisplayNames(['de'], { type: 'currency' }); } catch (e) { names = null; }
-  CURRENCIES.slice().sort(function (a, b) { return a === 'EUR' ? -1 : b === 'EUR' ? 1 : a.localeCompare(b); })
-    .forEach(function (code) {
+  CURRENCIES.forEach(function (code) {
       var o = document.createElement('option');
       o.value = code;
       o.textContent = code + (names ? ' · ' + names.of(code) : '');
       curEl.appendChild(o);
-    });
+  });
   curEl.value = 'EUR';
 
   var infinite = false;
 
-  function decimals() { return ZERO_DECIMAL.indexOf(curEl.value) >= 0 ? 0 : 2; }
+  function decimals() { return 2; }
 
   // count string -> BigInt minor units, or null if unreadable
   function parseMinor(str) {
@@ -326,46 +320,10 @@
   }
   var KEY = makeKey();
 
-  // Stripe standard EEA card fee (assumption, third-party source): 1.5 % + 0.25 EUR per payment.
-  // Minimum charge 0.50 EUR equivalent, checked after conversion into the EUR settlement currency.
-  var FEE_PERMILLE = 15n;
-  var FEE_FIXED_EUR_CENTS = 25n;
-  var MIN_EUR_CENTS = 50n;
-
-  // EUR cents -> minor units of the chosen currency, rounded up; null without a known rate
-  function fromEurCents(cents) {
-    var rate = RATES[curEl.value];
-    if (!rate) return null;
-    var parts = rate.split('.');
-    var frac = (parts[1] || '').padEnd(6, '0').slice(0, 6);
-    var scaled = BigInt(parts[0] + frac);
-    var num = cents * scaled * 10n ** BigInt(decimals());
-    var den = 100n * 1000000n;
-    return (num + den - 1n) / den;
-  }
-
-  // cookies + fee per payment; payments are capped at MAX_MINOR each, so iterate until the count settles
-  function charge(minor) {
-    var fixed = fromEurCents(FEE_FIXED_EUR_CENTS);
-    var pct = (minor * FEE_PERMILLE + 999n) / 1000n;
-    var n = 1n;
-    for (var i = 0; i < 10; i++) {
-      var total = minor + pct + (fixed || 0n) * n;
-      var next = (total + MAX_MINOR - 1n) / MAX_MINOR;
-      if (next === n) break;
-      n = next;
-    }
-    var fee = pct + (fixed || 0n) * n;
-    var sum = minor + fee;
-    var min = fromEurCents(MIN_EUR_CENTS);
-    var raised = fixed !== null && min !== null && sum < min;
-    return { fee: fee, sum: raised ? min : sum, raised: raised, known: fixed !== null };
-  }
-
   function summary() {
     if (infinite) {
       return {
-        lines: [['∞ Cookies', '∞'], ['Stripe-Gebühr', '1,5 % + ' + feeFixedText() + ' je Zahlung'], ['Summe', '∞', 'ck-total']],
+        lines: [['∞ Cookies', '∞']],
         sub: '= ∞ Zahlungen à ' + money(MAX_MINOR),
         buy: '∞ kaufen'
       };
@@ -373,23 +331,7 @@
     var minor = parseMinor(countEl.value);
     if (minor === null) return { text: 'Das ist keine Anzahl.', buy: null };
     if (minor === 0n) return { lines: [['0 Cookies', money(0n)]], sub: '', buy: null, zero: true };
-    var c = charge(minor);
-    var lines = [[cookies(minor), money(minor)]];
-    if (c.known) {
-      lines.push(['Stripe-Gebühr', money(c.fee)]);
-      if (c.raised) lines.push(['angehoben auf Stripe-Mindestbetrag', '', 'ck-raised']);
-      lines.push(['Summe', money(c.sum), 'ck-total']);
-    } else {
-      lines.push(['Stripe-Gebühr', money(c.fee) + ' + ' + feeFixedText()]);
-      lines.push(['Summe', money(c.sum) + ' + ' + feeFixedText(), 'ck-total']);
-      lines.push(['Stripe-Mindestbetrag 0,50 € (Gegenwert)', '', 'ck-raised']);
-    }
-    return { lines: lines, sub: split(c.sum), buy: 'Kaufen', total: c.sum };
-  }
-
-  function feeFixedText() {
-    var f = fromEurCents(FEE_FIXED_EUR_CENTS);
-    return f === null ? '0,25 € (Gegenwert)' : money(f);
+    return { lines: [[cookies(minor), money(minor)]], sub: split(minor), buy: 'Kaufen', total: minor };
   }
 
   function render() {
