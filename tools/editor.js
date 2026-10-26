@@ -41,6 +41,7 @@
   let source = null;
   let csrf = '';
   let iconSeq = 0;
+  const badgeNode = new WeakMap();
   let bar, status, tools, extra, btnEdit, btnBold, btnItalic, btnSave, btnCmt, btnNote, btnSrc, btnDiff, btnPub, menuEditor, menuCmt;
 
   // Live-Reload pausiert, solange bearbeitet wird, ein Fenster offen ist oder eine Anfrage laeuft:
@@ -153,6 +154,14 @@
   }
 
   function guardClick(e) {
+    const badge = cmtOn && e.target.closest && e.target.closest('.oe-cmt');
+    if (badge) {
+      e.preventDefault();
+      e.stopPropagation();
+      const n = badgeNode.get(badge);
+      if (n) openCmtEdit(n.data, n);
+      return;
+    }
     if (noteArmed) {
       const el = e.target.closest && candidates().find((c) => c === e.target || c.contains(e.target));
       if (el && !e.target.closest('[data-oe-ui]')) {
@@ -311,7 +320,7 @@
     let m;
     while ((m = re.exec(text))) {
       if (m[3] !== undefined) {
-        if (!m[3].startsWith('#')) out.push({ kind: 'html', line: lineAt(text, m.index), text: m[3].trim() });
+        if (!m[3].startsWith('#')) out.push({ kind: 'html', line: lineAt(text, m.index), text: m[3].trim(), raw: m[3] });
       } else if (m[2] !== undefined && !/\bsrc\s*=/i.test(m[1])) {
         jsComments(m[2], m.index + m[0].indexOf('>') + 1, out, text);
       }
@@ -342,6 +351,8 @@
       b.dataset.oeUi = '';
       b.contentEditable = 'false';
       b.textContent = n.data.trim();
+      b.title = 'antippen zum Ändern';
+      badgeNode.set(b, n);
       n.after(b);
     }
   }
@@ -368,6 +379,15 @@
       const t = document.createElement('span');
       t.textContent = c.text;
       row.append(meta, t);
+      if (c.kind === 'html') {
+        row.classList.add('oe-cmtedit');
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
+        row.title = 'ändern oder löschen';
+        const go = () => openCmtEdit(c.raw, null);
+        row.addEventListener('click', go);
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      }
       box.appendChild(row);
     }
     extra.prepend(box);
@@ -428,7 +448,7 @@
     box.addEventListener('keydown', (e) => e.stopPropagation());
     box.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const t = input.value.trim().replace(/--/g, '- -').replace(/-$/, '- ');
+      const t = cleanNote(input.value);
       if (!t) return;
       const orig = cleanHTML(el);
       say('speichere Notiz …');
@@ -444,6 +464,66 @@
         say(err.message, 'error');
       }
     });
+    extra.appendChild(box);
+    input.focus();
+  }
+
+  function cleanNote(v) { return v.trim().replace(/--/g, '- -').replace(/-$/, '- '); }
+
+  // Bestehenden HTML-Kommentar aendern oder loeschen. Ersetzt wird genau dieser Kommentar im Quelltext;
+  // kommt er wortgleich mehrfach vor, meldet der Server text_ambiguous.
+  function openCmtEdit(raw, node) {
+    if (dirty().length) { say('erst speichern', 'error'); return; }
+    noteArmed = false;
+    document.documentElement.classList.remove('oe-noting');
+    closeNote();
+    setCollapsed(false);
+    noteOpen = true;
+    syncPause();
+    syncButtons();
+    const box = document.createElement('form');
+    box.className = 'oe-note';
+    const label = document.createElement('div');
+    label.className = 'oe-cmthead';
+    label.textContent = 'Kommentar ändern';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = raw.trim();
+    input.setAttribute('aria-label', 'Kommentar');
+    const ok = button('ändern', () => {});
+    ok.type = 'submit';
+    ok.classList.add('oe-primary');
+    const del = button('löschen', () => write(''));
+    const cancel = button('abbrechen', () => { closeNote(); say(''); });
+    const row = document.createElement('div');
+    row.className = 'oe-row';
+    row.append(input, ok, del, cancel);
+    box.append(label, row);
+    box.addEventListener('keydown', (e) => e.stopPropagation());
+    box.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const t = cleanNote(input.value);
+      if (t) write(t);
+    });
+    async function write(t) {
+      say(t ? 'speichere Kommentar …' : 'lösche Kommentar …');
+      try {
+        const r = await api('POST', 'save', { path: pagePath, changes: [{ orig: '<!--' + raw + '-->', neu: t ? '<!-- ' + t + ' -->' : '' }] });
+        const n = node || bodyCommentNodes().find((c) => c.data === raw);
+        if (n) {
+          const host = n.parentElement && n.parentElement.closest('[data-oe]');
+          if (t) n.data = ' ' + t + ' ';
+          else n.remove();
+          if (host && originals.has(host)) originals.set(host, cleanHTML(host));
+        }
+        setLive(r.live_differs);
+        closeNote();
+        await refreshComments();
+        say(t ? 'Kommentar geändert auf dev' : 'Kommentar gelöscht auf dev', 'ok');
+      } catch (err) {
+        say(err.message, 'error');
+      }
+    }
     extra.appendChild(box);
     input.focus();
   }
@@ -677,7 +757,9 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
 .oe-note input{flex:1 1 140px;min-width:0;min-height:44px;font-size:16px;padding:0 8px;border:0;border-radius:4px;box-sizing:border-box;
   color:var(--text-color,#fff);background:color-mix(in srgb,var(--text-color,#fff) 10%,transparent)}
 .oe-cmt{display:inline;margin:0 3px;padding:0 4px;border:1px dashed currentColor;border-radius:3px;
-  font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;opacity:.8;cursor:default}
+  font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;opacity:.8;cursor:pointer}
+.oe-cmtrow.oe-cmtedit{cursor:pointer;min-height:44px;align-items:center;border-radius:3px}
+.oe-cmtrow.oe-cmtedit:hover,.oe-cmtrow.oe-cmtedit:focus-visible{outline:1px solid var(--text-color,#fff)}
 .oe-editing [data-oe]{outline:1px dashed color-mix(in srgb,var(--text-color,#fff) 40%,transparent);outline-offset:2px;cursor:text}
 .oe-editing [data-oe]:focus{outline:1px solid var(--text-color,#fff)}
 .oe-noting body *{cursor:crosshair}
