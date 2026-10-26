@@ -13,7 +13,8 @@
  *     intPart, decimals // optional: Anfangskette (Ganzzahl, Nachkommastellen), schon beim ersten Layout da (sonst '0.')
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
  *     dir               // optional: 'r' (Standard) oder 'l': gespiegelt, die Kette laeuft nach links, Ziffern bleiben aufrecht
- *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum, z. B. als Kreis)
+ *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum);
+ *                       // 'circle' = das centrum als kleiner Kreis (Glyphe im Atlas, gestaucht zaehlt seine Tinte wie jede)
  *     origin            // optional: Lage der Ganzzahl beim Start (CSS-px ab Anfang der Achse; Standard: Mitte)
  *     unrolled          // optional: true = ausgerollt starten (R am Rand), bis zum ersten Ziehen/Rad
  *     fontPx            // optional: Schriftgroesse in CSS-px (Zahl oder Funktion); Standard 6 % der Fensterbreite, 28..56
@@ -82,6 +83,7 @@
     const colorEl = opts.colorElement || canvas;
     if (opts.dir !== undefined && opts.dir !== 'l' && opts.dir !== 'r') throw new TypeError("UnfoldingView: dir muss 'l' oder 'r' sein, war " + opts.dir);
     const mirror = opts.dir === 'l';
+    if (![undefined, true, false, 'circle'].includes(opts.dot)) throw new TypeError("UnfoldingView: dot muss true, false oder 'circle' sein, war " + opts.dot);
     function fontOf() {
       const v = +(typeof opts.fontPx === 'function' ? opts.fontPx() : opts.fontPx);
       if (!(v > 0) || !Number.isFinite(v)) throw new TypeError('UnfoldingView: fontPx muss eine positive Zahl sein, war ' + v);
@@ -257,7 +259,11 @@
         g.font = (S * dpr) + 'px ' + fam;
         g.textAlign = 'center'; g.textBaseline = 'middle';
         if (mirror) g.setTransform(-1, 0, 0, 1, wd, 0);
-        if (ch !== '.' || opts.dot !== false) g.fillText(ch, wd / 2, hd / 2);
+        if (ch === '.' && opts.dot === 'circle') {
+          g.strokeStyle = color;
+          g.lineWidth = Math.max(1.5 * dpr, 0.08 * S * dpr);
+          g.beginPath(); g.arc(wd / 2, hd / 2, 0.18 * S * dpr, 0, 2 * Math.PI); g.stroke();
+        } else if (ch !== '.' || opts.dot !== false) g.fillText(ch, wd / 2, hd / 2);
         const data = g.getImageData(0, 0, wd, hd).data;
         // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (ruhiger Strich fuer fehlende Stellen).
         const rowMax = rowMaxAlpha(data, wd, hd);
@@ -905,5 +911,5 @@
     };
   }
 
-  window.UnfoldingView = { create, DigitError, DEFAULT_FACTOR };
+  window.UnfoldingView = { create, DigitError, DEFAULT_FACTOR, MARGIN };
 })();

@@ -27,6 +27,9 @@
     /* Hinweis nur bei Geraetegrenze: klein, gedaempft, ohne Interaktion. */
     .limit-hint { position: absolute; top: 0.75rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; font-size: 0.7rem; color: var(--text-color); opacity: 0.45; pointer-events: none; }
     #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+    /* Glieder (Kette, Stern): je Glied eine Canvas, Lage setzt das Skript */
+    .glied { position: absolute; display: block; touch-action: none; }
+    .ctrl-row[data-key="form"] .ctrl-button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--text-color); }
     /* Stellenanzeige: feste Stelle unter der Zeile, nur der Text wechselt */
     .stellen { position: absolute; left: 0; right: 0; top: 68%; text-align: center; font-size: 1.25rem; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--text-color); pointer-events: none; white-space: nowrap; }
   </style>
@@ -120,7 +123,7 @@
       rate: () => -driftValue,
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
       onNeedDigits: (total) => requestDigits(total),
-      onFront: (atFront) => stage.classList.toggle('warte', !piError && !limitState && !file && atFront),
+      onFront: (atFront) => { if (!multi) stage.classList.toggle('warte', !piError && !limitState && !file && atFront); },
       onPointerInfo: (info) => { pointerInfo = info; showPlace(); }
     });
 
@@ -138,6 +141,15 @@
     }
     function placeText(info) {
       if (!info) return '\u00a0';
+      if (info.c) {
+        // Glied: centrum = 0., erste Nachkommastelle = 1.; "change notation" zaehlt ab der Ganzzahl der Konstante
+        const gname = nameOf(info.c), off = notation === 'int' ? (Number(constOf(info.c).intPart) || 0) : 0;
+        const g = (k) => fmtDE(k + off, 0) + '.';
+        if (info.kind === 'digit') return info.index === 0 ? 'centrum of ' + gname + ' (a little circle)' : g(info.index) + ' digit of ' + gname;
+        if (info.kind === 'left') return g(0) + '-' + g(info.hi) + ' digits of ' + gname;
+        if (info.kind === 'right') return g(info.lo) + '-every digit of ' + gname;
+        return g(0) + '-every digit of ' + gname;
+      }
       const name = cid === 'pi' ? 'pi' : symbolOf(cid);
       const n = (i) => fmtDE(placeNumber(i), 0) + '.';
       if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
@@ -166,6 +178,7 @@
       panel.set('drift', 0);
       view.setLocked(true);
       view.invalidate();
+      if (multi) for (const it of multi.items) { it.view.setLocked(true); it.view.invalidate(); }
     }
     // Nicht sperrender Hinweis (Rueckfall auf BigInt ohne WebAssembly): gleicher Rahmenweg wie fail(), der Drift laeuft weiter.
     function notice(message) {
@@ -246,6 +259,7 @@
     function setConstant(id) {
       if (id === cid) return;
       cid = id;
+      glieder = [{ c: id, dir: 'r' }];
       const u = new URL(location.href);
       u.searchParams.set('c', id);
       history.replaceState(null, '', u);
@@ -254,6 +268,234 @@
       startWorker();
       view.rewind();
     }
+
+    // ─── Glieder: Kette und Stern ───
+    // Ein Glied ist der bisherige Modus (#pi). Ab zwei Gliedern bekommt jedes Glied eine eigene Canvas und Ansicht: nur
+    // Nachkommastellen ab einem centrum (Kreis), ausgerollt, Schrift wie #pi. Kette: die Breite in gleiche Plaetze geteilt,
+    // r beginnt am linken Rand seines Platzes, l (gespiegelt) am rechten; l gefolgt von r teilt sich ein centrum. Stern: alle
+    // Strahlen aus der Buehnenmitte, Winkel 360/n; ein Strahl ueber 90..270 Grad laeuft gespiegelt (Ziffern nie kopfueber).
+    // Gleiche Konstanten teilen einen Rechner. Keine Pi-Datei: die Geraetegrenze gilt wie bei e.
+    let glieder = [{ c: cid, dir: 'r' }], form = 'kette', multi = null, pointerItem = null;
+    let factorValue = view.state().factor;
+    const MARGIN = UnfoldingView.MARGIN;
+    const nameOf = (id) => (id === 'pi' ? 'pi' : symbolOf(id));
+    const fontSize = () => Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
+    const cellCtx = document.createElement('canvas').getContext('2d');
+    // Zellbreite wie in tools/unfolding-view.js (measure): das centrum jedes Glieds liegt bei MARGIN + w/2 auf seiner Achse.
+    function cellW() {
+      const dpr = window.devicePixelRatio || 1;
+      cellCtx.font = (fontSize() * dpr) + 'px "Courier New", Courier, monospace';
+      return Math.max(1, Math.round(cellCtx.measureText('0').width)) / dpr;
+    }
+    function parseGlieder() {
+      const k = params.get('kette'), s = params.get('stern');
+      if (k === null && s === null) return null;
+      const star = k === null, out = [], bad = [];
+      for (const part of (star ? s : k).split('.').filter(Boolean)) {
+        const m = star ? /^([a-z0-9]+)$/.exec(part) : /^([a-z0-9]+)-([lr])$/.exec(part);
+        if (m && constOf(m[1])) out.push({ c: m[1], dir: star ? 'r' : m[2] });
+        else bad.push(part);
+      }
+      return { form: star ? 'stern' : 'kette', list: out, bad };
+    }
+    function saveUrl() {
+      const u = new URL(location.href);
+      for (const k of ['c', 'kette', 'stern']) u.searchParams.delete(k);
+      if (glieder.length === 1) u.searchParams.set('c', glieder[0].c);
+      else if (form === 'kette') u.searchParams.set('kette', glieder.map((g) => g.c + '-' + g.dir).join('.'));
+      else u.searchParams.set('stern', glieder.map((g) => g.c).join('.'));
+      history.replaceState(null, '', u);
+    }
+    function updateWaiting() {
+      if (!multi) return;
+      stage.classList.toggle('warte', !piError && multi.items.some((it) => it.front && !multi.workers.get(it.c).limit));
+    }
+    function showLimitHint() {
+      if (document.getElementById('limit-hint')) return;
+      const hint = document.createElement('div');
+      hint.id = 'limit-hint';
+      hint.className = 'limit-hint';
+      hint.textContent = 'use better hardware to get access to more digits';
+      stage.appendChild(hint);
+    }
+    function openWorker(m, c) {
+      const wk = { handle: null, req: 0, limit: null };
+      m.workers.set(c, wk);
+      const live = () => multi === m;
+      const onMDigits = (u8, offset) => {
+        if (!live()) return;
+        for (const it of m.items) {
+          if (it.c !== c) continue;
+          try { it.view.appendDigits(u8, offset); }
+          catch (e) {
+            if (e instanceof RangeError) {
+              console.warn('[unfoldingPi] engine limit (' + c + '): string length at ' + (it.view.state().chainLength - 1) + ' digits');
+              wk.limit = { kind: 'engine', reason: 'string length' };
+              if (wk.handle) wk.handle.close();
+              updateWaiting();
+              return;
+            }
+            fail(e instanceof UnfoldingView.DigitError ? e.message : 'Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+            return;
+          }
+        }
+      };
+      const onMLimit = (lim) => {
+        if (!live()) return;
+        wk.limit = lim;
+        if (lim.kind === 'device') showLimitHint();
+        if (wk.handle) wk.handle.close();
+        updateWaiting();
+      };
+      try {
+        wk.handle = Irrational.open(c, { onDigits: onMDigits, onLimit: onMLimit, onNotice: (msg) => { if (live()) notice(msg); }, onError: (e) => { if (live()) fail(e.message); } }, window.unfoldingPiTest);
+      } catch (e) { fail('Rechner nicht startbar: ' + e.message); }
+      return wk;
+    }
+    function wantDigits(m, c, total) {
+      const wk = m.workers.get(c) || openWorker(m, c);
+      if (!wk.handle || wk.limit || piError || total <= wk.req) return;
+      wk.req = total;
+      wk.handle.want(total);
+    }
+    function teardownMulti() {
+      if (!multi) return;
+      const m = multi;
+      multi = null;
+      for (const wk of m.workers.values()) if (wk.handle) wk.handle.close();
+      for (const it of m.items) { it.view.destroy(); it.canvas.remove(); }
+      if (pointerItem) { pointerItem = null; pointerInfo = null; showPlace(); }
+    }
+    // Lage jedes Glieds; setzt it.dir/it.rot und die Canvas-Geometrie (CSS-px der Buehne).
+    function layoutMulti() {
+      if (!multi) return;
+      const SW = stage.clientWidth, SH = stage.clientHeight, w = cellW(), p0 = MARGIN + w / 2, n = multi.items.length;
+      if (form === 'kette') {
+        const slotW = (SW - 2 * p0) / n;
+        multi.items.forEach((it, i) => {
+          const b = p0 + i * slotW;
+          it.rot = 0;
+          Object.assign(it.canvas.style, {
+            left: (it.dir === 'r' ? b - p0 : b + p0) + 'px', top: '0px', width: slotW + 'px', height: SH + 'px',
+            transform: '', transformOrigin: ''
+          });
+        });
+        return;
+      }
+      const cx = SW / 2, cy = SH / 2, BH = Math.round(3 * fontSize());
+      multi.items.forEach((it, k) => {
+        const th = 360 * k / n, rad = th * Math.PI / 180, co = Math.cos(rad), si = Math.sin(rad);
+        const tx = co > 1e-9 ? (SW - cx) / co : co < -1e-9 ? cx / -co : Infinity;
+        const ty = si > 1e-9 ? (SH - cy) / si : si < -1e-9 ? cy / -si : Infinity;
+        const CW = Math.max(2 * p0, Math.min(tx, ty) - 4 + p0);
+        const flip = th > 90 && th < 270;
+        it.angle = th;
+        it.rot = flip ? th - 180 : th;
+        it.dir = flip ? 'l' : 'r';
+        it.cl = flip ? CW - p0 : p0;   // centrum auf der Achse der Canvas (ungespiegelt)
+        Object.assign(it.canvas.style, {
+          left: (cx - it.cl) + 'px', top: (cy - BH / 2) + 'px', width: CW + 'px', height: BH + 'px',
+          transformOrigin: it.cl + 'px ' + (BH / 2) + 'px', transform: 'rotate(' + it.rot + 'deg)'
+        });
+      });
+    }
+    // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab Buehnenmitte) auf die Achsrichtung
+    function starLocal(it, e) {
+      const r = stage.getBoundingClientRect(), a = it.rot * Math.PI / 180;
+      return it.cl + (e.clientX - r.left - r.width / 2) * Math.cos(a) + (e.clientY - r.top - r.height / 2) * Math.sin(a);
+    }
+    function buildMulti() {
+      teardownMulti();
+      if (handle) { handle.close(); handle = null; }
+      if (file) { file.close(); file = null; }
+      view.setRemote(null);
+      view.setLocked(true);
+      canvas.style.visibility = 'hidden';
+      limitState = null;
+      piError = null;
+      piNotice = null;
+      driftEl.disabled = false;
+      stage.classList.remove('warte', 'hinweis', 'fehler');
+      const old = document.getElementById('limit-hint');
+      if (old) old.remove();
+      const m = { items: [], workers: new Map() };
+      multi = m;
+      for (const g of glieder) {
+        const cv = document.createElement('canvas');
+        cv.className = 'glied';
+        stage.insertBefore(cv, placeEl);
+        m.items.push({ c: g.c, dir: g.dir, canvas: cv, view: null, front: false, rot: 0, angle: 0, cl: 0 });
+      }
+      layoutMulti();
+      for (const it of m.items) {
+        it.view = UnfoldingView.create(it.canvas, {
+          intPart: '', decimals: it.c === 'pi' ? RESERVE.slice(1) : '',
+          dot: 'circle', origin: MARGIN, unrolled: true, fontPx: fontSize, dir: it.dir, factor: factorValue,
+          colorElement: stage,
+          localX: form === 'stern' ? (e) => starLocal(it, e) : undefined,
+          rate: () => -driftValue,
+          onNeedDigits: (total) => { if (multi === m) wantDigits(m, it.c, total); },
+          onFront: (atFront) => { it.front = atFront; updateWaiting(); },
+          onPointerInfo: (info) => {
+            if (info) { pointerItem = it; pointerInfo = Object.assign({ c: it.c }, info); }
+            else if (pointerItem === it) { pointerItem = null; pointerInfo = null; }
+            else return;
+            showPlace();
+          }
+        });
+      }
+      for (const c of new Set(m.items.map((it) => it.c))) wantDigits(m, c, 2000);
+    }
+    function toSingle() {
+      teardownMulti();
+      canvas.style.visibility = '';
+      cid = glieder[0].c;
+      document.title = cid === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(cid);
+      panel.set('const', cid);
+      startWorker();
+      view.rewind();
+      view.resize();
+    }
+    function structure() {
+      saveUrl();
+      buildGliederPanel();
+      if (glieder.length === 1) toSingle();
+      else buildMulti();
+    }
+    function addGlied() {
+      if (glieder.length === 1) glieder = [{ c: glieder[0].c, dir: 'l' }, { c: glieder[0].c, dir: 'r' }];
+      else glieder.push({ c: 'pi', dir: 'r' });
+      structure();
+    }
+    function buildGliederPanel() {
+      panel.removeSection('glieder');
+      panel.beginSection('glieder', { title: 'Glieder' });
+      const many = glieder.length > 1;
+      if (many) {
+        panel.addButtonGroup('form', {
+          buttons: [
+            { key: 'kette', label: 'Kette', title: 'hintereinander: ein Verdichtungspunkt je Glied', onClick: () => { if (form !== 'kette') { form = 'kette'; structure(); } } },
+            { key: 'stern', label: 'Stern', title: 'alle Strahlen laufen auf ein centrum zu', onClick: () => { if (form !== 'stern') { form = 'stern'; structure(); } } }
+          ]
+        });
+        for (const b of panel.bodyEl.querySelectorAll('.ctrl-row[data-key="form"] .ctrl-button')) b.setAttribute('aria-pressed', String(b.dataset.buttonKey === form));
+        glieder.forEach((g, i) => {
+          panel.addSelect('glied' + i, {
+            label: 'Glied ' + (i + 1), value: g.c,
+            options: CONSTS.map((k) => ({ value: k.id, label: k.symbol })),
+            onChange: (v) => { if (v !== g.c) { g.c = v; structure(); } }
+          });
+          const buttons = [];
+          if (form === 'kette') buttons.push({ key: 'dir', label: g.dir === 'r' ? '→' : '←', title: 'Richtung umkehren', onClick: () => { g.dir = g.dir === 'r' ? 'l' : 'r'; structure(); } });
+          buttons.push({ key: 'del', label: 'entfernen', title: 'Glied entfernen', onClick: () => { glieder.splice(i, 1); structure(); } });
+          panel.addButtonGroup('glied' + i + '-actions', { buttons });
+        });
+      }
+      panel.addButton('add', { label: '+ Glied', onClick: addGlied });
+      panel.endSection();
+      panel.setRowVisibility('const', !many);
+    }
+    window.addEventListener('resize', () => { if (multi) layoutMulti(); });
 
     // ─── Boot ───
     panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
@@ -276,7 +518,11 @@
     };
     panel.addSlider('f', {
       label: 'Verdichtungsfaktor', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
-      onChange: (v) => view.setFactor(+v || 0)
+      onChange: (v) => {
+        factorValue = +v || 0;
+        view.setFactor(factorValue);
+        if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
+      }
     });
     panel.addSelect('const', {
       label: 'Konstante', value: cid,
@@ -284,17 +530,26 @@
       onChange: setConstant
     });
     panel.addButton('notation', { label: 'change notation', onClick: () => setNotation(notation === 'zero' ? 'int' : 'zero') });
-    startChain();
-    if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
-    else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
-    if (!piError) startWorker();
+    // Zustand aus der URL: ?kette=pi-l.pi-r oder ?stern=pi.pi.e (sonst ?c=<id>, ein Glied)
+    const parsed = parseGlieder();
+    if (parsed) { form = parsed.form; if (parsed.list.length) glieder = parsed.list; cid = glieder[0].c; }
+    buildGliederPanel();
+    if (glieder.length > 1) buildMulti();
+    else {
+      panel.set('const', cid);
+      startChain();
+      if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
+      else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
+      if (!piError) startWorker();
+    }
+    if (parsed && parsed.bad.length) fail('Unbekannte Glieder: ' + parsed.bad.join(', '));
 
     // Nur lesende Zustandsabfrage für Tests.
     window.unfoldingPi = {
       state() {
         return Object.assign(view.state(), {
           constant: cid, limit: limitState, error: piError, notice: piNotice,
-          waiting: stage.classList.contains('warte'), requestedTotal
+          waiting: stage.classList.contains('warte'), requestedTotal, form: multi ? form : null, count: glieder.length
         });
       },
       digits() { return view.digits(); },
@@ -308,6 +563,10 @@
       glyphInk() { return view.glyphInk(); },
       hover(x) { view.setHover(x); },
       place() { return { text: placeEl.textContent, notation, info: pointerInfo }; },
+      // Glieder im Mehrgliedmodus (sonst null): Konstante, Richtung der Ansicht, Winkel (Stern), Zustand, Kette, Canvas
+      glieder() {
+        return multi ? multi.items.map((it) => ({ c: it.c, dir: it.dir, angle: it.angle, rot: it.rot, state: it.view.state(), digits: it.view.digits(), canvas: it.canvas })) : null;
+      },
       controls: panel
     };
   })();
