@@ -1,6 +1,6 @@
 // Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: oben im Menue
-// die Admin-Zeile (bearbeiten, quelltext, veroeffentlichen, Analytics, Ausloggen), oben links neben
-// dem Menue drei kleine Symbole: Kommentare ein/aus, Aenderungen (Diff), jetzt speichern.
+// die Admin-Zeile (veroeffentlichen, Analytics, Ausloggen), oben links neben dem Menue kleine Symbole:
+// bearbeiten ein/aus, Quelltext, Kommentare ein/aus, Aenderungen (Diff), jetzt speichern.
 // Texte sind eingeloggt direkt editierbar und werden 1,5 s nach dem letzten Tippen auf claude-dev
 // committet (ein Commit pro Schreibpause); Kommentare sind HTML-Kommentare in der Seite.
 // Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar unter den Symbolen.
@@ -31,6 +31,7 @@
 
   let editing = false;
   let originals = new Map();
+  let touched = new Set();
   let pagePath = location.pathname;
   let busy = 0;
   let overlay = null;
@@ -47,7 +48,7 @@
   let saving = null;
   let saveAgain = false;
   let leaving = false;
-  let bar, status, extra, btnSave, btnCmt, btnNote, btnDiff, btnPub, menuEdit, menuSrc;
+  let bar, status, extra, btnSave, btnCmt, btnNote, btnDiff, btnPub, btnEdit, btnSrc;
 
   // Live-Reload pausiert, solange bearbeitet wird, ein Fenster offen ist oder eine Anfrage laeuft:
   // ein Reload mitten im Speichern bricht die Antwort ab.
@@ -56,6 +57,8 @@
   // Admin/Login: 0, oben eine kleine 1, die den Kreis schneidet.
   // Ausloggen: Power-Zeichen aus 0 und 1, die 1 schneidet sich ihren Spalt aus der 0.
   const LINES = {
+    pencil: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+    code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
     bubble: 'M4 5h16v11h-9l-5 4v-4h-2z',
     diff: 'M12 4v8M8 8h8M8 18h8',
     save: 'M12 4v10M7.5 9.5l4.5 4.5 4.5-4.5M5 19h14',
@@ -70,12 +73,14 @@
       return `<svg class="oe-icon" viewBox="${vb}" aria-hidden="true" focusable="false"><path d="${ZERO}"/>` +
         `<path d="${ONE}" transform="translate(155.5 -335) scale(.5)"/></svg>`;
     }
+    // 0 und 1 in Originalgroesse wie die Menue-Lupe, also gleiche Strichstaerke; die 1 steht mittig ueber
+    // dem Kreis und schneidet sich mit 60 Einheiten Abstand ihre Luecke. viewBox quadratisch um die 0-Mitte.
     const id = 'oe-pwr-' + (++iconSeq);
-    const one = `<path d="${ONE}" transform="translate(109.5 -170) scale(.72)"/>`;
-    return `<svg class="oe-icon" viewBox="${vb}" aria-hidden="true" focusable="false">` +
-      `<mask id="${id}" maskUnits="userSpaceOnUse" x="-20" y="-600" width="560" height="640">` +
-      `<rect x="-20" y="-600" width="560" height="640" fill="#fff"/>` +
-      `<g fill="#000" stroke="#000" stroke-width="90">${one}</g></mask>` +
+    const one = `<path d="${ONE}" transform="translate(51 -150)"/>`;
+    const box = 'x="-54.5" y="-594" width="629" height="629"';
+    return `<svg class="oe-icon oe-pwr" viewBox="-54.5 -594 629 629" aria-hidden="true" focusable="false">` +
+      `<mask id="${id}" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="#fff"/>` +
+      `<g fill="#000" stroke="#000" stroke-width="120" stroke-linejoin="round">${one}</g></mask>` +
       `<path d="${ZERO}" mask="url(#${id})"/>${one}</svg>`;
   }
 
@@ -186,8 +191,17 @@
     if (editing && !e.ctrlKey && !e.metaKey && e.target.closest && e.target.closest('[data-oe]')) e.preventDefault();
   }
 
+  function touch(el) {
+    if (touched.has(el)) return;
+    originals.set(el, cleanHTML(el));
+    touched.add(el);
+  }
+
+  function onBeforeInput(e) { touch(e.currentTarget); }
+
   function plainPaste(e) {
     e.preventDefault();
+    touch(e.currentTarget);
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     document.execCommand('insertText', false, text);
   }
@@ -196,6 +210,7 @@
   function keepKeys(e) {
     if (e.type === 'keydown' && e.key === 'Enter' && !e.isComposing && e.currentTarget.dataset.oe !== undefined) {
       e.preventDefault();
+      touch(e.currentTarget);
       document.execCommand('insertLineBreak');
     }
     e.stopPropagation();
@@ -210,11 +225,13 @@
       editing = true;
       document.documentElement.classList.add('oe-editing');
       originals = new Map();
+      touched = new Set();
       for (const el of candidates()) {
         originals.set(el, cleanHTML(el));
         el.dataset.oe = '';
         el.setAttribute('contenteditable', 'true');
         el.addEventListener('paste', plainPaste);
+        el.addEventListener('beforeinput', onBeforeInput);
         el.addEventListener('input', markDirty);
         for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, keepKeys);
       }
@@ -228,10 +245,12 @@
       el.removeAttribute('contenteditable');
       delete el.dataset.oe;
       el.removeEventListener('paste', plainPaste);
+      el.removeEventListener('beforeinput', onBeforeInput);
       el.removeEventListener('input', markDirty);
       for (const t of ['keydown', 'keyup', 'keypress']) el.removeEventListener(t, keepKeys);
     }
     originals = new Map();
+    touched = new Set();
     editing = false;
     document.documentElement.classList.remove('oe-editing');
     syncPause();
@@ -239,7 +258,7 @@
   }
 
   function dirty() {
-    return [...originals].filter(([el, orig]) => cleanHTML(el) !== orig);
+    return [...originals].filter(([el, orig]) => touched.has(el) && cleanHTML(el) !== orig);
   }
 
   function markDirty() {
@@ -815,10 +834,13 @@ body.menu-open #oe-bar{display:none}
 .oe-d-hunk{margin-top:8px;padding:2px 4px;opacity:.5;border-top:1px dashed currentColor;font-family:system-ui,sans-serif}
 .oe-commit summary{min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer;
   border-bottom:1px solid color-mix(in srgb,var(--text-color,#fff) 15%,transparent)}
-#oe-admin{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 12px;
+#oe-admin{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;padding:4px 12px;
   border-bottom:1px solid color-mix(in srgb,var(--text-color,#fff) 25%,transparent);
   font:14px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-#oe-admin .oe-who{display:flex;align-items:center;gap:6px;margin-right:auto;padding-right:8px}
+#oe-admin .oe-btn{border-color:transparent!important;opacity:.7}
+#oe-admin .oe-btn:hover:not(:disabled),#oe-admin .oe-btn:focus-visible{opacity:1}
+#oe-admin .oe-btn:disabled{opacity:.3!important}
+#oe-admin .oe-pwr{width:20px;height:20px}
 #oe-admin .oe-login{border-color:transparent!important;opacity:.6}
 #oe-admin .oe-login:hover{opacity:1}
 .oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
@@ -849,7 +871,7 @@ body.menu-open #oe-bar{display:none}
   function syncButtons() {
     btnCmt.setAttribute('aria-pressed', String(cmtOn));
     btnNote.setAttribute('aria-pressed', String(noteArmed));
-    if (menuEdit) menuEdit.setAttribute('aria-pressed', String(editing));
+    btnEdit.setAttribute('aria-pressed', String(editing));
   }
 
   function mini(kind, label, fn) {
@@ -870,6 +892,8 @@ body.menu-open #oe-bar{display:none}
     status = document.createElement('span');
     status.className = 'oe-status';
     status.setAttribute('role', 'status');
+    btnEdit = mini('pencil', 'bearbeiten ein/aus', () => { stored('oe-edit', editing ? '0' : '1'); toggleEdit(); });
+    btnSrc = mini('code', 'Quelltext', openSource);
     btnCmt = mini('bubble', 'Kommentare ein/aus', toggleComments);
     btnDiff = mini('diff', 'Änderungen', () => openChanges(false));
     btnSave = mini('save', 'jetzt speichern', save);
@@ -878,7 +902,7 @@ body.menu-open #oe-bar{display:none}
     btnNote.classList.add('oe-small');
     const head = document.createElement('div');
     head.className = 'oe-head';
-    head.append(btnCmt, btnDiff, btnSave);
+    head.append(btnEdit, btnSrc, btnCmt, btnDiff, btnSave);
     extra = document.createElement('div');
     extra.className = 'oe-extra';
     bar.append(head, status, extra);
@@ -921,18 +945,12 @@ body.menu-open #oe-bar{display:none}
     } catch (e) { say(e.message, 'error'); }
   }
 
-  function buildAdminMenu(user) {
+  function buildAdminMenu() {
     const wrap = menuWrap();
     if (!wrap) return;
     const sec = document.createElement('div');
     sec.id = 'oe-admin';
     sec.dataset.oeUi = '';
-    const who = document.createElement('span');
-    who.className = 'oe-who';
-    who.innerHTML = icon('admin');
-    who.append(user || '0nefinity');
-    menuEdit = button('bearbeiten', () => { stored('oe-edit', editing ? '0' : '1'); toggleEdit(); });
-    menuSrc = button('quelltext', openSource);
     btnPub = button('veröffentlichen', () => openChanges(true));
     const analytics = document.createElement('a');
     analytics.className = 'oe-btn';
@@ -941,10 +959,11 @@ body.menu-open #oe-bar{display:none}
     analytics.rel = 'noopener';
     analytics.textContent = 'analytics';
     const out = button('', logout);
+    for (const b of [btnPub, analytics, out]) b.classList.add('oe-small');
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(who, menuEdit, menuSrc, btnPub, analytics, out);
+    sec.append(btnPub, analytics, out);
     wrap.prepend(sec);
   }
 
@@ -960,7 +979,7 @@ body.menu-open #oe-bar{display:none}
 
     css();
     buildBar();
-    buildAdminMenu(info.user && info.user.username);
+    buildAdminMenu();
     syncButtons();
     document.addEventListener('click', guardClick, true);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty().length) save(); });
@@ -968,10 +987,10 @@ body.menu-open #oe-bar{display:none}
 
     try {
       await loadSource();
-      if (!source.inline) menuEdit.disabled = true;
+      if (!source.inline) btnEdit.disabled = true;
       else if (stored('oe-edit') !== '0') toggleEdit();
     } catch (e) {
-      for (const b of [menuEdit, btnSave, menuSrc, btnPub, btnCmt, btnDiff]) b.disabled = true;
+      for (const b of [btnEdit, btnSave, btnSrc, btnPub, btnCmt, btnDiff]) b.disabled = true;
       say(e.message, 'error');
     }
   }
