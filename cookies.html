@@ -107,7 +107,8 @@
     .ck-bank dt { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
     .ck-bank dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
     .ck-key {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem; letter-spacing: 0.04em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; line-height: 1.5;
+      word-spacing: 0.3em;
     }
     .ck-label { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
 
@@ -306,20 +307,11 @@
     }
   }
 
-  // SEPA-safe reference: "018" + 16 Crockford base32 + 2 check digits (ISO 7064 mod 97-10)
-  var B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-  function mod97(str) {
-    var r = 0;
-    for (var i = 0; i < str.length; i++) r = (r * 32 + B32.indexOf(str[i])) % 97;
-    return r;
-  }
+  // transfer reference: 512 random bits as 128 uppercase hex, fits the 140-char SEPA field
   function makeKey() {
-    var bytes = new Uint8Array(16);
+    var bytes = new Uint8Array(64);
     crypto.getRandomValues(bytes);
-    var body = '018';
-    bytes.forEach(function (b) { body += B32[b & 31]; });
-    var check = 98 - (mod97(body) * 100) % 97;
-    return body + String(check).padStart(2, '0');
+    return Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('').toUpperCase();
   }
   var KEY = makeKey();
 
@@ -427,7 +419,7 @@
       ask.append('Bitte überweisen Sie ' + money(minor));
       $('ck-bank-amount').textContent = money(minor);
     }
-    $('ck-key').textContent = KEY.replace(/(.{3})(.{4})(.{4})(.{4})(.{4})(.{2})/, '$1 $2 $3 $4 $5 $6');
+    $('ck-key').textContent = KEY.match(/.{16}/g).join(' ');
     $('ck-copy-note').textContent = '';
     show('ck-bank');
   });
@@ -435,10 +427,10 @@
   $('ck-bank-done').addEventListener('click', close);
   $('ck-copy').addEventListener('click', function () {
     var note = $('ck-copy-note');
-    if (!navigator.clipboard) { note.textContent = 'Kopieren geht hier nicht, bitte von Hand abschreiben: ' + KEY; return; }
+    if (!navigator.clipboard) { note.textContent = 'Kopieren geht hier nicht, bitte den Schlüssel markieren und kopieren.'; return; }
     navigator.clipboard.writeText(KEY).then(
-      function () { note.textContent = 'Kopiert: ' + KEY; },
-      function () { note.textContent = 'Kopieren ging nicht, bitte von Hand abschreiben: ' + KEY; }
+      function () { note.textContent = 'Kopiert.'; },
+      function () { note.textContent = 'Kopieren ging nicht, bitte den Schlüssel markieren und kopieren.'; }
     );
   });
   $('ck-pay-back').addEventListener('click', function () { show('ck-choose'); });
