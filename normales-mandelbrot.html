@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+<meta charset="UTF-8">
+<title>normales Mandelbrot</title>
+<style>
+#feld { touch-action: none; cursor: grab; }
+#feld:active { cursor: grabbing; }
+#feld canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#kreis { pointer-events: none; }
+
+#formel {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--visible-viewport-bottom, 0px) + 1rem);
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem 1rem;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  white-space: nowrap;
+  text-shadow: none;
+}
+#formel * { white-space: nowrap; text-shadow: none; }
+
+.gleichung {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.15em;
+  font-family: var(--font-libertinus-math);
+  font-size: 1.75rem;
+  line-height: 1;
+  color: var(--text-color);
+}
+.gleichung .pfeil { margin: 0 0.2em; }
+.gleichung .op { margin: 0 0.25em; }
+
+#k {
+  width: 2.2em;
+  min-height: 44px;
+  padding: 0 0.15em;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color) 9%, transparent);
+  color: var(--text-color);
+  font: inherit;
+  text-align: center;
+  caret-color: var(--text-color);
+  transition: background 150ms;
+}
+#k:hover { background: color-mix(in srgb, var(--text-color) 14%, transparent); }
+#k:focus-visible { outline: 1px solid var(--ui-border-stronger); outline-offset: 1px; }
+#k[aria-invalid="true"] { background: color-mix(in srgb, #c96a6a 28%, transparent); }
+
+#normalisieren {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color) 9%, transparent);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 0.9375rem;
+  transition: background 150ms;
+}
+#normalisieren:hover {
+  background: color-mix(in srgb, var(--text-color) 16%, transparent);
+  color: var(--text-color);
+  scale: none;
+}
+#normalisieren:active { scale: none; }
+#normalisieren:focus-visible { outline: 1px solid var(--ui-border-stronger); outline-offset: 1px; }
+#normalisieren[aria-pressed="true"] {
+  background: var(--text-color);
+  color: var(--bg-color);
+}
+
+#satz {
+  flex-basis: 100%;
+  margin: 0.15rem 0 0.1rem;
+  font-family: var(--font-family);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-color) 62%, transparent);
+  white-space: normal;
+  text-align: center;
+}
+#formel #satz { white-space: normal; }
+#satz[hidden] { display: none; }
+
+#fehler {
+  position: fixed;
+  top: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  background: var(--ui-surface-strong);
+  color: #e0a4a4;
+  font-size: 0.875rem;
+}
+#fehler[hidden] { display: none; }
+
+@media (max-width: 420px) {
+  .gleichung { font-size: 1.5rem; }
+  #formel { padding: 0.4rem 0.5rem; gap: 0.25rem 0.6rem; }
+}
+</style>
+</head>
+<body>
+<div id="feld" class="_018-canvas">
+  <canvas id="bild" aria-label="Mandelbrot-Menge zur gewählten Formel, zoombar"></canvas>
+  <canvas id="kreis" aria-hidden="true"></canvas>
+</div>
+<div id="formel">
+  <p class="gleichung" aria-label="Formel">
+    <span>𝑧</span><span class="pfeil">←</span><input id="k" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Vorfaktor k" value="1"><span>·𝑧²</span><span class="op">+</span><span>𝑐</span>
+  </p>
+  <button id="normalisieren" type="button" aria-pressed="false">normalisieren</button>
+  <p id="satz" hidden>Nicht die Formel, die Benoit erdacht hat, aber die normale.</p>
+</div>
+<p id="fehler" role="alert" hidden></p>
+<script>
+"use strict";
+(() => {
+  const feld = document.getElementById("feld");
+  const bild = document.getElementById("bild");
+  const kreis = document.getElementById("kreis");
+  const ctx = bild.getContext("2d");
+  const klein = document.createElement("canvas");
+  const kctx = kreis.getContext("2d");
+  const eingabe = document.getElementById("k");
+  const knopf = document.getElementById("normalisieren");
+  const satz = document.getElementById("satz");
+  const fehler = document.getElementById("fehler");
+
+  const fail = (msg) => {
+    console.error(msg);
+    fehler.textContent = msg;
+    fehler.hidden = false;
+  };
+
+  const workers = Array.from({ length: Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)) }, () => {
+    const w = new Worker("/tools/workers/normales-mandelbrot-worker.js");
+    w.onerror = (e) => fail("Rechenfehler: " + e.message);
+    return w;
+  });
+
+  // view: center (cx, cy) in the c-plane, s = c units per canvas pixel
+  let k = 1, cx = 0, cy = 0, s = 1, W = 0, H = 0, dpr = 1, R0 = 2;
+  let gen = 0, timer = 0;
+
+  function parseK(text) {
+    const t = text.trim().replace(/,/g, ".").replace(/−/g, "-");
+    const m = t.match(/^(-?\d*\.?\d+)\s*\/\s*(-?\d*\.?\d+)$/);
+    const v = m ? Number(m[1]) / Number(m[2]) : (t === "" ? NaN : Number(t));
+    return Number.isFinite(v) ? v : null;
+  }
+
+  function fit() {
+    // the escape disk |c| <= 2/|k| fills the shorter side; k = 0 never escapes
+    R0 = k === 0 ? 2 : 2 / Math.abs(k);
+    cx = 0; cy = 0;
+    s = (2 * R0 * 1.12) / Math.min(W, H);
+  }
+
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = feld.getBoundingClientRect();
+    W = Math.max(1, Math.round(r.width * dpr));
+    H = Math.max(1, Math.round(r.height * dpr));
+    const old = Math.min(bild.width, bild.height);
+    bild.width = kreis.width = W;
+    bild.height = kreis.height = H;
+    if (old > 0) s *= old / Math.min(W, H); else fit();
+    render();
+  }
+
+  function drawCircle() {
+    kctx.clearRect(0, 0, W, H);
+    const px = (0 - cx) / s + W / 2, py = H / 2 - (0 - cy) / s, r = 1 / s;
+    if (!(r > 0.5 && r < 1e7)) return;
+    kctx.beginPath();
+    kctx.arc(px, py, r, 0, 2 * Math.PI);
+    kctx.lineWidth = dpr;
+    kctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    kctx.stroke();
+  }
+
+  function pass(step, myGen) {
+    const w = Math.ceil(W / step), h = Math.ceil(H / step);
+    const ss = s * step;
+    const x0 = cx - (W / 2) * s, y0 = cy + (H / 2) * s;
+    const maxit = Math.round(400 + 200 * Math.max(0, Math.log2(R0 / (s * Math.min(W, H) / 2))));
+    const img = new ImageData(w, h);
+    const BAND = 16;
+    const jobs = [];
+    for (let r = 0; r < h; r += BAND) jobs.push([r, Math.min(h, r + BAND)]);
+    // middle bands first, so the center appears first
+    jobs.sort((a, b) => Math.abs(a[0] - h / 2) - Math.abs(b[0] - h / 2));
+    let open = jobs.length;
+    return new Promise((resolve) => {
+      const next = (wk) => {
+        const j = jobs.shift();
+        if (j) wk.postMessage({ id: myGen, w, row0: j[0], row1: j[1], x0, y0, s: ss, k, maxit });
+      };
+      for (const wk of workers) {
+        wk.onmessage = (e) => {
+          const m = e.data;
+          if (myGen !== gen) return resolve(false);
+          if (m.id !== myGen) return;   // late answer to an older view
+          img.data.set(m.out, m.row0 * w * 4);
+          if (--open === 0) {
+            if (step === 1) ctx.putImageData(img, 0, 0);
+            else {
+              klein.width = w; klein.height = h;
+              klein.getContext("2d").putImageData(img, 0, 0);
+              ctx.imageSmoothingEnabled = true;
+              ctx.drawImage(klein, 0, 0, w * step, h * step);
+            }
+            return resolve(true);
+          }
+          next(wk);
+        };
+        next(wk);
+      }
+    });
+  }
+
+  async function render() {
+    const myGen = ++gen;
+    drawCircle();
+    if (await pass(4, myGen) && await pass(1, myGen)) keepSnap();
+  }
+
+  // the last finished picture, moved and scaled to the current view
+  const snap = document.createElement("canvas");
+  let snapView = null;
+  function keepSnap() {
+    snap.width = W; snap.height = H;
+    snap.getContext("2d").drawImage(bild, 0, 0);
+    snapView = { cx, cy, s };
+  }
+  function preview() {
+    if (!snapView) return;
+    const f = snapView.s / s;
+    const ox = (snapView.cx - cx) / s + W / 2 - f * snap.width / 2;
+    const oy = (cy - snapView.cy) / s + H / 2 - f * snap.height / 2;
+    ctx.fillStyle = "rgb(6, 6, 6)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(snap, ox, oy, snap.width * f, snap.height * f);
+  }
+
+  function later() {
+    gen++;
+    preview();
+    drawCircle();
+    clearTimeout(timer);
+    timer = setTimeout(render, 90);
+  }
+
+  function setK(v, text) {
+    k = v;
+    snapView = null;
+    eingabe.removeAttribute("aria-invalid");
+    if (text !== undefined) eingabe.value = text;
+    sizeInput();
+    const normal = k === 2;
+    knopf.setAttribute("aria-pressed", String(normal));
+    satz.hidden = !normal;
+    const url = new URL(location.href);
+    url.searchParams.set("k", eingabe.value.trim());
+    history.replaceState(null, "", url);
+    fit();
+    render();
+  }
+
+  function sizeInput() {
+    eingabe.style.width = Math.max(1.6, eingabe.value.length * 0.62 + 0.7) + "em";
+  }
+
+  eingabe.addEventListener("input", () => {
+    sizeInput();
+    const v = parseK(eingabe.value);
+    if (v === null) { eingabe.setAttribute("aria-invalid", "true"); return; }
+    setK(v);
+  });
+  eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
+  knopf.addEventListener("click", () => setK(2, "2"));
+
+  // ---- zoom and pan: wheel, drag, pinch ----
+  const pts = new Map();
+  let pinch = null;
+  const toC = (x, y) => [cx + (x * dpr - W / 2) * s, cy - (y * dpr - H / 2) * s];
+  function zoomAt(f, x, y) {
+    const [ar, ai] = toC(x, y);
+    s *= f;
+    cx = ar - (x * dpr - W / 2) * s;
+    cy = ai + (y * dpr - H / 2) * s;
+  }
+  feld.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = feld.getBoundingClientRect();
+    zoomAt(Math.exp(e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+    later();
+  }, { passive: false });
+  feld.addEventListener("pointerdown", (e) => {
+    feld.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  });
+  feld.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const r = feld.getBoundingClientRect();
+    if (pts.size === 1) {
+      cx -= (e.clientX - p.x) * dpr * s;
+      cy += (e.clientY - p.y) * dpr * s;
+    } else if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      const before = Math.hypot(a.x - b.x, a.y - b.y);
+      p.x = e.clientX; p.y = e.clientY;
+      const after = Math.hypot(a.x - b.x, a.y - b.y);
+      if (before > 0 && after > 0) zoomAt(before / after, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+    }
+    p.x = e.clientX; p.y = e.clientY;
+    later();
+  });
+  const up = (e) => pts.delete(e.pointerId);
+  feld.addEventListener("pointerup", up);
+  feld.addEventListener("pointercancel", up);
+  feld.addEventListener("dblclick", () => { fit(); render(); });
+
+  window.addEventListener("resize", resize);
+
+  const start = new URL(location.href).searchParams.get("k");
+  const sv = start === null ? null : parseK(start);
+  if (sv !== null) { k = sv; eingabe.value = start.trim(); }
+  sizeInput();
+  knopf.setAttribute("aria-pressed", String(k === 2));
+  satz.hidden = k !== 2;
+  resize();
+  fit();
+  render();
+})();
+</script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
