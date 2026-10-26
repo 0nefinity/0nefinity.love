@@ -48,6 +48,8 @@ PRIORITY_ITEMS = [
     {'type': 'file', 'path': 'README.html', 'name': 'README'},
 ]
 EXCLUDE_FROM_LIST = {'impressum-und-datenschutz.html', 'README.html'}
+# Gehoert zu 0nefinity.com (Cookie-Shop); auf .love gibt es keine Cookies.
+COM_ONLY = ('cookies.html', 'assets/cookies/')
 
 
 def should_include(name):
@@ -62,6 +64,8 @@ def should_include(name):
 
 def is_page(rel_path):
     """True, wenn der getrackte Pfad ins Menue gehoert."""
+    if rel_path.startswith(COM_ONLY):
+        return False
     parts = rel_path.split('/')
     if any(not should_include(p) for p in parts):
         return False
