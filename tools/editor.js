@@ -1,10 +1,9 @@
 // Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: oben im Menue
-// die Admin-Zeile (Editor, Kommentare, Analytics, Ausloggen) und eine einklappbare Leiste.
-// Die Leiste sitzt im Controls-Panel (tools/controls.js), wenn die Seite eins hat, sonst unten rechts.
-// "bearbeiten" macht Texte direkt editierbar, "speichern" committet auf claude-dev,
-// "kommentare" zeigt HTML- und JS-Kommentare der Seite und setzt eigene als HTML-Kommentar,
-// "aenderungen" zeigt den Verlauf als Diff, "veroeffentlichen" zeigt erst dev gegen live, dann live.
-// Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar in der Leiste.
+// die Admin-Zeile (bearbeiten, quelltext, veroeffentlichen, Analytics, Ausloggen), oben links neben
+// dem Menue drei kleine Symbole: Kommentare ein/aus, Aenderungen (Diff), jetzt speichern.
+// Texte sind eingeloggt direkt editierbar und werden 1,5 s nach dem letzten Tippen auf claude-dev
+// committet (ein Commit pro Schreibpause); Kommentare sind HTML-Kommentare in der Seite.
+// Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar unter den Symbolen.
 (function oneEditor() {
   if (!location.hostname.startsWith('dev.')) return;
 
@@ -42,7 +41,13 @@
   let csrf = '';
   let iconSeq = 0;
   const badgeNode = new WeakMap();
-  let bar, status, tools, extra, btnEdit, btnBold, btnItalic, btnSave, btnCmt, btnNote, btnSrc, btnDiff, btnPub, menuEditor, menuCmt;
+  // Autosave: so lange nach dem letzten Tippen wird gespeichert, also ein Commit pro Schreibpause.
+  const AUTOSAVE_MS = 1500;
+  let saveTimer = null;
+  let saving = null;
+  let saveAgain = false;
+  let leaving = false;
+  let bar, status, extra, btnSave, btnCmt, btnNote, btnDiff, btnPub, menuEdit, menuSrc;
 
   // Live-Reload pausiert, solange bearbeitet wird, ein Fenster offen ist oder eine Anfrage laeuft:
   // ein Reload mitten im Speichern bricht die Antwort ab.
@@ -50,7 +55,16 @@
 
   // Admin/Login: 0, oben eine kleine 1, die den Kreis schneidet.
   // Ausloggen: Power-Zeichen aus 0 und 1, die 1 schneidet sich ihren Spalt aus der 0.
+  const LINES = {
+    bubble: 'M4 5h16v11h-9l-5 4v-4h-2z',
+    diff: 'M12 4v8M8 8h8M8 18h8',
+    save: 'M12 4v10M7.5 9.5l4.5 4.5 4.5-4.5M5 19h14',
+  };
+
   function icon(kind) {
+    if (LINES[kind]) {
+      return `<svg class="oe-ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${LINES[kind]}"/></svg>`;
+    }
     const vb = '-20 -600 560 640';
     if (kind === 'admin') {
       return `<svg class="oe-icon" viewBox="${vb}" aria-hidden="true" focusable="false"><path d="${ZERO}"/>` +
@@ -78,7 +92,7 @@
   }
 
   async function request(method, route, body) {
-    const opts = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
+    const opts = { method, credentials: 'same-origin', keepalive: route === 'save', headers: { Accept: 'application/json' } };
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
       opts.headers['X-0ne-Edit'] = '1';
@@ -103,10 +117,7 @@
   function say(text, kind) {
     status.textContent = text;
     status.dataset.kind = kind || '';
-    if (kind === 'error') {
-      console.error('[editor] ' + text);
-      setCollapsed(false);
-    }
+    if (kind === 'error') console.error('[editor] ' + text);
   }
 
   function setLive(differs) {
@@ -171,7 +182,8 @@
       }
       return;
     }
-    if (editing && e.target.closest && e.target.closest('[data-oe]')) e.preventDefault();
+    // Strg/Cmd-Klick folgt einem Link im bearbeitbaren Text.
+    if (editing && !e.ctrlKey && !e.metaKey && e.target.closest && e.target.closest('[data-oe]')) e.preventDefault();
   }
 
   function plainPaste(e) {
@@ -189,24 +201,12 @@
     e.stopPropagation();
   }
 
-  function format(cmd) {
-    const sel = getSelection();
-    if (!editing || !sel.rangeCount || !sel.anchorNode || !sel.anchorNode.parentElement ||
-        !sel.anchorNode.parentElement.closest('[data-oe]')) {
-      say('erst Text markieren');
-      return;
-    }
-    document.execCommand(cmd);
-    markDirty();
-  }
-
-  function toggleEdit() {
+  async function toggleEdit() {
     if (editing) {
-      if (dirty().length) { say('ungespeicherte Änderungen: erst speichern', 'error'); return; }
+      if (!(await flushed())) return;
       stopEditing();
       say('');
     } else {
-      setCollapsed(false);
       editing = true;
       document.documentElement.classList.add('oe-editing');
       originals = new Map();
@@ -218,7 +218,6 @@
         el.addEventListener('input', markDirty);
         for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, keepKeys);
       }
-      say(originals.size ? originals.size + ' Textstellen editierbar' : 'keine Textstellen, quelltext nutzen');
     }
     syncPause();
     syncButtons();
@@ -244,26 +243,56 @@
   }
 
   function markDirty() {
-    const n = dirty().length;
-    btnSave.disabled = n === 0;
-    say(n ? n + ' geändert' : '');
+    clearTimeout(saveTimer);
+    if (!dirty().length) return;
+    btnSave.disabled = false;
+    say('…');
+    saveTimer = setTimeout(save, AUTOSAVE_MS);
   }
 
+  // Gespeichert wird genau der Stand, der abgeschickt wurde; was waehrenddessen dazukommt, folgt im naechsten Lauf.
   async function save() {
-    const changes = dirty().map(([el, orig]) => ({ orig, neu: cleanHTML(el) }));
-    if (!changes.length) return;
+    clearTimeout(saveTimer);
+    if (saving) { saveAgain = true; return saving; }
+    const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el)]);
+    if (!pend.length) return true;
     btnSave.disabled = true;
     say('speichere …');
-    try {
-      const r = await api('POST', 'save', { path: pagePath, changes });
-      for (const [el] of dirty()) originals.set(el, cleanHTML(el));
-      setLive(r.live_differs);
-      if (cmtOn) await refreshComments();
-      say(r.commit ? 'gespeichert auf dev' : 'nichts zu speichern', 'ok');
-    } catch (e) {
-      btnSave.disabled = false;
-      say(e.message, 'error');
+    saving = (async () => {
+      try {
+        const r = await api('POST', 'save', { path: pagePath, changes: pend.map(([, orig, neu]) => ({ orig, neu })) });
+        for (const [el, , neu] of pend) originals.set(el, neu);
+        setLive(r.live_differs);
+        if (cmtOn) await refreshComments();
+        say('gespeichert', 'ok');
+        return true;
+      } catch (e) {
+        if (!leaving) say('NICHT gespeichert: ' + e.message, 'error');
+        return false;
+      } finally {
+        saving = null;
+        btnSave.disabled = !dirty().length;
+      }
+    })();
+    const ok = await saving;
+    if (saveAgain) {
+      saveAgain = false;
+      if (ok && dirty().length) return save();
     }
+    return ok;
+  }
+
+  async function flushed() {
+    while (saving) await saving;
+    if (dirty().length) await save();
+    return !dirty().length;
+  }
+
+  // Seite wird verlassen: was noch offen ist, geht ohne Rueckfrage raus. Speichern laeuft mit keepalive und
+  // erreicht den Server auch nach dem Entladen; die abgebrochene Antwort im Browser ist dann kein Fehler.
+  function flushOnLeave() {
+    leaving = true;
+    if (dirty().length && !saving) save();
   }
 
   // ------------------------------------------------------------ kommentare
@@ -369,6 +398,7 @@
     const head = document.createElement('div');
     head.className = 'oe-cmthead';
     head.textContent = list.length ? list.length + ' Kommentare im Quelltext' : 'keine Kommentare im Quelltext';
+    if (source.inline) head.append(' ', btnNote);
     box.appendChild(head);
     for (const c of list) {
       const row = document.createElement('div');
@@ -397,7 +427,6 @@
     cmtOn = !cmtOn;
     syncPause();
     if (cmtOn) {
-      setCollapsed(false);
       await refreshComments();
     } else {
       clearBadges();
@@ -408,8 +437,8 @@
     syncButtons();
   }
 
-  function armNote() {
-    if (dirty().length) { say('erst speichern', 'error'); return; }
+  async function armNote() {
+    if (!(await flushed())) return;
     noteArmed = !noteArmed;
     say(noteArmed ? 'Textstelle antippen, dahinter kommt die Notiz' : '');
     document.documentElement.classList.toggle('oe-noting', noteArmed);
@@ -472,12 +501,11 @@
 
   // Bestehenden HTML-Kommentar aendern oder loeschen. Ersetzt wird genau dieser Kommentar im Quelltext;
   // kommt er wortgleich mehrfach vor, meldet der Server text_ambiguous.
-  function openCmtEdit(raw, node) {
-    if (dirty().length) { say('erst speichern', 'error'); return; }
+  async function openCmtEdit(raw, node) {
+    if (!(await flushed())) return;
     noteArmed = false;
     document.documentElement.classList.remove('oe-noting');
     closeNote();
-    setCollapsed(false);
     noteOpen = true;
     syncPause();
     syncButtons();
@@ -563,7 +591,7 @@
   }
 
   async function openSource() {
-    if (dirty().length) { say('erst speichern', 'error'); return; }
+    if (!(await flushed())) return;
     let src;
     try { src = await loadSource(); } catch (e) { say(e.message, 'error'); return; }
     const ov = openOverlay(src.file);
@@ -660,7 +688,7 @@
   }
 
   async function openChanges(forPublish) {
-    if (dirty().length) { say('erst speichern', 'error'); return; }
+    if (!(await flushed())) return;
     let pending, hist;
     try {
       [pending, hist] = await Promise.all([api('GET', q('diff')), api('GET', q('history'))]);
@@ -720,38 +748,40 @@
   function css() {
     const s = document.createElement('style');
     s.textContent = `
-#oe-bar{position:fixed;right:12px;bottom:12px;z-index:2147483000;max-width:min(560px,calc(100vw - 24px));padding:4px;
-  border:1px solid var(--text-color,#fff);border-radius:6px;background:var(--bg-color,#000);color:var(--text-color,#fff);
-  font:14px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}
-#oe-bar.oe-docked{position:static;max-width:none;margin:0 0 8px;z-index:auto}
-body.menu-open #oe-bar:not(.oe-docked){display:none}
-#oe-bar,.oe-overlay,#oe-admin{text-align:left}
-#oe-bar.oe-collapsed{padding:0;border-radius:4px}
-#oe-bar.oe-collapsed .oe-tools,#oe-bar.oe-collapsed .oe-extra,#oe-bar.oe-collapsed .oe-status{display:none}
-.oe-row,.oe-tools{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
-.oe-tools{margin-top:4px}
-.oe-head{display:flex;align-items:center;gap:4px}
-.oe-status{padding:2px 8px;overflow-wrap:anywhere;border-radius:3px}
+#oe-bar{position:fixed;top:calc(var(--visible-viewport-top,0px) + 8px);right:76px;z-index:2147483000;display:flex;flex-direction:column;
+  align-items:flex-end;gap:4px;max-width:calc(100vw - 92px);color:var(--text-color,#fff);text-align:left;
+  font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;pointer-events:none}
+#oe-bar>*{pointer-events:auto}
+body.menu-open #oe-bar{display:none}
+.oe-overlay,#oe-admin{text-align:left}
+.oe-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.oe-head{display:flex;align-items:center;gap:2px}
+.oe-status{padding:1px 6px;font-size:11px;opacity:.55;overflow-wrap:anywhere;border-radius:3px}
 .oe-status:empty{display:none}
-.oe-status[data-kind=error],.oe-ov-msg[data-kind=error]{background:var(--text-color,#fff);color:var(--bg-color,#000)}
+.oe-status[data-kind=error],.oe-ov-msg[data-kind=error]{opacity:1;font-size:13px;font-weight:600;padding:4px 8px;
+  background:var(--text-color,#fff);color:var(--bg-color,#000)}
 .oe-icon{display:block;width:26px;height:30px;fill:currentColor;flex:none}
+.oe-ic{display:block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* !important: meta.css styles every button with !important */
 .oe-btn{min-height:44px!important;min-width:44px!important;margin:0!important;padding:0 10px!important;border-radius:4px!important;
   border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent)!important;background:transparent!important;
   color:var(--text-color,#fff)!important;font:inherit!important;box-shadow:none!important;scale:none!important;
   cursor:pointer;display:inline-flex!important;align-items:center;justify-content:center;gap:6px;text-decoration:none!important;
-  transition:border-color .15s,background .15s}
+  transition:border-color .15s,background .15s,opacity .15s}
 .oe-btn:hover:not(:disabled){border-color:var(--text-color,#fff)!important;background:transparent!important;color:var(--text-color,#fff)!important}
 .oe-btn:focus-visible{outline:2px solid var(--text-color,#fff)!important;outline-offset:1px}
 .oe-btn:disabled{opacity:.35!important;cursor:default}
 .oe-btn[aria-pressed=true],.oe-primary,.oe-primary:hover:not(:disabled){background:var(--text-color,#fff)!important;color:var(--bg-color,#000)!important;border-color:var(--text-color,#fff)!important}
-.oe-btn.oe-fmt{font-weight:700!important;min-width:44px!important;padding:0!important}
-.oe-btn.oe-fmt+.oe-fmt{font-style:italic;font-weight:400!important}
+.oe-btn.oe-mini{width:32px;height:32px;min-width:32px!important;min-height:32px!important;padding:0!important;
+  border-color:transparent!important;opacity:.55}
+.oe-btn.oe-mini:hover:not(:disabled),.oe-btn.oe-mini:focus-visible,.oe-btn.oe-mini[aria-pressed=true]{opacity:1}
+.oe-btn.oe-mini:disabled{opacity:.2!important}
 .oe-btn[hidden]{display:none!important}
 .oe-extra:empty{display:none}
-.oe-extra{margin-top:4px;max-height:40vh;overflow:auto}
+.oe-extra{width:min(420px,calc(100vw - 92px));max-height:50vh;overflow:auto;padding:4px;box-sizing:border-box;border-radius:6px;
+  border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent);background:var(--bg-color,#000)}
 .oe-cmtlist,.oe-note{border-top:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent);padding:4px 4px 0}
-.oe-cmthead{padding:2px 4px 4px;opacity:.75}
+.oe-cmthead{padding:2px 4px 4px}
 .oe-cmtrow{display:flex;gap:8px;padding:2px 4px;white-space:pre-wrap;overflow-wrap:anywhere}
 .oe-cmtmeta{flex:none;opacity:.55;font-variant-numeric:tabular-nums}
 .oe-note input{flex:1 1 140px;min-width:0;min-height:44px;font-size:16px;padding:0 8px;border:0;border-radius:4px;box-sizing:border-box;
@@ -791,8 +821,11 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
 #oe-admin .oe-who{display:flex;align-items:center;gap:6px;margin-right:auto;padding-right:8px}
 #oe-admin .oe-login{border-color:transparent!important;opacity:.6}
 #oe-admin .oe-login:hover{opacity:1}
-@media (max-width:480px){#oe-bar:not(.oe-docked){left:8px;right:8px;bottom:8px;max-width:none}
-  #oe-bar.oe-collapsed:not(.oe-docked){left:auto}}`;
+.oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
+.oe-extra>:first-child{border-top:0}
+@media (max-width:480px){#oe-bar{right:22px;top:calc(var(--visible-viewport-top,0px) + 56px)}
+  .oe-head{flex-direction:column}
+  .oe-extra{position:fixed;left:8px;right:60px;top:calc(var(--visible-viewport-top,0px) + 56px);width:auto}}`;
     document.head.appendChild(s);
   }
 
@@ -813,42 +846,19 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
     return null;
   }
 
-  // Im Controls-Panel startet die Leiste eingeklappt, damit die Regler der Seite sichtbar bleiben.
-  function collapseKey() { return bar.classList.contains('oe-docked') ? 'oe-collapsed-docked' : 'oe-collapsed'; }
-
-  function setCollapsed(c) {
-    if (!bar) return;
-    bar.classList.toggle('oe-collapsed', c);
-    bar.querySelector('.oe-toggle').setAttribute('aria-expanded', String(!c));
-    stored(collapseKey(), c ? '1' : '0');
-  }
-
   function syncButtons() {
-    btnEdit.setAttribute('aria-pressed', String(editing));
-    btnEdit.textContent = editing ? 'fertig' : 'bearbeiten';
-    btnBold.hidden = btnItalic.hidden = btnSave.hidden = !editing;
     btnCmt.setAttribute('aria-pressed', String(cmtOn));
-    btnNote.hidden = !cmtOn;
     btnNote.setAttribute('aria-pressed', String(noteArmed));
-    if (menuCmt) menuCmt.setAttribute('aria-pressed', String(cmtOn));
-    if (menuEditor) menuEditor.setAttribute('aria-pressed', String(!bar.classList.contains('oe-collapsed')));
+    if (menuEdit) menuEdit.setAttribute('aria-pressed', String(editing));
   }
 
-  // Seiten mit Controls-Panel: die Leiste wird ein Abschnitt oben im Panel, damit nichts ueberlappt.
-  function dock() {
-    const panel = document.querySelector('.ctrl-panel .ctrl-panel-body');
-    if (!panel) return false;
-    bar.classList.add('oe-docked');
-    panel.prepend(bar);
-    setCollapsed(stored('oe-collapsed-docked') !== '0' && status.dataset.kind !== 'error');
-    syncButtons();
-    return true;
-  }
-
-  function watchForPanel() {
-    if (dock()) return;
-    const mo = new MutationObserver(() => { if (dock()) mo.disconnect(); });
-    mo.observe(document.body, { childList: true, subtree: true });
+  function mini(kind, label, fn) {
+    const b = button('', fn);
+    b.classList.add('oe-mini');
+    b.innerHTML = icon(kind);
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    return b;
   }
 
   function buildBar() {
@@ -857,44 +867,24 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
     bar.dataset.oeUi = '';
     bar.setAttribute('role', 'toolbar');
     bar.setAttribute('aria-label', 'Editor');
-    const toggle = button('', () => { setCollapsed(!bar.classList.contains('oe-collapsed')); syncButtons(); });
-    toggle.classList.add('oe-toggle');
-    toggle.innerHTML = icon('admin');
-    toggle.setAttribute('aria-label', 'Editor ein- oder ausklappen');
     status = document.createElement('span');
     status.className = 'oe-status';
     status.setAttribute('role', 'status');
+    btnCmt = mini('bubble', 'Kommentare ein/aus', toggleComments);
+    btnDiff = mini('diff', 'Änderungen', () => openChanges(false));
+    btnSave = mini('save', 'jetzt speichern', save);
+    btnSave.disabled = true;
+    btnNote = button('notiz setzen', armNote);
+    btnNote.classList.add('oe-small');
     const head = document.createElement('div');
     head.className = 'oe-head';
-    head.append(toggle, status);
-    btnEdit = button('bearbeiten', toggleEdit);
-    btnBold = button('B', () => format('bold'));
-    btnItalic = button('I', () => format('italic'));
-    for (const b of [btnBold, btnItalic]) {
-      b.classList.add('oe-fmt');
-      b.addEventListener('mousedown', (e) => e.preventDefault());
-    }
-    btnBold.setAttribute('aria-label', 'fett');
-    btnItalic.setAttribute('aria-label', 'kursiv');
-    btnSave = button('speichern', save);
-    btnSave.classList.add('oe-primary');
-    btnSave.disabled = true;
-    btnCmt = button('kommentare', toggleComments);
-    btnNote = button('notiz setzen', armNote);
-    btnSrc = button('quelltext', openSource);
-    btnDiff = button('änderungen', () => openChanges(false));
-    btnPub = button('veröffentlichen', () => openChanges(true));
-    tools = document.createElement('div');
-    tools.className = 'oe-tools';
-    tools.append(btnEdit, btnBold, btnItalic, btnSave, btnCmt, btnNote, btnSrc, btnDiff, btnPub);
+    head.append(btnCmt, btnDiff, btnSave);
     extra = document.createElement('div');
     extra.className = 'oe-extra';
-    bar.append(head, tools, extra);
+    bar.append(head, status, extra);
     bar.addEventListener('keydown', (e) => e.stopPropagation());
     document.body.appendChild(bar);
-    setCollapsed(stored('oe-collapsed') === '1');
     syncButtons();
-    watchForPanel();
   }
 
   function menuWrap() {
@@ -918,7 +908,7 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
   }
 
   async function logout() {
-    if (dirty().length) { say('ungespeicherte Änderungen: erst speichern', 'error'); return; }
+    if (!(await flushed())) return;
     try {
       const r = await fetch('/api/auth/logout', {
         method: 'POST', credentials: 'same-origin',
@@ -941,8 +931,9 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
     who.className = 'oe-who';
     who.innerHTML = icon('admin');
     who.append(user || '0nefinity');
-    menuEditor = button('editor', () => { setCollapsed(!bar.classList.contains('oe-collapsed')); syncButtons(); });
-    menuCmt = button('kommentare', toggleComments);
+    menuEdit = button('bearbeiten', () => { stored('oe-edit', editing ? '0' : '1'); toggleEdit(); });
+    menuSrc = button('quelltext', openSource);
+    btnPub = button('veröffentlichen', () => openChanges(true));
     const analytics = document.createElement('a');
     analytics.className = 'oe-btn';
     analytics.href = ANALYTICS;
@@ -953,7 +944,7 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(who, menuEditor, menuCmt, analytics, out);
+    sec.append(who, menuEdit, menuSrc, btnPub, analytics, out);
     wrap.prepend(sec);
   }
 
@@ -972,13 +963,15 @@ body.menu-open #oe-bar:not(.oe-docked){display:none}
     buildAdminMenu(info.user && info.user.username);
     syncButtons();
     document.addEventListener('click', guardClick, true);
-    window.addEventListener('beforeunload', (e) => { if (dirty().length) e.preventDefault(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty().length) save(); });
+    window.addEventListener('pagehide', flushOnLeave);
 
     try {
       await loadSource();
-      if (!source.inline) btnEdit.disabled = true;
+      if (!source.inline) menuEdit.disabled = true;
+      else if (stored('oe-edit') !== '0') toggleEdit();
     } catch (e) {
-      for (const b of [btnEdit, btnSave, btnSrc, btnPub, btnCmt, btnDiff]) b.disabled = true;
+      for (const b of [menuEdit, btnSave, menuSrc, btnPub, btnCmt, btnDiff]) b.disabled = true;
       say(e.message, 'error');
     }
   }
