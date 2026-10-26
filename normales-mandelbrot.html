@@ -19,7 +19,7 @@
 #formel {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--visible-viewport-bottom, 0px) + 1rem);
+  bottom: calc(var(--visible-viewport-bottom, 0px) + var(--oe-bar-platz, 0px) + 1rem);
   transform: translateX(-50%);
   z-index: 10;
   max-width: calc(100vw - 1.5rem);
@@ -152,6 +152,29 @@
   const knopf = document.getElementById("normalisieren");
   const satz = document.getElementById("satz");
   const fehler = document.getElementById("fehler");
+
+  // The login editor's toolbar (tools/editor.js) is fixed to the bottom edge and
+  // would cover the formula; keep the formula above it while it is there.
+  const editorLeisteFreihalten = () => {
+    let beobachtet = null;
+    const messen = () => {
+      const platz = beobachtet ? Math.max(0, window.innerHeight - beobachtet.getBoundingClientRect().top) : 0;
+      document.documentElement.style.setProperty("--oe-bar-platz", platz + "px");
+    };
+    const ro = new ResizeObserver(messen);
+    const pruefen = () => {
+      const bar = document.getElementById("oe-bar");
+      if (bar === beobachtet) return;
+      if (beobachtet) ro.unobserve(beobachtet);
+      beobachtet = bar;
+      if (bar) ro.observe(bar);
+      messen();
+    };
+    new MutationObserver(pruefen).observe(document.body, { childList: true });
+    window.addEventListener("resize", messen);
+    pruefen();
+  };
+  editorLeisteFreihalten();
 
   const fail = (msg) => {
     console.error(msg);
