@@ -94,6 +94,13 @@
       font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
     }
     .ck-sum small { display: block; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
+    .ck-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.75rem; }
+    .ck-lines span:nth-child(even) { text-align: right; white-space: nowrap; }
+    .ck-lines .ck-total { border-top: 1px solid var(--ui-border-soft); padding-top: 0.25rem; }
+    .ck-lines .ck-raised { color: color-mix(in srgb, var(--text-color) 65%, transparent); font-size: 0.875rem; }
+    .ck-zero { margin: 0; font-size: 0.95rem; }
+    .ck-zero[hidden] { display: none; }
+    .ck-zero a { color: var(--text-color); }
     .ck-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
     .ck-buttons button { min-height: 44px; padding: 0.5rem 1.1rem; }
     .ck-buttons button:hover { scale: 1; }
@@ -160,7 +167,8 @@
         </div>
 
 
-        <p class="ck-sum" id="ck-sum" style="margin-top:0.75rem" aria-live="polite"></p>
+        <div class="ck-sum" id="ck-sum" style="margin-top:0.75rem" aria-live="polite"></div>
+        <p class="ck-zero" id="ck-zero" style="margin-top:0.75rem" hidden>Anders als bei <a href="https://0nefinity.love">0nefinity.love</a>, dort gibt es keine Cookies. Für Zugang zu 0nefinity.com kaufen Sie mindestens einen. Wir sind hier nicht bei der Wohlfahrt.</p>
 
         <div class="ck-buttons" style="margin-top:0.9rem">
           <button type="button" class="ck-quiet" id="ck-all">Alle akzeptieren</button>
@@ -212,6 +220,8 @@
   var ZERO_DECIMAL = 'BIF CLP DJF GNF JPY KMF KRW MGA PYG RWF UGX VND VUV XAF XOF XPF'.split(' ');
   // Stripe's amount field holds at most eight digits in the smallest unit: 999.999,99 USD
   var MAX_MINOR = 99999999n;
+  // units per 1 EUR; other currencies need live rates from Stripe, until then fee and minimum show as EUR equivalents
+  var RATES = { EUR: '1' };
 
   var $ = function (id) { return document.getElementById(id); };
   var backdrop = $('ck-backdrop');
@@ -315,31 +325,99 @@
   }
   var KEY = makeKey();
 
+  // Stripe standard EEA card fee (assumption, third-party source): 1.5 % + 0.25 EUR per payment.
+  // Minimum charge 0.50 EUR equivalent, checked after conversion into the EUR settlement currency.
+  var FEE_PERMILLE = 15n;
+  var FEE_FIXED_EUR_CENTS = 25n;
+  var MIN_EUR_CENTS = 50n;
+
+  // EUR cents -> minor units of the chosen currency, rounded up; null without a known rate
+  function fromEurCents(cents) {
+    var rate = RATES[curEl.value];
+    if (!rate) return null;
+    var parts = rate.split('.');
+    var frac = (parts[1] || '').padEnd(6, '0').slice(0, 6);
+    var scaled = BigInt(parts[0] + frac);
+    var num = cents * scaled * 10n ** BigInt(decimals());
+    var den = 100n * 1000000n;
+    return (num + den - 1n) / den;
+  }
+
+  // cookies + fee per payment; payments are capped at MAX_MINOR each, so iterate until the count settles
+  function charge(minor) {
+    var fixed = fromEurCents(FEE_FIXED_EUR_CENTS);
+    var pct = (minor * FEE_PERMILLE + 999n) / 1000n;
+    var n = 1n;
+    for (var i = 0; i < 10; i++) {
+      var total = minor + pct + (fixed || 0n) * n;
+      var next = (total + MAX_MINOR - 1n) / MAX_MINOR;
+      if (next === n) break;
+      n = next;
+    }
+    var fee = pct + (fixed || 0n) * n;
+    var sum = minor + fee;
+    var min = fromEurCents(MIN_EUR_CENTS);
+    var raised = fixed !== null && min !== null && sum < min;
+    return { fee: fee, sum: raised ? min : sum, raised: raised, known: fixed !== null };
+  }
+
   function summary() {
     if (infinite) {
-      return { main: '∞ Cookies', sub: '= ∞ Zahlungen à ' + money(MAX_MINOR), buy: '∞ kaufen' };
+      return {
+        lines: [['∞ Cookies', '∞'], ['Stripe-Gebühr', '1,5 % + ' + feeFixedText() + ' je Zahlung'], ['Summe', '∞', 'ck-total']],
+        sub: '= ∞ Zahlungen à ' + money(MAX_MINOR),
+        buy: '∞ kaufen'
+      };
     }
     var minor = parseMinor(countEl.value);
-    if (minor === null) return { main: 'Das ist keine Anzahl.', sub: '', buy: null };
-    return {
-      main: cookies(minor) + ' · ' + money(minor),
-      sub: split(minor),
-      buy: minor === 0n ? null : 'Kaufen'
-    };
+    if (minor === null) return { text: 'Das ist keine Anzahl.', buy: null };
+    if (minor === 0n) return { lines: [['0 Cookies', money(0n)]], sub: '', buy: null, zero: true };
+    var c = charge(minor);
+    var lines = [[cookies(minor), money(minor)]];
+    if (c.known) {
+      lines.push(['Stripe-Gebühr', money(c.fee)]);
+      if (c.raised) lines.push(['angehoben auf Stripe-Mindestbetrag', '', 'ck-raised']);
+      lines.push(['Summe', money(c.sum), 'ck-total']);
+    } else {
+      lines.push(['Stripe-Gebühr', money(c.fee) + ' + ' + feeFixedText()]);
+      lines.push(['Summe', money(c.sum) + ' + ' + feeFixedText(), 'ck-total']);
+      lines.push(['Stripe-Mindestbetrag 0,50 € (Gegenwert)', '', 'ck-raised']);
+    }
+    return { lines: lines, sub: split(c.sum), buy: 'Kaufen', total: c.sum };
+  }
+
+  function feeFixedText() {
+    var f = fromEurCents(FEE_FIXED_EUR_CENTS);
+    return f === null ? '0,25 € (Gegenwert)' : money(f);
   }
 
   function render() {
     if (infinite) countEl.value = '∞';
     var s = summary();
     sumEl.textContent = '';
-    sumEl.append(s.main);
+    if (s.text) sumEl.append(s.text);
+    if (s.lines) {
+      var grid = document.createElement('div');
+      grid.className = 'ck-lines';
+      s.lines.forEach(function (l) {
+        [l[0], l[1]].forEach(function (t) {
+          var span = document.createElement('span');
+          span.textContent = t;
+          if (l[2]) span.className = l[2];
+          grid.appendChild(span);
+        });
+      });
+      sumEl.appendChild(grid);
+    }
     if (s.sub) {
       var sm = document.createElement('small');
       sm.textContent = s.sub;
       sumEl.appendChild(sm);
     }
+    $('ck-zero').hidden = !s.zero;
     $('ck-buy').textContent = s.buy || 'Kaufen';
     $('ck-buy').disabled = !s.buy;
+    $('ck-transfer').disabled = !s.buy;
     var minor = infinite ? null : parseMinor(countEl.value);
     document.querySelectorAll('.ck-chip').forEach(function (c) {
       var v = c.dataset.set;
@@ -389,9 +467,9 @@
     c.addEventListener('click', function () { setCount(c.dataset.set); });
   });
   $('ck-all').addEventListener('click', function () { setCount('inf'); });
-  $('ck-none').addEventListener('click', function () { setCount('0'); close(); });
+  $('ck-none').addEventListener('click', function () { setCount('0'); });
   $('ck-buy').addEventListener('click', function () {
-    var f = firstPayment(infinite ? null : parseMinor(countEl.value));
+    var f = firstPayment(infinite ? null : summary().total);
     var box = $('ck-pay-sum');
     box.textContent = '';
     box.append(f.main);
@@ -435,7 +513,6 @@
   });
   $('ck-pay-back').addEventListener('click', function () { show('ck-choose'); });
   $('ck-pay-done').addEventListener('click', close);
-  backdrop.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
   $('ck-reopen').addEventListener('click', open);
 
   document.querySelectorAll('[data-draft]').forEach(function (b) {
