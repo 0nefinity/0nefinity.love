@@ -115,13 +115,11 @@
       render();
     }
 
-    // only the shop page has a way back in; elsewhere the banner is the door and stays
-    var reopen = $('ck-reopen');
+    // the banner is the door on every page, /cookies included: finishing a payment step
+    // returns to the count, it never opens the page
     function close() {
-      if (!reopen) { next.hidden = true; render(); return; }
-      backdrop.hidden = true;
-      document.body.classList.remove('ck-locked');
-      reopen.focus();
+      next.hidden = true;
+      render();
     }
 
     // rewrite the field to whole cookies; a dropped fraction flashes the hint
@@ -192,7 +190,6 @@
     });
     $('ck-bank-done').addEventListener('click', close);
     $('ck-card').addEventListener('click', close);
-    if (reopen) reopen.addEventListener('click', open);
 
     document.querySelectorAll('[data-draft]').forEach(function (b) {
       b.addEventListener('click', function () {
