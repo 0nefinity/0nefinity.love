@@ -44,6 +44,9 @@
       fail(String(e));
     }
   }
+  // Der Editor schreibt selbst Dateien (speichern, veroeffentlichen); danach den
+  // neuen Stand als Basis nehmen statt neu zu laden.
+  window.__oneReloadResync = () => { initialized = false; };
   document.addEventListener('visibilitychange', check);
   setInterval(check, 2000);
   setTimeout(check, 100);

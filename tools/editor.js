@@ -27,9 +27,27 @@
   let originals = new Map();
   let pagePath = location.pathname;
   let publishArmed = false;
+  let busy = 0;
+  let srcOpen = false;
   let bar, status, btnEdit, btnSave, btnSrc, btnPub;
 
+  // Live-Reload pausiert, solange bearbeitet wird oder eine Anfrage laeuft:
+  // ein Reload mitten im Speichern bricht die Antwort ab.
+  function syncPause() { window.__oneEditing = editing || srcOpen || busy > 0; }
+
   async function api(method, route, body) {
+    busy++;
+    syncPause();
+    try {
+      return await request(method, route, body);
+    } finally {
+      busy--;
+      if (window.__oneReloadResync) window.__oneReloadResync();
+      syncPause();
+    }
+  }
+
+  async function request(method, route, body) {
     const opts = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
@@ -96,7 +114,7 @@
 
   function toggleEdit() {
     editing = !editing;
-    window.__oneEditing = editing;
+    syncPause();
     document.documentElement.classList.toggle('oe-editing', editing);
     if (editing) {
       originals = new Map();
@@ -112,7 +130,7 @@
     } else {
       if (dirty().length) {
         editing = true;
-        window.__oneEditing = true;
+        syncPause();
         document.documentElement.classList.add('oe-editing');
         say('ungespeicherte Änderungen: erst speichern', 'error');
         return;
@@ -133,7 +151,7 @@
     }
     originals = new Map();
     editing = false;
-    window.__oneEditing = false;
+    syncPause();
     document.documentElement.classList.remove('oe-editing');
   }
 
@@ -191,7 +209,8 @@
     try {
       src = await api('GET', 'source?path=' + encodeURIComponent(pagePath));
     } catch (e) { say(e.message, 'error'); return; }
-    window.__oneEditing = true;
+    srcOpen = true;
+    syncPause();
     const wrap = document.createElement('div');
     wrap.id = 'oe-src';
     wrap.innerHTML = '<div class="oe-src-head"><span class="oe-src-file"></span>' +
@@ -202,7 +221,7 @@
     const ta = wrap.querySelector('textarea');
     const msg = wrap.querySelector('.oe-src-msg');
     ta.value = src.text;
-    const close = () => { wrap.remove(); window.__oneEditing = editing; };
+    const close = () => { wrap.remove(); srcOpen = false; syncPause(); };
     wrap.addEventListener('click', async (e) => {
       const a = e.target.dataset && e.target.dataset.a;
       if (a === 'close') close();
@@ -234,12 +253,14 @@
 #oe-bar .oe-status{padding:0 8px;opacity:.75;max-width:40ch;overflow-wrap:anywhere}
 #oe-bar .oe-status[data-kind=error],#oe-src .oe-src-msg[data-kind=error]{color:#e0a39a;opacity:1}
 #oe-bar .oe-status[data-kind=ok]{color:#9fc7a8;opacity:1}
-.oe-btn{min-height:44px;min-width:44px;padding:0 12px;border:0;border-radius:4px;cursor:pointer;font:inherit;
-  color:inherit;background:color-mix(in srgb,var(--text-color,#fff) 8%,transparent);transition:background .15s}
-.oe-btn:hover:not(:disabled){background:color-mix(in srgb,var(--text-color,#fff) 16%,transparent)}
+/* !important: meta.css styles every button with !important */
+.oe-btn{min-height:44px!important;min-width:44px;margin:0!important;padding:0 12px!important;border:0!important;border-radius:4px!important;
+  cursor:pointer;font:inherit!important;box-shadow:none!important;scale:none!important;color:var(--text-color,#eee)!important;
+  background:color-mix(in srgb,var(--text-color,#fff) 8%,transparent)!important;transition:background .15s}
+.oe-btn:hover:not(:disabled){background:color-mix(in srgb,var(--text-color,#fff) 16%,transparent)!important;color:var(--text-color,#eee)!important}
 .oe-btn:focus-visible{outline:2px solid #8fb3d9;outline-offset:1px}
-.oe-btn:disabled{opacity:.4;cursor:default}
-.oe-btn[aria-pressed=true],.oe-primary{background:#2f4a66;color:#e8eef5}
+.oe-btn:disabled{opacity:.4!important;cursor:default}
+.oe-btn[aria-pressed=true],.oe-primary{background:#2f4a66!important;color:#e8eef5!important}
 .oe-editing [data-oe]{outline:1px dashed color-mix(in srgb,var(--text-color,#fff) 30%,transparent);outline-offset:2px;cursor:text}
 .oe-editing [data-oe]:focus{outline:1px solid #8fb3d9}
 #oe-src{position:fixed;inset:0;z-index:2147483001;display:flex;flex-direction:column;background:var(--bg-color,#000);
@@ -248,6 +269,7 @@
 #oe-src .oe-src-file{flex:1;padding:0 8px;opacity:.75;overflow-wrap:anywhere}
 #oe-src textarea{flex:1;margin:0 4px;border:0;border-radius:4px;padding:8px;resize:none;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;
   color:inherit;background:color-mix(in srgb,var(--text-color,#fff) 6%,transparent)}
+#oe-src textarea:focus{outline:1px solid #8fb3d9!important;outline-offset:0}
 #oe-src .oe-src-msg{min-height:20px;padding:4px 12px}
 @media (max-width:480px){#oe-bar{left:12px;right:12px;bottom:8px}#oe-bar .oe-status{flex-basis:100%;padding:4px 8px}}`;
     document.head.appendChild(s);
