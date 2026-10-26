@@ -57,32 +57,32 @@
       overflow: auto;
       box-sizing: border-box;
       margin: 0;
-      padding: 1.25rem 1rem 1rem;
+      padding: 1.25rem 0.75rem 1rem;
       background: var(--ui-surface-strong);
       border: 1px solid var(--ui-border);
       border-bottom: 0;
       border-radius: 8px 8px 0 0;
-      display: flex; flex-direction: column; gap: 0.9rem;
+      display: flex; flex-direction: column; gap: 0.75rem;
       text-align: left;
     }
     .ck-banner h2 { margin: 0; font-size: 1.125rem; font-weight: normal; }
     .ck-banner p { margin: 0; }
-    .ck-row { display: flex; gap: 0.5rem; align-items: stretch; }
+    .ck-row { display: flex; gap: 0.25rem; align-items: stretch; flex-wrap: nowrap; }
     .ck-step {
-      flex: 0 0 44px; height: 44px; padding: 0; font-size: 1.25rem; border-width: 1px; border-radius: 6px;
+      flex: 0 0 44px; height: 44px; padding: 0; font-size: 1.125rem; border-width: 1px; border-radius: 6px;
+      letter-spacing: -0.08em;
     }
     .ck-step:hover { scale: 1; }
+    .ck-step[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
     .ck-field {
       flex: 1 1 auto; min-width: 0; height: 44px; box-sizing: border-box;
-      padding: 0 0.6rem; font: inherit; font-size: 16px; text-align: center;
+      padding: 0 0.25rem; font: inherit; font-size: 16px; text-align: center;
       font-variant-numeric: tabular-nums;
       background: color-mix(in srgb, var(--text-color) 8%, transparent);
       color: var(--text-color); border: 0; border-radius: 6px;
     }
     .ck-field:focus-visible, .ck-banner button:focus-visible, .ck-shop button:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
-    .ck-step[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
-    .ck-rate-row { align-items: center; justify-content: space-between; }
-    .ck-seg { display: flex; flex: 0 0 auto; border: 1px solid var(--ui-border-strong); border-radius: 6px; overflow: hidden; }
+    .ck-seg { display: flex; align-self: flex-start; border: 1px solid var(--ui-border-strong); border-radius: 6px; overflow: hidden; }
     .ck-seg button {
       width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0; font-size: 1.05rem;
       background: transparent; color: var(--text-color);
@@ -92,42 +92,38 @@
     .ck-seg button[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); }
     /* all hints share one cell, so the tallest one reserves the space from the start */
     .ck-hint { display: grid; }
-    .ck-hint p { grid-area: 1 / 1; margin: 0; font-size: 0.9rem; color: color-mix(in srgb, var(--text-color) 75%, transparent); }
+    .ck-hint p { grid-area: 1 / 1; font-size: 0.9rem; color: color-mix(in srgb, var(--text-color) 75%, transparent); }
     .ck-hint .is-off { visibility: hidden; }
     .ck-hint a { color: var(--text-color); }
-    .ck-sum {
-      margin: 0; padding: 0.6rem 0.7rem; border-radius: 6px;
-      background: color-mix(in srgb, var(--text-color) 5%, transparent);
-      font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
-    }
-    .ck-sum small { display: block; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
-    .ck-lines { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.75rem; }
-    .ck-lines span:nth-child(even) { text-align: right; white-space: nowrap; }
-    .ck-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
-    .ck-buttons button { min-height: 44px; padding: 0.5rem 1.1rem; }
-    .ck-buttons button:hover { scale: 1; }
-    .ck-buttons button:disabled, .ck-primary:disabled { opacity: 0.35; cursor: not-allowed; }
     .ck-primary {
       width: 100%; min-height: 44px; padding: 0.5rem 1.1rem; border-radius: 6px;
       background: var(--text-color); color: var(--bg-color); border: 1px solid var(--text-color);
     }
     .ck-primary:hover { scale: 1; }
+    .ck-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+    .ck-next { display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.9rem; border-top: 1px solid var(--ui-border-soft); }
+    .ck-next[hidden] { display: none; }
+    .ck-next .ck-note { min-height: 0; }
+    .ck-amount {
+      padding: 0.6rem 0.7rem; border-radius: 6px;
+      background: color-mix(in srgb, var(--text-color) 5%, transparent);
+      font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+    }
+    .ck-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+    .ck-buttons button { min-height: 44px; padding: 0.5rem 1.1rem; }
+    .ck-buttons button:hover { scale: 1; }
     .ck-quiet { border-color: var(--ui-border-strong); }
     .ck-draft {
       padding: 0.6rem 0.7rem; border: 1px dashed var(--ui-border-strong); border-radius: 6px;
       font-size: 0.9rem;
     }
-    .ck-panel { display: flex; flex-direction: column; gap: 0.75rem; }
-    .ck-panel[hidden] { display: none; }
     .ck-bank { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem 0.9rem; }
     .ck-bank dt { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
-    .ck-bank dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .ck-bank dd { margin: 0; overflow-wrap: anywhere; }
     .ck-key {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; line-height: 1.5;
       word-spacing: 0.3em;
     }
-    .ck-label { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
-
   </style>
 </head>
 <body>
@@ -149,72 +145,53 @@
 
   <div class="ck-backdrop" id="ck-backdrop">
     <section class="ck-banner" role="dialog" aria-modal="true" aria-labelledby="ck-title">
+      <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
+      <p id="ck-rate">1 Cookie = 1 €</p>
 
-      <div class="ck-panel" id="ck-choose">
-        <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
-        <div class="ck-row ck-rate-row">
-          <p id="ck-rate">1 Cookie = 1 €</p>
-          <div class="ck-seg" role="group" aria-label="Währung">
-            <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
-            <button type="button" data-cur="USD" aria-pressed="false" aria-label="US-Dollar">$</button>
-          </div>
-        </div>
-
-        <div class="ck-row">
-          <button type="button" class="ck-step" id="ck-minus" aria-label="ein Cookie weniger">−</button>
-          <input class="ck-field" id="ck-count" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Anzahl Cookies" value="1">
-          <button type="button" class="ck-step" id="ck-plus" aria-label="ein Cookie mehr">+</button>
-          <button type="button" class="ck-step" id="ck-inf" aria-label="unendlich viele Cookies" aria-pressed="false">∞</button>
-        </div>
-
-        <div class="ck-hint" aria-live="polite">
-          <p id="ck-zero" class="is-off">Anders als bei <a href="https://0nefinity.love">0nefinity.love</a>, dort gibt es keine Cookies. Für Zugang zu 0nefinity.com kaufen Sie mindestens einen. Wir sind hier nicht bei der Wohlfahrt.</p>
-          <p id="ck-crumbs" class="is-off">Nur ganze Cookies. Wir verkaufen hier keine Brösel.</p>
-          <p id="ck-invalid" class="is-off">Das ist keine Anzahl.</p>
-        </div>
-
-        <button type="button" class="ck-primary" id="ck-pay-now">Jetzt bezahlen</button>
+      <div class="ck-row">
+        <button type="button" class="ck-step" id="ck-div" aria-label="durch zehn">−−</button>
+        <button type="button" class="ck-step" id="ck-minus" aria-label="ein Cookie weniger">−</button>
+        <input class="ck-field" id="ck-count" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Anzahl Cookies" value="1">
+        <button type="button" class="ck-step" id="ck-plus" aria-label="ein Cookie mehr">+</button>
+        <button type="button" class="ck-step" id="ck-mul" aria-label="mal zehn">++</button>
+        <button type="button" class="ck-step" id="ck-inf" aria-label="unendlich viele Cookies" aria-pressed="false">∞</button>
       </div>
 
-      <div class="ck-panel" id="ck-method" hidden>
-        <h2>Bezahlen</h2>
-        <div class="ck-sum" id="ck-sum"></div>
-        <div class="ck-buttons">
-          <button type="button" class="ck-quiet" id="ck-method-back">Zurück</button>
-          <button type="button" class="ck-quiet" id="ck-transfer">Überweisung</button>
-          <button type="button" id="ck-card">Karte</button>
-        </div>
+      <div class="ck-seg" role="group" aria-label="Währung">
+        <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
+        <button type="button" data-cur="USD" aria-pressed="false" aria-label="US-Dollar">$</button>
       </div>
 
-      <div class="ck-panel" id="ck-pay" hidden>
-        <h2>Bezahlen</h2>
-        <p class="ck-sum" id="ck-pay-sum"></p>
-        <p class="ck-draft">Entwurf: Stripe ist noch nicht verbunden. Es wird nichts abgebucht.</p>
-        <div class="ck-buttons">
-          <button type="button" class="ck-quiet" id="ck-pay-back">Zurück</button>
-          <button type="button" id="ck-pay-done">Weiter</button>
-        </div>
+      <div class="ck-hint" aria-live="polite">
+        <p id="ck-zero" class="is-off">Anders als bei <a href="https://0nefinity.love">0nefinity.love</a>, dort gibt es keine Cookies. Für Zugang zu 0nefinity.com kaufen Sie mindestens einen. Wir sind hier nicht bei der Wohlfahrt.</p>
+        <p id="ck-crumbs" class="is-off">Nur ganze Cookies. Wir verkaufen hier keine Brösel.</p>
+        <p id="ck-invalid" class="is-off">Das ist keine Anzahl.</p>
       </div>
 
-      <div class="ck-panel" id="ck-bank" hidden>
-        <h2>Überweisen</h2>
-        <p class="ck-sum" id="ck-bank-ask"></p>
-        <p>Geben Sie den Schlüssel als Verwendungszweck an, sonst finden wir Ihre Cookies nicht.</p>
+      <button type="button" class="ck-primary" id="ck-pay-now">Jetzt bezahlen</button>
+
+      <div class="ck-next" id="ck-next" hidden>
+        <p class="ck-amount" id="ck-bank-ask"></p>
         <dl class="ck-bank">
           <dt>Empfänger</dt><dd>noch offen</dd>
           <dt>IBAN</dt><dd>noch offen</dd>
-          <dt>Betrag</dt><dd id="ck-bank-amount"></dd>
           <dt>Verwendungszweck</dt><dd class="ck-key" id="ck-key"></dd>
         </dl>
+        <p class="ck-note">Geben Sie den Schlüssel als Verwendungszweck an, sonst finden wir Ihre Cookies nicht.</p>
         <p class="ck-note" id="ck-copy-note" aria-live="polite"></p>
         <p class="ck-draft">Entwurf: Bankdaten fehlen noch, Geldeingänge werden noch nicht erkannt.</p>
         <div class="ck-buttons">
-          <button type="button" class="ck-quiet" id="ck-bank-back">Zurück</button>
           <button type="button" class="ck-quiet" id="ck-copy">Schlüssel kopieren</button>
           <button type="button" id="ck-bank-done">Fertig</button>
         </div>
-      </div>
 
+        <p>Oder zahlen Sie mit Kreditkarte:</p>
+        <p class="ck-amount" id="ck-card-line"></p>
+        <p class="ck-draft">Entwurf: Stripe ist noch nicht verbunden. Es wird nichts abgebucht.</p>
+        <div class="ck-buttons">
+          <button type="button" id="ck-card">Mit Kreditkarte zahlen</button>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -223,102 +200,36 @@
 (function () {
   'use strict';
 
-  // 1 cookie = 1 EUR or 1 USD
-  var CURRENCIES = ['EUR', 'USD'];
-  // Stripe's amount field holds at most eight digits in the smallest unit: 999.999,99
+  // Stripe's amount field holds at most eight digits in the smallest unit: 999999,99
   var MAX_MINOR = 99999999n;
+  var SYMBOL = { EUR: '€', USD: '$' };
 
   var $ = function (id) { return document.getElementById(id); };
   var backdrop = $('ck-backdrop');
   var countEl = $('ck-count');
+  var next = $('ck-next');
   var cur = 'EUR';
-  var SYMBOL = { EUR: '€', USD: '$' };
-  var sumEl = $('ck-sum');
-
   var infinite = false;
 
-  function decimals() { return 2; }
-
-  // count string -> BigInt minor units, or null if unreadable
-  function parseMinor(str) {
-    var s = wholePart(str).value.replace(/['’]/g, '');
-    if (s === '') return 0n;
-    if (!/^\d+$/.test(s)) return null;
-    return BigInt(s) * 10n ** BigInt(decimals());
-  }
-
-  // whole cookies only. "," is a decimal comma; "." is a thousands dot when exactly
-  // three digits follow it, any other "." is a decimal point. cut: a fraction was dropped
+  // whole cookies only; every "," or "." starts a fraction, there are no thousands separators.
+  // cut: a fraction was dropped
   function wholePart(str) {
     var v = String(str).replace(/\s/g, '');
-    var comma = v.indexOf(',');
-    var cut = comma >= 0;
-    if (cut) v = v.slice(0, comma);
-    var dot = /\.(?!\d{3}(?:\.|$))/.exec(v);
-    if (dot) { v = v.slice(0, dot.index); cut = true; }
-    v = v.replace(/\./g, '');
-    return { value: v === '' && cut ? '0' : v, cut: cut };
+    var sep = v.search(/[.,]/);
+    if (sep < 0) return { value: v, cut: false };
+    return { value: v.slice(0, sep) || '0', cut: true };
+  }
+
+  // count string -> BigInt cookies, or null if unreadable
+  function parseCount(str) {
+    var v = wholePart(str).value;
+    if (v === '') return 0n;
+    return /^\d+$/.test(v) ? BigInt(v) : null;
   }
 
   function money(minor) {
-    var d = decimals();
-    var neg = minor < 0n;
-    var a = neg ? -minor : minor;
-    var p = 10n ** BigInt(d);
-    var str = (a / p).toString() + (d ? '.' + (a % p).toString().padStart(d, '0') : '');
-    try {
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, minimumFractionDigits: d, maximumFractionDigits: d }).format(str);
-    } catch (e) {
-      return str + ' ' + cur;
-    }
-  }
-
-  function int(n) { return new Intl.NumberFormat('de-DE').format(n); }
-
-  function plural(n, one, many) { return n === 1n ? one : many; }
-
-  // "= N Zahlungen à Max + Rest"
-  function split(minor) {
-    if (minor === 0n) return 'gratis';
-    if (minor <= MAX_MINOR) return '= 1 Zahlung';
-    var full = minor / MAX_MINOR;
-    var rest = minor % MAX_MINOR;
-    var line = '= ' + int(full) + ' ' + plural(full, 'Zahlung', 'Zahlungen') + ' à ' + money(MAX_MINOR);
-    if (rest > 0n) line += ' + ' + money(rest);
-    return line;
-  }
-
-  function cookies(minor) {
-    var p = 10n ** BigInt(decimals());
-    var whole = minor % p === 0n;
-    var n = whole ? int(minor / p) : String(countEl.value).trim();
-    return n + ' ' + (minor === p ? 'Cookie' : 'Cookies');
-  }
-
-  // what the card step asks for now and what stays open, one payment at a time
-  function firstPayment(minor) {
-    var each = ' in Höhe von ' + money(MAX_MINOR);
-    if (minor === null) {
-      return { main: 'Bitte zahlen Sie die ersten ' + money(MAX_MINOR), sub: '(weitere ∞ Zahlungen' + each + ' ausstehend)' };
-    }
-    if (minor <= MAX_MINOR) return { main: 'Bitte zahlen Sie ' + money(minor), sub: '' };
-    var full = minor / MAX_MINOR;
-    var rest = minor % MAX_MINOR;
-    var open = full - 1n;
-    var parts = [];
-    if (open > 0n) parts.push(int(open) + ' ' + plural(open, 'Zahlung', 'Zahlungen') + each);
-    if (rest > 0n) parts.push('1 Zahlung in Höhe von ' + money(rest));
-    return { main: 'Bitte zahlen Sie die ersten ' + money(MAX_MINOR), sub: '(weitere ' + parts.join(' + ') + ' ausstehend)' };
-  }
-
-  // bank transfers have no per-payment cap; for ∞ Tim asks for round millions
-  var BANK_STEP = 1000000n;
-  function round(units) {
-    try {
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(units.toString());
-    } catch (e) {
-      return int(units) + ' ' + cur;
-    }
+    var str = (minor / 100n).toString() + '.' + (minor % 100n).toString().padStart(2, '0');
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, useGrouping: false }).format(str);
   }
 
   // transfer reference: 256 random bits as 64 uppercase hex, fits the 140-char SEPA field
@@ -328,73 +239,62 @@
     return Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('').toUpperCase();
   }
   var KEY = makeKey();
+  $('ck-key').textContent = KEY.match(/.{16}/g).join(' ');
 
-  function summary() {
+  function renderNext(count) {
     if (infinite) {
-      return {
-        lines: [['∞ Cookies', '∞']],
-        sub: '= ∞ Zahlungen à ' + money(MAX_MINOR),
-        buy: '∞ kaufen'
-      };
+      $('ck-bank-ask').textContent = 'Bitte überweisen Sie ∞ ' + SYMBOL[cur] + ' auf folgendes Konto.';
+      $('ck-card-line').textContent = 'Zahlung 1 von ∞: ' + money(MAX_MINOR);
+      return;
     }
-    var minor = parseMinor(countEl.value);
-    if (minor === null) return { text: 'Das ist keine Anzahl.', buy: null };
-    if (minor < 100n) return { lines: [[cookies(minor), money(minor)]], sub: '', buy: null, zero: true };
-    return { lines: [[cookies(minor), money(minor)]], sub: split(minor), buy: 'Kaufen', total: minor };
+    var minor = count * 100n;
+    var payments = (minor + MAX_MINOR - 1n) / MAX_MINOR;
+    $('ck-bank-ask').textContent = 'Bitte überweisen Sie ' + money(minor) + ' auf folgendes Konto.';
+    $('ck-card-line').textContent = 'Zahlung 1 von ' + payments + ': ' + money(minor < MAX_MINOR ? minor : MAX_MINOR);
   }
 
-  function renderSum() {
-    var s = summary();
-    sumEl.textContent = '';
-    var grid = document.createElement('div');
-    grid.className = 'ck-lines';
-    s.lines[0].forEach(function (t) {
-      var span = document.createElement('span');
-      span.textContent = t;
-      grid.appendChild(span);
-    });
-    sumEl.appendChild(grid);
-    var sm = document.createElement('small');
-    sm.textContent = s.sub;
-    sumEl.appendChild(sm);
+  // long numbers shrink down to 11px, beyond that the field scrolls
+  function fitField() {
+    var size = 16;
+    countEl.style.fontSize = '';
+    while (countEl.scrollWidth > countEl.clientWidth && size > 11) {
+      size -= 1;
+      countEl.style.fontSize = size + 'px';
+    }
   }
 
   var crumbsOn = false;
   function render() {
     if (infinite) countEl.value = '∞';
-    var s = summary();
+    var count = infinite ? null : parseCount(countEl.value);
+    var ok = infinite || (count !== null && count >= 1n);
     $('ck-rate').textContent = '1 Cookie = 1 ' + SYMBOL[cur];
     document.querySelectorAll('[data-cur]').forEach(function (b) {
       b.setAttribute('aria-pressed', b.dataset.cur === cur ? 'true' : 'false');
     });
     $('ck-inf').setAttribute('aria-pressed', infinite ? 'true' : 'false');
-    var hint = crumbsOn ? 'ck-crumbs' : s.text ? 'ck-invalid' : s.zero ? 'ck-zero' : '';
+    var hint = crumbsOn ? 'ck-crumbs' : ok ? '' : count === null ? 'ck-invalid' : 'ck-zero';
     ['ck-zero', 'ck-crumbs', 'ck-invalid'].forEach(function (id) { $(id).classList.toggle('is-off', id !== hint); });
-    $('ck-pay-now').disabled = !s.buy;
+    $('ck-pay-now').disabled = !ok;
+    if (!ok) next.hidden = true;
+    if (!next.hidden) renderNext(count);
+    fitField();
   }
 
   function setCount(v) {
     infinite = v === 'inf';
-    if (!infinite) countEl.value = v;
+    if (!infinite) countEl.value = v.toString();
     render();
   }
 
-  // ∞ minus one is still ∞, so minus leaves ∞ for the start value
-  function step(delta) {
-    if (infinite) { if (delta < 0n) setCount('1'); return; }
-    var p = 10n ** BigInt(decimals());
-    var minor = parseMinor(countEl.value) || 0n;
-    var next = (minor / p) + delta;
-    if (next < 0n) next = 0n;
-    setCount(next.toString());
-  }
+  function current() { return parseCount(countEl.value) || 0n; }
 
-  function show(panel) {
-    ['ck-choose', 'ck-method', 'ck-pay', 'ck-bank'].forEach(function (id) { $(id).hidden = id !== panel; });
-  }
+  // ∞ minus anything is still ∞, so the minus buttons leave ∞ for the start value
+  function down(fn) { setCount(infinite ? 1n : fn(current())); }
+  function up(fn) { if (!infinite) setCount(fn(current())); }
 
   function open() {
-    show('ck-choose');
+    next.hidden = true;
     backdrop.hidden = false;
     document.body.classList.add('ck-locked');
     render();
@@ -412,8 +312,8 @@
     clearTimeout(settleTimer);
     if (infinite) return;
     var w = wholePart(countEl.value);
-    if (w.cut || countEl.value.indexOf('.') >= 0) countEl.value = w.value;
     if (w.cut) {
+      countEl.value = w.value;
       crumbsOn = true;
       clearTimeout(crumbsTimer);
       crumbsTimer = setTimeout(function () { crumbsOn = false; render(); }, 2500);
@@ -421,8 +321,8 @@
     render();
   }
 
-  // while typing, "1,7" may still become "1,75" and "1.0" may become "1.000",
-  // so typed input settles after a short pause; a paste or a drop settles at once
+  // typed "1," is still on its way to "1,5", so typing settles after a short pause;
+  // a paste or a drop settles at once
   countEl.addEventListener('input', function (e) {
     infinite = /∞|inf/i.test(countEl.value);
     clearTimeout(settleTimer);
@@ -431,46 +331,39 @@
   });
   countEl.addEventListener('change', settle);
   countEl.addEventListener('focus', function () { if (infinite) countEl.select(); });
+  // holding a step button repeats it, with the timing of the slider buttons in controls.js
+  // (400 ms, then every 80 ms); controls.js keeps that inside addSlider, so it lives here
+  function holdable(btn, act) {
+    var wait = null, again = null, viaPointer = false;
+    function stop() { clearTimeout(wait); clearInterval(again); wait = again = null; }
+    btn.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      viaPointer = true;
+      btn.setPointerCapture(e.pointerId);
+      stop();
+      act();
+      wait = setTimeout(function () { again = setInterval(act, 80); }, 400);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (t) { btn.addEventListener(t, stop); });
+    btn.addEventListener('click', function () {
+      if (viaPointer) { viaPointer = false; return; }
+      act();
+    });
+  }
+  holdable($('ck-div'), function () { down(function (c) { return c / 10n; }); });
+  holdable($('ck-minus'), function () { down(function (c) { return c > 0n ? c - 1n : 0n; }); });
+  holdable($('ck-plus'), function () { up(function (c) { return c + 1n; }); });
+  holdable($('ck-mul'), function () { up(function (c) { return c === 0n ? 1n : c * 10n; }); });
+  $('ck-inf').addEventListener('click', function () { setCount('inf'); });
   document.querySelectorAll('[data-cur]').forEach(function (b) {
     b.addEventListener('click', function () { cur = b.dataset.cur; render(); });
   });
-  $('ck-minus').addEventListener('click', function () { step(-1n); });
-  $('ck-plus').addEventListener('click', function () { step(1n); });
-  $('ck-inf').addEventListener('click', function () { setCount('inf'); });
-  $('ck-pay-now').addEventListener('click', function () { renderSum(); show('ck-method'); });
-  $('ck-method-back').addEventListener('click', function () { show('ck-choose'); });
-  $('ck-card').addEventListener('click', function () {
-    var f = firstPayment(infinite ? null : summary().total);
-    var box = $('ck-pay-sum');
-    box.textContent = '';
-    box.append(f.main);
-    if (f.sub) {
-      var sm = document.createElement('small');
-      sm.textContent = f.sub;
-      box.appendChild(sm);
-    }
-    show('ck-pay');
-  });
-  $('ck-transfer').addEventListener('click', function () {
-    var minor = infinite ? null : parseMinor(countEl.value);
-    var ask = $('ck-bank-ask');
-    ask.textContent = '';
-    if (minor === null) {
-      ask.append('Bitte überweisen Sie die ersten ' + round(BANK_STEP));
-      var sm = document.createElement('small');
-      sm.textContent = '(weitere ∞ Zahlungen in Höhe von ' + round(BANK_STEP) + ' ausstehend)';
-      ask.appendChild(sm);
-      $('ck-bank-amount').textContent = round(BANK_STEP);
-    } else {
-      ask.append('Bitte überweisen Sie ' + money(minor));
-      $('ck-bank-amount').textContent = money(minor);
-    }
-    $('ck-key').textContent = KEY.match(/.{16}/g).join(' ');
+  $('ck-pay-now').addEventListener('click', function () {
+    next.hidden = false;
     $('ck-copy-note').textContent = '';
-    show('ck-bank');
+    render();
+    next.scrollIntoView({ block: 'start', behavior: 'smooth' });
   });
-  $('ck-bank-back').addEventListener('click', function () { show('ck-method'); });
-  $('ck-bank-done').addEventListener('click', close);
   $('ck-copy').addEventListener('click', function () {
     var note = $('ck-copy-note');
     if (!navigator.clipboard) { note.textContent = 'Kopieren geht hier nicht, bitte den Schlüssel markieren und kopieren.'; return; }
@@ -479,8 +372,8 @@
       function () { note.textContent = 'Kopieren ging nicht, bitte den Schlüssel markieren und kopieren.'; }
     );
   });
-  $('ck-pay-back').addEventListener('click', function () { show('ck-method'); });
-  $('ck-pay-done').addEventListener('click', close);
+  $('ck-bank-done').addEventListener('click', close);
+  $('ck-card').addEventListener('click', close);
   $('ck-reopen').addEventListener('click', open);
 
   document.querySelectorAll('[data-draft]').forEach(function (b) {
