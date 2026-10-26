@@ -13,8 +13,8 @@
  *     intPart, decimals // optional: Anfangskette (Ganzzahl, Nachkommastellen), schon beim ersten Layout da (sonst '0.')
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
  *     dir               // optional: 'r' (Standard) oder 'l': gespiegelt, die Kette laeuft nach links, Ziffern bleiben aufrecht
- *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum);
- *                       // 'circle' = das centrum als kleiner Kreis (Glyphe im Atlas, gestaucht zaehlt seine Tinte wie jede)
+ *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum); sonst das Glyph "." der Schrift
+ *     fixedStart        // optional: true = nur das aeussere Ende R ist greifbar; Anfang (3/centrum), L, Wischen und Mausrad sind gesperrt
  *     origin            // optional: Lage der Ganzzahl beim Start (CSS-px ab Anfang der Achse; Standard: Mitte)
  *     unrolled          // optional: true = ausgerollt starten (R am Rand), bis zum ersten Ziehen/Rad
  *     fontPx            // optional: Schriftgroesse in CSS-px (Zahl oder Funktion); Standard 6 % der Fensterbreite, 28..56
@@ -83,7 +83,7 @@
     const colorEl = opts.colorElement || canvas;
     if (opts.dir !== undefined && opts.dir !== 'l' && opts.dir !== 'r') throw new TypeError("UnfoldingView: dir muss 'l' oder 'r' sein, war " + opts.dir);
     const mirror = opts.dir === 'l';
-    if (![undefined, true, false, 'circle'].includes(opts.dot)) throw new TypeError("UnfoldingView: dot muss true, false oder 'circle' sein, war " + opts.dot);
+    if (![undefined, true, false].includes(opts.dot)) throw new TypeError('UnfoldingView: dot muss true oder false sein, war ' + opts.dot);
     function fontOf() {
       const v = +(typeof opts.fontPx === 'function' ? opts.fontPx() : opts.fontPx);
       if (!(v > 0) || !Number.isFinite(v)) throw new TypeError('UnfoldingView: fontPx muss eine positive Zahl sein, war ' + v);
@@ -259,11 +259,7 @@
         g.font = (S * dpr) + 'px ' + fam;
         g.textAlign = 'center'; g.textBaseline = 'middle';
         if (mirror) g.setTransform(-1, 0, 0, 1, wd, 0);
-        if (ch === '.' && opts.dot === 'circle') {
-          g.strokeStyle = color;
-          g.lineWidth = Math.max(1.5 * dpr, 0.08 * S * dpr);
-          g.beginPath(); g.arc(wd / 2, hd / 2, 0.18 * S * dpr, 0, 2 * Math.PI); g.stroke();
-        } else if (ch !== '.' || opts.dot !== false) g.fillText(ch, wd / 2, hd / 2);
+        if (ch !== '.' || opts.dot !== false) g.fillText(ch, wd / 2, hd / 2);
         const data = g.getImageData(0, 0, wd, hd).data;
         // Silhouette: je Zeile die stärkste Tinte des Zeichens, eine Spalte breit (ruhiger Strich fuer fehlende Stellen).
         const rowMax = rowMaxAlpha(data, wd, hd);
@@ -448,8 +444,9 @@
       const tStart = performance.now();
       dirty = false;
       if (!atlas || atlasKey !== color + '|' + S + '|' + dpr + '|' + w) buildAtlas();
-      if (mirror) ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
-      else ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // save/restore je Bild: ohne zeichnete WebKit gelegentlich ein Bild ungespiegelt und liess es stehen (dir 'l')
+      ctx.save();
+      ctx.setTransform(mirror ? -1 : 1, 0, 0, 1, mirror ? canvas.width : 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = true;
       prep();
@@ -543,6 +540,7 @@
       const ni = pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') : 'null';
       info = ni;
       underline(y0);
+      ctx.restore();
       if (nk !== infoKey) { infoKey = nk; if (opts.onPointerInfo) opts.onPointerInfo(ni); }
       drawnCount = n;
       renderMs = performance.now() - tStart;
@@ -650,6 +648,7 @@
     }
     // Der nächste Griff gewinnt: die 3 (nur solange links nichts eingerollt ist), R, L (nur wenn eingerollt).
     function hitTest(x) {
+      if (opts.fixedStart) return Math.abs(x - R) <= HIT ? 'R' : null;
       const rolled = rolledLeft();
       const cands = [];
       const t0 = posOf(0), t1 = Math.max(posOf(1), t0);
@@ -743,7 +742,7 @@
     // die 3 wieder vorn steht. Die Seite scrollt dabei nicht (passive: false, preventDefault).
     function onWheel(e) {
       e.preventDefault();
-      if (locked) return;
+      if (locked || opts.fixedStart) return;
       unroll = false;
       const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? W : 1);
       const delta = (e.deltaY + e.deltaX) * unit;
