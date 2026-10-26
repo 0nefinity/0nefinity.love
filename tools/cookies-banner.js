@@ -3,6 +3,10 @@
 (function () {
   'use strict';
 
+  // on 0nefinity.com nginx appends this script to every page, /cookies included
+  if (window.__ckBanner) return;
+  window.__ckBanner = true;
+
   function boot() {
 
     // one card payment is at most 999.999 (Stripe allows eight digits in cents); larger sums are split
