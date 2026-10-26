@@ -256,13 +256,15 @@
   }
 
   // long numbers shrink down to 11px, beyond that the field scrolls
+  // shrink the digits until the whole number shows (13 digits fit at 320 px); below 6px the field scrolls
+  var measure = document.createElement('canvas').getContext('2d');
   function fitField() {
-    var size = 16;
     countEl.style.fontSize = '';
-    while (countEl.scrollWidth > countEl.clientWidth && size > 11) {
-      size -= 1;
-      countEl.style.fontSize = size + 'px';
-    }
+    var cs = getComputedStyle(countEl);
+    var room = countEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 2;
+    measure.font = '16px ' + cs.fontFamily;
+    var width = measure.measureText(countEl.value).width;
+    if (width > room) countEl.style.fontSize = Math.max(6, Math.floor(16 * room / width * 10) / 10) + 'px';
   }
 
   var crumbsOn = false;
