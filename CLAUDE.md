@@ -10,7 +10,7 @@ Mit dem User **auf Deutsch** kommunizieren.
 
 ## Projektübersicht
 
-**0nefinity** ist ein kreativ-philosophisch-mathematisches Kunstprojekt rund um die nicht-duale Identität **0 ≡ 1 ≡ ∞**. Keine klassische App — eine Sammlung interaktiver HTML-Experimente, Visualisierungen und philosophischer Texte. Kein Build-System, kein npm, kein package.json.
+**0nefinity** ist ein kreativ-philosophisch-mathematisches Kunstprojekt rund um die nicht-duale Identität **0 ≡ 1 ≡ ∞**. Tim nennt das Projekt meist **018** oder **018.bio** (kurz, "0nefinity" ist umständlich und wird oft vertippt). 018 = 0nefinity = dieses Repo. Keine klassische App — eine Sammlung interaktiver HTML-Experimente, Visualisierungen und philosophischer Texte. Kein Build-System, kein npm, kein package.json.
 
 ## Entwicklungsumgebung
 
@@ -64,6 +64,7 @@ Flache Sammlung selbst-enthaltener HTML-Seiten. Die gemeinsame Infrastruktur:
 | `tools/math-notation.js` | `pi(n)`/`e(n)`-Ersetzung und π/∞-Vorschläge in Eingabefeldern. Nur dort per `<script defer>`, wo Eingabefelder sind; die Menüsuche lädt sie nicht (sucht symbolunabhängig: π=pi, ∞=inf) |
 | `tools/dialog.js` | Dialog (baut sein Markup selbst), nur `bibelaufdenpunkt.html` und `bibelaufdenpunkt copy 3.html` |
 | `tools/live-reload.js` | Dev-only Live-Reload (Poll auf `/_devmtime.php`), vom Head-Include nur auf `dev.*` geladen; meldet Ausfall per `console.error` |
+| `tools/editor.js` | Dev-only Login-Editor (nur auf `dev.*`, nur mit Login über `/enternity`): Texte inline bearbeiten, speichern = Commit auf `claude-dev`, veröffentlichen = Seite auf `main`. Server: `~/0nefinity/editor/server.py` (Infra-Repo) |
 | `tools/controls.js` | Interaktive UI-Steuerelemente (Slider, Inputs, Zoom) |
 | `tools/zoom.js` | Zoom und Skalierung für Canvas-Seiten |
 | `0nefinity.js` | Mathematische Konstanten und Manifestationen der 0nefinity-Theorie |
