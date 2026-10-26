@@ -67,6 +67,8 @@
     }
     .ck-banner h2 { margin: 0; font-size: 1.125rem; font-weight: normal; }
     .ck-banner p { margin: 0; }
+    /* a scrolling flex column would squeeze its rows into each other */
+    .ck-banner > * { flex-shrink: 0; }
     .ck-row { display: flex; gap: 0.25rem; align-items: stretch; flex-wrap: nowrap; }
     .ck-step {
       flex: 0 0 44px; height: 44px; padding: 0; font-size: 1.125rem; border-width: 1px; border-radius: 6px;
