@@ -242,14 +242,23 @@
 
   // count string -> BigInt minor units, or null if unreadable
   function parseMinor(str) {
-    var s = String(str).trim().replace(/[\s.'’]/g, '').replace(',', '.');
+    var s = wholePart(str).value.replace(/['’]/g, '');
     if (s === '') return 0n;
-    if (!/^\d*\.?\d*$/.test(s) || s === '.') return null;
-    var parts = s.split('.');
-    var d = decimals();
-    var frac = (parts[1] || '').slice(0, d);
-    while (frac.length < d) frac += '0';
-    return BigInt((parts[0] || '0') + frac);
+    if (!/^\d+$/.test(s)) return null;
+    return BigInt(s) * 10n ** BigInt(decimals());
+  }
+
+  // whole cookies only. "," is a decimal comma; "." is a thousands dot when exactly
+  // three digits follow it, any other "." is a decimal point. cut: a fraction was dropped
+  function wholePart(str) {
+    var v = String(str).replace(/\s/g, '');
+    var comma = v.indexOf(',');
+    var cut = comma >= 0;
+    if (cut) v = v.slice(0, comma);
+    var dot = /\.(?!\d{3}(?:\.|$))/.exec(v);
+    if (dot) { v = v.slice(0, dot.index); cut = true; }
+    v = v.replace(/\./g, '');
+    return { value: v === '' && cut ? '0' : v, cut: cut };
   }
 
   function money(minor) {
@@ -402,28 +411,31 @@
     $('ck-reopen').focus();
   }
 
-  // only whole cookies: cut the fraction off and flash the hint
-  var crumbsTimer;
-  function crumbs(cut) {
-    countEl.value = countEl.value.slice(0, cut).trim() || '0';
-    var hint = $('ck-crumbs');
-    hint.hidden = false;
-    clearTimeout(crumbsTimer);
-    crumbsTimer = setTimeout(function () { hint.hidden = true; }, 2500);
+  // rewrite the field to whole cookies; a dropped fraction flashes the hint
+  var crumbsTimer, settleTimer;
+  function settle() {
+    clearTimeout(settleTimer);
+    if (infinite) return;
+    var w = wholePart(countEl.value);
+    if (w.cut || countEl.value.indexOf('.') >= 0) countEl.value = w.value;
+    if (w.cut) {
+      var hint = $('ck-crumbs');
+      hint.hidden = false;
+      clearTimeout(crumbsTimer);
+      crumbsTimer = setTimeout(function () { hint.hidden = true; }, 2500);
+    }
+    render();
   }
 
-  countEl.addEventListener('input', function () {
+  // while typing, "1.0" may still become "1.000", so dots settle after a short pause;
+  // a comma, a paste or a drop settles at once
+  countEl.addEventListener('input', function (e) {
     infinite = /∞|inf/i.test(countEl.value);
-    if (!infinite && countEl.value.indexOf(',') >= 0) crumbs(countEl.value.indexOf(','));
-    render();
+    clearTimeout(settleTimer);
+    if (/^insert(FromPaste|FromDrop)$/.test(e.inputType || '') || countEl.value.indexOf(',') >= 0) settle();
+    else { settleTimer = setTimeout(settle, 800); render(); }
   });
-  // a dot is a thousands separator only in 1.000 grouping; otherwise it is a decimal point
-  countEl.addEventListener('change', function () {
-    var v = countEl.value.trim();
-    if (infinite || v.indexOf('.') < 0 || /^\d{1,3}(\.\d{3})+$/.test(v)) return;
-    crumbs(countEl.value.indexOf('.'));
-    render();
-  });
+  countEl.addEventListener('change', settle);
   countEl.addEventListener('focus', function () { if (infinite) countEl.select(); });
   curEl.addEventListener('change', render);
   $('ck-minus').addEventListener('click', function () { step(-1n); });
