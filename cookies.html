@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cookies</title>
+  <style>
+    body.ck-locked { overflow: hidden; }
+
+    /* meta.css sets * { white-space: pre-wrap }; markup indentation would render as blank lines */
+    .ck-shop, .ck-shop *, .ck-backdrop, .ck-backdrop * { white-space: normal; }
+    .ck-shop {
+      width: min(56rem, 100%);
+      box-sizing: border-box;
+      padding: 4.5rem 1rem 3rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+    }
+    .ck-shop h1 { margin: 0; font-weight: normal; letter-spacing: 0.05em; }
+    .ck-works {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      width: 100%;
+    }
+    .ck-works img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border: 1px solid var(--ui-border-soft);
+      border-radius: 6px;
+    }
+    .ck-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; }
+    .ck-actions button { min-height: 44px; }
+    .ck-note { min-height: 1.5em; margin: 0; color: color-mix(in srgb, var(--text-color) 65%, transparent); font-size: 0.875rem; }
+    .ck-reopen {
+      background: none; border: 0; padding: 0.5rem 0.75rem; min-height: 44px;
+      color: color-mix(in srgb, var(--text-color) 55%, transparent);
+      font-size: 0.875rem; text-decoration: underline; border-radius: 4px;
+    }
+    .ck-reopen:hover { background: none; color: var(--text-color); scale: 1; }
+
+    /* banner */
+    .ck-backdrop {
+      position: fixed; inset: 0; z-index: 9000;
+      background: color-mix(in srgb, var(--bg-color) 70%, transparent);
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .ck-backdrop[hidden] { display: none; }
+    .ck-banner {
+      width: min(34rem, 100%);
+      max-height: 100%;
+      overflow: auto;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 1.25rem 0.75rem 1rem;
+      background: var(--ui-surface-strong);
+      border: 1px solid var(--ui-border);
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+      display: flex; flex-direction: column; gap: 0.75rem;
+      text-align: left;
+    }
+    .ck-banner h2 { margin: 0; font-size: 1.125rem; font-weight: normal; }
+    .ck-banner p { margin: 0; }
+    .ck-ask span { white-space: nowrap; color: color-mix(in srgb, var(--text-color) 60%, transparent); }
+    /* a scrolling flex column would squeeze its rows into each other */
+    .ck-banner > * { flex-shrink: 0; }
+    .ck-row { display: flex; gap: 0.25rem; align-items: stretch; flex-wrap: nowrap; }
+    .ck-step {
+      flex: 0 0 44px; height: 44px; padding: 0; font-size: 1.125rem; border-width: 1px; border-radius: 6px;
+      letter-spacing: -0.08em;
+    }
+    .ck-step:hover { scale: 1; }
+    .ck-step[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
+    .ck-field {
+      flex: 1 1 auto; min-width: 0; height: 44px; box-sizing: border-box;
+      padding: 0 0.25rem; font: inherit; font-size: 16px; text-align: center;
+      font-variant-numeric: tabular-nums;
+      background: color-mix(in srgb, var(--text-color) 8%, transparent);
+      color: var(--text-color); border: 0; border-radius: 6px;
+    }
+    .ck-field:focus-visible, .ck-banner button:focus-visible, .ck-shop button:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
+    .ck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+    .ck-head h2 { flex: 1 1 auto; min-width: 0; padding-top: 0.6rem; }
+    .ck-seg { display: flex; flex: 0 0 auto; border: 1px solid var(--ui-border-strong); border-radius: 6px; overflow: hidden; }
+    .ck-seg button {
+      width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0; font-size: 1.05rem;
+      background: transparent; color: var(--text-color);
+    }
+    .ck-seg button + button { border-left: 1px solid var(--ui-border-strong); }
+    .ck-seg button:hover { scale: 1; }
+    .ck-seg button[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); }
+    /* all hints share one cell, so the tallest one reserves the space from the start */
+    .ck-hint { display: grid; }
+    .ck-hint p { grid-area: 1 / 1; font-size: 0.9rem; color: color-mix(in srgb, var(--text-color) 75%, transparent); }
+    .ck-hint .is-off { visibility: hidden; }
+    .ck-hint a { color: var(--text-color); }
+    .ck-primary {
+      width: 100%; min-height: 44px; padding: 0.5rem 1.1rem; border-radius: 6px;
+      background: var(--text-color); color: var(--bg-color); border: 1px solid var(--text-color);
+    }
+    .ck-primary:hover { scale: 1; }
+    .ck-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+    .ck-next { display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.9rem; border-top: 1px solid var(--ui-border-soft); }
+    .ck-next[hidden] { display: none; }
+    .ck-next .ck-note { min-height: 0; }
+    .ck-amount {
+      padding: 0.6rem 0.7rem; border-radius: 6px;
+      background: color-mix(in srgb, var(--text-color) 5%, transparent);
+      font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+    }
+    .ck-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+    .ck-buttons button { min-height: 44px; padding: 0.5rem 1.1rem; }
+    .ck-buttons button:hover { scale: 1; }
+    .ck-quiet { border-color: var(--ui-border-strong); }
+    .ck-draft {
+      padding: 0.6rem 0.7rem; border: 1px dashed var(--ui-border-strong); border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .ck-bank { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem 0.9rem; }
+    .ck-bank dt { font-size: 0.875rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); }
+    .ck-bank dd { margin: 0; overflow-wrap: anywhere; }
+    .ck-key {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; line-height: 1.5;
+      word-spacing: 0.3em;
+    }
+  </style>
+</head>
+<body>
+  <main class="ck-shop">
+    <h1>0nefinity</h1>
+    <div class="ck-works">
+      <img src="/assets/cookies/herz-fraktal.webp" alt="Herz, fraktal in sich gedreht" width="800" height="800">
+      <img src="/assets/cookies/kaleidoskop.webp" alt="Herz im Kaleidoskop" width="800" height="800">
+      <img src="/assets/cookies/kreis-fraktal.webp" alt="Kreis, fraktal nach innen und außen" width="800" height="800">
+      <img src="/assets/cookies/moire.webp" alt="verdrehte Linienschar, Moiré" width="800" height="800">
+    </div>
+    <div class="ck-actions">
+      <button type="button" data-draft="Print">Print</button>
+      <button type="button" data-draft="Warteliste">Pro: Warteliste</button>
+    </div>
+    <p class="ck-note" id="ck-shop-note" aria-live="polite"></p>
+    <button type="button" class="ck-reopen" id="ck-reopen">Cookies</button>
+  </main>
+
+  <div class="ck-backdrop" id="ck-backdrop">
+    <section class="ck-banner" role="dialog" aria-modal="true" aria-labelledby="ck-title">
+      <div class="ck-head">
+        <h2 id="ck-title">Zugang zur Seite nur mit Cookies.</h2>
+        <div class="ck-seg" role="group" aria-label="Währung">
+          <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
+          <button type="button" data-cur="USD" aria-pressed="false" aria-label="US-Dollar">$</button>
+        </div>
+      </div>
+      <p class="ck-ask">Wie viele Cookies wollen Sie? <span id="ck-rate">1 Cookie = 1 €</span></p>
+
+      <div class="ck-row">
+        <button type="button" class="ck-step" id="ck-div" aria-label="durch zehn">−−</button>
+        <button type="button" class="ck-step" id="ck-minus" aria-label="ein Cookie weniger">−</button>
+        <input class="ck-field" id="ck-count" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Anzahl Cookies" value="1">
+        <button type="button" class="ck-step" id="ck-plus" aria-label="ein Cookie mehr">+</button>
+        <button type="button" class="ck-step" id="ck-mul" aria-label="mal zehn">++</button>
+        <button type="button" class="ck-step" id="ck-inf" aria-label="unendlich viele Cookies" aria-pressed="false">∞</button>
+      </div>
+
+
+      <div class="ck-hint" aria-live="polite">
+        <p id="ck-zero" class="is-off">Mindestabnahme auf 0nefinity.com: 1 Cookie.<br>Anders als auf&nbsp;<a href="https://0nefinity.love">0nefinity.love</a> sind wir hier nicht bei der Wohlfahrt.</p>
+        <p id="ck-crumbs" class="is-off">Nur ganze Cookies. Wir verkaufen hier keine Brösel.</p>
+        <p id="ck-invalid" class="is-off">Das ist keine Anzahl.</p>
+        <p id="ck-sum" class="is-off"></p>
+      </div>
+
+      <button type="button" class="ck-primary" id="ck-pay-now">Jetzt bezahlen</button>
+
+      <div class="ck-next" id="ck-next" hidden>
+        <p class="ck-amount" id="ck-bank-ask"></p>
+        <dl class="ck-bank">
+          <dt>Empfänger</dt><dd>noch offen</dd>
+          <dt>IBAN</dt><dd>noch offen</dd>
+          <dt>Verwendungszweck</dt><dd class="ck-key" id="ck-key"></dd>
+        </dl>
+        <p class="ck-note">Dies ist Ihr privater Schlüssel:&nbsp;<br>Geben Sie diesen bei der Überweisung als Verwendungszweck an. Sobald wir das Geld erhalten haben, erhalten Sie damit Zutritt zu 0nefinity.com.&nbsp;</p>
+        <p class="ck-note" id="ck-copy-note" aria-live="polite"></p>
+        <p class="ck-draft">Entwurf: Bankdaten fehlen noch, Geldeingänge werden noch nicht erkannt.</p>
+        <div class="ck-buttons">
+          <button type="button" class="ck-quiet" id="ck-copy">Schlüssel kopieren</button>
+          <button type="button" id="ck-bank-done">Fertig</button>
+        </div>
+
+        <p>Oder zahlen Sie mit Kreditkarte:</p>
+        <p class="ck-amount" id="ck-card-line"></p>
+        <p class="ck-draft">Entwurf: Stripe ist noch nicht verbunden. Es wird nichts abgebucht.</p>
+        <div class="ck-buttons">
+          <button type="button" id="ck-card">Mit Kreditkarte zahlen</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<!--#include virtual="/includes/something-in-the-body.html" -->
+<script src="/tools/cookies-banner.js"></script>
+</body>
+</html>
