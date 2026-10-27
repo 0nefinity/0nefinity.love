@@ -35,6 +35,8 @@
     unsaved_on_dev: 'erst speichern',
     not_tracked: 'Datei ist nicht im Repo',
     not_inline: 'diese Datei nur über quelltext',
+    comment_lost: 'im Quelltext steht ein versteckter Kommentar an dieser Stelle, bitte über quelltext ändern',
+    mixed_eol: 'Datei mischt Zeilenenden, bitte über quelltext ändern',
     page_not_found: 'keine bearbeitbare Datei zu dieser Adresse',
   };
   const ANALYTICS = 'https://analytics.timbreitmar.de';
@@ -224,6 +226,23 @@
     render();
   }
 
+  // Markdown-Seiten: Der Browser schickt base (Serialisierung beim Laden) und text (jetzt); der Server fuehrt
+  // beides mit der Datei zusammen (editor/md_save.py). Serialisierer: tools/editor-md.js.
+  let mdBase = null;
+  const isMd = () => source?.format === 'markdown';
+  async function loadMd() {
+    if (!window._018EditorMd) {
+      await new Promise((ok, no) => {
+        const s = document.createElement('script');
+        s.src = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, 'editor-md.js');
+        s.onload = ok;
+        s.onerror = () => no(new Error('editor-md.js nicht ladbar'));
+        document.head.append(s);
+      });
+    }
+    mdBase = window._018EditorMd.serialize();
+  }
+
   async function loadSource() {
     source = await api('GET', q('source'));
     setLive(source.live_differs);
@@ -273,6 +292,7 @@
 
   // Texte, die nicht im Quelltext stehen (von Skripten erzeugt, in Animationen zerlegt), sind nicht bearbeitbar.
   async function dropUnlocatable(hosts) {
+    if (isMd()) return;
     let r;
     try { r = await api('POST', 'check', { path: pagePath, origs: hosts.map((h) => originals.get(h)) }); } catch (e) {
       // Nur eine Vorabprüfung: ist der Dienst weg, meldet das Speichern es laut; ein altes Backend ohne Route ebenso still.
@@ -1024,9 +1044,14 @@
     if (saving) { saveAgain = true; return saving; }
     const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el)]);
     if (!pend.length) return true;
+    let md = null;
+    if (isMd()) {
+      try { md = window._018EditorMd.payload(mdBase); } catch (e) { saveTimer = saveFail(e, save); return false; }
+    }
     saving = (async () => {
       try {
-        const r = await api('POST', 'save', { path: pagePath, changes: pend.map(([el, orig, neu]) => ({ orig, neu, ...place(el, orig) })) });
+        const r = await api('POST', 'save', md ? { path: pagePath, ...md } : { path: pagePath, changes: pend.map(([el, orig, neu]) => ({ orig, neu, ...place(el, orig) })) });
+        if (md) mdBase = md.text;
         for (const [el, , neu] of pend) originals.set(el, neu);
         setLive(r.live_differs);
         saveOk();
@@ -2051,6 +2076,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       await loadSource();
       st.ready = true;
       st.inline = !!source.inline;
+      if (isMd()) await loadMd();
       render();
       checkPublishError();
       if (st.inline && stored('oe-edit') === '1') toggleEdit();
