@@ -1109,7 +1109,7 @@ function deserializeCircle(data, parent) {
 
 function deserializeText(data, parent) {
     const textEl = new TextElement(data.x, data.y, data.text, parent);
-    textEl.fontSize = data.fontSize || 16;
+    textEl.fontSize = data.fontSize ?? 16;
     return textEl;
 }
 

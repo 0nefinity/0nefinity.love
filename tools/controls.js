@@ -23,6 +23,7 @@
  *       .addSlider('opacity', { label: 'Alpha',  min: 0, max: 1,   step: 0.01, value: config.opacity, decimals: 2, onChange: v => config.opacity = v })
  *       .addDivider()
  *       .addSlider('count', { label: 'Count',  min: 1, max: 10, step: 1, value: config.count, onChange: v => config.count = v })
+ *       .addSlider('rot',   { label: 'Rotation', min: 0, max: 360, step: 0.01, wrap: true, value: 0, onChange: v => config.rot = v })  // wrap: ueber 360 laeuft bei 0 weiter
  *   ;
  * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  */
@@ -190,6 +191,14 @@
         }
 
         return { min, max };
+    }
+
+    // wrap-Slider (Winkel): Periode = max - min, max faellt auf min (360 -> 0).
+    function wrapSliderValue(value, config) {
+        const { min, max } = getProjectedSliderBounds(config, value);
+        const period = max - min;
+        if (!(period > 0) || !Number.isFinite(value)) return value;
+        return min + (((value - min) % period) + period) % period;
     }
 
     function getProjectedSliderStep(step) {
@@ -2451,7 +2460,8 @@
          */
         addSlider(key, config) {
             config = this._withPageDefault(key, config);
-            const { label, min, max, step, value, decimals = 0, onChange, transform = null } = config;
+            const { label, min, max, step, decimals = 0, onChange, transform = null, wrap = false } = config;
+            const value = wrap ? wrapSliderValue(config.value, { min, max }) : config.value;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
 
@@ -2461,6 +2471,7 @@
                 max,
                 step,
                 transform,
+                wrap: !!wrap,
                 baseDecimals: decimals,
                 decimals: getSliderDecimals({ step, baseDecimals: decimals }, decimals),
                 defaultMin: min,
@@ -2481,7 +2492,7 @@
                 <label class="ctrl-label">${label}</label>
                 <div class="ctrl-slider-group">
                     <button class="ctrl-stepper-btn" data-action="dec">&#8722;</button>
-                    <input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">
+                    ${wrap ? '<span class="ctrl-range-wrap">' : ''}<input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">${wrap ? '</span>' : ''}
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
                     <input type="text" class="ctrl-value-input" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
                     <button class="ctrl-config-trigger" title="Einstellungen">&#8942;</button>
@@ -2515,7 +2526,9 @@
                 // newVal = clamp(newVal, min, max); // Let the universe be unlimited!
                 const cfg = this._sliderConfigs[key];
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
+                if (cfg && cfg.wrap) newVal = wrapSliderValue(newVal, cfg);
                 newVal = preciseNormalize(newVal, decs);
+                if (cfg && cfg.wrap) newVal = wrapSliderValue(newVal, cfg);
                 this.params[key] = newVal;
 
                 syncSliderUI(newVal, updateInput);
@@ -2529,6 +2542,8 @@
                 const val = fromSliderRangeValue(parseFloat(range.value), cfg);
                 updateValue(val);
             });
+
+            if (wrap) this._bindWrapDrag(key, range, updateValue);
 
             // Input Events
             input.addEventListener('input', () => {
@@ -2561,14 +2576,15 @@
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                 const newVal = preciseAdd(this.params[key], delta, decs);
                 const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                if (newVal < currentMin || newVal > currentMax) return;
+                const wraps = !!(cfg && cfg.wrap);
+                if (!wraps && (newVal < currentMin || newVal > currentMax)) return;
 
                 isHolding = true;
                 // Sofort ein erster Schritt
                 updateValue(newVal);
                 holdInterval = setInterval(() => {
                     const nextVal = preciseAdd(this.params[key], delta, decs);
-                    if (nextVal < currentMin || nextVal > currentMax) {
+                    if (!wraps && (nextVal < currentMin || nextVal > currentMax)) {
                         stopHold();
                         return;
                     }
@@ -2601,7 +2617,7 @@
                     const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                     const newVal = preciseAdd(this.params[key], delta, decs);
                     const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                    if (newVal < currentMin || newVal > currentMax) return;
+                    if (!(cfg && cfg.wrap) && (newVal < currentMin || newVal > currentMax)) return;
 
                     // Manuelles Click Handling (anstelle von on('click')) sorgt fÃ¼r sofortige Reaktion
                     holdTimeout = setTimeout(() => { startHold(delta); }, 400);
@@ -2615,7 +2631,7 @@
                         const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                         const newVal = preciseAdd(this.params[key], delta, decs);
                         const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                        if (newVal >= currentMin && newVal <= currentMax) {
+                        if ((cfg && cfg.wrap) || (newVal >= currentMin && newVal <= currentMax)) {
                             updateValue(newVal);
                         }
                     }
@@ -2636,6 +2652,68 @@
             this._currentContainer.appendChild(row);
             syncSliderUI(initialValue, true);
             return this;
+        }
+
+        // wrap-Slider: eigenes Ziehen statt nativer Range (die klemmt am Rand). Der Zeiger zaehlt relativ weiter,
+        // ueber den Rand hinaus laeuft der Wert bei min wieder an; Pfeiltasten ebenso.
+        _bindWrapDrag(key, range, updateValue) {
+            const host = range.parentElement;
+            const snap = (raw) => {
+                const cfg = this._sliderConfigs[key];
+                const { min } = getProjectedSliderBounds(cfg, raw);
+                const s = cfg && cfg.step > 0 ? cfg.step : 0;
+                return s ? min + Math.round((raw - min) / s) * s : raw;
+            };
+            const geometry = () => {
+                const cfg = this._sliderConfigs[key];
+                const { min, max } = getProjectedSliderBounds(cfg, this.params[key]);
+                const rect = range.getBoundingClientRect();
+                // Thumb-Breite wie in meta.css (16px, unter 768px 24px)
+                const thumb = window.matchMedia('(max-width: 768px)').matches ? 24 : 16;
+                return { min, period: max - min, left: rect.left + thumb / 2, span: Math.max(1, rect.width - thumb), thumb };
+            };
+            let drag = null;
+
+            host.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return;
+                const g = geometry();
+                if (!(g.period > 0)) return;
+                e.preventDefault();
+                host.setPointerCapture(e.pointerId);
+                const current = Number.isFinite(this.params[key]) ? this.params[key] : g.min;
+                const thumbX = g.left + (current - g.min) / g.period * g.span;
+                let start = current;
+                if (Math.abs(e.clientX - thumbX) > g.thumb / 2 + 4) {
+                    start = g.min + clamp((e.clientX - g.left) / g.span, 0, 1) * g.period;
+                    updateValue(snap(start));
+                }
+                drag = { id: e.pointerId, x: e.clientX, start, g };
+                range.focus({ preventScroll: true });
+                host.classList.add('dragging');
+            });
+            host.addEventListener('pointermove', (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const raw = drag.start + (e.clientX - drag.x) / drag.g.span * drag.g.period;
+                updateValue(snap(raw));
+            });
+            const end = (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                drag = null;
+                host.classList.remove('dragging');
+                if (host.hasPointerCapture(e.pointerId)) host.releasePointerCapture(e.pointerId);
+            };
+            host.addEventListener('pointerup', end);
+            host.addEventListener('pointercancel', end);
+
+            range.addEventListener('keydown', (e) => {
+                const cfg = this._sliderConfigs[key];
+                const s = cfg && cfg.step > 0 ? cfg.step : 1;
+                const big = (getProjectedSliderBounds(cfg, 0).max - getProjectedSliderBounds(cfg, 0).min) / 10;
+                const deltas = { ArrowRight: s, ArrowUp: s, ArrowLeft: -s, ArrowDown: -s, PageUp: big, PageDown: -big };
+                if (!(e.key in deltas)) return;
+                e.preventDefault();
+                updateValue(snap(this.params[key] + deltas[e.key]));
+            });
         }
 
         /**

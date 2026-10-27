@@ -575,7 +575,7 @@
         }
         
         function getPointRadius(cp) {
-            return config.applyToAll ? config.influenceRadius : (cp.radius || config.influenceRadius);
+            return config.applyToAll ? config.influenceRadius : (cp.radius ?? config.influenceRadius);
         }
         
         // Gecacheter State für direkte Berechnung (vermeidet Objekt-Erzeugung pro Aufruf)
@@ -2300,6 +2300,7 @@
                     min: 0,
                     max: 6.283,
                     step: 0.05,
+                    wrap: true,
                     value: config.startAngle,
                     decimals: 2,
                     onChange: v => {
@@ -2317,6 +2318,7 @@
                     min: 0,
                     max: 6.283,
                     step: 0.05,
+                    wrap: true,
                     value: config.glyphStartAngle,
                     decimals: 2,
                     onChange: v => {
