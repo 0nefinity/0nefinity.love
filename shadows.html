@@ -93,13 +93,15 @@
   // Bodenhöhe: Abstand wallDistance unter der Stapelmitte, damit Boden-Scheibe und Wand-Scheiben in beiden Modi gleich zur Kugelmitte stehen.
   function floorY() { return stackMidY() - params.wallDistance; }
   function wallLampY() { return dualMode && !gebFiveLamps ? stackMidY() : upperSphereY(); }
-  // 3-lamp GEB: the wall lamp sits between the spheres, so its cone has to reach the far edge of both.
-  // The penumbra eats the outer ~30% of the cone, hence the widening.
+  // 3-lamp GEB: the wall lamp sits between the spheres, so at the default angle its cone has to reach the far
+  // edge of both (the penumbra eats the outer ~30%, hence the widening). The widening scales the user angle
+  // instead of flooring it, so the slider moves all three cones, down to 0.
   function wallLampAngleDeg() {
     const user = params.spotAngle ?? PARAMS_CONFIG.spotAngle.default;
     if (!dualMode || gebFiveLamps) return user;
     const reachDeg = Math.atan((DUAL_GAP / 2 + 1) * (params.sphereRadius ?? 1) / Math.max(Math.abs(params.lightDistance), 0.001)) * 180 / Math.PI;
-    return Math.min(89, Math.max(user, reachDeg / 0.7));
+    const widen = Math.max(1, reachDeg / 0.7 / PARAMS_CONFIG.spotAngle.default);
+    return Math.min(89, user * widen);
   }
   function derivedGlyphs(base) { return { left: base.right, right: base.left, floor: base.floor }; }
 
@@ -176,7 +178,7 @@
     // Glyph-Rotationen (0-360° = voller Kreis)
     glyphRot0:        { id: 'glyphRot0',            urlKey: 'r0',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 2, dynamicStep: true },
     glyphRot1:        { id: 'glyphRot1',            urlKey: 'r1',        min: 0,     max: 360,    step: 1,    default: 0,    decimals: 2, dynamicStep: true },
-    glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 2, dynamicStep: true },
+    glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 0, dynamicStep: true },
 
     // Licht-Position
     lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: -100000, max: 100000,    step: 0.01, default: 40,   decimals: 2, dynamicStep: true },
@@ -1850,7 +1852,9 @@
     GLYPH_SLOTS.forEach(([, rotKey, label]) => {
       panel.addSlider(rotKey, {
         label: label + ' rotation',
-        min: 0, max: 360, step: 0.01, decimals: 2, wrap: true,
+        // Tim: the ∞ rotation without decimals.
+        ...(rotKey === 'glyphRotInf' ? { step: 1, decimals: 0 } : { step: 0.01, decimals: 2 }),
+        min: 0, max: 360, wrap: true,
         value: params[rotKey],
         onChange: (v) => onSliderInput(rotKey, v),
       });
