@@ -826,10 +826,17 @@
     // Symbolzeile mit anderer Laenge: erst nach dem Anzahl-Regler, der sie neu baut (applyAll).
     function applyOne(panel, key, value) {
         if (!(key in panel.params)) return true;
-        const before = cloneValue(panel.params[key]);
+        let before = cloneValue(panel.params[key]);
         if (JSON.stringify(before) === JSON.stringify(value)) return true;
         const sym = panel._symbolRows && panel._symbolRows[key];
-        if (sym && !(Array.isArray(value) && value.length === before.length)) return false;
+        if (sym && !(Array.isArray(value) && value.length === before.length)) {
+            // Andere Laenge: die Zeile selbst (onResize) baut um, sonst erst nach dem Regler, der sie baut
+            if (!(sym.onResize && Array.isArray(value))) return false;
+            sym.onResize(value.length);
+            before = cloneValue(panel.params[key]);
+            if (JSON.stringify(before) === JSON.stringify(value)) return true;
+            if (before.length !== value.length) return false;
+        }
         panel.set(key, cloneValue(value));
         panel._emitPageValue(key, before);
         return true;
@@ -3425,13 +3432,13 @@
          * With `label` the row gets the normal label column (e.g. one step of a sequence); `captions` puts a
          * small heading above each field, `inputmode` is passed to every field (e.g. 'decimal').
          * `layout: 'column'` stacks the fields vertically (+ / - below them). `side` adds a second column of
-         * fields with its own key (params[side.key]): one value sits centered beside the column, several sit
+         * fields with its own key (params[side.key]): one value sits beside the first symbol, several sit
          * each between two symbols (value i between symbol i and i + 1).
-         * @param {Object} config - { values, labels?, label?, captions?, inputmode?, layout?, side?: { key, values, labels?, label?, onChange }, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
+         * @param {Object} config - { values, labels?, label?, captions?, inputmode?, layout?, side?: { key, values, labels?, label?, onChange }, onChange(index, value, values), onAdd(values), onRemove(values), onResize(n) (Zuruecksetzen auf andere Anzahl), min, max }
          */
         addSymbolRow(key, config) {
             config = this._withPageDefault(key, config, 'values');
-            const { values = [], labels = [], label = '', captions = null, inputmode = '', layout = 'row', onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
+            const { values = [], labels = [], label = '', captions = null, inputmode = '', layout = 'row', onChange, onAdd, onRemove, onResize, min = 0, max = Infinity } = config;
             const column = layout === 'column';
             this.params[key] = values.slice();
             const row = document.createElement('div');
@@ -3447,7 +3454,7 @@
             strip.className = 'ctrl-symbol-strip';
             row.appendChild(strip);
             this._symbolRows = this._symbolRows || {};
-            const state = { strip, labels, captions, inputmode, column, onChange, onAdd, onRemove, min, max };
+            const state = { strip, labels, captions, inputmode, column, onChange, onAdd, onRemove, onResize, min, max };
             this._symbolRows[key] = state;
             if (column && config.side) {
                 const side = this._withPageDefault(config.side.key, config.side, 'values');
@@ -3511,15 +3518,16 @@
                 slot.dataset.key = st.side;
                 if (sideSt.label) slot.dataset.label = sideSt.label;
                 slot.style.gridColumn = '2';
-                slot.style.gridRow = '1 / span ' + Math.max(2, 2 * values.length + (sideValues.length === 1 ? 0 : 1));
                 const centered = sideValues.length === 1;
+                // Ein Feld steht oben neben dem ersten Symbol, mehrere je zwischen zwei Symbolen
+                slot.style.gridRow = centered ? '1 / span 2' : '1 / span ' + Math.max(2, 2 * values.length + 1);
                 sideValues.forEach((v, i) => {
                     const aria = sideSt.labels[i] || ((sideSt.label || 'Feld') + (centered ? '' : ' ' + (i + 1)));
                     const input = makeInput(st.side, i, v, aria, sideSt.onChange);
                     if (!centered) input.style.gridRow = (2 * i + 2) + ' / span 2';
                     slot.appendChild(input);
                 });
-                if (centered) slot.classList.add('ctrl-symbol-side-centered');
+                if (centered) slot.classList.add('ctrl-symbol-side-single');
                 st.strip.appendChild(slot);
             }
             const btnWrap = st.column ? document.createElement('div') : st.strip;
