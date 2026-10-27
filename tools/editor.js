@@ -221,6 +221,12 @@
     return source;
   }
 
+  // controls.js speichert Voreinstellungen ueber denselben Endpunkt: Quelltext neu holen (neuer sha),
+  // damit "veroeffentlichen" erscheint und eine Quelltext-Bearbeitung nicht am alten Stand scheitert.
+  window.addEventListener('controls:defaults-saved', () => {
+    loadSource().catch(e => say(e.message, 'error'));
+  });
+
   // ------------------------------------------------------------ bearbeiten
 
   function candidates() {
