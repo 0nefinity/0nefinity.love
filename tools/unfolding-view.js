@@ -14,8 +14,12 @@
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
  *     dir               // optional: 'r' (Standard) oder 'l': gespiegelt, die Kette laeuft nach links, Ziffern bleiben aufrecht
  *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum); sonst das Glyph "." der Schrift
+ *     fixedEnd          // optional (mit fixedStart): true oder Funktion -> auch R steht fest, kein Griff am Ende; nur der Inhalt (Wischen, Rad) bewegt sich
+ *     endCursor         // optional: CSS-Cursor der Ziehzone eines freien Endes (String oder Funktion), Standard 'ew-resize'
+ *     rMinCells         // optional: kleinste Lage von R in Zellen ab L (Standard 0)
  *     fixedStart        // optional: true = L (Anfang/centrum) steht fest; greifbar sind das aeussere Ende R und der Inhalt (Wischen, Mausrad schieben nur die Ziffern durch)
  *     origin            // optional: Lage der Ganzzahl beim Start (CSS-px ab Anfang der Achse; Standard: Mitte)
+ *     rCells            // optional: Anfangslage von R in Zellen rechts von X0 (Standard 1: nur die Ganzzahl steht davor)
  *     unrolled          // optional: true = ausgerollt starten (R am Rand), bis zum ersten Ziehen/Rad
  *     fontPx            // optional: Schriftgroesse in CSS-px (Zahl oder Funktion); Standard 6 % der Fensterbreite, 28..56
  *     localX(e)         // optional: Zeigerlage auf der Achse (CSS-px, ungespiegelt) fuer gedrehte Canvas; die Groesse kommt
@@ -215,7 +219,7 @@
     }
     function settle(mode) {
       if (mode === 'three') L = Math.max(MARGIN, Math.min(X0, R));
-      else if (X0 > L) L = X0;
+      else if (X0 > L) { if (opts.fixedStart) X0 = L; else L = X0; }   // fixedStart: Ziffern nie vom Anfang wegschiebbar
       autoD();
       const dd = deff();
       R = Math.min(R, X0 + Math.max(w, avail()) + dd, W - MARGIN);   // die Ganzzahl bleibt sichtbar; sonst X0 >= R - dd - avail()
@@ -223,13 +227,15 @@
         X0 = Math.min(X0, R - dd);
         L = Math.max(MARGIN, X0);
       } else {
-        L = Math.max(MARGIN, Math.min(L, R - 2 * dd));
+        L = opts.fixedStart ? Math.max(MARGIN, L) : Math.max(MARGIN, Math.min(L, R - 2 * dd));   // fixedStart: L steht fest am Punkt
         if (X0 > L) X0 = L;
       }
-      R = Math.max(R, L + 2 * dd);
+      R = Math.max(R, L + 2 * dd, rFloor());
       dirty = true;
     }
 
+    // Kleinste Lage von R: L + rMinCells Zellen (Standard 0 = ganz auf L); das Ende laesst sich bis auf den Dezimalpunkt einschieben
+    const rFloor = () => L + (opts.rMinCells !== undefined ? +opts.rMinCells : 0) * w;
     function clampX0() { X0 = Math.max(X0, R - deff() - avail()); }
 
     function rolledLeft() { return X0 < L - 0.5; }
@@ -425,8 +431,9 @@
       const rs = span(0.5 * w);
       if (!rs) return { kind: 'all' };
       const ra = rs[0], rb = rs[1];
-      if (ra > 0 && x < posOf(ra) + 2) return { kind: 'left', hi: ra - 1 };
-      if (rb < N - 1 && x >= posOf(rb + 1) - 2) return { kind: 'right', lo: rb + 1 };
+      // Sammelanzeige genau in der Ziehzone (ab dem Verdichtungspunkt nach aussen), Einzelanzeige sonst: keine Luecke, keine Ueberlappung
+      if (ra > 0 && x < posOf(ra)) return { kind: 'left', hi: ra - 1 };
+      if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1 };
       const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
       return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
     }
@@ -628,7 +635,7 @@
       if (canvas.width !== cwDev) canvas.width = cwDev;
       if (canvas.height !== chDev) canvas.height = chDev;
       if (first) {
-        X0 = opts.origin !== undefined ? +opts.origin : Math.round((W - w) / 2); L = X0; R = X0 + w;
+        X0 = opts.origin !== undefined ? +opts.origin : Math.round((W - w) / 2); L = X0; R = X0 + (opts.rCells !== undefined ? +opts.rCells : 1) * w;
         if (!Number.isFinite(X0)) throw new TypeError('UnfoldingView: origin muss eine Zahl sein, war ' + opts.origin);
         if (opts.unrolled) R = W - MARGIN;
       } else {
@@ -637,7 +644,7 @@
       }
       settle(rolledLeft() ? 'x' : 'three');
       keepUnrolled();
-      if (drag) drag.rebase = true;   // der nächste pointermove setzt die Zugwerte neu, sonst springt er
+      if (drag) drag.rebase = true;   // der nächste pointermove setzt die Zugwerte neu (Leinwand verschoben/skaliert), sonst springt er
     }
 
     // ─── Interaktion ───
@@ -648,16 +655,28 @@
       return x;
     }
     // Der nächste Griff gewinnt: die 3 (nur solange links nichts eingerollt ist), R, L (nur wenn eingerollt).
+    // Ziehzone eines Endes: ab dem Verdichtungspunkt (Ende der lesbaren Ziffern) nach aussen, nie ueber lesbaren Ziffern.
+    function zoneEdges() {
+      const rs = span(0.5 * w);
+      return rs ? { r: posOf(rs[1] + 1), l: posOf(rs[0]) } : { r: L, l: R };
+    }
     function hitTest(x) {
-      if (opts.fixedStart) return Math.abs(x - R) <= HIT ? 'R' : (x > L && x < R ? 'swipe' : null);
+      const Z = zoneEdges();
+      const inR = x >= Z.r && x <= R + HIT, inL = x <= Z.l && x >= L - HIT;
+      if (opts.fixedStart) {
+        // fixedEnd (Funktion): beide Enden stehen fest (Glied zwischen zwei Punkten), nur der Inhalt laesst sich schieben
+        const endFixed = typeof opts.fixedEnd === 'function' ? !!opts.fixedEnd() : !!opts.fixedEnd;
+        if (!endFixed && inR) return 'R';
+        return x > L && x < R ? 'swipe' : null;
+      }
       const rolled = rolledLeft();
       const cands = [];
       const t0 = posOf(0), t1 = Math.max(posOf(1), t0);
       if (!rolled && x >= t0 - HIT && x <= t1) cands.push(['three', Math.abs(x - (t0 + t1) / 2)]);
-      if (Math.abs(x - R) <= HIT) cands.push(['R', Math.abs(x - R)]);
-      if (rolled && Math.abs(x - L) <= HIT) cands.push(['L', Math.abs(x - L)]);
+      if (inR) cands.push(['R', Math.abs(x - R)]);
+      if (rolled && inL) cands.push(['L', Math.abs(x - L)]);
       // Zusammengeschoben liegen L und R aufeinander: die Seite des Zeigers entscheidet, sonst liesse sich L nie mehr greifen.
-      const nearR = Math.abs(x - R) <= HIT, nearL = Math.abs(x - L) <= HIT;
+      const nearR = inR, nearL = inL;
       if (rolled && nearR && nearL) return x < (L + R) / 2 ? 'L' : 'R';
       if (cands.length) return cands.reduce((a, c) => (c[1] < a[1] ? c : a))[0];
       return x > L && x < R ? 'swipe' : null;
@@ -676,7 +695,7 @@
       if (drag || locked) return;
       const mode = hitTest(x);
       if (!mode) return;
-      drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse' };
+      drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse', lastEv: e };
       unroll = false;
       setHover(x);   // Greifen zeigt die Stelle unter dem Finger, auch auf dem Handy
       canvas.setPointerCapture(e.pointerId);
@@ -686,18 +705,23 @@
       const x = local(e);
       if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
       if (e.pointerType === 'mouse' || (drag && drag.id === e.pointerId)) setHover(x);
+      // Resize-Cursor genau in der Ziehzone eines freien Endes (ab dem Verdichtungspunkt nach aussen), sonst der normale Pfeil; nie eine Greifhand
+      const endCur = () => { const c = typeof opts.endCursor === 'function' ? opts.endCursor() : (opts.endCursor || 'ew-resize'); return c; };
       if (!drag || drag.id !== e.pointerId) {
-        const h = hitTest(x);
-        canvas.style.cursor = h === 'swipe' ? 'grab' : (h ? 'ew-resize' : 'default');
+        const m = hitTest(x);
+        canvas.style.cursor = m === 'R' || m === 'L' ? endCur() : 'default';
         return;
       }
+      canvas.style.cursor = drag.mode === 'R' || drag.mode === 'L' ? endCur() : 'default';
       if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; }
-      if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = x; }
+      // x0 aus dem letzten Zeigerereignis in den neuen Leinwand-Koordinaten: die Bewegung seit dem letzten Move geht beim Neusetzen nicht verloren
+      if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = local(drag.lastEv); }
+      drag.lastEv = e;
       const dx = x - drag.x0, dd = deff();
       let mode = 'x';
       if (drag.mode === 'R') {
         if (!rolledLeft()) mode = 'three';   // offen: die 3 bleibt, L folgt ihr mit der wachsenden Zone
-        R = Math.max(L, Math.min(W - MARGIN, drag.R + dx));   // bis ganz auf L: d schrumpft mit dem Abstand
+        R = Math.max(rFloor(), Math.min(W - MARGIN, drag.R + dx));   // bis ganz auf L: d schrumpft mit dem Abstand
         // Am Datenende (Sausen holt es schnell ein) deckelt settle R auf X0 + avail() + dd: die Kette rueckt nach, R folgt dem Zeiger.
         const end = X0 + avail() + dd;
         if (R > end) X0 = R - dd - avail();
@@ -723,6 +747,8 @@
         tap = null;
         if (ok) setHover(x);
       }
+      // Ein Wisch in der Lesezone (Touch) hinterlaesst keine Stellenanzeige; an einem freien Ende bleibt sie (zeigt die Stelle am Finger)
+      if (drag && drag.id === e.pointerId && e.pointerType !== 'mouse' && !drag.slop && drag.mode !== 'R' && drag.mode !== 'L') setHover(null);
       endDrag(e);
     }
     function onLeave(e) { if (e.pointerType === 'mouse') setHover(null); }
@@ -872,6 +898,11 @@
       setDigits, appendDigits, rewind, resize, setOrigin, setFactor, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       setHover,
+      // Nur lesend (Debug-Anzeige, Tests): Ziehzonen in Canvas-px, [von, bis]; links nur wo das linke Ende ziehbar ist
+      zones() {
+        const Z = zoneEdges();
+        return { r: [Z.r, R + HIT], l: opts.fixedStart ? null : [L - HIT, Z.l], L, R, X0 };
+      },
       // Testhaken: ein Bild rendern und je Stauchspalte festhalten, was dort gezaehlt wurde (Kettenbereich a..b, Zahl je Zeichen
       // aus Kette und Quelle, fehlende Stellen, Unendlich) und welche Tinte die Spalte vor der Kappung traegt (raw: Summe ueber
       // die Zeilen, max: staerkste Zeile; pure: nur gezaehlte Tinte, keine breitere Ziffer).
