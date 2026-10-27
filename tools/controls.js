@@ -8,7 +8,9 @@
  *
  *   // Header buttons (appear in top-right of panel header)
  *   panel.addPauseButton({ paused: config.paused, onChange: v => config.paused = v });
- *   panel.addResetButton({ icon: 'â†º', title: 'Reset', onClick: () => reset() });
+ *   // Reset-Knopf (↺) hat jedes Panel von selbst: alle Regler auf Voreinstellung, mit Rueckgaengig.
+ *   // Eigener Zustand der Seite haengt sich an; eine zurueckgegebene Funktion macht ihn rueckgaengig:
+ *   panel.addResetButton({ onClick: () => resetWorld(), afterReset: () => restartClock() });
  *
  *   // Metrics overlay (appears ABOVE the panel)
  *   panel.addMetricsOverlay('stats', { label: '', showFps: true, pixiApp: app, getData: () => ({ items: [...], total: n }) });
@@ -525,6 +527,123 @@
         };
         defaultsQueue = defaultsQueue.then(run);
         return defaultsQueue;
+    }
+
+    // === ZURUECKSETZEN (Knopf im Panel-Kopf, jede Seite) ===
+    // Setzt alle Regler aller Panels der Seite auf defaultOf(key), jeweils ueber ihr onChange, und
+    // nimmt die passenden URL-Parameter weg. Seiten haengen eigenen Zustand per addResetButton an:
+    // onClick laeuft vor, afterReset nach den Reglern; liefern sie eine Funktion, macht Rueckgaengig sie wieder.
+    // Panel offen/Breite bleiben, wie sie sind (Zustand des Betrachters, nicht der Seite).
+    function livePanels() {
+        return pageDefaultState.panels.filter(p => p.el && p.el.isConnected);
+    }
+
+    function resettableValues() {
+        return livePanels().map(p => [p, Object.keys(p.params)
+            .filter(k => pageDefaultState.seen.has(k))
+            .map(k => [k, cloneValue(p.params[k])])]);
+    }
+
+    // Symbolzeile mit anderer Laenge: erst nach dem Anzahl-Regler, der sie neu baut (applyAll).
+    function applyOne(panel, key, value) {
+        if (!(key in panel.params)) return true;
+        const before = cloneValue(panel.params[key]);
+        if (JSON.stringify(before) === JSON.stringify(value)) return true;
+        const sym = panel._symbolRows && panel._symbolRows[key];
+        if (sym && !(Array.isArray(value) && value.length === before.length)) return false;
+        panel.set(key, cloneValue(value));
+        panel._emitPageValue(key, before);
+        return true;
+    }
+
+    function applyLater(later) {
+        for (const [panel, key, value] of later) {
+            if (applyOne(panel, key, value)) continue;
+            console.error(`[controls] Zuruecksetzen: "${key}" hat ${panel.params[key].length} Symbole, Wert hat ${Array.isArray(value) ? value.length : 'keine'}`);
+        }
+    }
+
+    function applyValues(entries) {
+        const later = [];
+        for (const [panel, pairs] of entries) {
+            for (const [key, value] of pairs) {
+                if (!applyOne(panel, key, value)) later.push([panel, key, value]);
+            }
+        }
+        applyLater(later);
+    }
+
+    function runHooks(name, undos) {
+        for (const panel of livePanels()) {
+            for (const hook of panel._resetHooks) {
+                if (!hook[name]) continue;
+                const undo = hook[name]();
+                if (typeof undo === 'function') undos.push(undo);
+            }
+        }
+    }
+
+    function resetPage() {
+        const before = resettableValues();
+        const href = location.href;
+        const undos = [];
+        try {
+            runHooks('onClick', undos);
+            // Key fuer Key in Panel-Reihenfolge: ein Anzahl-Regler (z. B. Symbolzeilen) baut Zeilen neu,
+            // die danach selbst zurueckgesetzt werden.
+            const later = [];
+            for (const panel of livePanels()) {
+                const done = new Set();
+                let key;
+                while ((key = Object.keys(panel.params).find(k => pageDefaultState.seen.has(k) && !done.has(k))) !== undefined) {
+                    done.add(key);
+                    const value = panel.defaultOf(key);
+                    if (!applyOne(panel, key, value)) later.push([panel, key, value]);
+                }
+            }
+            applyLater(later);
+            runHooks('afterReset', undos);
+            const url = new URL(location.href);
+            const keys = new Set(before.flatMap(([, pairs]) => pairs.map(([k]) => k)));
+            let changed = false;
+            for (const k of [...url.searchParams.keys()]) {
+                if (keys.has(k)) { url.searchParams.delete(k); changed = true; }
+            }
+            if (changed) history.replaceState(history.state, '', url.pathname + (url.search || '') + url.hash);
+        } catch (e) {
+            console.error('[controls] Zuruecksetzen:', e);
+            resetToast('Zurücksetzen unvollständig: ' + e.message, null);
+            return;
+        }
+        resetToast('Zurückgesetzt', () => {
+            try {
+                applyValues(before);
+                undos.reverse().forEach(fn => fn());
+                history.replaceState(history.state, '', href);
+            } catch (e) {
+                console.error('[controls] Rückgängig:', e);
+                resetToast('Rückgängig unvollständig: ' + e.message, null);
+            }
+        });
+    }
+
+    function resetToast(text, undo) {
+        document.querySelectorAll('.ctrl-reset-toast').forEach(t => t.remove());
+        const t = document.createElement('div');
+        t.className = 'ctrl-reset-toast';
+        t.dataset.oeUi = '';
+        t.dataset.kind = undo ? '' : 'error';
+        t.setAttribute('role', undo ? 'status' : 'alert');
+        const label = document.createElement('span');
+        label.textContent = text;
+        t.append(label);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = undo ? 'Rückgängig' : 'schließen';
+        btn.addEventListener('click', () => { t.remove(); if (undo) undo(); });
+        t.append(btn);
+        if (undo) setTimeout(() => t.remove(), 5000);
+        document.body.appendChild(t);
     }
 
     const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l-1 6 3 3.5H7L10 9zM12 12.5V21"/></svg>';
@@ -1418,6 +1537,8 @@
             bindResponsiveButtonActivation(toggleBtn, () => {
                 this._toggleLayout();
             });
+            this._addBuiltinResetButton();
+            if (!pageDefaultState.panels.includes(this)) pageDefaultState.panels.push(this);
 
             // Body
             this.bodyEl = document.createElement('div');
@@ -3631,25 +3752,24 @@
          * Add a small reset button to the panel header
          * @param {Object} config - { icon, title, onClick }
          */
-        addResetButton(config) {
-            const { icon = '\u21BA', title = 'Reset', onClick } = config;
-            const btn = document.createElement('button');
-            btn.className = 'ctrl-header-btn danger';
-            btn.title = title;
-            btn.textContent = icon;
-            bindResponsiveButtonActivation(btn, () => {
-                if (onClick) onClick();
-                this._reapplyPageDefaults();
-            });
-
-            // Insert before layout toggle (same logic as enableUndoRedo)
-            const layoutToggle = this.headerButtonsEl.querySelector('.ctrl-layout-toggle');
-            if (layoutToggle) {
-                this.headerButtonsEl.insertBefore(btn, layoutToggle);
-            } else {
-                this.headerButtonsEl.appendChild(btn);
-            }
+        addResetButton(config = {}) {
+            const { title, onClick, afterReset } = config;
+            if (title) this._resetBtn.title = title;
+            if (onClick || afterReset) this._resetHooks.push({ onClick, afterReset });
             return this;
+        }
+
+        _addBuiltinResetButton() {
+            this._resetHooks = [];
+            const btn = document.createElement('button');
+            btn.className = 'ctrl-header-btn danger ctrl-reset-btn';
+            btn.title = 'Zur\u00FCcksetzen';
+            btn.setAttribute('aria-label', 'Zur\u00FCcksetzen');
+            btn.textContent = '\u21BA';
+            bindResponsiveButtonActivation(btn, () => resetPage());
+            const layoutToggle = this.headerButtonsEl.querySelector('.ctrl-layout-toggle');
+            this.headerButtonsEl.insertBefore(btn, layoutToggle);
+            this._resetBtn = btn;
         }
 
         /**
@@ -3910,20 +4030,6 @@
             }
         }
 
-        // Nach dem Reset der Seite: Voreinstellungen statt Code-Werte, auf allen Panels der Seite.
-        _reapplyPageDefaults() {
-            const { values } = currentPageDefaults();
-            for (const panel of pageDefaultState.panels) {
-                for (const key of Object.keys(values)) {
-                    if (!(key in panel.params)) continue;
-                    const sym = panel._symbolRows && panel._symbolRows[key];
-                    if (sym && !(Array.isArray(values[key]) && values[key].length === panel.params[key].length)) continue;
-                    panel.set(key, cloneValue(values[key]));
-                    panel._emitPageValue(key);
-                }
-            }
-        }
-
         /** Voreinstellung eines Keys: aus dem Editor gesetzt, sonst der Wert aus dem Seitencode. */
         defaultOf(key) {
             const { values } = currentPageDefaults();
@@ -4181,6 +4287,9 @@
          * Remove the panel from DOM
          */
         destroy() {
+            const idx = pageDefaultState.panels.indexOf(this);
+            if (idx >= 0) pageDefaultState.panels.splice(idx, 1);
+
             // Remove global keyboard handler if undo/redo was enabled
             if (this._keyHandler) {
                 document.removeEventListener('keydown', this._keyHandler);
