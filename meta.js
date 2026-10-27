@@ -289,6 +289,11 @@ function initMenuSearch(menu, fileList) {
     searchInput.spellcheck = false;
     searchInput.setAttribute('autocorrect', 'off');
     searchInput.setAttribute('autocapitalize', 'off');
+    // Passwortmanager (1Password, LastPass, Bitwarden, Dashlane) bieten sonst Autofill an,
+    // autocomplete="off" allein ignorieren sie. Wie die Eingabefelder in controls.js.
+    ['data-1p-ignore', 'data-bwignore'].forEach(a => searchInput.setAttribute(a, ''));
+    searchInput.setAttribute('data-lpignore', 'true');
+    searchInput.setAttribute('data-form-type', 'other');
 
     const clearButton = document.createElement('button');
     clearButton.type = 'button';
