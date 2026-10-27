@@ -1932,6 +1932,37 @@ pre {
     padding-right: 0.3rem;
 }
 
+.ctrl-panel:not(.bar-mode) .ctrl-row.ctrl-symbol-row-labeled {
+    display: grid;
+}
+
+.ctrl-symbol-row-labeled .ctrl-symbol-strip {
+    min-width: 0;
+}
+
+.ctrl-symbol-cell {
+    flex: 1 0 3.2em;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 3.2em;
+    max-width: 6em;
+}
+
+.ctrl-panel .ctrl-symbol-cell .ctrl-input.ctrl-symbol-input {
+    width: 100%;
+    max-width: none;
+    flex: none;
+}
+
+.ctrl-symbol-caption {
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
+    color: var(--ui-text-70);
+    white-space: nowrap;
+}
+
 .ctrl-symbol-btn {
     flex: 0 0 auto;
 }
@@ -1939,6 +1970,53 @@ pre {
 .ctrl-symbol-btn:disabled {
     opacity: 0.25;
     cursor: default;
+}
+
+/* Schalter mit Unter-Einstellungen: [Haken] [Stift], darunter eingerueckt aufklappbar */
+.ctrl-row-has-details .ctrl-checkbox-wrap {
+    gap: 0.35rem;
+}
+
+.ctrl-details-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent !important;
+    color: var(--ui-text-70) !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.ctrl-details-btn:hover,
+.ctrl-details-btn:focus-visible {
+    opacity: 1;
+}
+
+.ctrl-details-btn.active {
+    opacity: 1;
+    background: var(--ui-fill-10) !important;
+    color: var(--text-color, #fff) !important;
+}
+
+.ctrl-details {
+    margin: -0.15rem 0 0.6rem 0.9rem;
+}
+
+.ctrl-details[hidden] {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .ctrl-details-btn {
+        width: 40px;
+        height: 40px;
+    }
 }
 
 .ctrl-textarea {
