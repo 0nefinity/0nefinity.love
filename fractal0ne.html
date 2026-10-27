@@ -337,7 +337,7 @@
     if (p.has('font') && FONT_OPTIONS[p.get('font')]) state.font = p.get('font');
     if (p.has('iter')) state.iterations = Math.max(0, Math.min(32, parseInt(p.get('iter')) || 0));
     if (p.has('thk'))  state.textThickness = parseFloat(p.get('thk')) || 0;
-    if (p.has('scl'))  { const v = parseFloat(p.get('scl')); state.textScale = Number.isFinite(v) ? v : 1; }
+    if (p.has('scl'))  { const s = parseFloat(p.get('scl')); if (Number.isFinite(s)) state.textScale = s; }
     if (p.has('pos')) state.textPos = p.get('pos').split(',').map(parseFloat);
     if (p.has('rot')) state.textRot = p.get('rot').split(',').map(parseFloat);
     if (p.has('cp'))  state.cam.pos   = p.get('cp').split(',').map(parseFloat);
@@ -1167,7 +1167,7 @@ self.onmessage = function(e) {
     });
     ['X','Y','Z'].forEach((axis, i) => {
       panel.addSlider('rot' + axis, {
-        label: 'rot ' + axis, min: -3.14159, max: 3.14159, step: 0.01, value: state.textRot[i], decimals: 2,
+        label: 'rot ' + axis, min: -3.14159, max: 3.14159, step: 0.01, wrap: true, value: state.textRot[i], decimals: 2,
         onChange: (v) => { state.textRot[i] = v; state.needsRender = true; syncURL(); }
       });
     });
