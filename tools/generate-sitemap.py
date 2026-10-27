@@ -5,6 +5,7 @@ Wird automatisch via Git pre-commit Hook ausgeführt.
 """
 
 import os
+import re
 from datetime import datetime
 from xml.dom import minidom
 import xml.etree.ElementTree as ET
@@ -15,6 +16,34 @@ SITEMAP_FILE = os.path.join(ROOT_DIR, 'sitemap.xml')
 
 EXCLUDE_DIRS = {'.git', '.ssh', '.vscode', '00_Archiv', '__pycache__'}
 EXCLUDE_FILES = {'meta.json'}
+
+HTACCESS_FILE = os.path.join(ROOT_DIR, '.htaccess')
+_INTERN_RULE = re.compile(r'^RewriteRule\s+"([^"]+)"\s+-\s+\[([^\]]*)\]\s*$')
+
+
+def intern_patterns():
+    """Muster aus dem Block "intern: begin/end" in .htaccess (dort 404), wie in generate-menu.py."""
+    with open(HTACCESS_FILE, encoding='utf-8') as f:
+        lines = [l.strip() for l in f]
+    try:
+        start, end = lines.index('# intern: begin'), lines.index('# intern: end')
+    except ValueError:
+        raise SystemExit('generate-sitemap: Block "# intern: begin/end" fehlt in .htaccess')
+    patterns = []
+    for line in lines[start + 1:end]:
+        if not line or line.startswith('#'):
+            continue
+        m = _INTERN_RULE.match(line)
+        if not m:
+            raise SystemExit(f'generate-sitemap: unlesbare Zeile im intern-Block: {line}')
+        flags = re.I if 'NC' in m.group(2).split(',') else 0
+        patterns.append(re.compile(m.group(1), flags))
+    if not patterns:
+        raise SystemExit('generate-sitemap: intern-Block in .htaccess ist leer')
+    return patterns
+
+
+INTERN = intern_patterns()
 
 
 def should_include(name):
@@ -37,6 +66,8 @@ def collect_urls():
 
             full_path = os.path.join(dirpath, filename)
             rel_path = os.path.relpath(full_path, ROOT_DIR).replace(os.sep, '/')
+            if any(p.search(rel_path) for p in INTERN):
+                continue
             url = f'{DOMAIN}/{rel_path}'
             lastmod = datetime.fromtimestamp(os.path.getmtime(full_path)).strftime('%Y-%m-%d')
             priority = '1.0' if rel_path == 'index.html' else None
