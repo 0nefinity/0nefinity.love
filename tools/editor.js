@@ -306,7 +306,7 @@
         file: source.file, request: renameRequest, path: () => pagePath, beforeRename: wait,
       }),
       np: window.OneEditorNewPage.mount({
-        bar: moreIn, request: api, beforeCreate: wait, file: () => source.file,
+        bar: moreIn, request: (m, r, b) => (r === 'discard' ? request(m, r, b) : api(m, r, b)), beforeCreate: wait, file: () => source.file,
         onRenamed: (r) => { pagePath = r.url; source.file = r.file; extras.fn.setFile(r.file); },
         toast: (t, l, a, k) => showToast(t, l, a, k ? 0 : 8000, k),
       }),
