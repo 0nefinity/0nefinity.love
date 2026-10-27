@@ -544,21 +544,33 @@
             .map(k => [k, cloneValue(p.params[k])])]);
     }
 
+    // Symbolzeile mit anderer Laenge: erst nach dem Anzahl-Regler, der sie neu baut (applyAll).
+    function applyOne(panel, key, value) {
+        if (!(key in panel.params)) return true;
+        const before = cloneValue(panel.params[key]);
+        if (JSON.stringify(before) === JSON.stringify(value)) return true;
+        const sym = panel._symbolRows && panel._symbolRows[key];
+        if (sym && !(Array.isArray(value) && value.length === before.length)) return false;
+        panel.set(key, cloneValue(value));
+        panel._emitPageValue(key, before);
+        return true;
+    }
+
+    function applyLater(later) {
+        for (const [panel, key, value] of later) {
+            if (applyOne(panel, key, value)) continue;
+            console.error(`[controls] Zuruecksetzen: "${key}" hat ${panel.params[key].length} Symbole, Wert hat ${Array.isArray(value) ? value.length : 'keine'}`);
+        }
+    }
+
     function applyValues(entries) {
+        const later = [];
         for (const [panel, pairs] of entries) {
             for (const [key, value] of pairs) {
-                if (!(key in panel.params)) continue;
-                const before = cloneValue(panel.params[key]);
-                if (JSON.stringify(before) === JSON.stringify(value)) continue;
-                const sym = panel._symbolRows && panel._symbolRows[key];
-                if (sym && !(Array.isArray(value) && value.length === before.length)) {
-                    console.error(`[controls] Zuruecksetzen: "${key}" hat ${before.length} Symbole, Wert hat ${Array.isArray(value) ? value.length : 'keine'}`);
-                    continue;
-                }
-                panel.set(key, cloneValue(value));
-                panel._emitPageValue(key, before);
+                if (!applyOne(panel, key, value)) later.push([panel, key, value]);
             }
         }
+        applyLater(later);
     }
 
     function runHooks(name, undos) {
@@ -579,14 +591,17 @@
             runHooks('onClick', undos);
             // Key fuer Key in Panel-Reihenfolge: ein Anzahl-Regler (z. B. Symbolzeilen) baut Zeilen neu,
             // die danach selbst zurueckgesetzt werden.
+            const later = [];
             for (const panel of livePanels()) {
                 const done = new Set();
                 let key;
                 while ((key = Object.keys(panel.params).find(k => pageDefaultState.seen.has(k) && !done.has(k))) !== undefined) {
                     done.add(key);
-                    applyValues([[panel, [[key, panel.defaultOf(key)]]]]);
+                    const value = panel.defaultOf(key);
+                    if (!applyOne(panel, key, value)) later.push([panel, key, value]);
                 }
             }
+            applyLater(later);
             runHooks('afterReset', undos);
             const url = new URL(location.href);
             const keys = new Set(before.flatMap(([, pairs]) => pairs.map(([k]) => k)));
