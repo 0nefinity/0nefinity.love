@@ -1856,6 +1856,25 @@ pre {
     margin: 0;
 }
 
+/* wrap-Slider (Winkel): controls.js zieht selbst, damit es ueber 360 weiterlaeuft */
+.ctrl-range-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    cursor: pointer;
+    touch-action: pan-y;
+}
+
+.ctrl-range-wrap .ctrl-range {
+    pointer-events: none;
+}
+
+.ctrl-range-wrap:hover .ctrl-range::-webkit-slider-thumb {
+    transform: scale(1.15);
+}
+
 .ctrl-value-input {
     background: transparent;
     border: none;
