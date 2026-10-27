@@ -949,6 +949,7 @@
 	                mobileInitialOpenMaxViewportFraction: Number.isFinite(Number(options.mobileInitialOpenMaxViewportFraction))
 	                    ? Number(options.mobileInitialOpenMaxViewportFraction)
 	                    : (1 / 3),
+                desktopInitialHeightFraction: Number.isFinite(Number(options.desktopInitialHeightFraction)) ? Number(options.desktopInitialHeightFraction) : (1 / 3),
                 ...options
             };
 	            this.options.position = normalizedPosition;
@@ -2091,7 +2092,7 @@
 	            this.bodyEl.style.maxHeight = '';
 		            const bottomOffset = rect.bottom >= viewportHeight - 2 ? 0 : 16;
 		            const maxPanelHeight = Math.max(fixedChromeHeight, viewportHeight - bottomOffset - 70);
-		            const preferredPanelHeight = Math.min(maxPanelHeight, Math.max(fixedChromeHeight, viewportHeight / 3));
+		            const preferredPanelHeight = Math.min(maxPanelHeight, Math.max(fixedChromeHeight, viewportHeight * this.options.desktopInitialHeightFraction));
 		            const preferredBodyHeight = Math.max(0, preferredPanelHeight - fixedChromeHeight);
 		            const naturalBodyHeight = this._getDesktopNaturalBodyHeight();
 	            const bodyHeight = Math.min(naturalBodyHeight, preferredBodyHeight);
