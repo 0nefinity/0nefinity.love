@@ -45,10 +45,13 @@
     const s = document.createElement('style');
     s.id = 'oef-style';
     s.textContent = `
-.oef{--oef-btn:4.375rem;position:relative;display:block;box-sizing:border-box;width:100%;margin:calc(var(--oef-btn) + 2px) 0 4px;padding:0 8px;
-  z-index:999;color:var(--text-color,#fff);font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
-@media (max-width:768px) and (min-resolution:2dppx){.oef{--oef-btn:5.5rem}}
-.oef.oef-hosted{margin:0;padding:0;width:auto}
+.oef{--oef-btn:4.375rem;--oef-top:calc(var(--oef-btn) + 2px);position:fixed;top:calc(var(--visible-viewport-top,0px) + var(--oef-top));left:0;right:0;box-sizing:border-box;padding:0 8px;
+  z-index:999;color:var(--text-color,#fff);font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left;pointer-events:none}
+.oef>*{pointer-events:auto}
+.oef-row{background:var(--bg-color,#000)}
+.oef-spacer{display:block;height:calc(var(--oef-btn) + 2px + 28px + 4px);margin:0;padding:0;pointer-events:none}
+@media (max-width:768px) and (min-resolution:2dppx){.oef,.oef-spacer{--oef-btn:5.5rem}}
+.oef.oef-hosted{position:relative;left:auto;right:auto;top:auto;padding:0;width:auto;pointer-events:auto}
 .oef[hidden]{display:none}
 .oef-row{display:inline-flex;max-width:100%;box-sizing:border-box;align-items:center;min-height:28px;padding:0 6px;border-radius:4px;
   border:1px solid transparent;transition:border-color .15s,opacity .15s}
@@ -100,7 +103,17 @@
     msg.setAttribute('role', 'status');
     row.append(dirEl, nameEl, extEl);
     root.append(row, msg);
-    if (opts.host) opts.host.appendChild(root); else document.body.insertBefore(root, document.body.firstChild);
+    if (opts.host) opts.host.appendChild(root);
+    else {
+      // Feste Zeile unter der Leiste (scrollt nie weg); der Platzhalter haelt den Seitenanfang immer gleich tief,
+      // damit Stift an/aus nichts verschiebt.
+      const spacer = document.createElement('div');
+      spacer.className = 'oef-spacer';
+      spacer.dataset.oeUi = '';
+      spacer.setAttribute('aria-hidden', 'true');
+      document.body.insertBefore(spacer, document.body.firstChild);
+      document.body.insertBefore(root, spacer.nextSibling);
+    }
     if (opts.host) root.classList.add('oef-hosted');
 
     function paint() {
