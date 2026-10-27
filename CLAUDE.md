@@ -65,7 +65,7 @@ Flache Sammlung selbst-enthaltener HTML-Seiten. Die gemeinsame Infrastruktur:
 | `tools/dialog.js` | Dialog (baut sein Markup selbst), nur `bibelaufdenpunkt.html` und `bibelaufdenpunkt copy 3.html` |
 | `tools/live-reload.js` | Dev-only Live-Reload (Poll auf `/_devmtime.php`), vom Head-Include nur auf `dev.*` geladen; meldet Ausfall per `console.error` |
 | `tools/editor.js` | Dev-only Login-Editor (nur auf `dev.*`, nur mit Login über `/enternity`): Texte inline bearbeiten, speichern = Commit auf `claude-dev`, veröffentlichen = Seite auf `main`. Server: `~/0nefinity/editor/server.py` (Infra-Repo). Dieselbe Datei läuft auch auf timbreitmar.de (`data-mode="direct"`, ohne Menü: Leiste unten rechts); eine Änderung hier wirkt dort sofort mit |
-| `tools/controls.js` | Interaktive UI-Steuerelemente (Slider, Inputs, Zoom) |
+| `tools/controls.js` | Interaktive UI-Steuerelemente (Slider, Inputs, Zoom). Voreinstellungen je Seite: im Editor-Bearbeiten-Modus hat jede Zeile eine Nadel, die den aktuellen Wert als `<script type="application/json" id="control-defaults">` in den Head der Seite schreibt (Endpunkt `source`, Commit auf `claude-dev`, live per Veröffentlichen). Vorrang URL > Voreinstellung > Code-Wert; Reset-Knopf führt zur Voreinstellung, `panel.defaultOf(key)`. Tests: `/home/timbr/werkstatt/0nefinity/tests/control-defaults/` |
 | `tools/zoom.js` | Zoom und Skalierung für Canvas-Seiten |
 | `0nefinity.js` | Mathematische Konstanten und Manifestationen der 0nefinity-Theorie |
 | `tools/tools/decimal.js` | Bibliothek für beliebig genaue Dezimalzahlen |
