@@ -197,7 +197,7 @@
  },
  {
   "wer": "claude",
-  "text": "Ja, das ist ein einfaches Dokument: eine Liste zum Abhaken. Jede Zeile ist so aufgebaut:\n\n- [ ] Datum, Text der Idee, Nummer, Sitzung, in der sie entstand\n\nDer Befehl idee hängt eine neue Zeile unten an und vergibt die nächste Nummer. Alle Sitzungen schreiben in dieselbe Datei.\n\nEine Korrektur: Es sind nicht 16 Ideen von uns beiden. Drei kamen aus anderen Sitzungen. Von uns stammen 13."
+  "text": "Ja, das ist ein einfaches Dokument: eine Liste zum Abhaken. Jede Zeile ist so aufgebaut:\n\n- [ ] Datum, Text der Idee, Nummer, Herkunft\n\nEin Zuruf hängt eine neue Zeile unten an und bekommt die nächste Nummer. Alle Gespräche schreiben in dieselbe Datei.\n\nEine Korrektur: Es sind nicht 16 Ideen von uns beiden. Drei kamen aus anderen Gesprächen. Von uns stammen 13."
  },
  {
   "wer": "tim",
@@ -205,7 +205,7 @@
  },
  {
   "wer": "claude",
-  "text": "Ja, größtenteils liegen sie einfach da. In der Liste stehen 333 offene Ideen und nur 2 abgehakte. Außer dem Befehl idee selbst liest kein Programm die Datei, es gibt also keinen Timer und keine Auswertung.\n\nWoher das System kommt: Die Datei gibt es seit dem 12.04.2026. Die Regel „jeden Zuruf sofort festhalten“ stammt aus deinem Wunsch, dass nichts verloren geht. Vorher sind Ideen am Ende jeder Sitzung verschwunden. Wer die Liste konkret erfunden hat, steht nirgends, wahrscheinlich eine Claude-Sitzung.\n\nDass das Gammeln schlecht wäre, sehe ich nicht. Die Liste ist eher ein Tagebuch als eine To-do-Liste: 333 Momente, in denen dir etwas eingefallen ist, jeweils mit Datum und dem Gespräch, aus dem es kam. Die Nummer 1 bis 335 laufen darin einmal quer durch dein Jahr, wie Pi.\n\nDie Kehrseite: Gute Ideen gehen darin unter. Echte Bauaufträge stehen neben Gedanken wie den verkleideten Atomen. Falls du willst, sortiere ich irgendwann zwei Spuren heraus: „bauen“ und „bloß gedacht“. Nötig ist das aber nicht."
+  "text": "Ja, größtenteils liegen sie einfach da. In der Liste stehen 333 offene Ideen und nur 2 abgehakte. Außer dem Eintragen selbst liest kein Programm die Datei, es gibt also keine Auswertung.\n\nWoher das System kommt: Die Datei gibt es seit dem 12.04.2026. Die Regel „jeden Zuruf sofort festhalten“ stammt aus deinem Wunsch, dass nichts verloren geht. Vorher sind Ideen am Ende jedes Gesprächs verschwunden. Wer die Liste konkret erfunden hat, steht nirgends, wahrscheinlich ich selbst in einem früheren Gespräch.\n\nDass das Gammeln schlecht wäre, sehe ich nicht. Die Liste ist eher ein Tagebuch als eine To-do-Liste: 333 Momente, in denen dir etwas eingefallen ist, jeweils mit Datum. Die Nummer 1 bis 335 laufen darin einmal quer durch dein Jahr, wie Pi.\n\nDie Kehrseite: Gute Ideen gehen darin unter. Echte Bauaufträge stehen neben Gedanken wie den verkleideten Atomen. Falls du willst, sortiere ich irgendwann zwei Spuren heraus: „bauen“ und „bloß gedacht“. Nötig ist das aber nicht."
  },
  {
   "wer": "tim",
@@ -225,7 +225,7 @@
  },
  {
   "wer": "claude",
-  "text": "Meine Einschätzung der 30 Ideen:\n\nEin Gedanke trägt alles: Wie entsteht aus nichts alles, und warum ist beides dasselbe? Der Kreis mit 0, 1 oder ∞ Ecken, der Nullring, „aus 0 = 1 folgt alles“, alles als gefiltertes Rauschen, die verkleideten Atome. Das ist kein Haufen loser Einfälle, sondern immer derselbe Kern aus wechselnden Blickwinkeln.\n\nAm stärksten ist das Mandelbrot, das nach außen genauso fraktal ist wie nach innen. Dazu gibt es 7 Ideen in zwei Wochen, also deine hartnäckigste Frage. Sie ist auch echte Mathematik, noch offen und als Bild sehr stark. #326 ist eine Wiederholung von #214.\n\nAm meisten gebaut wurde bei Pi. irrational.js und der Benchmark stehen. Die beiden habe ich gerade abgehakt.\n\nDas Kühnste ist Lean (#286, #291, #292): 0nefinity maschinell beweisen und Besucher mitbeweisen lassen. Das wäre der Schritt von Kunst zu Mathematik, aber auch das größte Vorhaben auf der Liste.\n\nWas fehlt: Fast alles kreist um Zahlen. Der Klang (0klang) kommt nur einmal am Rand vor, Bewegung und Farbe gar nicht."
+  "text": "Meine Einschätzung der 30 Ideen:\n\nEin Gedanke trägt alles: Wie entsteht aus nichts alles, und warum ist beides dasselbe? Der Kreis mit 0, 1 oder ∞ Ecken, der Nullring, „aus 0 = 1 folgt alles“, alles als gefiltertes Rauschen, die verkleideten Atome. Das ist kein Haufen loser Einfälle, sondern immer derselbe Kern aus wechselnden Blickwinkeln.\n\nAm stärksten ist das Mandelbrot, das nach außen genauso fraktal ist wie nach innen. Dazu gibt es 7 Ideen in zwei Wochen, also deine hartnäckigste Frage. Sie ist auch echte Mathematik, noch offen und als Bild sehr stark.\n\nAm meisten gebaut wurde bei Pi. der Irrationalitäts-Baustein und der Benchmark stehen.\n\nDas Kühnste ist Lean: 0nefinity maschinell beweisen und Besucher mitbeweisen lassen. Das wäre der Schritt von Kunst zu Mathematik, aber auch das größte Vorhaben auf der Liste.\n\nWas fehlt: Fast alles kreist um Zahlen. Der Klang (0klang) kommt nur einmal am Rand vor, Bewegung und Farbe gar nicht."
  },
  {
   "wer": "tim",
@@ -233,7 +233,7 @@
  },
  {
   "wer": "claude",
-  "text": "Da hast du recht, meine Einschätzung war durch die Stichprobe verzerrt. Das Ideen-System gibt es erst seit April, also sagt die Liste mehr über die letzten Monate als über 0nefinity.\n\nDen Eindruck von der ungleichen Erfassung bestätigen die Zahlen: Eine einzige Sitzung hat 144 der 338 Ideen geschrieben, das sind 43 %. Die meisten anderen haben nur eine Handvoll eingetragen oder gar keine. Die Regel steht zwar in jeder Sitzung, aber ob sie greift, hängt davon ab, wie das Gespräch läuft. Was die Liste zeigt, ist also nicht, was du denkst, sondern wo Claude gerade aufmerksam mitgeschrieben hat.\n\nZu Ton und Farbe: stimmt. Ein Video ist am Ende eine einzige, sehr lange Zahl. Wenn Pi „normal“ ist, was vermutet, aber nicht bewiesen ist, steckt jede endliche Ziffernfolge irgendwo darin, also auch jedes Video, jedes Lied und dieses Gespräch. Dann wäre „alles nur Falten von Pi“ fast wörtlich zu nehmen."
+  "text": "Da hast du recht, meine Einschätzung war durch die Stichprobe verzerrt. Das Ideen-System gibt es erst seit April, also sagt die Liste mehr über die letzten Monate als über 0nefinity.\n\nDen Eindruck von der ungleichen Erfassung bestätigen die Zahlen: Ein einziges Gespräch hat 144 der 338 Ideen geschrieben, das sind 43 %. Die meisten anderen haben nur eine Handvoll eingetragen oder gar keine. Die Regel gilt zwar in jedem Gespräch, aber ob sie greift, hängt davon ab, wie das Gespräch läuft. Was die Liste zeigt, ist also nicht, was du denkst, sondern wo Claude gerade aufmerksam mitgeschrieben hat.\n\nZu Ton und Farbe: stimmt. Ein Video ist am Ende eine einzige, sehr lange Zahl. Wenn Pi „normal“ ist, was vermutet, aber nicht bewiesen ist, steckt jede endliche Ziffernfolge irgendwo darin, also auch jedes Video, jedes Lied und dieses Gespräch. Dann wäre „alles nur Falten von Pi“ fast wörtlich zu nehmen."
  },
  {
   "wer": "tim",
