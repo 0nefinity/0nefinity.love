@@ -55,6 +55,39 @@ FIXED_PAGES = [{'name': 'enternity', 'path': 'enternity', 'display': 'enternity'
 FIXED_PATHS = {'enternity.php'}
 
 
+HTACCESS_FILE = os.path.join(ROOT_DIR, '.htaccess')
+_INTERN_RULE = re.compile(r'^RewriteRule\s+"([^"]+)"\s+-\s+\[([^\]]*)\]\s*$')
+
+
+def intern_patterns():
+    """Muster aus dem Block "intern: begin/end" in .htaccess (dort 404). Bricht laut ab, wenn er fehlt."""
+    with open(HTACCESS_FILE, encoding='utf-8') as f:
+        lines = [l.strip() for l in f]
+    try:
+        start, end = lines.index('# intern: begin'), lines.index('# intern: end')
+    except ValueError:
+        raise SystemExit('generate-menu: Block "# intern: begin/end" fehlt in .htaccess')
+    patterns = []
+    for line in lines[start + 1:end]:
+        if not line or line.startswith('#'):
+            continue
+        m = _INTERN_RULE.match(line)
+        if not m:
+            raise SystemExit(f'generate-menu: unlesbare Zeile im intern-Block: {line}')
+        flags = re.I if 'NC' in m.group(2).split(',') else 0
+        patterns.append(re.compile(m.group(1), flags))
+    if not patterns:
+        raise SystemExit('generate-menu: intern-Block in .htaccess ist leer')
+    return patterns
+
+
+INTERN = intern_patterns()
+
+
+def is_intern(rel_path):
+    return any(p.search(rel_path) for p in INTERN)
+
+
 def should_include(name):
     if name.startswith('.'):
         return False
@@ -67,7 +100,7 @@ def should_include(name):
 
 def is_page(rel_path):
     """True, wenn der getrackte Pfad ins Menue gehoert."""
-    if rel_path.startswith(COM_ONLY) or rel_path in FIXED_PATHS:
+    if rel_path.startswith(COM_ONLY) or rel_path in FIXED_PATHS or is_intern(rel_path):
         return False
     parts = rel_path.split('/')
     if any(not should_include(p) for p in parts):
