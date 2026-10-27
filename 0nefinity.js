@@ -1244,10 +1244,24 @@ canvas {
     function saveChoreo() {
       try { localStorage.setItem(CHOREO_KEY, JSON.stringify(AUTO_SPEED_CONFIG)); } catch (e) { }
     }
+    const finiteFields = (o, keys) => !!o && typeof o === 'object' && keys.every(k => typeof o[k] === 'number' && Number.isFinite(o[k]));
+    function choreoValid(c) {
+      return finiteFields(c.START_PHASE, ['startSpeed', 'rampTo', 'rampDuration', 'holdDuration'])
+        && Array.isArray(c.SPEED_STEPS) && c.SPEED_STEPS.length > 0
+        && c.SPEED_STEPS.every(st => finiteFields(st, ['increment', 'rampDuration', 'holdDuration']));
+    }
+    // Ungueltiger gespeicherter Zustand wird verworfen und laut gemeldet; die Seite startet mit den Voreinstellungen.
     try {
-      const stored = JSON.parse(localStorage.getItem(CHOREO_KEY) || 'null');
-      if (stored && stored.START_PHASE && Array.isArray(stored.SPEED_STEPS)) restoreChoreo(stored);
-    } catch (e) { }
+      const raw = localStorage.getItem(CHOREO_KEY);
+      if (raw !== null) {
+        const stored = JSON.parse(raw);
+        if (stored && choreoValid(stored)) restoreChoreo(stored);
+        else throw new Error('stored choreography has missing or non-finite values');
+      }
+    } catch (e) {
+      try { localStorage.removeItem(CHOREO_KEY); } catch (e2) { }
+      showSymbolError('Saved choreography was invalid and has been reset to defaults', e);
+    }
 
     // Animationsparameter initialisieren
     // degPerCircle: nur Display-Konvention. Intern bleibt rotationSpeed in echten 360°-Grad/Frame.
@@ -1316,6 +1330,18 @@ canvas {
         else showInfoText(icon, text);
       });
       row.appendChild(icon);
+    }
+
+    // Passt controls.js nicht zu diesem Skript (alte Kopie im Browser-Cache), holt es einmal frisch am Cache vorbei und laedt neu.
+    function healStaleControls() {
+      const FLAG = '0nefinity-controls-heal';
+      try {
+        if (sessionStorage.getItem(FLAG)) return;
+        sessionStorage.setItem(FLAG, '1');
+      } catch (e) { return; }
+      fetch('/tools/controls.js', { cache: 'reload' })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); location.reload(); })
+        .catch(e => showSymbolError('Reloading tools/controls.js failed: ' + (e && e.message || e), e));
     }
 
     function buildSettingsPanel() {
@@ -1864,7 +1890,13 @@ canvas {
       requestAnimationFrame(animate);
     }
 
-    buildSettingsPanel();
+    // Ein Panel-Fehler (z. B. gecachtes altes controls.js neben neuem 0nefinity.js) darf die Animation nicht mittoeten.
+    try {
+      buildSettingsPanel();
+    } catch (err) {
+      showSymbolError('Settings panel failed: ' + (err && err.message || err), err);
+      healStaleControls();
+    }
 
     // Starte mit einer passenderen Größe
     resizeCanvasToFitContent();
