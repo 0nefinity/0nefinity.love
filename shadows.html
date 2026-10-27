@@ -1632,29 +1632,29 @@
   // Reihenfolge der Symbolzeile im Panel: 0, 1, ∞
   const GLYPH_SLOTS = [['left', 'glyphRot0', '0'], ['right', 'glyphRot1', '1'], ['floor', 'glyphRotInf', '∞']];
 
-  // key = params-Schluessel, sliderMin/Max = sichtbarer Regler-Bereich (Eingabe und URL duerfen bis PARAMS_CONFIG.min/max)
-  const PANEL_SLIDERS = [
-    { key: 'brightness',       label: 'Brightness',  sliderMin: 0,   sliderMax: 500, step: 0.1, decimals: 1 },
-    { key: 'ambientIntensity', label: 'Ambient',     sliderMin: 0,   sliderMax: 10,  step: 0.01, decimals: 2 },
-    'decay',
-    '---',
-    { key: 'sphereRadius',     label: 'Radius',      sliderMin: 0,   sliderMax: 20,  step: 0.01, decimals: 2 },
-    { key: 'wallDistance',     label: 'Distance',    sliderMin: -20, sliderMax: 100, step: 0.01, decimals: 2 },
-    { key: 'lightDistance',    label: 'Light Dist',  sliderMin: 0,   sliderMax: 200, step: 0.01, decimals: 2 },
-    { key: 'spotAngle',        label: 'Spot Angle',  sliderMin: 0,   sliderMax: 90,  step: 0.01, decimals: 2 },
-    { key: 'lampScale',        label: 'Lamp Size',   sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
-    '---',
-    'showLamps',
-    { key: 'glyphSize',        label: 'Glyph Size',  sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
-    'font',
+  // key = params-Schluessel, sliderMin/Max = sichtbarer Regler-Bereich (Eingabe und URL duerfen bis PARAMS_CONFIG.min/max).
+  // Panel-Schluessel = params-Schluessel: URL-Keys (PARAMS_CONFIG.urlKey) und gespeicherte Voreinstellungen haengen daran.
+  const PANEL_SLIDERS = {
+    glyphSize:        { label: 'Symbol size',      sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
+    sphereRadius:     { label: 'Sphere size',      sliderMin: 0,   sliderMax: 20,  step: 0.01, decimals: 2 },
+    wallDistance:     { label: 'Wall distance',    sliderMin: -20, sliderMax: 100, step: 0.01, decimals: 2 },
+    brightness:       { label: 'Light brightness', sliderMin: 0,   sliderMax: 500, step: 0.1,  decimals: 1 },
+    ambientIntensity: { label: 'Ambient light',    sliderMin: 0,   sliderMax: 10,  step: 0.01, decimals: 2 },
+    lightDistance:    { label: 'Light distance',   sliderMin: 0,   sliderMax: 200, step: 0.01, decimals: 2 },
+    spotAngle:        { label: 'Light cone angle', sliderMin: 0,   sliderMax: 90,  step: 0.01, decimals: 2 },
+    lampScale:        { label: 'Lamp size',        sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
+  };
+  // three.js SpotLight.decay
+  const DECAY_OPTIONS = [
+    { value: 0, label: 'none' },
+    { value: 1, label: 'linear' },
+    { value: 2, label: 'physical' },
   ];
 
   // Panel-Anzeige komplett aus params/glyphChars/currentFontKey neu setzen (nach Drag, Mausrad, Reset).
   function syncPanelFromParams() {
     if (!panel) return;
-    PANEL_SLIDERS.forEach((spec) => {
-      if (typeof spec === 'object') panel.set(spec.key, params[spec.key]);
-    });
+    Object.keys(PANEL_SLIDERS).forEach((k) => panel.set(k, params[k]));
     panel.set('spotDecay', params.spotDecay);
     panel.set('gebMode', dualMode);
     ROT_PARAMS.forEach((k) => panel.set(k, params[k]));
@@ -1801,8 +1801,28 @@
     history.replaceState(null, '', window.location.pathname);
   }
 
-  // Oberste Panel-Zeile: die drei Symbole nebeneinander, darunter je ein Drehungs-Regler (params.glyphRot*, URL r0/r1/rInf, Reset).
-  function addGlyphRows() {
+  function addParamSlider(p, key) {
+    const spec = PANEL_SLIDERS[key];
+    p.addSlider(key, {
+      label: spec.label,
+      min: spec.sliderMin,
+      max: Math.max(spec.sliderMax, params[key]),
+      step: spec.step,
+      decimals: spec.decimals,
+      value: params[key],
+      onChange: (v) => onSliderInput(key, v),
+    });
+  }
+
+  // Panel nach Wichtigkeit: Symbole (Zeichen, je Zeichen die Drehung, Groesse, Schrift), Koerper, Licht.
+  function setupUI() {
+    panel = Controls.createPanel({
+      id: 'shadows-controls',
+      position: 'left',
+      mobileContentElement: document.getElementById('shadows-root'),
+    });
+    panel.addResetButton({ title: 'Reset', onClick: resetAll });
+
     panel.addSymbolRow('glyphs', {
       values: GLYPH_SLOTS.map(([charKey]) => glyphChars[charKey] ?? ''),
       labels: GLYPH_SLOTS.map(([, , label]) => 'Symbol ' + label),
@@ -1816,63 +1836,46 @@
     });
     GLYPH_SLOTS.forEach(([, rotKey, label]) => {
       panel.addSlider(rotKey, {
-        label: 'Rotation ' + label,
+        label: label + ' rotation',
         min: 0, max: 360, step: 0.01, decimals: 2,
         value: params[rotKey],
         onChange: (v) => onSliderInput(rotKey, v),
       });
     });
-    panel.addDivider();
-  }
-
-  function setupUI() {
-    panel = Controls.createPanel({
-      id: 'shadows-controls',
-      position: 'left',
-      mobileContentElement: document.getElementById('shadows-root'),
+    addParamSlider(panel, 'glyphSize');
+    panel.addSelect('fontKey', {
+      label: 'Symbol font',
+      options: Object.keys(FONT_OPTIONS),
+      value: currentFontKey,
+      onChange: (v) => {
+        currentFontKey = v;
+        updateGlyphTextures();
+        needsUniformUpdate = true;
+        updateURLFromParams();
+      },
     });
-    panel.addResetButton({ title: 'Reset', onClick: resetAll });
-
-    addGlyphRows();
-    panel.addToggle('gebMode', { label: 'GEB-Modus', value: dualMode, onChange: onGebToggle });
-    panel.addToggle('shapeCube', { label: 'Würfel (statt Kugel)', value: shapeCube, onChange: setShapeCube });
-    panel.addToggle('invertMode', { label: 'Invert (Kugel-Klick)', value: invertMode, onChange: setInvertMode });
     panel.addDivider();
 
-    PANEL_SLIDERS.forEach((spec) => {
-      if (spec === '---') { panel.addDivider(); return; }
-      if (spec === 'decay') {
-        panel.addSelect('spotDecay', {
-          label: 'Decay',
-          options: [0, 1, 2],
-          value: params.spotDecay,
-          onChange: (v) => onDecayChange(Number(v)),
-        });
-      } else if (spec === 'showLamps') {
-        panel.addToggle('showLamps', { label: 'Show Lamps', value: true, onChange: applyLampVisibility });
-      } else if (spec === 'font') {
-        panel.addSelect('fontKey', {
-          label: 'Font',
-          options: Object.keys(FONT_OPTIONS),
-          value: currentFontKey,
-          onChange: (v) => {
-            currentFontKey = v;
-            updateGlyphTextures();
-            needsUniformUpdate = true;
-            updateURLFromParams();
-          },
-        });
-      } else {
-        panel.addSlider(spec.key, {
-          label: spec.label,
-          min: spec.sliderMin,
-          max: Math.max(spec.sliderMax, params[spec.key]),
-          step: spec.step,
-          decimals: spec.decimals,
-          value: params[spec.key],
-          onChange: (v) => onSliderInput(spec.key, v),
-        });
-      }
+    addParamSlider(panel, 'sphereRadius');
+    addParamSlider(panel, 'wallDistance');
+    panel.addToggle('shapeCube', { label: 'Cube instead of sphere', value: shapeCube, onChange: setShapeCube });
+    panel.addToggle('invertMode', { label: 'Invert cutouts (click sphere)', value: invertMode, onChange: setInvertMode });
+    panel.addToggle('gebMode', { label: 'GEB mode (two spheres)', value: dualMode, onChange: onGebToggle });
+    panel.addDivider();
+
+    addParamSlider(panel, 'brightness');
+    addParamSlider(panel, 'ambientIntensity');
+    addParamSlider(panel, 'lightDistance');
+    addParamSlider(panel, 'spotAngle');
+    panel.addSelect('spotDecay', {
+      label: 'Light falloff',
+      options: DECAY_OPTIONS,
+      value: params.spotDecay,
+      onChange: (v) => onDecayChange(Number(v)),
+    });
+    panel.addToggle('showLamps', {
+      label: 'Show lamps', value: true, onChange: applyLampVisibility,
+      details: (p) => addParamSlider(p, 'lampScale'),
     });
 
     applyLampVisibility();
