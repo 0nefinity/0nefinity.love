@@ -726,7 +726,7 @@
     window.addEventListener('resize', () => { if (multi) layoutMulti(); else centreSingle(); });
 
     // ─── Boot ───
-    panel = Controls.createPanel({ position: 'left', id: 'pi-compression' });
+    panel = Controls.createPanel({ position: 'left', id: 'pi-compression', desktopInitialHeightFraction: 0.62, mobileInitialOpenMaxViewportFraction: 0.7 });
     if (window.ResizeObserver && panel.el) new ResizeObserver(() => { if (multi) { layoutMulti(); for (const it of multi.items) if (it.view) it.view.resize(); } else centreSingle(); }).observe(panel.el);
     // Debug-Anzeige (nur im Bearbeiten-Modus, html.oe-editing wie tools/editor.js): duenne Linien ueber der Buehne,
     // pointer-events: none; aus = nichts gezeichnet, keine Schleife.
