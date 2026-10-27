@@ -8,6 +8,7 @@
 //     btnClass: 'oe-btn oe-mini',
 //   });
 //   marks.set(true|false); marks.on  // Zustand bleibt in localStorage 'oe-marks'
+//   marks.setActive(false)           // Zeichen ausblenden, ohne den gemerkten Zustand zu aendern
 (function () {
   const PILCROW = 'M13 4v16M17 4v16M13 4H9.5a4.5 4.5 0 0 0 0 9H13';
   const NS = 'http://www.w3.org/2000/svg';
@@ -68,8 +69,9 @@
     document.body.appendChild(layer);
 
     let raf = 0;
+    let active = true; // false: Bearbeiten aus, Zeichen aus dem Blick; der gemerkte Zustand 'on' bleibt unberuehrt
     function schedule() {
-      if (!on || raf) return;
+      if (!on || !active || raf) return;
       raf = requestAnimationFrame(() => { raf = 0; draw(); });
     }
 
@@ -88,7 +90,7 @@
 
     function draw() {
       layer.textContent = '';
-      if (!on) return;
+      if (!on || !active) return;
       const root = getRoot();
       if (!root) return;
       const frag = document.createDocumentFragment();
@@ -152,6 +154,12 @@
       if (on) draw();
     }
 
+    function setActive(v) {
+      active = !!v;
+      layer.textContent = '';
+      if (active && on) draw();
+    }
+
     btn.addEventListener('click', () => set(!on));
     window.addEventListener('scroll', schedule, { passive: true, capture: true });
     window.addEventListener('resize', schedule);
@@ -163,7 +171,7 @@
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
     set(on);
 
-    return { btn, layer, set, get on() { return on; }, redraw: draw, destroy() { mo.disconnect(); btn.remove(); layer.remove(); } };
+    return { btn, layer, set, setActive, get on() { return on; }, redraw: draw, destroy() { mo.disconnect(); btn.remove(); layer.remove(); } };
   }
 
   window.OneEditorMarks = { mount };
