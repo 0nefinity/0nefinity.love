@@ -23,6 +23,7 @@
  *       .addSlider('opacity', { label: 'Alpha',  min: 0, max: 1,   step: 0.01, value: config.opacity, decimals: 2, onChange: v => config.opacity = v })
  *       .addDivider()
  *       .addSlider('count', { label: 'Count',  min: 1, max: 10, step: 1, value: config.count, onChange: v => config.count = v })
+ *       .addSlider('rot',   { label: 'Rotation', min: 0, max: 360, step: 0.01, wrap: true, value: 0, onChange: v => config.rot = v })  // wrap: ueber 360 laeuft bei 0 weiter
  *   ;
  * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  */
@@ -190,6 +191,14 @@
         }
 
         return { min, max };
+    }
+
+    // wrap-Slider (Winkel): Periode = max - min, max faellt auf min (360 -> 0).
+    function wrapSliderValue(value, config) {
+        const { min, max } = getProjectedSliderBounds(config, value);
+        const period = max - min;
+        if (!(period > 0) || !Number.isFinite(value)) return value;
+        return min + (((value - min) % period) + period) % period;
     }
 
     function getProjectedSliderStep(step) {
@@ -375,6 +384,138 @@
         };
     }
 
+    // === VOREINSTELLUNGEN JE SEITE ===
+    // Der Editor (dev, eingeloggt) schreibt { "<key>": Wert } als <script type="application/json"
+    // id="control-defaults"> in den Head der Seite; Veroeffentlichen bringt sie mit der Seite live.
+    // Vorrang: URL > Voreinstellung > Code-Wert. Traegt die URL Zustand (ausser ?von=), gilt nur die URL.
+    const DEFAULTS_ID = 'control-defaults';
+    const DEFAULTS_RE = /[ \t]*<script type="application\/json" id="control-defaults">[\s\S]*?<\/script>\n?/;
+
+    const pageDefaults = {
+        parse(text) {
+            if (text == null) return {};
+            let data;
+            try { data = JSON.parse(text); } catch (e) { throw new Error(`#${DEFAULTS_ID}: kaputtes JSON (${e.message})`); }
+            if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`#${DEFAULTS_ID}: erwartet ein Objekt`);
+            return data;
+        },
+        urlCarriesState(search) {
+            const p = new URLSearchParams(search || '');
+            p.delete('von');
+            return [...p.keys()].length > 0;
+        },
+        upsertScript(html, values) {
+            const rest = html.replace(DEFAULTS_RE, '');
+            if (!Object.keys(values).length) return rest;
+            const at = rest.search(/<\/head\s*>/i);
+            if (at < 0) throw new Error('Seite hat kein </head>, Voreinstellungen nicht gespeichert');
+            const json = JSON.stringify(values).replace(/</g, '\\u003c');
+            return rest.slice(0, at) + `<script type="application/json" id="${DEFAULTS_ID}">${json}</script>\n` + rest.slice(at);
+        },
+    };
+
+    let pageDefaultsCache = null;
+    function currentPageDefaults() {
+        if (pageDefaultsCache) return pageDefaultsCache;
+        const el = document.getElementById(DEFAULTS_ID);
+        let values = {};
+        try {
+            values = pageDefaults.parse(el ? el.textContent : null);
+        } catch (e) {
+            // Laut, aber die Seite laeuft mit den Code-Werten weiter: Besucher sollen keine kaputte Seite sehen.
+            console.error('[controls] ' + e.message);
+        }
+        pageDefaultsCache = { values, ignore: pageDefaults.urlCarriesState(location.search) };
+        return pageDefaultsCache;
+    }
+
+    function cloneValue(v) {
+        return v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v;
+    }
+
+    // seen: Keys, deren Code-Wert schon erfasst ist (Seiten, die ihr Panel neu bauen, uebergeben danach
+    // ihren aktuellen Stand, nicht den Code-Wert). code: der Code-Wert je Key.
+    const pageDefaultState = { seen: new Set(), code: {}, panels: [], watching: false };
+
+    function isEditing() {
+        return document.documentElement.classList.contains('oe-editing');
+    }
+
+    function watchEditMode() {
+        if (pageDefaultState.watching || typeof MutationObserver === 'undefined') return;
+        pageDefaultState.watching = true;
+        new MutationObserver(() => pageDefaultState.panels.forEach(p => p._syncDefaultPins()))
+            .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    async function editApi(method, route, body) {
+        const opts = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
+        if (body) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.headers['X-0ne-Edit'] = '1';
+            opts.body = JSON.stringify(body);
+        }
+        let res;
+        try {
+            res = await fetch('/api/edit/' + route, opts);
+        } catch (e) {
+            throw new Error('Editor-Dienst nicht erreichbar');
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data.error || 'HTTP ' + res.status) + (data.detail ? ' (' + data.detail + ')' : ''));
+        return data;
+    }
+
+    function defaultsToast(text, retry) {
+        document.querySelectorAll('.ctrl-defaults-toast').forEach(t => t.remove());
+        const t = document.createElement('div');
+        t.className = 'oe-toast ctrl-defaults-toast';
+        t.dataset.oeUi = '';
+        t.dataset.kind = retry ? 'error' : '';
+        t.setAttribute('role', retry ? 'alert' : 'status');
+        t.append(text);
+        const addBtn = (label, fn) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'oe-btn oe-small';
+            b.textContent = label;
+            b.addEventListener('click', () => { t.remove(); if (fn) fn(); });
+            t.append(b);
+        };
+        if (retry) {
+            addBtn('nochmal', retry);
+            addBtn('schließen');
+            console.error('[controls] ' + text);
+        } else {
+            setTimeout(() => t.remove(), 4000);
+        }
+        document.body.appendChild(t);
+    }
+
+    // Schreibt die Voreinstellungen in den Quelltext der Seite (Editor-Endpunkt "source", Commit auf
+    // claude-dev). Nacheinander, damit schnelle Klicks sich nicht gegenseitig ueberschreiben.
+    let defaultsQueue = Promise.resolve();
+    function savePageDefaults(mutate, okText) {
+        const run = async () => {
+            const path = location.pathname;
+            try {
+                const next = mutate({ ...currentPageDefaults().values });
+                const src = await editApi('GET', 'source?path=' + encodeURIComponent(path));
+                const r = await editApi('POST', 'source', { path, text: pageDefaults.upsertScript(src.text, next), sha: src.sha });
+                currentPageDefaults().values = next;
+                pageDefaultState.panels.forEach(p => p._markDefaultPins());
+                window.dispatchEvent(new CustomEvent('controls:defaults-saved', { detail: { live_differs: r.live_differs } }));
+                defaultsToast(okText);
+            } catch (e) {
+                defaultsToast('Voreinstellung nicht gespeichert: ' + e.message, () => savePageDefaults(mutate, okText));
+            }
+        };
+        defaultsQueue = defaultsQueue.then(run);
+        return defaultsQueue;
+    }
+
+    const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l-1 6 3 3.5H7L10 9zM12 12.5V21"/></svg>';
+
     // === PANEL CLASS ===
     class ControlPanel {
         constructor(options = {}) {
@@ -387,7 +528,7 @@
                 draggable: options.draggable !== false,
                 // Mobile: Element das sich mit dem Panel mitbewegt (wie in 0neSlider)
                 mobileContentElement: options.mobileContentElement || null,
-                mobileContentMaxOffset: options.mobileContentMaxOffset || 12, // vh
+                mobileContentMaxOffset: options.mobileContentMaxOffset ?? 12, // vh
 	                mobileInitialOpenMode: options.mobileInitialOpenMode || 'content-capped',
 	                mobileInitialOpenMaxViewportFraction: Number.isFinite(Number(options.mobileInitialOpenMaxViewportFraction))
 	                    ? Number(options.mobileInitialOpenMaxViewportFraction)
@@ -939,6 +1080,17 @@
                         this._closeConfigPopup();
                     }
                 });
+
+                document.addEventListener('keydown', (e) => {
+                    if (!popup.classList.contains('open') || !popup._ctrlActions) return;
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        popup._ctrlActions.cancel();
+                    } else if (e.key === 'Enter' && !getTargetElement(e.target)?.closest('.ctrl-config-arrow, .ctrl-config-default, .ctrl-config-cancel')) {
+                        e.preventDefault();
+                        popup._ctrlActions.save();
+                    }
+                });
             }
             return popup;
         }
@@ -956,6 +1108,7 @@
             });
 
             this._activeConfigKey = null;
+            if (popup) popup._ctrlActions = null;
         }
 
         // Config-Popup Ã¶ffnen fÃ¼r einen bestimmten Slider
@@ -1000,13 +1153,29 @@
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
-                <button class="ctrl-config-reset">Reset</button>
+                <div class="ctrl-config-actions">
+                    <button type="button" class="ctrl-config-cancel">Cancel</button>
+                    <button type="button" class="ctrl-config-save">Save</button>
+                </div>
+                <button type="button" class="ctrl-config-default">Default range</button>
             `;
+
+            const snapshot = {
+                min: cfg.min, max: cfg.max, step: cfg.step, decimals: cfg.decimals
+            };
 
             const syncConfigInputs = () => {
                 popup.querySelectorAll('.ctrl-config-input').forEach((inputEl) => {
                     inputEl.value = formatConfigFieldValue(cfg, inputEl.dataset.config);
                 });
+            };
+
+            // Changes preview live; Cancel restores the state from when the menu opened.
+            const saveConfig = () => this._closeConfigPopup();
+            const cancelConfig = () => {
+                Object.assign(cfg, snapshot);
+                this._updateSliderFromConfig(key);
+                this._closeConfigPopup();
             };
 
             const applyConfigValue = (configType, nextValue) => {
@@ -1053,11 +1222,13 @@
                         input.select();
                     } else if (e.key === 'Enter') {
                         e.preventDefault();
-                        input.blur();
+                        e.stopPropagation();
+                        commitInputValue();
+                        saveConfig();
                     } else if (e.key === 'Escape') {
                         e.preventDefault();
-                        input.value = formatConfigFieldValue(cfg, input.dataset.config);
-                        input.blur();
+                        e.stopPropagation();
+                        cancelConfig();
                     }
                 });
             });
@@ -1126,8 +1297,7 @@
                 });
             });
 
-            // Reset-Button
-            popup.querySelector('.ctrl-config-reset').addEventListener('click', () => {
+            popup.querySelector('.ctrl-config-default').addEventListener('click', () => {
                 cfg.min = cfg.defaultMin;
                 cfg.max = cfg.defaultMax;
                 cfg.step = cfg.defaultStep;
@@ -1135,6 +1305,9 @@
                 syncConfigInputs();
                 this._updateSliderFromConfig(key);
             });
+            popup.querySelector('.ctrl-config-save').addEventListener('click', () => saveConfig());
+            popup.querySelector('.ctrl-config-cancel').addEventListener('click', () => cancelConfig());
+            popup._ctrlActions = { save: saveConfig, cancel: cancelConfig };
 
             // Positionieren
             const triggerRect = triggerEl.getBoundingClientRect();
@@ -1853,7 +2026,8 @@
 	            if (this._isBarMode && this.el.style.top && this.el.style.top !== 'auto') {
 	                const minTop = 70;
 	                const maxTop = Math.max(minTop, viewportHeight - Math.max(1, Math.round(rect.height || this.headerEl?.offsetHeight || 40)));
-	                const currentTop = parseFloat(this.el.style.top) || rect.top || 0;
+	                const styleTop = parseFloat(this.el.style.top);
+	                const currentTop = Number.isFinite(styleTop) ? styleTop : rect.top;
 	                this.el.style.top = clamp(currentTop, minTop, maxTop) + 'px';
 	            }
         }
@@ -2192,7 +2366,10 @@
                 section.appendChild(header);
             }
 
-            this.bodyEl.appendChild(section);
+            // Innerhalb aufgeklappter Unter-Einstellungen (addToggle details) bleibt die Section dort
+            const inDetails = this._currentContainer && this._currentContainer.classList.contains('ctrl-details');
+            this._sectionParent = inDetails ? this._currentContainer : this.bodyEl;
+            this._sectionParent.appendChild(section);
             this._sections[id] = section;
             this._currentContainer = section;
             return this;
@@ -2202,7 +2379,27 @@
          * End current section, return to body container
          */
         endSection() {
-            this._currentContainer = this.bodyEl;
+            this._currentContainer = this._sectionParent || this.bodyEl;
+            this._sectionParent = null;
+            return this;
+        }
+
+        /**
+         * Replace the rows of an existing section (header stays) by running build(panel) into it.
+         */
+        fillSection(id, build) {
+            const section = this._sections[id];
+            if (!section) return this;
+            [...section.children].forEach((child) => {
+                if (child.classList.contains('ctrl-section-header')) return;
+                this._cleanupRemovedControls(child);
+                child.remove();
+            });
+            const prev = this._currentContainer;
+            this._currentContainer = section;
+            try { build(this); } finally { this._currentContainer = prev; }
+            this._updateBodyHeight();
+            requestAnimationFrame(() => this._refreshMobileSheetLayout?.());
             return this;
         }
 
@@ -2237,6 +2434,7 @@
                 delete this.callbacks[key];
                 delete this._sliderConfigs[key];
                 delete this._selectControls[key];
+                if (this._symbolRows) delete this._symbolRows[key];
             });
         }
 
@@ -2262,7 +2460,9 @@
          * Add a unified Slider + Stepper row (Slider + [-] [input] [+])
          */
         addSlider(key, config) {
-            const { label, min, max, step, value, decimals = 0, onChange, transform = null } = config;
+            config = this._withPageDefault(key, config);
+            const { label, min, max, step, decimals = 0, onChange, transform = null, wrap = false } = config;
+            const value = wrap ? wrapSliderValue(config.value, { min, max }) : config.value;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
 
@@ -2272,6 +2472,7 @@
                 max,
                 step,
                 transform,
+                wrap: !!wrap,
                 baseDecimals: decimals,
                 decimals: getSliderDecimals({ step, baseDecimals: decimals }, decimals),
                 defaultMin: min,
@@ -2292,7 +2493,7 @@
                 <label class="ctrl-label">${label}</label>
                 <div class="ctrl-slider-group">
                     <button class="ctrl-stepper-btn" data-action="dec">&#8722;</button>
-                    <input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">
+                    ${wrap ? '<span class="ctrl-range-wrap">' : ''}<input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">${wrap ? '</span>' : ''}
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
                     <input type="text" class="ctrl-value-input" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
                     <button class="ctrl-config-trigger" title="Einstellungen">&#8942;</button>
@@ -2326,7 +2527,9 @@
                 // newVal = clamp(newVal, min, max); // Let the universe be unlimited!
                 const cfg = this._sliderConfigs[key];
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
+                if (cfg && cfg.wrap) newVal = wrapSliderValue(newVal, cfg);
                 newVal = preciseNormalize(newVal, decs);
+                if (cfg && cfg.wrap) newVal = wrapSliderValue(newVal, cfg);
                 this.params[key] = newVal;
 
                 syncSliderUI(newVal, updateInput);
@@ -2340,6 +2543,8 @@
                 const val = fromSliderRangeValue(parseFloat(range.value), cfg);
                 updateValue(val);
             });
+
+            if (wrap) this._bindWrapDrag(key, range, updateValue);
 
             // Input Events
             input.addEventListener('input', () => {
@@ -2372,14 +2577,15 @@
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                 const newVal = preciseAdd(this.params[key], delta, decs);
                 const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                if (newVal < currentMin || newVal > currentMax) return;
+                const wraps = !!(cfg && cfg.wrap);
+                if (!wraps && (newVal < currentMin || newVal > currentMax)) return;
 
                 isHolding = true;
                 // Sofort ein erster Schritt
                 updateValue(newVal);
                 holdInterval = setInterval(() => {
                     const nextVal = preciseAdd(this.params[key], delta, decs);
-                    if (nextVal < currentMin || nextVal > currentMax) {
+                    if (!wraps && (nextVal < currentMin || nextVal > currentMax)) {
                         stopHold();
                         return;
                     }
@@ -2412,7 +2618,7 @@
                     const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                     const newVal = preciseAdd(this.params[key], delta, decs);
                     const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                    if (newVal < currentMin || newVal > currentMax) return;
+                    if (!(cfg && cfg.wrap) && (newVal < currentMin || newVal > currentMax)) return;
 
                     // Manuelles Click Handling (anstelle von on('click')) sorgt fÃ¼r sofortige Reaktion
                     holdTimeout = setTimeout(() => { startHold(delta); }, 400);
@@ -2426,7 +2632,7 @@
                         const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                         const newVal = preciseAdd(this.params[key], delta, decs);
                         const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                        if (newVal >= currentMin && newVal <= currentMax) {
+                        if ((cfg && cfg.wrap) || (newVal >= currentMin && newVal <= currentMax)) {
                             updateValue(newVal);
                         }
                     }
@@ -2449,10 +2655,73 @@
             return this;
         }
 
+        // wrap-Slider: eigenes Ziehen statt nativer Range (die klemmt am Rand). Der Zeiger zaehlt relativ weiter,
+        // ueber den Rand hinaus laeuft der Wert bei min wieder an; Pfeiltasten ebenso.
+        _bindWrapDrag(key, range, updateValue) {
+            const host = range.parentElement;
+            const snap = (raw) => {
+                const cfg = this._sliderConfigs[key];
+                const { min } = getProjectedSliderBounds(cfg, raw);
+                const s = cfg && cfg.step > 0 ? cfg.step : 0;
+                return s ? min + Math.round((raw - min) / s) * s : raw;
+            };
+            const geometry = () => {
+                const cfg = this._sliderConfigs[key];
+                const { min, max } = getProjectedSliderBounds(cfg, this.params[key]);
+                const rect = range.getBoundingClientRect();
+                // Thumb-Breite wie in meta.css (16px, unter 768px 24px)
+                const thumb = window.matchMedia('(max-width: 768px)').matches ? 24 : 16;
+                return { min, period: max - min, left: rect.left + thumb / 2, span: Math.max(1, rect.width - thumb), thumb };
+            };
+            let drag = null;
+
+            host.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return;
+                const g = geometry();
+                if (!(g.period > 0)) return;
+                e.preventDefault();
+                host.setPointerCapture(e.pointerId);
+                const current = Number.isFinite(this.params[key]) ? this.params[key] : g.min;
+                const thumbX = g.left + (current - g.min) / g.period * g.span;
+                let start = current;
+                if (Math.abs(e.clientX - thumbX) > g.thumb / 2 + 4) {
+                    start = g.min + clamp((e.clientX - g.left) / g.span, 0, 1) * g.period;
+                    updateValue(snap(start));
+                }
+                drag = { id: e.pointerId, x: e.clientX, start, g };
+                range.focus({ preventScroll: true });
+                host.classList.add('dragging');
+            });
+            host.addEventListener('pointermove', (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const raw = drag.start + (e.clientX - drag.x) / drag.g.span * drag.g.period;
+                updateValue(snap(raw));
+            });
+            const end = (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                drag = null;
+                host.classList.remove('dragging');
+                if (host.hasPointerCapture(e.pointerId)) host.releasePointerCapture(e.pointerId);
+            };
+            host.addEventListener('pointerup', end);
+            host.addEventListener('pointercancel', end);
+
+            range.addEventListener('keydown', (e) => {
+                const cfg = this._sliderConfigs[key];
+                const s = cfg && cfg.step > 0 ? cfg.step : 1;
+                const big = (getProjectedSliderBounds(cfg, 0).max - getProjectedSliderBounds(cfg, 0).min) / 10;
+                const deltas = { ArrowRight: s, ArrowUp: s, ArrowLeft: -s, ArrowDown: -s, PageUp: big, PageDown: -big };
+                if (!(e.key in deltas)) return;
+                e.preventDefault();
+                updateValue(snap(this.params[key] + deltas[e.key]));
+            });
+        }
+
         /**
          * Add a toggle checkbox row
          */
         addToggle(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, value = false, onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2473,16 +2742,62 @@
             checkbox.addEventListener('change', () => {
                 this.params[key] = checkbox.checked;
                 if (this.callbacks[key]) this.callbacks[key](this.params[key], key);
+                if (!checkbox.checked) this._setToggleDetailsOpen(key, false);
             });
 
             this._currentContainer.appendChild(row);
+            if (typeof config.details === 'function') this._addToggleDetails(key, row, checkbox, config.details);
             return this;
+        }
+
+        // Unter-Einstellungen eines Schalters: Stift rechts neben dem Haken klappt sie auf. Regel: der Stift
+        // schaltet einen ausgeschalteten Schalter mit ein, Ausschalten klappt die Unter-Einstellungen zu.
+        _addToggleDetails(key, row, checkbox, build) {
+            row.classList.add('ctrl-row-has-details');
+            const pencil = document.createElement('button');
+            pencil.type = 'button';
+            pencil.className = 'ctrl-details-btn';
+            pencil.setAttribute('aria-label', 'Edit settings');
+            pencil.setAttribute('aria-expanded', 'false');
+            pencil.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>';
+            checkbox.parentElement.appendChild(pencil);
+
+            const sub = document.createElement('div');
+            sub.className = 'ctrl-details';
+            sub.hidden = true;
+            row.after(sub);
+            const prev = this._currentContainer;
+            this._currentContainer = sub;
+            try { build(this); } finally { this._currentContainer = prev; }
+
+            this._toggleDetails = this._toggleDetails || {};
+            this._toggleDetails[key] = { sub, pencil };
+            bindResponsiveButtonActivation(pencil, () => {
+                if (!checkbox.checked) {
+                    checkbox.checked = true;
+                    checkbox.dispatchEvent(new Event('change'));
+                    this._setToggleDetailsOpen(key, true);
+                    return;
+                }
+                this._setToggleDetailsOpen(key, sub.hidden);
+            });
+        }
+
+        _setToggleDetailsOpen(key, open) {
+            const d = this._toggleDetails && this._toggleDetails[key];
+            if (!d) return;
+            d.sub.hidden = !open;
+            d.pencil.setAttribute('aria-expanded', open ? 'true' : 'false');
+            d.pencil.classList.toggle('active', !!open);
+            this._updateBodyHeight();
+            requestAnimationFrame(() => this._refreshMobileSheetLayout?.());
         }
 
         /**
          * Add a select dropdown row
          */
         addSelect(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, options, value, onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2550,6 +2865,7 @@
          * Add a dropdown count picker row
          */
         addCountPicker(key, config) {
+            config = this._withPageDefault(key, config);
             const {
                 label,
                 options = [],
@@ -2630,6 +2946,7 @@
          * Add a text input row (textarea for multiline, resizable)
          */
         addText(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, value = '', placeholder = '', onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2656,6 +2973,7 @@
          * Add a single-line text input row
          */
         addInput(key, config) {
+            config = this._withPageDefault(key, config);
             const {
                 label,
                 value = '',
@@ -2684,6 +3002,86 @@
 
             this._currentContainer.appendChild(row);
             return this;
+        }
+
+        /**
+         * Symbol row: one compact text field per symbol, side by side, full panel width.
+         * Meant as the first row of a panel. Scrolls sideways when it gets wider than the panel.
+         * + / - only appear when the page passes onAdd / onRemove (pages with a variable symbol count).
+         * @param {string} key - Unique key, params[key] is the array of values
+         * With `label` the row gets the normal label column (e.g. one step of a sequence); `captions` puts a
+         * small heading above each field, `inputmode` is passed to every field (e.g. 'decimal').
+         * @param {Object} config - { values, labels?, label?, captions?, inputmode?, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
+         */
+        addSymbolRow(key, config) {
+            config = this._withPageDefault(key, config, 'values');
+            const { values = [], labels = [], label = '', captions = null, inputmode = '', onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
+            this.params[key] = values.slice();
+            const row = document.createElement('div');
+            row.className = 'ctrl-row ctrl-symbol-row' + (label ? ' ctrl-symbol-row-labeled' : '');
+            row.dataset.key = key;
+            if (label) {
+                const labelEl = document.createElement('label');
+                labelEl.className = 'ctrl-label';
+                labelEl.textContent = label;
+                row.appendChild(labelEl);
+            }
+            const strip = document.createElement('div');
+            strip.className = 'ctrl-symbol-strip';
+            row.appendChild(strip);
+            this._symbolRows = this._symbolRows || {};
+            const state = { strip, labels, captions, inputmode, onChange, onAdd, onRemove, min, max };
+            this._symbolRows[key] = state;
+            this._renderSymbolRow(key);
+            this._currentContainer.appendChild(row);
+            return this;
+        }
+
+        _renderSymbolRow(key) {
+            const st = this._symbolRows[key];
+            const values = this.params[key];
+            st.strip.textContent = '';
+            values.forEach((v, i) => {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'ctrl-input ctrl-symbol-input';
+                input.value = v ?? '';
+                input.setAttribute('aria-label', st.labels[i] || ('Symbol ' + (i + 1)));
+                ['autocomplete', 'autocapitalize'].forEach(a => input.setAttribute(a, 'off'));
+                input.spellcheck = false;
+                input.setAttribute('data-1p-ignore', '');
+                input.setAttribute('data-lpignore', 'true');
+                input.setAttribute('data-bwignore', '');
+                input.setAttribute('data-form-type', 'other');
+                if (st.inputmode) input.setAttribute('inputmode', st.inputmode);
+                input.addEventListener('input', () => {
+                    this.params[key][i] = input.value;
+                    if (st.onChange) st.onChange(i, input.value, this.params[key]);
+                });
+                if (st.captions) {
+                    const cell = document.createElement('label');
+                    cell.className = 'ctrl-symbol-cell';
+                    const cap = document.createElement('span');
+                    cap.className = 'ctrl-symbol-caption';
+                    cap.textContent = st.captions[i] || '';
+                    cell.append(cap, input);
+                    st.strip.appendChild(cell);
+                } else {
+                    st.strip.appendChild(input);
+                }
+            });
+            const addBtn = (text, title, enabled, fn) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'ctrl-stepper-btn ctrl-symbol-btn';
+                b.textContent = text;
+                b.title = title;
+                b.disabled = !enabled;
+                bindResponsiveButtonActivation(b, fn);
+                st.strip.appendChild(b);
+            };
+            if (st.onRemove) addBtn('\u2212', 'Symbol entfernen', values.length > st.min, () => st.onRemove(this.params[key]));
+            if (st.onAdd) addBtn('+', 'Symbol hinzufügen', values.length < st.max, () => st.onAdd(this.params[key]));
         }
 
         /**
@@ -3226,6 +3624,7 @@
             btn.textContent = icon;
             bindResponsiveButtonActivation(btn, () => {
                 if (onClick) onClick();
+                this._reapplyPageDefaults();
             });
 
             // Insert before layout toggle (same logic as enableUndoRedo)
@@ -3452,6 +3851,117 @@
             return this;
         }
 
+        // === Voreinstellungen je Seite ===
+        // Erster Aufruf je Key: Code-Wert merken und durch die Voreinstellung ersetzen. Die Seite erfaehrt
+        // den Wert ueber ihr eigenes onChange, im Microtask nach ihrem synchronen Aufbau.
+        _withPageDefault(key, config, field = 'value') {
+            const st = pageDefaultState;
+            if (!st.panels.includes(this)) st.panels.push(this);
+            watchEditMode();
+            if (isEditing()) queueMicrotask(() => this._syncDefaultPins());
+            if (st.seen.has(key)) return config;
+            st.seen.add(key);
+            st.code[key] = cloneValue(config[field]);
+            const pd = currentPageDefaults();
+            if (pd.ignore || !Object.prototype.hasOwnProperty.call(pd.values, key)) return config;
+            const value = cloneValue(pd.values[key]);
+            if (field === 'values' && !(Array.isArray(value) && value.length === (config.values || []).length)) {
+                console.error(`[controls] Voreinstellung "${key}" passt nicht zur Zahl der Symbole, ignoriert`);
+                return config;
+            }
+            if (!this._pendingDefaults) {
+                this._pendingDefaults = [];
+                queueMicrotask(() => {
+                    const keys = this._pendingDefaults;
+                    this._pendingDefaults = null;
+                    keys.forEach(k => this._emitPageValue(k, st.code[k]));
+                });
+            }
+            this._pendingDefaults.push(key);
+            return { ...config, [field]: value };
+        }
+
+        _emitPageValue(key, before) {
+            const value = this.params[key];
+            const sym = this._symbolRows && this._symbolRows[key];
+            try {
+                if (sym) {
+                    if (sym.onChange) value.forEach((v, i) => { if (!before || before[i] !== v) sym.onChange(i, v, value); });
+                } else if (this.callbacks[key]) {
+                    this.callbacks[key](value, key);
+                }
+            } catch (e) {
+                console.error(`[controls] Voreinstellung "${key}" anwenden:`, e);
+            }
+        }
+
+        // Nach dem Reset der Seite: Voreinstellungen statt Code-Werte, auf allen Panels der Seite.
+        _reapplyPageDefaults() {
+            const { values } = currentPageDefaults();
+            for (const panel of pageDefaultState.panels) {
+                for (const key of Object.keys(values)) {
+                    if (!(key in panel.params)) continue;
+                    const sym = panel._symbolRows && panel._symbolRows[key];
+                    if (sym && !(Array.isArray(values[key]) && values[key].length === panel.params[key].length)) continue;
+                    panel.set(key, cloneValue(values[key]));
+                    panel._emitPageValue(key);
+                }
+            }
+        }
+
+        /** Voreinstellung eines Keys: aus dem Editor gesetzt, sonst der Wert aus dem Seitencode. */
+        defaultOf(key) {
+            const { values } = currentPageDefaults();
+            return cloneValue(Object.prototype.hasOwnProperty.call(values, key) ? values[key] : pageDefaultState.code[key]);
+        }
+
+        // Stecknadel je Zeile, nur im Bearbeiten-Modus des Editors (html.oe-editing).
+        _syncDefaultPins() {
+            if (!this.bodyEl || !isEditing()) return;
+            if (!this._pinObserver) {
+                this._pinObserver = new MutationObserver(() => { if (isEditing()) this._syncDefaultPins(); });
+                this._pinObserver.observe(this.bodyEl, { childList: true, subtree: true });
+            }
+            this.bodyEl.querySelectorAll('.ctrl-row[data-key]').forEach(row => {
+                const key = row.dataset.key;
+                if (!pageDefaultState.seen.has(key) || !(key in this.params) || row.querySelector(':scope > .ctrl-default-pin')) return;
+                const pin = document.createElement('button');
+                pin.type = 'button';
+                pin.className = 'ctrl-default-pin';
+                pin.dataset.oeUi = '';
+                pin.innerHTML = PIN_SVG;
+                pin.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const label = (row.querySelector('.ctrl-label')?.textContent || key).trim();
+                    const current = cloneValue(this.params[key]);
+                    const { values } = currentPageDefaults();
+                    const remove = Object.prototype.hasOwnProperty.call(values, key) && JSON.stringify(values[key]) === JSON.stringify(current);
+                    savePageDefaults(next => {
+                        if (remove) delete next[key]; else next[key] = current;
+                        return next;
+                    }, remove ? `Voreinstellung "${label}" entfernt` : `"${label}" ist jetzt Voreinstellung (auf dev)`);
+                });
+                row.appendChild(pin);
+            });
+            this._markDefaultPins();
+        }
+
+        _markDefaultPins() {
+            if (!this.bodyEl) return;
+            const { values } = currentPageDefaults();
+            this.bodyEl.querySelectorAll('.ctrl-default-pin').forEach(pin => {
+                const key = pin.parentElement.dataset.key;
+                const on = Object.prototype.hasOwnProperty.call(values, key);
+                pin.classList.toggle('active', on);
+                const title = on
+                    ? `Voreinstellung: ${JSON.stringify(values[key])}. Klick: aktuellen Wert setzen, bei gleichem Wert entfernen`
+                    : 'Aktuellen Wert als Voreinstellung speichern';
+                pin.title = title;
+                pin.setAttribute('aria-label', title);
+            });
+        }
+
         /**
          * Get current value of a param
          */
@@ -3465,12 +3975,19 @@
         set(key, value) {
             this.params[key] = value;
 
+            if (this._symbolRows && this._symbolRows[key]) {
+                this.params[key] = Array.isArray(value) ? value.slice() : [];
+                this._renderSymbolRow(key);
+                return this;
+            }
+
             const row = this.bodyEl?.querySelector(`[data-key="${key}"]`);
             if (!row) return this;
 
             const checkbox = row.querySelector('input[type="checkbox"]');
             if (checkbox) {
                 checkbox.checked = !!value;
+                if (!value) this._setToggleDetailsOpen(key, false);
             }
 
             const range = row.querySelector('.ctrl-range');
@@ -3671,6 +4188,9 @@
          * Inject CSS manually (auto-called on panel creation)
          */
         injectCSS,
+
+        /** Voreinstellungen je Seite (siehe VOREINSTELLUNGEN JE SEITE) */
+        pageDefaults,
 
         /**
          * List of standard fonts for pickers
