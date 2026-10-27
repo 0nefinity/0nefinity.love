@@ -6,45 +6,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Ein Nullgespräch</title>
   <style>
-    html, body { height: 100%; overflow: hidden; }
+    html, body { height: 100%; overflow: hidden; touch-action: none; }
     .stage {
       position: fixed; inset: 0;
       background: var(--bg-color);
       color: var(--text-color);
       user-select: none; -webkit-user-select: none;
+      touch-action: none;
     }
     .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
-    #gespraech { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-    /* Lesemodus: eine durchsichtige Rolle liegt ueber der Zeichenflaeche und liefert Mausrad, Touch-Scrollen, Scrollleiste, Tastatur. */
-    #rolle {
-      position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
-      touch-action: pan-y; scrollbar-width: thin;
-      scrollbar-color: color-mix(in srgb, var(--text-color) 30%, transparent) transparent;
-    }
-    #rolle > div { width: 1px; }
-    /* Schiebemodus: die Rolle gibt die Zeiger frei, Ziehen dreht und schiebt die Zeilen. */
-    .stage.schieben #rolle { pointer-events: none; overflow: hidden; }
-    .stage.schieben #gespraech { cursor: grab; }
-    .stage.schieben #gespraech.zieht { cursor: grabbing; }
-    #modus {
-      position: absolute; right: 14px; bottom: 14px; z-index: 2;
-      font: inherit; font-size: 13px; letter-spacing: .02em; color: var(--text-color);
-      background: color-mix(in srgb, var(--bg-color) 82%, transparent);
-      border: 1px solid color-mix(in srgb, var(--text-color) 28%, transparent);
-      border-radius: 999px; padding: 7px 14px; cursor: pointer; user-select: none;
-      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-      transition: border-color .15s, background-color .15s;
-    }
-    #modus:hover { border-color: color-mix(in srgb, var(--text-color) 55%, transparent); }
-    #modus[aria-pressed="true"] { border-color: var(--text-color); }
-    #modus:focus-visible { outline: 2px solid var(--text-color); outline-offset: 2px; }
+    #gespraech { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #gespraech.zieht { cursor: grabbing; }
   </style>
 </head>
 <body>
   <div class="stage _018" id="stage">
     <canvas id="gespraech"></canvas>
-    <div id="rolle" tabindex="-1" aria-label="Gespräch"><div id="rolleHoehe"></div></div>
-    <button id="modus" type="button" aria-pressed="false" title="Ziehen dreht und schiebt die Zeilen übereinander">Verschieben</button>
   </div>
 
   <script>
@@ -54,7 +31,6 @@
     // Jede Zeile k des Gesprächs liegt bei j = k - stelle (Periode p > 0: j auf (-p/2, p/2] gefaltet).
     // Zeile j wird um j * winkel gedreht und entlang der gedrehten Senkrechten um j * verschiebung Zeilen versetzt.
     // winkel 0, verschiebung 0: alles am Ursprung (Nullgebilde). winkel 0, verschiebung 1: der lesbare Dialog.
-    // Standard ist der lesbare Dialog; durchs Gespräch wandert man mit Mausrad, Touch oder Scrollleiste.
     const DATA_URL = '/_nullgespraeche/1.json';
     const DEG = Math.PI / 180;
     const READABLE = { winkel: 0, verschiebung: 1 };
@@ -63,12 +39,9 @@
 
     const stage = document.getElementById('stage');
     const canvas = document.getElementById('gespraech');
-    const rolle = document.getElementById('rolle');
-    const rolleHoehe = document.getElementById('rolleHoehe');
-    const modusBtn = document.getElementById('modus');
     const ctx = canvas.getContext('2d');
 
-    const st = { winkel: 0, verschiebung: 1, periode: 0, stelle: 0 };
+    const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0 };
     let messages = null;
     let lines = [];            // { text, wer, msg, img, sw } oder null fuer die Leerzeile zwischen zwei Nachrichten
     let W = 0, H = 0, dpr = 1, sd = 1, fontPx = 16, lh = 24, colW = 300;
@@ -130,8 +103,6 @@
       }
       if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg);
       if (st.stelle < 0) st.stelle = 0;
-      rolleHoehe.style.height = Math.max(0, lines.length - 1) * lh + H + 'px';
-      rolle.scrollTop = st.stelle * lh;
       scheduleBuild();
       if (panel) syncPanel();
       dirty = true;
@@ -245,7 +216,7 @@
     }
 
     // ─── Zustand ───
-    function setState(patch, fromPanel, fromScroll) {
+    function setState(patch, fromPanel) {
       for (const k of Object.keys(patch)) {
         const v = Number(patch[k]);
         if (!Number.isFinite(v)) continue;
@@ -253,7 +224,6 @@
         else if (k === 'stelle') st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), v));
         else if (k in st) st[k] = v;
       }
-      if (!fromScroll && 'stelle' in patch && Math.abs(rolle.scrollTop - st.stelle * lh) > 1) rolle.scrollTop = st.stelle * lh;
       if (!fromPanel && panel) panelDirty = true;
       saveUrl();
       dirty = true;
@@ -271,9 +241,9 @@
       clearTimeout(urlTimer);
       urlTimer = setTimeout(() => {
         const u = new URL(location.href);
-        const isDefault = isReadable() && !st.periode && !st.stelle;
+        const isNull = !st.winkel && !st.verschiebung && !st.periode && !st.stelle;
         for (const k of Object.keys(st)) {
-          if (isDefault) u.searchParams.delete(k);
+          if (isNull) u.searchParams.delete(k);
           else u.searchParams.set(k, String(round(st[k], 4)));
         }
         history.replaceState(null, '', u);
@@ -300,62 +270,28 @@
     }
     const isReadable = () => Math.abs(st.winkel) < 1e-6 && Math.abs(st.verschiebung - 1) < 1e-6;
 
-    // ─── Lesen: normales Scrollen ───
-    rolle.addEventListener('scroll', () => {
-      if (Math.abs(rolle.scrollTop - st.stelle * lh) <= 1) return;
-      setState({ stelle: rolle.scrollTop / lh }, false, true);
-    }, { passive: true });
-
-    // ─── Schieben: Ziehen wie an einem Drehknopf ───
-    // Der Zeiger kreist um die Bildmitte: der Winkelzuwachs je Ereignis (auf (-180, 180] normalisiert, aufsummiert)
-    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Zwei Finger: durchs Gespraech wandern.
+    // ─── Ziehen ───
+    // Ein Finger / Maus: waagerecht Winkel, senkrecht Verschiebung. Zwei Finger, Mausrad: durch das Gespräch wandern.
     const pointers = new Map();
-    let lastTap = 0, moved = 0, pairY = null, knob = null, schieben = false;
-    const WINKEL_PRO_GRAD = 0.05, VERSCH_PRO_PX = 1 / 320;
-    function setSchieben(on) {
-      schieben = on;
-      stage.classList.toggle('schieben', on);
-      modusBtn.setAttribute('aria-pressed', String(on));
-      pointers.clear(); knob = null; pairY = null;
-      canvas.classList.remove('zieht');
-    }
-    modusBtn.addEventListener('click', () => setSchieben(!schieben));
-    modusBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    modusBtn.addEventListener('pointerup', (e) => e.stopPropagation());
+    let lastTap = 0, moved = 0, pairY = null;
+    const WINKEL_PRO_PX = 0.01, VERSCH_PRO_PX = 1 / 320;
 
-    function polar(e) {
-      const r = canvas.getBoundingClientRect();
-      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
-      return { th: Math.atan2(dy, dx), r: Math.hypot(dx, dy) };
-    }
-    function knobStart(e) { knob = polar(e); }
-    function knobMove(e) {
-      const q = polar(e);
-      let d = q.th - knob.th;
-      if (d > Math.PI) d -= 2 * Math.PI; else if (d <= -Math.PI) d += 2 * Math.PI;
-      setState({ winkel: st.winkel + d / DEG * WINKEL_PRO_GRAD, verschiebung: st.verschiebung + (q.r - knob.r) * VERSCH_PRO_PX });
-      knob = q;
-    }
-    stage.addEventListener('pointerdown', (e) => {
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       anim = null;
       moved = 0;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (!schieben) return;
-      canvas.setPointerCapture(e.pointerId);
-      if (pointers.size === 1) knobStart(e);
       pairY = pointers.size === 2 ? avgY() : null;
       canvas.classList.add('zieht');
     });
-    stage.addEventListener('pointermove', (e) => {
+    canvas.addEventListener('pointermove', (e) => {
       const p = pointers.get(e.pointerId);
       if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       p.x = e.clientX; p.y = e.clientY;
       moved += Math.abs(dx) + Math.abs(dy);
-      if (!schieben) return;
       if (pointers.size === 1) {
-        if (!knob) knobStart(e);
-        knobMove(e);
+        setState({ winkel: st.winkel + dx * WINKEL_PRO_PX, verschiebung: st.verschiebung + dy * VERSCH_PRO_PX });
       } else if (pointers.size === 2) {
         const y = avgY();
         if (pairY !== null) scrollBy(-(y - pairY));
@@ -366,29 +302,27 @@
       if (!pointers.has(e.pointerId)) return;
       pointers.delete(e.pointerId);
       pairY = pointers.size === 2 ? avgY() : null;
-      if (pointers.size === 1) { const [rest] = pointers.values(); knob = polar({ clientX: rest.x, clientY: rest.y }); }
-      if (!pointers.size) { knob = null; canvas.classList.remove('zieht'); }
+      if (!pointers.size) canvas.classList.remove('zieht');
       if (e.type === 'pointerup' && !pointers.size && moved < 8) {
         const now = performance.now();
         if (now - lastTap < 320) { animateTo(isReadable() ? NULL : READABLE, 700); lastTap = 0; }
         else lastTap = now;
       }
     };
-    stage.addEventListener('pointerup', end);
-    stage.addEventListener('pointercancel', end);
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
     function avgY() { let s = 0; for (const p of pointers.values()) s += p.y; return s / pointers.size; }
     function scrollBy(px) {
       const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh;
       setState({ stelle: st.stelle + px / step });
     }
-    // Im Schiebemodus liegt die Rolle still; dann scrollt das Rad die Stelle selbst.
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const px = e.deltaMode === 1 ? e.deltaY * lh : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
       scrollBy(px);
     }, { passive: false });
     window.addEventListener('keydown', (e) => {
-      if (e.target && /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)) return;
+      if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
       const k = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
       if (k) { e.preventDefault(); setState({ stelle: st.stelle + k }); }
     });
@@ -400,13 +334,12 @@
       panel.addSlider('verschiebung', { label: 'Verschiebung', min: 0, max: 4, step: 0.001, value: st.verschiebung, decimals: 3, onChange: (v) => setState({ verschiebung: v }, true) });
       panel.addSlider('periode', { label: 'Periode', min: 0, max: Math.max(1, lines.length), step: 1, value: st.periode, decimals: 0, onChange: (v) => setState({ periode: v }, true) });
       panel.addSlider('stelle', { label: 'Stelle', min: 0, max: Math.max(1, lines.length - 1), step: 0.1, value: st.stelle, decimals: 1, onChange: (v) => setState({ stelle: v }, true) });
-      panel.addResetButton({ title: 'Lesbar', onClick: () => { setState({ periode: 0 }); animateTo(READABLE, 700); } });
+      panel.addResetButton({ title: 'Nullgebilde', onClick: () => { setState({ periode: 0 }); animateTo(NULL, 700); } });
     }
 
     window.einNullgespraech = {
-      state() { return Object.assign({}, st, { lines: lines.length, messages: messages ? messages.length : 0, drawn, lineHeight: lh, error, readable: isReadable(), schieben, width: W, height: H }); },
+      state() { return Object.assign({}, st, { lines: lines.length, messages: messages ? messages.length : 0, drawn, lineHeight: lh, error, readable: isReadable(), width: W, height: H }); },
       set(patch) { anim = null; setState(patch); draw(); dirty = false; },
-      setSchieben,
       // Lage der k-ten Textzeile (Zaehlung ohne Leerzeilen) auf dem Bildschirm.
       textLine(n) {
         let seen = -1;
@@ -424,9 +357,7 @@
         messages = data;
         layout();
         buildPanel();
-        const patch = loadUrl();
-        setState(patch);
-        if (('winkel' in patch || 'verschiebung' in patch) && !isReadable()) setSchieben(true);
+        setState(loadUrl());
       })
       .catch((e) => fail(e.message));
 
