@@ -541,7 +541,7 @@
       // Ganz eingeschoben liegt der Strich auf dem Punkt und deckt ihn ("3|"); erst beim Herausziehen erscheint er
       const covered = !multi && view && (() => {
         const st = view.state(), off = canvas.getBoundingClientRect().left - stage.getBoundingClientRect().left;
-        return off + st.R < pts[0].x + dm.half || off + st.L > pts[0].x - dm.half || st.uLeft > 0.5;   // Strich/Falte auf dem Punkt: nur sie, kein Punkt darunter
+        return off + st.R < pts[0].x + dm.half || off + st.L > pts[0].x - dm.half || (!st.fold && st.uLeft > 0.5);   // Strich/Falte auf dem Punkt: nur sie, kein Punkt darunter
       })();
       if (!covered) for (const q of pts) g.fillText('.', (PUNKT_X(q) - dm.dx) * dpr, (q.y + dm.dy) * dpr);
       g.globalAlpha = 1;
