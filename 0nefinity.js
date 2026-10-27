@@ -1328,7 +1328,7 @@ canvas {
       applyPanelVisibility();
       const num = (v, fallback = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : fallback; };
 
-      // Oberste Zeile: alle Symbole nebeneinander, + / - aendert die Anzahl
+      // Oberste Zeile: Symbole untereinander, Trennzeichen daneben, + / - darunter aendert die Anzahl
       const setSymbolCount = (n) => {
         cfg.symbolCount = Math.max(0, Math.floor(n));
         panel.set('symbolCount', cfg.symbolCount);
@@ -1340,6 +1340,8 @@ canvas {
         onAdd: () => setSymbolCount(cfg.symbolCount + 1),
         onRemove: () => setSymbolCount(cfg.symbolCount - 1),
         min: 0,
+        layout: 'column',
+        side: { key: 'equivs', label: 'Separator', values: cfg.equivs.slice(), onChange: (i, v) => { cfg.equivs[i] = v; } },
       });
       panel.addDivider();
 
@@ -1483,7 +1485,6 @@ canvas {
         })
         .addToggle('sync', { label: 'Same separator for all', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } })
         .endSection();
-      panel.beginSection('symrows').endSection();
 
       function rebuildSymbolRows() {
         const n = cfg.symbolCount;
@@ -1498,19 +1499,7 @@ canvas {
           cfg.equivs.length = n;
         }
 
-        panel.removeSection('symrows');
-        panel.beginSection('symrows');
-        const sec = panel.bodyEl.querySelector('#symbol-controls-section-symrows');
-        panel.bodyEl.querySelector('#symbol-controls-section-symbols').after(sec);
-        if (n > 0 && cfg.sync) {
-          panel.addInput('equiv0', { label: 'Separator', value: cfg.equivs[0], onChange: v => { cfg.equivs[0] = v; } });
-        }
-        if (!cfg.sync) {
-          for (let i = 0; i < n; i++) {
-            panel.addInput('equiv' + i, { label: 'Separator ' + (i + 1), value: cfg.equivs[i], onChange: v => { cfg.equivs[i] = v; } });
-          }
-        }
-        panel.endSection();
+        panel.set('equivs', n > 0 ? cfg.equivs.slice() : []);
         panel.set('labels', cfg.labels.slice(0, n));
       }
       rebuildSymbolRows();
