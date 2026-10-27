@@ -1,33 +1,68 @@
-# Repository Guidelines
+# Mitarbeiten an 0nefinity
 
-## Project Structure & Module Organization
-This repository is a creative and philosophical project centered on "0nefinity" (the identity $0 \equiv 1 \equiv \infty$). It lacks a traditional formal architecture, instead functioning as a collection of HTML, JavaScript, and Markdown experiments.
+Hinweise für alle, die an diesem Repo mitarbeiten, Menschen wie KI-Agenten (Claude, Codex, Gemini, …).
+`CLAUDE.md` verweist nur hierher.
 
-- **Entry Points**: [./index.html](./index.html) and [./README.html](./README.html) contain the primary explanations and navigation.
-- **Global Assets**: [./meta.js](./meta.js) and [./meta.css](./meta.css) govern the global UI: menu behavior (toggle, search) and color schemes. Menu markup comes from the SSI includes in `includes/`; math notation, dialog and dev live-reload live in `tools/` and load only where used.
-- **Core Logic**: [./0nefinity.js](./0nefinity.js) is the central script for the 0nefinity theory's manifestations.
-- **Tools & Libraries**: Shared utilities and libraries (e.g., [./tools/tools/pixi.js](./tools/tools/pixi.js), [./tools/tools/decimal.js](./tools/tools/decimal.js), [./tools/controls.js](./tools/controls.js)) are located in the [./tools/](./tools/) directory.
-- **Archive**: Older versions and raw ideas are kept in [./00_Archiv/](./00_Archiv/).
+## Was das ist
 
-## Build, Test, and Development Commands
-There is no formal build system (no `npm` or `package.json`).
-- **Live Preview**: Development is optimized for **Five Server** (VS Code extension), as evidenced by [./fiveserver.config.js](./fiveserver.config.js).
-- **Utility Scripts**: Occasional Python ([./errorpages/err.py](./errorpages/err.py)) and PHP ([./tools/generate-structure.php](./tools/generate-structure.php)) scripts are used for content generation or server-side tasks.
+**0nefinity** (kurz **018**) ist ein kreativ-philosophisch-mathematisches Kunstprojekt rund um die nicht-duale Identität **0 ≡ 1 ≡ ∞**.
+Keine klassische App, sondern eine Sammlung interaktiver HTML-Experimente, Visualisierungen und philosophischer Texte.
+Kein Build-System, kein npm, kein package.json. Live: https://0nefinity.love, Vorschau: https://dev.0nefinity.love
 
-## Coding Style & Naming Conventions
-The codebase is informal and experimental. AI agents should adhere to the following rules:
-- **Language**: Communication with the user should be in **German**, even if the project uses a hybrid of German and English.
-- **0nefinity Philosophy**: Controls and logic should always support `0` as a valid input and strive for "unlimited" ranges (approaching $\infty$).
-- **Styling**: Always respect [./meta.css](./meta.css) for colors. The author notes that `meta.css` often uses `!important` to enforce the aesthetic.
-- **UI Components**: Use [./meta.js](./meta.js), [./tools/controls.js](./tools/controls.js), and [./tools/zoom.js](./tools/zoom.js) for standard interactions.
-- **Efficiency**: Code should remain smooth even on older hardware ("Gurke").
-- **Naming**: File names are descriptive, often in German, and may contain spaces or emojis.
+Mit dem Projektinhaber wird **auf Deutsch** kommuniziert.
 
-## Commit Guidelines
-Commit messages are informal and often in German or a mix of German and English (e.g., "zwischenspeichern", "018 ascii animation, yeah"). No specific prefix or format is required, but clarity regarding the "nuggets" or "experiments" added is preferred.
+## Laufen lassen
 
-## Arbeitsdateien gehören nicht ins Repo
+- Die Seiten laufen auf Apache 2.4 mit PHP 8.3. `.htaccess` regelt Rewrites, Clean URLs, SSI, PHP-Routing und Sicherheit.
+- Lokal reicht ein Apache/PHP mit `mod_rewrite` und `mod_include` (SSI), der das Repo als Document Root ausliefert. Viele Seiten funktionieren auch als einfache statische Dateien.
+- Alles wird selbst gehostet: keine externen Fonts, CDNs, Skripte oder Tracker (`Content-Security-Policy: default-src 'self'`). Bibliotheken liegen unter `tools/vendor/` und `tools/tools/`.
 
-- Arbeitsdateien von Agenten (Specs, Pläne, Reviews, Testskripte, Entwürfe, Mockups, Kritzelseiten, Sicherungskopien) liegen in `/home/timbr/werkstatt/0nefinity/`, nie in diesem Repo.
-- Skills, die standardmäßig nach `docs/...` schreiben (superpowers brainstorming, writing-plans u. a.), schreiben stattdessen dorthin, mit derselben Ordnerstruktur (`docs/specs/`, `docs/plans/`, `tests/`).
-- Ins Repo kommt nur, was Tim auf der Seite sehen will. Ausnahme: `tests/menu-search/` bleibt vorerst hier.
+## Architektur
+
+Flache Sammlung selbst-enthaltener HTML-Seiten. Die gemeinsame Infrastruktur:
+
+| Datei | Rolle |
+|-------|-------|
+| `meta.css` | Globales Theme, CSS-Variablen (`--bg-color`, `--text-color` etc.), Menü-Styling. Nutzt `!important` bewusst. **Immer für Farben konsultieren.** |
+| `meta.js` | Nur was echtes JS braucht: Menü-Verhalten (`.open` auf `.menu`, `body.menu-open`), Menüsuche (flache Trefferliste, tippfehlertolerant, darunter Volltext "im Inhalt" aus `includes/search-index.json`, das `tools/generate-menu.py` zusammen mit dem Menü schreibt; Test: `tests/menu-search/run.js`), Viewport-Sync, `<pre>`-Fitting. Menü-Markup, Back-Button und Fonts kommen aus den SSI-Includes in `includes/`. `window._018Dialog` kommt aus `tools/dialog.js`, `_018Space` steht nur inline in `heart.html` |
+| `tools/math-notation.js` | `pi(n)`/`e(n)`-Ersetzung und π/∞-Vorschläge in Eingabefeldern. Nur dort per `<script defer>`, wo Eingabefelder sind |
+| `tools/dialog.js` | Dialog (baut sein Markup selbst), nur `bibelaufdenpunkt.html` und `bibelaufdenpunkt copy 3.html` |
+| `tools/live-reload.js` | Live-Reload nur auf `dev.*` (Poll auf `/_devmtime.php`); meldet Ausfall per `console.error` |
+| `tools/editor.js` | Login-Editor (nur mit Login über `/enternity`): Texte inline bearbeiten und speichern. Das Backend dahinter (`/api/edit/`) ist ein eigener Dienst und nicht Teil dieses Repos |
+| `tools/controls.js` | Das Standard-Ding zur Eingabe von Anpassungen (Slider, Inputs, Zoom: alles, was Nutzer tun, um mit den Tools und Spielereien zu interagieren und ihre eigene Unendlichkeit zu erfahren und zu erforschen). Voreinstellungen je Seite stehen als `<script type="application/json" id="control-defaults">` im Head. Vorrang URL > Voreinstellung > Code-Wert; der Reset-Knopf führt zur Voreinstellung, `panel.defaultOf(key)` |
+| `tools/zoom.js` | Zoom und Skalierung für Canvas-Seiten |
+| `0nefinity.js` | Mathematische Konstanten und Manifestationen der 0nefinity-Theorie |
+| `tools/tools/decimal.js` | Bibliothek für beliebig genaue Dezimalzahlen |
+| `tools/tools/pixi.js` | PixiJS (WebGL-Rendering) für grafikintensive Seiten |
+
+**Favicon:** genau eine Datei, `/favicon.ico` im Wurzelverzeichnis (weißer Punkt). Das Head-Include verlinkt nur sie, Seiten bekommen keine eigenen Icon-Tags, `.htaccess` leitet alte Icon-Pfade auf sie um.
+Ausnahmen: `why-coordinatesystem-is-chicken.html` behält ihr Huhn-Icon (`profilbilder/favicon/chicken/`); auf `018.html` (Marker `<html data-favicon="rotating">`) ersetzt `meta.js` das Icon per Canvas durch das rotierende 0 1 ∞ (Tempo wie das Symbol der Startseite, `AUTO_SPEED_CONFIG` in `0nefinity.js`; Test mit `?favfps=<1-120>`, `?favspeed=<Faktor>`, `?favmode=ruhig`; aus bei `prefers-reduced-motion`).
+
+**Einstiegspunkte:** `index.html` (Manifest + Navigation), `README.html` (Doku)
+**Archiv:** `00_Archiv/`, nur zum Nachschlagen, nicht anfassen
+
+## Git-Workflow
+
+- Entwicklung auf `claude-dev` (Vorschau dev.0nefinity.love), stabile Stände auf `main` (0nefinity.love).
+- Änderungen per Pull Request. Merge nach `main` nur, wenn stabil und getestet.
+- Commit-Messages formlos, Deutsch oder Deutsch/Englisch gemischt (z. B. `"zwischenspeichern"`, `"018 ascii animation, yeah"`).
+- Pre-commit-Hook: `git config core.hooksPath tools/git-hooks` (baut Menü und Suchindex neu, prüft Autofill).
+
+## Coding-Regeln
+
+- **Controls:** Immer `0` als gültigen Eingabewert erlauben, Ranges so unbegrenzt wie möglich (→ ∞). Keine künstlichen Obergrenzen.
+- **Eingabefelder:** Jedes Text-Feld (`input`/`textarea`) außer dem Login bekommt `autocomplete="off"` plus `data-1p-ignore data-lpignore data-bwignore data-form-type="other"`, sonst bieten Browser Passwort- und Login-Vorschläge an; `meta.js` setzt das per Wächter auf alles, was Skripte erzeugen. Kein `type=password` außer im Login. Prüfen: `python3 tests/autofill/static-check.py` (läuft im pre-commit) und `node tests/autofill/run.js <baseUrl> [--local <repo>]` (Playwright; Pfade per `PLAYWRIGHT_PATH`, `CHROME_PATH`).
+- **Styling:** Farben ausschließlich über `meta.css`-Variablen. `meta.js`, `controls.js` und `zoom.js` für Standard-Interaktionen nutzen, nicht neu erfinden.
+- **Performance:** Muss auch auf alter Hardware ("Gurke") flüssig laufen. Rechenintensives in Web Worker auslagern (`tools/workers/`).
+- **Dateinamen:** Auf Deutsch, beschreibend, Leerzeichen und Emojis sind erlaubt und gewollt.
+- **Same-origin:** keine externen Ressourcen einbinden (siehe oben).
+
+## Was ins Repo gehört
+
+Das Repo ist öffentlich, wie ein Buch. Hinein kommt nur, was auf der Seite zu sehen sein soll, plus der Code, der sie trägt.
+Nicht hinein: Arbeitsdateien (Specs, Pläne, Reviews, Entwürfe, Mockups, Sicherungskopien), Editor- und Agenten-Konfiguration,
+Logs, Zugangsdaten, Server-Adressen und -Pfade. Solche Dateien liegen außerhalb des Repos; `.gitignore` schließt die üblichen aus.
+
+## Philosophische Konventionen
+
+Deutsch-Englisch-Mix, unkonventionelle Interpunktion und metaphorische Variablennamen sind Absicht, keine Fehler. Die "Unvollkommenheiten" gehören zur Ästhetik des Projekts.
