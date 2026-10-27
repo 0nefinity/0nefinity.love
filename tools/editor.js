@@ -305,7 +305,11 @@
       fn: window.OneEditorFilename.mount({
         file: source.file, request: renameRequest, path: () => pagePath, beforeRename: wait,
       }),
-      np: window.OneEditorNewPage.mount({ bar: moreIn, request: api, beforeCreate: wait }),
+      np: window.OneEditorNewPage.mount({
+        bar: moreIn, request: api, beforeCreate: wait, file: () => source.file,
+        onRenamed: (r) => { pagePath = r.url; source.file = r.file; extras.fn.setFile(r.file); },
+        toast: (t, l, a, k) => showToast(t, l, a, k ? 0 : 8000, k),
+      }),
       marks: window.OneEditorMarks.mount({ bar: moreIn, root: () => root || document.querySelector('main') || document.body }),
       fmt: window.OneEditorFormat.mount({
         host: selHost, before: (h) => { touch(h); snap(h, 'force'); }, after: () => { markDirty(); syncSelBar(); },
@@ -615,7 +619,11 @@
     }
   }
 
-  function undo() { if (editing) step(true); }
+  function undo() {
+    if (!editing) return;
+    if (!undoStack.length && !openGrp && extras?.np.undoCreate()) return;
+    step(true);
+  }
   function redo() { if (editing) step(false); }
 
   // Zur Stelle eines Schritts springen, ohne etwas zu aendern.
@@ -1272,6 +1280,7 @@
         setLive(r.live_differs);
         saveOk();
         watchCommit();
+        extras?.np.afterSave();
         return true;
       } catch (e) {
         saveTimer = saveFail(e, save);
@@ -2447,7 +2456,13 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       render();
       refreshDraft();
       checkPublishError();
-      if (st.inline && stored('oe-edit') === '1') toggleEdit();
+      extras?.np.sweep();
+      const fresh = !!extras?.np.isNewHere();
+      if (st.inline && (fresh || stored('oe-edit') === '1')) {
+        if (fresh) stored('oe-edit', '1');
+        await toggleEdit();
+        if (fresh) extras.np.arrive(root);
+      }
     } catch (e) {
       st.ready = false;
       render();
