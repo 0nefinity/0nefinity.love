@@ -74,7 +74,15 @@
   // innerHTML gesetzt wird. Eintrag = Element + Inhalt davor; Tippen am selben Element ohne 1 s Pause ist ein Schritt.
   let undoStack = [];
   let redoStack = [];
-  let lastSnap = { el: null, kind: '', t: 0 };
+  // Schritt = {i: Nummer der Stelle in Dokumentreihenfolge, t: Zeit, p/s: gleicher Anfang/Schluss im HTML,
+  // a: entfernter, b: eingefuegter Teil}. Das ueberlebt Neuladen (localStorage je Seite); openGrp ist der noch
+  // offene Tippschritt.
+  let hostList = [];
+  let openGrp = null;
+  let grpTimer = null;
+  let hist = null;
+  let btnHist, menuHist;
+  const GROUP_MS = 1200;
   let commitPoll = null;
   // Text, den ein Skript der Seite laufend umschreibt (Animationen), ist nicht bearbeitbar: sonst
   // speichert das Autosave einen zufaelligen Animationsstand. Eigene Aenderungen setzen ownAt.
@@ -94,6 +102,7 @@
     bubble: 'M4 5h16v11h-9l-5 4v-4h-2z',
     noteplus: 'M4 5h16v11h-9l-5 4v-4h-2zM12 7.5v6M9 10.5h6',
     diff: 'M12 4v8M8 8h8M8 18h8',
+    hist: 'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 8v4l3 2',
     undo: 'M9 15L4 10l5-5M4 10h10a5 5 0 0 1 0 10h-4',
     redo: 'M15 15l5-5-5-5M20 10H10a5 5 0 0 0 0 10h4',
     link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
@@ -315,17 +324,69 @@
     touched.add(el);
   }
 
-  function snap(el, kind) {
+  const histKey = () => 'oe-hist:' + location.host + pagePath;
+
+  function persistHist() {
+    const save = () => localStorage.setItem(histKey(), JSON.stringify({ v: 1, u: undoStack, r: redoStack }));
+    try {
+      save();
+    } catch (e) {
+      // Speicher voll: aelteste Schritte zuerst opfern, aber sichtbar.
+      try {
+        undoStack.splice(0, Math.max(1, Math.ceil(undoStack.length / 10)));
+        save();
+        showToast('Verlauf: ältester Teil gekürzt (Speicher voll)', '', null, 5000);
+      } catch (e2) { showToast('Verlauf lässt sich nicht speichern: ' + e2.message, '', null, 0, 'error'); }
+    }
+  }
+
+  function loadHist() {
+    undoStack = [];
+    redoStack = [];
+    try {
+      const j = JSON.parse(stored(histKey()) || 'null');
+      if (j && j.v === 1 && Array.isArray(j.u) && Array.isArray(j.r)) { undoStack = j.u; redoStack = j.r; }
+    } catch (e) { showToast('Verlauf unlesbar, neu begonnen', '', null, 0, 'error'); }
+  }
+
+  function diffEntry(i, before, after) {
+    const m = Math.min(before.length, after.length);
+    let p = 0;
+    while (p < m && before.charCodeAt(p) === after.charCodeAt(p)) p++;
+    let s = 0;
+    while (s < m - p && before.charCodeAt(before.length - 1 - s) === after.charCodeAt(after.length - 1 - s)) s++;
+    return { i, t: Date.now(), p, s, a: before.slice(p, before.length - s), b: after.slice(p, after.length - s) };
+  }
+
+  function closeGroup() {
+    clearTimeout(grpTimer);
+    const g = openGrp;
+    openGrp = null;
+    if (!g) return;
+    const i = hostList.indexOf(g.el);
+    const after = cleanHTML(g.el);
+    if (i >= 0 && after !== g.before) { undoStack.push(diffEntry(i, g.before, after)); persistHist(); }
+    render();
+    refreshHist();
+  }
+
+  // Tippen am selben Ort ohne Pause (1,2 s) und ohne Wortgrenze ist ein Schritt; alles andere schliesst ihn.
+  function snap(el, kind, data) {
     const now = Date.now();
-    if (kind !== 'force' && lastSnap.el === el && lastSnap.kind === kind && now - lastSnap.t < 1000) {
-      lastSnap.t = now;
+    const g = openGrp;
+    const brk = kind === 'type' && /\s/.test(data || '');
+    if (g && g.el === el && g.kind === kind && kind !== 'force' && !g.closeNext && now - g.last < GROUP_MS) {
+      g.last = now;
+      if (brk) g.closeNext = true;
+      clearTimeout(grpTimer);
+      grpTimer = setTimeout(closeGroup, GROUP_MS);
       return;
     }
+    closeGroup();
     ownAt = performance.now();
-    undoStack.push({ el, html: cleanHTML(el) });
-    if (undoStack.length > 300) undoStack.shift();
     redoStack = [];
-    lastSnap = { el, kind, t: now };
+    openGrp = { el, kind, before: cleanHTML(el), last: now, closeNext: brk };
+    grpTimer = setTimeout(closeGroup, GROUP_MS);
     render();
   }
 
@@ -339,23 +400,150 @@
     sel.addRange(r);
   }
 
-  function step(from, to) {
-    let e;
-    while ((e = from.pop()) && !e.el.isConnected);
-    if (!e) return;
-    touch(e.el);
-    to.push({ el: e.el, html: cleanHTML(e.el) });
-    ownAt = performance.now();
-    e.el.innerHTML = e.html;
-    lastSnap = { el: null, kind: '', t: 0 };
-    if (cmtOn) renderBadges();
-    caretToEnd(e.el);
-    markDirty();
-    render();
+  // Stelle im Text: Zeichenposition im HTML -> Textposition (ohne Marken der Oberflaeche).
+  function placeCaret(el, html, pos) {
+    const n = new DOMParser().parseFromString('<body>' + html.slice(0, Math.max(0, pos)), 'text/html').body.textContent.length;
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (t) => (t.parentElement && t.parentElement.closest('[data-oe-ui]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    let left = n;
+    let node;
+    let at = null;
+    while ((node = w.nextNode())) {
+      at = node;
+      if (left <= node.data.length) break;
+      left -= node.data.length;
+    }
+    focusHost(el);
+    if (!at) { caretToEnd(el); return; }
+    const r = document.createRange();
+    r.setStart(at, Math.min(left, at.data.length));
+    r.collapse(true);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    let rc = r.getBoundingClientRect();
+    if (!rc.width && !rc.height && !rc.top) rc = (at.parentElement || el).getBoundingClientRect();
+    if (rc.top < 80 || rc.bottom > innerHeight - 80) window.scrollBy(0, rc.top - innerHeight / 2);
   }
 
-  function undo() { if (editing) step(undoStack, redoStack); }
-  function redo() { if (editing) step(redoStack, undoStack); }
+  // Wendet einen Schritt an. Passt der Text an der Stelle nicht mehr (Seite zwischendurch anders), wird nichts
+  // ueberschrieben.
+  function applyEntry(e, undoing) {
+    const el = hostList[e.i];
+    if (!el || !el.isConnected || !el.hasAttribute('data-oe') || !originals.has(el)) return false;
+    const cur = cleanHTML(el);
+    const from = undoing ? e.b : e.a;
+    const to = undoing ? e.a : e.b;
+    if (e.p + e.s > cur.length || cur.slice(e.p, cur.length - e.s) !== from) return false;
+    touch(el);
+    ownAt = performance.now();
+    const next = cur.slice(0, e.p) + to + cur.slice(cur.length - e.s);
+    el.innerHTML = next;
+    if (cmtOn) renderBadges();
+    placeCaret(el, next, e.p + to.length);
+    markDirty();
+    return true;
+  }
+
+  function step(undoing) {
+    closeGroup();
+    const from = undoing ? undoStack : redoStack;
+    const to = undoing ? redoStack : undoStack;
+    let dropped = 0;
+    let e;
+    while ((e = from.pop())) {
+      if (applyEntry(e, undoing)) { to.push(e); break; }
+      dropped++;
+    }
+    if (dropped) showToast(dropped + (dropped > 1 ? ' Schritte' : ' Schritt') + ' nicht mehr anwendbar (Text hat sich geändert), verworfen', '', null, 0, 'error');
+    persistHist();
+    render();
+    refreshHist();
+  }
+
+  function undo() { if (editing) step(true); }
+  function redo() { if (editing) step(false); }
+
+  // Zur Stelle eines Schritts springen, ohne etwas zu aendern.
+  function jumpToStep(e, applied) {
+    const el = hostList[e.i];
+    if (!el || !el.isConnected || !el.hasAttribute('data-oe')) { showToast('Stelle nicht mehr bearbeitbar', '', null, 0, 'error'); return; }
+    const cur = cleanHTML(el);
+    placeCaret(el, cur, Math.min(cur.length, e.p + (applied ? e.b : e.a).length));
+  }
+
+  // ------------------------------------------------------------ verlauf
+
+  function excerpt(h) {
+    const t = new DOMParser().parseFromString('<body>' + h, 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
+    if (!t) return h ? '‹Format›' : '';
+    return t.length > 40 ? t.slice(0, 40) + '…' : t;
+  }
+
+  function histRow(e, applied) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'oe-hrow';
+    b.dataset.s = applied ? 'undo' : 'redo';
+    const t = document.createElement('time');
+    t.textContent = new Date(e.t).toLocaleTimeString('de-DE');
+    const x = document.createElement('span');
+    const a = excerpt(e.a);
+    const c = excerpt(e.b);
+    if (a) { const d = document.createElement('del'); d.textContent = a; x.append(d, ' '); }
+    if (c) { const n = document.createElement('ins'); n.textContent = c; x.append(n); }
+    b.append(t, x);
+    b.addEventListener('click', () => jumpToStep(e, applied));
+    return b;
+  }
+
+  function refreshHist() {
+    if (!hist || hist.hidden) return;
+    const rows = [];
+    for (const e of redoStack) rows.push(histRow(e, false));
+    const now = document.createElement('div');
+    now.className = 'oe-hnow';
+    now.textContent = 'jetzt';
+    rows.push(now);
+    for (let k = undoStack.length - 1; k >= 0; k--) rows.push(histRow(undoStack[k], true));
+    if (!undoStack.length && !redoStack.length) {
+      const m = document.createElement('div');
+      m.className = 'oe-hnow';
+      m.textContent = 'noch keine Änderungen';
+      rows.length = 0;
+      rows.push(m);
+    }
+    hist.replaceChildren(...rows);
+    if (btnHist) btnHist.setAttribute('aria-pressed', 'true');
+  }
+
+  function placeHist() {
+    const vis = bar && bar.offsetParent !== null;
+    const r = vis ? bar.getBoundingClientRect() : null;
+    hist.style.left = hist.style.top = hist.style.right = hist.style.bottom = '';
+    if (!r) { hist.style.top = '60px'; hist.style.right = '8px'; return; }
+    hist.style.right = Math.max(8, innerWidth - r.right) + 'px';
+    if (bar.classList.contains('oe-solo')) hist.style.bottom = innerHeight - r.top + 6 + 'px';
+    else hist.style.top = r.bottom + 6 + 'px';
+  }
+
+  function toggleHist(force) {
+    if (!hist) {
+      hist = document.createElement('div');
+      hist.id = 'oe-hist';
+      hist.dataset.oeUi = '';
+      hist.setAttribute('role', 'region');
+      hist.setAttribute('aria-label', 'Veränderungsverlauf');
+      hist.hidden = true;
+      document.body.appendChild(hist);
+    }
+    const open = typeof force === 'boolean' ? force : hist.hidden;
+    if (open) closeGroup();
+    hist.hidden = !open;
+    for (const b of [btnHist, menuHist]) if (b) b.setAttribute('aria-pressed', String(open));
+    if (open) { placeHist(); refreshHist(); }
+  }
 
   // Menue, Suchfeld und Editor-Oberflaeche liegen im gemeinsamen Editor-Container, gehoeren aber nicht dazu.
   const OUTSIDE = 'input, textarea, select, #meta-nav, [data-oe-ui]:not(.oe-cmt)';
@@ -380,7 +568,7 @@
     }
     ownAt = lastTypeAt = performance.now();
     touch(host);
-    snap(host, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force');
+    snap(host, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force', e.data);
   }
 
   let stray = null;
@@ -676,9 +864,9 @@
       document.documentElement.classList.add('oe-editing');
       originals = new Map();
       touched = new Set();
-      undoStack = [];
-      redoStack = [];
       const hosts = candidates();
+      hostList = hosts.slice();
+      loadHist();
       for (const el of hosts) {
         originals.set(el, cleanHTML(el));
         el.dataset.oe = '';
@@ -780,8 +968,6 @@
       touched.delete(el);
     }
     if (!gone.size) return;
-    undoStack = undoStack.filter((e) => !gone.has(e.el));
-    redoStack = redoStack.filter((e) => !gone.has(e.el));
     render();
   }
 
@@ -795,8 +981,11 @@
     cur = null;
     originals = new Map();
     touched = new Set();
+    closeGroup();
     undoStack = [];
     redoStack = [];
+    hostList = [];
+    if (hist) toggleHist(false);
     editing = false;
     if (selBar) { fillSelBar(); selBar.hidden = true; }
     document.documentElement.classList.remove('oe-editing');
@@ -886,6 +1075,7 @@
   // erreicht den Server auch nach dem Entladen; die abgebrochene Antwort im Browser ist dann kein Fehler.
   function flushOnLeave() {
     leaving = true;
+    closeGroup();
     flushItems();
     if (dirty().length && !saving) save();
     if (pubTimer) firePublish(true);
@@ -1635,6 +1825,18 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 @media (hover:hover){#oe-admin .oe-login:hover{opacity:1}}
 .oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
 #oe-admin .oe-narrow{display:none!important}
+#oe-hist{position:fixed;z-index:2147483001;width:min(320px,calc(100vw - 16px));max-height:50vh;overflow:auto;box-sizing:border-box;padding:4px;
+  border-radius:6px;border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);
+  color:var(--text-color,#fff);font:13px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:contain}
+#oe-hist[hidden]{display:none}
+.oe-hrow{display:flex;gap:8px;align-items:baseline;width:100%;min-height:36px;margin:0;padding:6px 8px;box-sizing:border-box;text-align:left;
+  border:0;border-radius:4px;background:none;color:inherit;font:inherit;cursor:pointer;overflow-wrap:anywhere}
+.oe-hrow:hover,.oe-hrow:focus-visible{background:color-mix(in srgb,var(--text-color,#fff) 12%,transparent)}
+.oe-hrow[data-s=redo]{opacity:.5}
+.oe-hrow time{flex:none;opacity:.6;font-variant-numeric:tabular-nums}
+.oe-hrow del{opacity:.7;text-decoration:line-through}
+.oe-hrow ins{text-decoration:none;padding:0 2px;background:var(--text-color,#fff);color:var(--bg-color,#000)}
+.oe-hnow{padding:4px 8px;opacity:.5;font-size:12px;border-top:1px dashed currentColor;border-bottom:1px dashed currentColor}
 /* Handy: eine Reihe zwischen Zurueck- und Menueknopf (bei 320 px 166 px frei), Quelltext und Aenderungen
    wandern dafuer in die Admin-Zeile im Menue. */
 @media (max-width:480px){#oe-bar{right:79px;top:calc(var(--visible-viewport-top,0px) + 22px);max-width:calc(100vw - 87px)}
@@ -1678,8 +1880,11 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       if (pressed !== undefined) b.setAttribute('aria-pressed', String(!!pressed));
     };
     set(btnEdit, off || !st.inline, editing);
-    set(btnUndo, !editing || !undoStack.length);
-    set(btnRedo, !editing || !redoStack.length);
+    set(btnUndo, !editing || !(undoStack.length || openGrp));
+    set(btnHist, !editing);
+    btnHist.hidden = !editing;
+    if (menuHist) menuHist.hidden = !editing;
+    set(btnRedo, !editing || !(redoStack.length));
     btnUndo.hidden = btnRedo.hidden = !editing;
     set(btnSrc, off || !!overlay);
     set(btnCmt, off, cmtOn);
@@ -1715,12 +1920,14 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     btnCmt = mini('bubble', 'Kommentare ein/aus', toggleComments);
     btnDiff = mini('diff', 'Änderungen', () => openChanges(false));
     btnDiff.classList.add('oe-wide');
+    btnHist = mini('hist', 'Verlauf', () => toggleHist());
+    btnHist.classList.add('oe-wide');
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
     const head = document.createElement('div');
     head.className = 'oe-head';
     // Feste Reihenfolge, rechts verankert: das Stift-Symbol bleibt beim Umschalten an seinem Platz.
-    head.append(btnUndo, btnRedo, btnEdit, btnSrc, btnCmt, btnDiff);
+    head.append(btnUndo, btnRedo, btnHist, btnEdit, btnSrc, btnCmt, btnDiff);
     if (!CFG.direct) {
       btnPub = mini('upload', 'veröffentlichen', startPublish);
       head.append(btnPub);
@@ -1784,12 +1991,13 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     const out = button('', logout);
     menuSrc = mini('code', 'Quelltext', openSource);
     menuDiff = mini('diff', 'Änderungen', () => openChanges(false));
-    for (const b of [menuSrc, menuDiff]) b.classList.add('oe-narrow');
+    menuHist = mini('hist', 'Verlauf', () => toggleHist());
+    for (const b of [menuSrc, menuDiff, menuHist]) b.classList.add('oe-narrow');
     for (const b of [analytics, out]) b.classList.add('oe-small');
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(menuSrc, menuDiff, analytics, out);
+    sec.append(menuSrc, menuDiff, menuHist, analytics, out);
     wrap.prepend(sec);
   }
 
@@ -1824,6 +2032,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     document.addEventListener('keydown', globalKeys, true);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'hidden') return;
+      closeGroup();
       flushItems();
       if (dirty().length) save();
     });
