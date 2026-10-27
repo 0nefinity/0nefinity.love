@@ -528,7 +528,7 @@
                 draggable: options.draggable !== false,
                 // Mobile: Element das sich mit dem Panel mitbewegt (wie in 0neSlider)
                 mobileContentElement: options.mobileContentElement || null,
-                mobileContentMaxOffset: options.mobileContentMaxOffset || 12, // vh
+                mobileContentMaxOffset: options.mobileContentMaxOffset ?? 12, // vh
 	                mobileInitialOpenMode: options.mobileInitialOpenMode || 'content-capped',
 	                mobileInitialOpenMaxViewportFraction: Number.isFinite(Number(options.mobileInitialOpenMaxViewportFraction))
 	                    ? Number(options.mobileInitialOpenMaxViewportFraction)
@@ -2026,7 +2026,8 @@
 	            if (this._isBarMode && this.el.style.top && this.el.style.top !== 'auto') {
 	                const minTop = 70;
 	                const maxTop = Math.max(minTop, viewportHeight - Math.max(1, Math.round(rect.height || this.headerEl?.offsetHeight || 40)));
-	                const currentTop = parseFloat(this.el.style.top) || rect.top || 0;
+	                const styleTop = parseFloat(this.el.style.top);
+	                const currentTop = Number.isFinite(styleTop) ? styleTop : rect.top;
 	                this.el.style.top = clamp(currentTop, minTop, maxTop) + 'px';
 	            }
         }
