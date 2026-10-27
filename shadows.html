@@ -747,9 +747,12 @@
       return (textureLod(tex, c, 0.0).r - length(uv - c)) * (0.6 * uGlyphSize);
     }
 
+    // Symbolgroesse 0 = kein Tunnel. Sonst waere die Tunnel-SDF ueberall 0 und der Strahl traefe im Inneren zufaellig (Grisseln).
+    bool sdfGlyphOn() { return uGebEnabled == 1 && uGlyphSize > 1e-6; }
+
     float sdfSolid(vec3 p, sampler2D tx, sampler2D ty, sampler2D tz) {
       float s = sdfShape(p);
-      if (uGebEnabled == 0) return uInvertMode == 1 ? 1.0 : s;
+      if (!sdfGlyphOn()) return uInvertMode == 1 ? 1.0 : s;
       float sg = uInvertMode == 1 ? -1.0 : 1.0;
       float d = max(s, sg * sdfTube(tx, sdfUvX(p)));
       d = max(d, sg * sdfTube(ty, sdfUvY(p)));
@@ -793,7 +796,7 @@
       float best = sdfShape(p);
       float sg = uInvertMode == 1 ? -1.0 : 1.0;
       int axis = 0;
-      if (uGebEnabled == 1) {
+      if (sdfGlyphOn()) {
         float fx = sg * sdfTube(tx, sdfUvX(p));
         float fy = sg * sdfTube(ty, sdfUvY(p));
         float fz = sg * sdfTube(tz, sdfUvZ(p));
