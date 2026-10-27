@@ -1475,6 +1475,9 @@
             const expandedHeight = this._getMobileExpandedPanelHeight();
             this.el.style.setProperty('--ctrl-mobile-header-height', `${Math.round(headerHeight)}px`);
             this.el.style.height = expandedHeight + 'px';
+            // max-height aus --visible-viewport-height setzt meta.js erst im naechsten Frame; waechst das Viewport
+            // (Adressleiste klappt weg), kappt der alte Wert das Panel einen Frame lang und es springt ~1 cm.
+            this.el.style.maxHeight = expandedHeight + 'px';
             const visibleHeight = this._getMobileVisiblePanelHeight();
             const bodyStyle = getComputedStyle(this.bodyEl);
             const borderTop = parseFloat(bodyStyle.borderTopWidth) || 0;
@@ -1962,6 +1965,7 @@
                     this.el.style.transform = '';
                     this.el.style.removeProperty('--ctrl-mobile-bottom-offset');
                     this.el.style.removeProperty('--ctrl-mobile-header-height');
+                    this.el.style.maxHeight = '';
                     if (contentEl) {
                         contentEl.style.transition = '';
                         contentEl.style.transform = '';
