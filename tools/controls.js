@@ -4078,6 +4078,69 @@
             return this;
         }
 
+        /**
+         * Show which row a direct manipulation (canvas drag, wheel, key) is changing:
+         * opens its pencil details, scrolls it into view inside the panel body (never the page)
+         * and pulses it. Safe to call on every pointermove; a closed panel stays closed and
+         * the user's own panel scrolling wins for a moment.
+         * @param {string|string[]} keys - first key is scrolled to, all are highlighted
+         */
+        reveal(keys) {
+            const list = (Array.isArray(keys) ? keys : [keys]).filter((k) => k != null && k !== '');
+            if (!list.length || !this.bodyEl || !this.el?.isConnected) return this;
+            if (this.el.classList.contains('ctrl-panel-collapsed-body')) return this;
+            const rows = list.map((k) => this.bodyEl.querySelector(`[data-key="${k}"]`)).filter(Boolean);
+            if (!rows.length) return this;
+
+            const bodyRect = this.bodyEl.getBoundingClientRect();
+            const viewTop = Math.max(bodyRect.top, 0);
+            const viewBottom = Math.min(bodyRect.bottom, window.innerHeight);
+            if (viewBottom - viewTop < 24) return this;
+
+            let opened = false;
+            rows.forEach((row) => {
+                const sub = row.closest('.ctrl-details');
+                if (!sub || !sub.hidden || !this._toggleDetails) return;
+                const owner = Object.keys(this._toggleDetails).find((k) => this._toggleDetails[k].sub === sub);
+                if (owner) { this._setToggleDetailsOpen(owner, true); opened = true; }
+            });
+
+            rows.forEach((row) => row.classList.add('ctrl-row-revealed'));
+            this._revealedRows = this._revealedRows || new Set();
+            rows.forEach((row) => this._revealedRows.add(row));
+            clearTimeout(this._revealFadeTimer);
+            this._revealFadeTimer = setTimeout(() => {
+                this._revealedRows.forEach((row) => row.classList.remove('ctrl-row-revealed'));
+                this._revealedRows.clear();
+            }, 900);
+
+            if (!this._revealUserScrollBound) {
+                this._revealUserScrollBound = true;
+                const mark = () => { this._revealUserScrollAt = performance.now(); };
+                ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'].forEach((type) => {
+                    this.bodyEl.addEventListener(type, mark, { passive: true });
+                });
+            }
+            const now = performance.now();
+            if (now - (this._revealUserScrollAt || -Infinity) < 1500) return this;
+            if (!opened && now - (this._revealScrollAt || -Infinity) < 200) return this;
+
+            const scrollTo = () => {
+                const row = rows[0];
+                if (!row.isConnected || !row.offsetParent) return;
+                const r = row.getBoundingClientRect();
+                const b = this.bodyEl.getBoundingClientRect();
+                const top = Math.max(b.top, 0) + 8;
+                const bottom = Math.min(b.bottom, window.innerHeight) - 8;
+                if (r.top >= top && r.bottom <= bottom) return;
+                const delta = (r.top + r.height / 2) - (top + bottom) / 2;
+                this._revealScrollAt = performance.now();
+                this.bodyEl.scrollTo({ top: this.bodyEl.scrollTop + delta, behavior: 'smooth' });
+            };
+            if (opened) requestAnimationFrame(scrollTo); else scrollTo();
+            return this;
+        }
+
         setRowDisabled(key, disabled) {
             const row = this.bodyEl.querySelector(`[data-key="${key}"]`);
             if (!row) return this;
