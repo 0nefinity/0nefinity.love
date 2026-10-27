@@ -9,7 +9,7 @@
 //     beforeRename: async () => true,          // z. B. offene Speicherungen abwarten; false = abbrechen
 //     onRenamed: (res) => {},                  // {old, file, url, links, warnings}: editor.js setzt pagePath/file neu
 //   });
-//   fn.setEditing(true|false); fn.setFile('x.html'); fn.destroy();
+//   fn.setEditing(true|false); fn.setFile('x.html'); fn.renameTo('stem') -> Promise<bool>; fn.destroy();
 //
 // Ablauf: Enter oder Verlassen des Feldes speichert, Escape verwirft. Der neue Name steht sofort da (ausgegraut,
 // bis der Server fertig ist); danach history.replaceState auf die neue URL. Scheitert es, bleibt die Eingabe
@@ -45,16 +45,17 @@
     const s = document.createElement('style');
     s.id = 'oef-style';
     s.textContent = `
-.oef{--oef-btn:4.375rem;position:fixed;top:calc(var(--visible-viewport-top,0px) + (var(--oef-btn) - 30px) / 2);left:calc(var(--oef-btn) + 4px);
-  z-index:999;max-width:calc(100vw - 2 * var(--oef-btn) - 8px);
-  color:var(--text-color,#fff);font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
+.oef{--oef-btn:4.375rem;position:relative;display:block;box-sizing:border-box;width:100%;margin:calc(var(--oef-btn) + 2px) 0 4px;padding:0 8px;
+  z-index:999;color:var(--text-color,#fff);font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
 @media (max-width:768px) and (min-resolution:2dppx){.oef{--oef-btn:5.5rem}}
-.oef.oef-hosted{position:static;max-width:none}
+.oef.oef-hosted{margin:0;padding:0;width:auto}
 .oef[hidden]{display:none}
-.oef-row{display:flex;align-items:center;min-height:28px;padding:0 6px;border-radius:4px;
+.oef-row{display:inline-flex;max-width:100%;box-sizing:border-box;align-items:center;min-height:28px;padding:0 6px;border-radius:4px;
   border:1px solid transparent;transition:border-color .15s,opacity .15s}
 .oef-row:hover,.oef-row:focus-within{border-color:color-mix(in srgb,var(--text-color,#fff) 30%,transparent)}
-.oef-dir,.oef-ext{opacity:.5;white-space:pre}
+.oef-dir,.oef-ext{opacity:.6;white-space:pre}
+.oef-dir a{color:inherit;text-decoration:none}.oef-dir a:hover{text-decoration:underline}
+.oef-row{flex-wrap:nowrap;min-width:0}.oef-dir{display:flex;flex:0 1 auto;min-width:0;overflow:hidden}
 .oef-name{min-width:2ch;padding:2px 1px;outline:none;white-space:pre;overflow:hidden;text-overflow:ellipsis;cursor:text;
   -webkit-user-select:text;user-select:text}
 .oef-name:focus{text-overflow:clip}
@@ -99,11 +100,15 @@
     msg.setAttribute('role', 'status');
     row.append(dirEl, nameEl, extEl);
     root.append(row, msg);
-    (opts.host || document.body).appendChild(root);
+    if (opts.host) opts.host.appendChild(root); else document.body.insertBefore(root, document.body.firstChild);
     if (opts.host) root.classList.add('oef-hosted');
 
     function paint() {
-      dirEl.textContent = cur.dir;
+      dirEl.textContent = '';
+      const crumb = (label, href) => { const a = document.createElement('a'); a.href = href; a.textContent = label; a.tabIndex = -1; dirEl.append(a, ' / '); };
+      crumb('Start', '/');
+      let acc = '/';
+      for (const seg of cur.dir.split('/').filter(Boolean)) { acc += encodeURIComponent(seg) + '/'; crumb(seg, acc); }
       extEl.textContent = cur.ext;
       if (document.activeElement !== nameEl) nameEl.textContent = pending !== null ? pending : shown;
       root.dataset.state = busy ? 'busy' : '';
@@ -130,12 +135,13 @@
       return MSG[m] !== undefined && MSG[m] ? MSG[m] : m;
     }
 
+    // Liefert true, wenn der Server umbenannt hat, sonst false (Fehler steht dann sichtbar im Feld).
     async function commit(name) {
       const stem = name.normalize('NFC').trim().replace(/\.(html|md)$/i, '').trim();
-      if (!pending && stem === shown) { say(''); return paint(); }
+      if (!pending && stem === shown) { say(''); paint(); return false; }
       const bad = clientCheck(stem);
-      if (bad) { pending = stem; say(bad, 'error'); return paint(); }
-      if (busy) { pending = stem; return; }
+      if (bad) { pending = stem; say(bad, 'error'); paint(); return false; }
+      if (busy) { pending = stem; return false; }
       pending = stem;
       busy = true;
       say('');
@@ -154,8 +160,10 @@
         if (w.length) say(w.join(' · '), 'info');
         else say(n ? `umbenannt, ${n} Link${n === 1 ? '' : 's'} angepasst` : 'umbenannt', 'info');
         if (!w.length) setTimeout(() => { if (msg.dataset.kind === 'info') say(''); }, 4000);
+        return true;
       } catch (e) {
         say(readable(e), 'error', () => commit(pending !== null ? pending : shown));
+        return false;
       } finally {
         busy = false;
         paint();
@@ -201,6 +209,7 @@
     return {
       el: root,
       setEditing(on) { editing = !!on; paint(); },
+      renameTo(stem) { return commit(stem); },
       setFile(file) { cur = split(file); shown = cur.stem; pending = null; say(''); paint(); },
       destroy() { root.remove(); },
     };
