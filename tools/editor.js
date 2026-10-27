@@ -801,12 +801,17 @@
     }
   }
 
+  // Focus stays in the document after a bar undo/redo, otherwise the next tap lands on a disabled button or another field.
+  function keepFocus() {
+    if (editing && root && !root.contains(document.activeElement)) root.focus({ preventScroll: true });
+  }
   function undo() {
     if (!editing) return;
     if (!undoStack.length && !openGrp && extras?.np.undoCreate()) return;
     step(true);
+    keepFocus();
   }
-  function redo() { if (editing) step(false); }
+  function redo() { if (editing) { step(false); keepFocus(); } }
 
   // Zur Stelle eines Schritts springen, ohne etwas zu aendern.
   function jumpToStep(e, applied) {
@@ -2219,7 +2224,7 @@ oe-run{display:inline}
 @media (hover:hover){.oe-btn:not([aria-pressed=true]):not(.oe-primary):hover:not(:disabled){border-color:var(--text-color,#fff)!important}
   .oe-btn.oe-mini:hover:not(:disabled){opacity:1}}
 .oe-btn.oe-has-dot{position:relative}
-.oe-btn.oe-has-dot::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--text-color,#fff);box-shadow:0 0 0 2px var(--bg-color,#000)}
+.oe-btn.oe-has-dot::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--oe-accent,#e8a33d);box-shadow:0 0 0 2px var(--bg-color,#000)}
 .oe-btn:focus{outline:none!important}
 .oe-btn:focus-visible{outline:2px solid var(--text-color,#fff)!important;outline-offset:1px}
 .oe-btn:disabled{opacity:.3!important;cursor:default}
@@ -2378,7 +2383,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     // Unveroeffentlichtes bleibt auch zugeklappt sichtbar: Punkt am Stift.
     const unpub = btnPub && !pubTimer && !!(CFG.draft ? st.draftCount : st.live);
     btnEdit.classList.toggle('oe-has-dot', !!unpub && !editing);
-    btnEdit.title = 'bearbeiten ein/aus' + (unpub && !editing ? ' (unveröffentlichte Änderungen)' : '');
+    btnEdit.title = 'bearbeiten ein/aus' + (unpub && !editing ? ' · Punkt: unveröffentlichte Änderungen' : '');
     adoptTips(bar);
   }
 
@@ -2668,6 +2673,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     btnFmt.classList.add('oe-nar');
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
+    for (const b of [btnUndo, btnRedo]) b.addEventListener('mousedown', (ev) => ev.preventDefault());
     const head = document.createElement('div');
     head.className = 'oe-head';
     // Der Stift steht rechts und bleibt beim Umschalten an seinem Platz; alles andere klappt links davon auf,
