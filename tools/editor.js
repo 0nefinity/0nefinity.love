@@ -143,7 +143,15 @@
       `<path d="${ZERO}" mask="url(#${id})"/>${one}</svg>`;
   }
 
+  // Waehrend ein Umbenennen laeuft, warten alle anderen Aufrufe und gehen danach mit dem neuen Pfad raus
+  // (sonst traf ein Autosave den alten Namen: 404 "keine bearbeitbare Datei").
+  let renaming = null;
+
   async function api(method, route, body) {
+    if (route !== 'rename') {
+      while (renaming) await renaming;
+      if (body && typeof body === 'object' && 'path' in body) body = { ...body, path: pagePath };
+    }
     busy++;
     syncPause();
     try {
@@ -290,11 +298,11 @@
       s.onerror = () => no(new Error('editor-' + n + '.js nicht ladbar'));
       document.head.append(s);
     })));
-    const wait = async () => (await flushed()) !== false;
+    const wait = async () => { closeGroup(); return (await flushed()) !== false; };
+    const renameRequest = (method, route, body) => (route === 'rename' ? renamePage(method, route, body) : api(method, route, body));
     extras = {
       fn: window.OneEditorFilename.mount({
-        file: source.file, request: api, path: () => pagePath, beforeRename: wait,
-        onRenamed: (r) => { pagePath = r.url; source.file = r.file; },
+        file: source.file, request: renameRequest, path: () => pagePath, beforeRename: wait,
       }),
       np: window.OneEditorNewPage.mount({ bar: moreIn, request: api, beforeCreate: wait }),
       marks: window.OneEditorMarks.mount({ bar: moreIn, root: () => root || document.querySelector('main') || document.body }),
@@ -543,7 +551,12 @@
     const to = undoing ? redoStack : undoStack;
     let dropped = 0;
     let e;
-    while ((e = from.pop())) {
+    while (from.length) {
+      if (from[from.length - 1].k === 'rename') {
+        if (!dropped) stepRename(undoing);
+        break;
+      }
+      e = from.pop();
       if (applyEntry(e, undoing)) { to.push(e); break; }
       dropped++;
     }
@@ -553,11 +566,60 @@
     refreshHist();
   }
 
+  // Umbenennen ist ein Schritt im Verlauf: zurueck benennt die Datei samt Links zurueck (der Server schreibt sie
+  // und den Redirect um), vor tut es wieder. Der Pfad der Seite wechselt sofort mit der Antwort, noch bevor
+  // wartende Speicherungen weiterlaufen.
+  let renameViaHist = false;
+  function renamePage(method, route, body) {
+    const run = (async () => {
+      try {
+        const r = await api(method, route, body);
+        const oldKey = histKey();
+        pagePath = r.url;
+        source.file = r.file;
+        try { localStorage.removeItem(oldKey); } catch (e) { /* Schluessel war nie geschrieben */ }
+        if (!renameViaHist) { undoStack.push({ k: 'rename', t: Date.now(), a: r.old, b: r.file }); redoStack = []; }
+        persistHist();
+        render();
+        refreshHist();
+        return r;
+      } finally {
+        renaming = null;
+      }
+    })();
+    renaming = run.catch(() => {});
+    return run;
+  }
+
+  let stepRenaming = false;
+  async function stepRename(undoing) {
+    if (stepRenaming || renaming) return;
+    stepRenaming = true;
+    const from = undoing ? undoStack : redoStack;
+    const to = undoing ? redoStack : undoStack;
+    const e = from[from.length - 1];
+    const target = (undoing ? e.a : e.b).split('/').pop().replace(/\.[^.]*$/, '');
+    renameViaHist = true;
+    try {
+      if (!(await extras.fn.renameTo(target))) return;
+      const at = from.lastIndexOf(e);
+      if (at >= 0) from.splice(at, 1);
+      to.push(e);
+    } finally {
+      renameViaHist = false;
+      stepRenaming = false;
+      persistHist();
+      render();
+      refreshHist();
+    }
+  }
+
   function undo() { if (editing) step(true); }
   function redo() { if (editing) step(false); }
 
   // Zur Stelle eines Schritts springen, ohne etwas zu aendern.
   function jumpToStep(e, applied) {
+    if (e.k === 'rename') return;
     const el = hostList[e.i];
     if (!el || !el.isConnected || !el.hasAttribute('data-oe')) { showToast('Stelle nicht mehr bearbeitbar', '', null, 0, 'error'); return; }
     if (e.k === 'tag') { focusHost(el); return; }
@@ -581,8 +643,9 @@
     const t = document.createElement('time');
     t.textContent = new Date(e.t).toLocaleTimeString('de-DE');
     const x = document.createElement('span');
-    const a = e.k === 'tag' ? '<' + e.a + '>' : excerpt(e.a);
-    const c = e.k === 'tag' ? '<' + e.b + '>' : excerpt(e.b);
+    const nm = (f) => f.split('/').pop();
+    const a = e.k === 'tag' ? '<' + e.a + '>' : e.k === 'rename' ? nm(e.a) : excerpt(e.a);
+    const c = e.k === 'tag' ? '<' + e.b + '>' : e.k === 'rename' ? nm(e.b) : excerpt(e.b);
     if (a) { const d = document.createElement('del'); d.textContent = a; x.append(d, ' '); }
     if (c) { const n = document.createElement('ins'); n.textContent = c; x.append(n); }
     b.append(t, x);
