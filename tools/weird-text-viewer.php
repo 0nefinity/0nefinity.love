@@ -53,6 +53,24 @@ function renderSsiInclude($relativePath, $host) {
             $content
         );
     }
+    if ($content !== null) {
+        // timefmt="%s" (Unix-Sekunden) ist das einzige Format, das flastmod hier braucht; PHP liefert es direkt.
+        $content = preg_replace('/<!--#config timefmt="%s" -->\R?/', '', $content);
+    }
+    if ($content !== null) {
+        $docRoot = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+        $content = preg_replace_callback(
+            '/<!--#flastmod virtual="(\/[^"]+)" -->/',
+            function ($m) use ($docRoot, $relativePath) {
+                $mtime = strpos($m[1], '..') === false ? @filemtime($docRoot . $m[1]) : false;
+                if ($mtime === false) {
+                    failInclude($relativePath, 'flastmod target missing: ' . $m[1]);
+                }
+                return (string)$mtime;
+            },
+            $content
+        );
+    }
     if ($content === null || strpos($content, '<!--#') !== false) {
         failInclude($relativePath, 'unsupported SSI directive');
     }
