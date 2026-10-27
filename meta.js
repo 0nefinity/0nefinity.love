@@ -3,7 +3,8 @@
 // ─── Tab-Titel: "<label>/<pfad>" ───
 // Label = Domain, über die der Besucher ursprünglich kam (nginx leitet 018.bio per ?von= um); bleibt im Tab erhalten.
 const TAB_LABELS = { '018bio': '018.BIO', '0nefinity018bio': '0nefinity.018.BIO',
-    'dev018bio': 'dev.018.BIO', '018bio0nefinitylove': '018.BIO.0nefinity.love', '0nefinitylove018bio': '0nefinity.love.018.BIO' };
+    'dev018bio': 'dev.018.BIO', '018bio0nefinitylove': '018.BIO.0nefinity.love', '0nefinitylove018bio': '0nefinity.love.018.BIO',
+    '0180nefinitylove': '018.0nefinity.love', 'bio0nefinitylove': 'BIO.0nefinity.love' };
 function resolveTabLabel() {
     let label = null;
     try {
