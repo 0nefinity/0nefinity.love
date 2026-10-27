@@ -120,13 +120,19 @@
     // ─── Ansicht ───
     // Einzelnes pi: Ganzzahl und Dezimalpunkt sind ein statisches Overlay (nie Teil des Stroms); ONE_DOT = false ist der alte Zustand (Punkt im Strom).
     const ONE_DOT = true, DOT_ALPHA = 1;
+    let dotCache = null;   // dotMetrics (unten); hier, weil leftMax es schon beim Anlegen der Ansicht braucht
+    const ORIGIN = UnfoldingView.MARGIN + 24;   // Zelle 0 (die 3); links davon 24 px Greifflaeche fuer das linke Ende
     const fontSize = () => Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
     const cellCtx = document.createElement('canvas').getContext('2d');
     const [intPart0, decimals0] = chainStart();
     const view = UnfoldingView.create(canvas, {
       intPart: intPart0, decimals: decimals0,   // schon beim ersten Layout da: die Grenzen richten sich nach der Kettenlaenge
       // Einzelnes pi: wie ein Glied. Ganzzahl und Punkt zeichnet das Overlay (statisch), der Strom nur die Nachkommastellen jenseits des Punkts.
-      dot: !ONE_DOT, fixedStart: true, origin: UnfoldingView.MARGIN, rCells: 1.5, rMinCells: 1.5,
+      dot: !ONE_DOT, fixedStart: true, origin: ORIGIN, rCells: 1.5, rMinCells: 1.5,
+      // Linkes Ende (die 3) einschiebbar: "|.141". L darf bis dicht an den Punkt; liegt R auf dem Punkt (Strich deckt ihn), bis auf ihn: ein Strich.
+      leftGrip: true,
+      clear: () => dotBand,
+      leftMax: (R) => { const pt = ORIGIN + 1.5 * cellW(), s = dotMetrics().half + 3; return pt - s + Math.max(0, s - Math.max(0, R - pt)); },
       colorElement: stage,
       rate: () => -driftValue,
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
@@ -412,8 +418,8 @@
           let left = it.dir === 'r' ? bd(i) - p0 : bd(i + 1) + p0 - slotW, width = slotW, z = 1;
           // Das verdichtete Ende stoesst ohne Luecke an den Punkt des Nachbarn (Ende = Rand - MARGIN; Punkt = Tintenrand).
           it.abut = false;
-          if (ABUT && nx && it.dir === 'r' && nx.dir === 'r') { width = cx[i + 1] - dh + MARGIN - left; z = 2; it.abut = true; }
-          if (ABUT && i > 0 && it.dir === 'l' && multi.items[i - 1].dir === 'l') { const r = left + width; left = cx[i - 1] + dh - MARGIN; width = r - left; z = 2; it.abut = true; }
+          if (ABUT && nx && it.dir === 'r' && nx.dir === 'r') { width = cx[i + 1] - dh - ABUT_GAP + MARGIN - left; z = 2; it.abut = true; }
+          if (ABUT && i > 0 && it.dir === 'l' && multi.items[i - 1].dir === 'l') { const r = left + width; left = cx[i - 1] + dh + ABUT_GAP - MARGIN; width = r - left; z = 2; it.abut = true; }
           if (!it.abut) z = 3;   // freies Ende ueber dem Nachbarn: ganz eingeschoben liegt es unter dessen Stossstelle und liesse sich sonst nicht greifen
           it.rot = 0;
           it.cl = cx[i] - left;   // centrum in Canvas-Koordinaten
@@ -453,13 +459,13 @@
     // Der Dezimalpunkt: genau einer je Verbindungsstelle, auf einer eigenen Canvas ueber den Gliedern, nie Teil einer Kette
     // (die Glieder zeichnen ihn nicht, dot: false), damit er beim Sausen, Ziehen und Rad fest steht. Das Glyph "." der Schrift,
     // waagerecht mit der Tintenmitte auf dem centrum, senkrecht wie die Ziffern (Grundlinie, nicht Mitte).
+    const ABUT_GAP = 4;   // freier Streifen zwischen verdichtetem Ende und Punkt, sonst verschmilzt der Punkt mit dem Block
     const ABUT = true, CLIP = true, DEDUPE = true, PUNKT_X = (pt) => pt.x;
     // Lage des Punkts aus der echten Tinte (Pixelmessung), nicht aus TextMetrics (WebKit liefert dort andere Werte):
     // half = halbe Tintenbreite, dx = Tintenmitte rechts vom Zeichenpunkt (textAlign center), dy = Verschiebung, mit der die
     // Unterkante des Punkts auf der Unterkante der Ziffer "1" liegt (Grundlinie wie in "3.14").
     const single = { punkt: null, points: [] };
     const singleInt = () => String(constOf(cid) ? constOf(cid).intPart : 3);
-    let dotCache = null;
     function dotMetrics() {
       const fs = fontSize();
       if (dotCache && dotCache.fs === fs) return dotCache;
@@ -506,10 +512,6 @@
       const covered = !multi && view && canvas.getBoundingClientRect().left + view.state().R - stage.getBoundingClientRect().left < pts[0].x + dm.half;
       if (!covered) for (const q of pts) g.fillText('.', (PUNKT_X(q) - dm.dx) * dpr, (q.y + dm.dy) * dpr);
       g.globalAlpha = 1;
-      if (!multi) {   // Ganzzahl buendig links vom Punkt, in Zellen wie die Ziffern des Strangs
-        const ip = singleInt(), w = cellW();
-        for (let k = 0; k < ip.length; k++) g.fillText(ip[k], (pts[0].x - (ip.length - k) * w) * dpr, pts[0].y * dpr);
-      }
     }
     // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
     function starLocal(it, e) {
@@ -523,6 +525,7 @@
       view.setRemote(null);
       view.setLocked(true);
       canvas.style.visibility = 'hidden';
+      if (single.punkt) single.punkt.style.display = 'none';   // sonst bleibt "3." des Einzelmodus stehen und druckt ueber die Glieder
       limitState = null;
       piError = null;
       piNotice = null;
@@ -568,6 +571,7 @@
     function toSingle() {
       teardownMulti();
       canvas.style.visibility = '';
+      if (single.punkt) single.punkt.style.display = '';
       cid = glieder[0].c;
       document.title = cid === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(cid);
       panel.set('const', cid);
@@ -617,17 +621,18 @@
     }
     // Einzelnes pi/e/...: die Canvas liegt wie ein Glied (Anfang = Zelle der Ganzzahl), die Ganzzahl steht buendig links vom Punkt,
     // der Punkt in der Mitte der freien Flaeche; beides zeichnet das Overlay, der Strom ist rechts vom Punkt sichtbar.
+    let dotBand = null;
     function centreSingle() {
       if (multi) return;
       const A = freeArea(), SW = stage.clientWidth, w = cellW(), ip = singleInt().length;
-      const left = A.cx - (ip + 0.5) * w - MARGIN;
+      const left = A.cx - (ip + 0.5) * w - ORIGIN;
       Object.assign(canvas.style, { position: 'absolute', left: left + 'px', top: '0px', width: (SW - left) + 'px', height: A.y1 + 'px', margin: '0' });
       if (ONE_DOT) {
-        // eingeschoben (R am Punkt): der Strich sitzt auf dem Punkt, nie links davon abgeschnitten; herausgezogen: Strom beginnt hinter dem Punkt
-        const pushedIn = view && canvas.getBoundingClientRect().left + view.state().R - stage.getBoundingClientRect().left < A.cx + dotMetrics().half;
-        inkMask(canvas, 'from', A.cx + (pushedIn ? -0.9 : dotMetrics().half + 0.5) - left);
+        const hh = dotMetrics().half + 1.5;
+        dotBand = [A.cx - hh - left, A.cx + hh - left];   // Freihaltezone um den Punkt, Canvas-Koordinaten (das Modul spart sie je Bild aus)
       }
-      else inkMask(canvas, 'from', -1e6);
+      // keine Maske: WebKit blendet bei einem Verlauf mit Stopp bei -1e6 px die ganze Zeichenflaeche aus
+      canvas.style.maskImage = canvas.style.webkitMaskImage = ''; delete canvas.dataset.inkSide; delete canvas.dataset.inkAt;
       view.resize();
       drawDots([{ x: A.cx, y: A.cy }]);
     }

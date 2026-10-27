@@ -17,6 +17,7 @@
  *     fixedEnd          // optional (mit fixedStart): true oder Funktion -> auch R steht fest, kein Griff am Ende; nur der Inhalt (Wischen, Rad) bewegt sich
  *     endCursor         // optional: CSS-Cursor der Ziehzone eines freien Endes (String oder Funktion), Standard 'ew-resize'
  *     rMinCells         // optional: kleinste Lage von R in Zellen ab L (Standard 0)
+ *     leftGrip          // optional (mit fixedStart, origin, rMinCells, leftMax): auch L ist ein freies Ende; ziehbar von L - HIT bis zum Ende der lesbaren Ziffern, eingeschoben bis leftMax(R) (Zahl oder Funktion); R-Minimum ist dann origin + rMinCells Zellen
  *     fixedStart        // optional: true = L (Anfang/centrum) steht fest; greifbar sind das aeussere Ende R und der Inhalt (Wischen, Mausrad schieben nur die Ziffern durch)
  *     origin            // optional: Lage der Ganzzahl beim Start (CSS-px ab Anfang der Achse; Standard: Mitte)
  *     rCells            // optional: Anfangslage von R in Zellen rechts von X0 (Standard 1: nur die Ganzzahl steht davor)
@@ -230,12 +231,15 @@
         L = opts.fixedStart ? Math.max(MARGIN, L) : Math.max(MARGIN, Math.min(L, R - 2 * dd));   // fixedStart: L steht fest am Punkt
         if (X0 > L) X0 = L;
       }
+      if (opts.fixedStart && opts.leftGrip) L = Math.max(+opts.origin, Math.min(L, leftMax()));
       R = Math.max(R, L + 2 * dd, rFloor());
       dirty = true;
     }
+    // Linkes Ende (leftGrip): L darf bis leftMax() vorrucken (Seite legt es fest, abhaengig vom Punkt und von R)
+    const leftMax = () => (typeof opts.leftMax === 'function' ? +opts.leftMax(R) : +opts.leftMax);
 
     // Kleinste Lage von R: L + rMinCells Zellen (Standard 0 = ganz auf L); das Ende laesst sich bis auf den Dezimalpunkt einschieben
-    const rFloor = () => L + (opts.rMinCells !== undefined ? +opts.rMinCells : 0) * w;
+    const rFloor = () => (opts.leftGrip ? +opts.origin : L) + (opts.rMinCells !== undefined ? +opts.rMinCells : 0) * w;   // leftGrip: der Punkt liegt fest, R folgt L nicht
     function clampX0() { X0 = Math.max(X0, R - deff() - avail()); }
 
     function rolledLeft() { return X0 < L - 0.5; }
@@ -545,6 +549,11 @@
       infinity();
       flush(zoneL, y0, hd);
       flush(zoneR, y0, hd);
+      // Freihaltezone (z. B. fuer den Dezimalpunkt der Seite): dort bleibt die Tinte weg, ausser R sitzt selbst darin (Strich auf dem Punkt)
+      if (opts.clear) {
+        const cb = opts.clear();
+        if (cb && !(R >= cb[0] && R <= cb[1])) ctx.clearRect(Math.floor(cb[0] * dpr), 0, Math.ceil((cb[1] - cb[0]) * dpr), canvas.height);
+      }
       const ni = pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') : 'null';
       info = ni;
       underline(y0);
@@ -666,7 +675,9 @@
       if (opts.fixedStart) {
         // fixedEnd (Funktion): beide Enden stehen fest (Glied zwischen zwei Punkten), nur der Inhalt laesst sich schieben
         const endFixed = typeof opts.fixedEnd === 'function' ? !!opts.fixedEnd() : !!opts.fixedEnd;
-        if (!endFixed && inR) return 'R';
+        const grabL = !!opts.leftGrip && !endFixed && inL;
+        if (!endFixed && inR && !(grabL && R - L < 2 * HIT && x < (L + R) / 2)) return 'R';
+        if (grabL) return 'L';
         return x > L && x < R ? 'swipe' : null;
       }
       const rolled = rolledLeft();
@@ -728,6 +739,8 @@
       } else if (drag.mode === 'three') {
         X0 = drag.X0 + dx;
         mode = 'three';
+      } else if (drag.mode === 'L' && opts.fixedStart) {
+        L = Math.max(+opts.origin, Math.min(leftMax(), drag.L + dx));   // eingeschoben: die Ziffern bleiben stehen, nur L rueckt vor
       } else if (drag.mode === 'L') {
         const Lt = Math.max(MARGIN, Math.min(R, drag.L + dx));
         // Erreicht L die 3, zieht L die 3 mit (offen: X0 = L).
@@ -853,6 +866,7 @@
       settle('three');
     }
     function rewind() {
+      if (opts.leftGrip) L = +opts.origin;   // ein eingeschobenes linkes Ende kommt mit zurueck
       X0 = L;
       settle('three');
     }
@@ -901,7 +915,7 @@
       // Nur lesend (Debug-Anzeige, Tests): Ziehzonen in Canvas-px, [von, bis]; links nur wo das linke Ende ziehbar ist
       zones() {
         const Z = zoneEdges();
-        return { r: [Z.r, R + HIT], l: opts.fixedStart ? null : [L - HIT, Z.l], L, R, X0 };
+        return { r: [Z.r, R + HIT], l: opts.fixedStart && !opts.leftGrip ? null : [L - HIT, Z.l], L, R, X0 };
       },
       // Testhaken: ein Bild rendern und je Stauchspalte festhalten, was dort gezaehlt wurde (Kettenbereich a..b, Zahl je Zeichen
       // aus Kette und Quelle, fehlende Stellen, Unendlich) und welche Tinte die Spalte vor der Kappung traegt (raw: Summe ueber
