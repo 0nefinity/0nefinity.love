@@ -885,4 +885,42 @@ if (document.fonts && typeof document.fonts.ready?.then === 'function') {
     document.fonts.ready.then(scheduleFitPreBlocks);
 }
 
+// Autofill-Waechter: Chrome/Android bietet an Textfeldern sonst Passwort- und Login-Vorschlaege an.
+// Jedes Textfeld (auch spaeter von anderen Skripten erzeugte) bekommt die staerkste bekannte
+// Kombination. Ausgenommen: Login-Felder (type=password, autocomplete username/*-password,
+// oder innerhalb von [data-login]). Test: tests/autofill/run.js
+(() => {
+    const SKIP_TYPES = new Set(['checkbox', 'radio', 'range', 'color', 'button', 'submit', 'reset', 'hidden', 'file', 'image']);
+    const LOGIN_AC = /(^|\s)(username|current-password|new-password|one-time-code|webauthn)(\s|$)/;
+    const isLogin = el => el.type === 'password'
+        || LOGIN_AC.test(el.getAttribute('autocomplete') || '')
+        || !!el.closest('[data-login]');
+    const guard = el => {
+        if (el.type !== undefined && SKIP_TYPES.has(el.type)) return;
+        if (isLogin(el)) return;
+        if (el.getAttribute('autocomplete') !== 'off') el.setAttribute('autocomplete', 'off');
+        if (el.tagName === 'TEXTAREA' || el.type === 'text' || el.type === 'search' || el.type === 'number') {
+            el.setAttribute('autocorrect', 'off');
+            el.setAttribute('autocapitalize', 'off');
+            el.spellcheck = false;
+        }
+        ['data-1p-ignore', 'data-bwignore'].forEach(a => { if (!el.hasAttribute(a)) el.setAttribute(a, ''); });
+        el.setAttribute('data-lpignore', 'true');
+        el.setAttribute('data-form-type', 'other');
+        el.setAttribute('data-protonpass-ignore', 'true');
+    };
+    const sweep = root => {
+        if (root.nodeType !== 1) return;
+        if (root.matches('input,textarea')) guard(root);
+        root.querySelectorAll('input,textarea').forEach(guard);
+    };
+    sweep(document.documentElement);
+    new MutationObserver(muts => {
+        for (const m of muts) {
+            if (m.type === 'attributes') guard(m.target);
+            else m.addedNodes.forEach(sweep);
+        }
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete'] });
+})();
+
 }); // Ende DOMContentLoaded
