@@ -1341,9 +1341,10 @@ canvas {
         onResize: n => setSymbolCount(n),
         min: 0,
         layout: 'column',
+        heading: 'Symbole',
+        toggle: { key: 'sync', label: 'sync', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } },
         side: { key: 'equivs', label: 'Separator', values: cfg.equivs.slice(), onChange: (i, v) => { cfg.equivs[i] = v; } },
       });
-      panel.addToggle('sync', { label: 'sync', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } });
       panel.addDivider();
 
       const autoToggleChange = v => {
