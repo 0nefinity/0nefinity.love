@@ -2019,6 +2019,71 @@ pre {
     }
 }
 
+/* Voreinstellung speichern (nur im Bearbeiten-Modus des Editors, controls.js) */
+.ctrl-default-pin {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent !important;
+    color: var(--ui-text-70) !important;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.45;
+    z-index: 1;
+}
+
+html.oe-editing .ctrl-default-pin {
+    display: inline-flex;
+}
+
+/* Platz fuer die Nadel, damit sie weder Label noch Symbolfelder verdeckt */
+html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
+    padding-left: 26px;
+}
+
+.ctrl-default-pin svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.ctrl-default-pin:hover,
+.ctrl-default-pin:focus-visible {
+    opacity: 1;
+}
+
+.ctrl-default-pin.active {
+    opacity: 1;
+    color: var(--text-color, #fff) !important;
+}
+
+.ctrl-default-pin.active svg {
+    fill: currentColor;
+}
+
+@media (max-width: 768px) {
+    .ctrl-default-pin {
+        width: 32px;
+        height: 32px;
+    }
+
+    html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
+        padding-left: 32px;
+    }
+}
+
 .ctrl-textarea {
     background: var(--ui-fill-05);
     border: 1px solid var(--ui-border);
