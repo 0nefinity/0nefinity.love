@@ -177,12 +177,43 @@
       return host;
     }
 
+    // In Ueberschriften ist alles schon fett: execCommand('bold') wuerde dort ein font-weight-Span setzen.
+    // Stattdessen strong setzen bzw. loesen, ohne Span.
+    function boldBlock(host) {
+      return parseInt(getComputedStyle(host).fontWeight, 10) >= 600;
+    }
+
+    function toggleStrong(host) {
+      const sel = getSelection();
+      if (!sel.rangeCount) throw new Error('keine Auswahl');
+      const r = sel.getRangeAt(0);
+      if (r.collapsed || !host.contains(r.commonAncestorContainer)) throw new Error('fett nicht ausführbar');
+      let el = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
+      while (el && el !== host && el.tagName !== 'STRONG' && el.tagName !== 'B') el = el.parentElement;
+      if (el && el !== host) {
+        const kids = [...el.childNodes];
+        el.replaceWith(...kids);
+        host.normalize();
+        return;
+      }
+      const strong = document.createElement('strong');
+      strong.appendChild(r.extractContents());
+      r.insertNode(strong);
+      sel.removeAllRanges();
+      const nr = document.createRange();
+      nr.selectNodeContents(strong);
+      sel.addRange(nr);
+    }
+
     function run(cmd) {
       const host = current();
       if (!host) return;
       opts.before(host);
-      document.execCommand('styleWithCSS', false, false);
-      if (!document.execCommand(cmd)) throw new Error(cmd + ' nicht ausführbar');
+      if (cmd === 'bold' && boldBlock(host)) toggleStrong(host);
+      else {
+        document.execCommand('styleWithCSS', false, false);
+        if (!document.execCommand(cmd)) throw new Error(cmd + ' nicht ausführbar');
+      }
       tidy(host);
       dropEmpty(host);
       opts.after();
@@ -352,8 +383,10 @@
     function key(e) {
       if (!(e.ctrlKey || e.metaKey)) return null;
       if (e.altKey) {
+        // Deutsche Tastatur: AltGr meldet Strg+Alt und tippt }, ², ³; nur echte Ziffer-Taste zaehlt.
+        if (e.getModifierState && e.getModifierState('AltGraph')) return null;
         const m = /^(?:Digit|Numpad)([0-3])$/.exec(e.code || '');
-        return m ? () => block(BLOCKS[+m[1]][0]) : null;
+        return m && e.key === m[1] ? () => block(BLOCKS[+m[1]][0]) : null;
       }
       const k = e.key.toLowerCase();
       if (e.shiftKey && (e.code === 'Period' || e.code === 'Comma')) return guard(() => size(e.code === 'Period' ? 1 : -1));
