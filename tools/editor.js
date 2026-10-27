@@ -168,6 +168,7 @@
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
       opts.headers['X-0ne-Edit'] = '1';
+      if (csrf) opts.headers['X-0ne-Csrf'] = csrf;
       opts.body = JSON.stringify(body);
     }
     let res;
@@ -2364,7 +2365,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     try {
       const r = await fetch(CFG.logout, {
         method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-0ne-Edit': '1', 'X-0ne-Csrf': csrf },
         body: JSON.stringify({ csrf }),
       });
       await r.json().catch(() => null);
