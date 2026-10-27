@@ -270,17 +270,32 @@
     }
     const isReadable = () => Math.abs(st.winkel) < 1e-6 && Math.abs(st.verschiebung - 1) < 1e-6;
 
-    // ─── Ziehen ───
-    // Ein Finger / Maus: waagerecht Winkel, senkrecht Verschiebung. Zwei Finger, Mausrad: durch das Gespräch wandern.
+    // ─── Ziehen: wie an einem Drehknopf ───
+    // Der Zeiger kreist um die Bildmitte: der Winkelzuwachs je Ereignis (auf (-180, 180] normalisiert, aufsummiert)
+    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Zwei Finger, Mausrad: durch das Gespraech wandern.
     const pointers = new Map();
-    let lastTap = 0, moved = 0, pairY = null;
-    const WINKEL_PRO_PX = 0.01, VERSCH_PRO_PX = 1 / 320;
+    let lastTap = 0, moved = 0, pairY = null, knob = null;
+    const WINKEL_PRO_GRAD = 0.05, VERSCH_PRO_PX = 1 / 320;
 
+    function polar(e) {
+      const r = canvas.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      return { th: Math.atan2(dy, dx), r: Math.hypot(dx, dy) };
+    }
+    function knobStart(e) { knob = polar(e); }
+    function knobMove(e) {
+      const q = polar(e);
+      let d = q.th - knob.th;
+      if (d > Math.PI) d -= 2 * Math.PI; else if (d <= -Math.PI) d += 2 * Math.PI;
+      setState({ winkel: st.winkel + d / DEG * WINKEL_PRO_GRAD, verschiebung: st.verschiebung + (q.r - knob.r) * VERSCH_PRO_PX });
+      knob = q;
+    }
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       anim = null;
       moved = 0;
+      if (pointers.size === 1) knobStart(e);
       pairY = pointers.size === 2 ? avgY() : null;
       canvas.classList.add('zieht');
     });
@@ -291,7 +306,8 @@
       p.x = e.clientX; p.y = e.clientY;
       moved += Math.abs(dx) + Math.abs(dy);
       if (pointers.size === 1) {
-        setState({ winkel: st.winkel + dx * WINKEL_PRO_PX, verschiebung: st.verschiebung + dy * VERSCH_PRO_PX });
+        if (!knob) knobStart(e);
+        knobMove(e);
       } else if (pointers.size === 2) {
         const y = avgY();
         if (pairY !== null) scrollBy(-(y - pairY));
@@ -302,7 +318,8 @@
       if (!pointers.has(e.pointerId)) return;
       pointers.delete(e.pointerId);
       pairY = pointers.size === 2 ? avgY() : null;
-      if (!pointers.size) canvas.classList.remove('zieht');
+      if (pointers.size === 1) { const [rest] = pointers.values(); knob = polar({ clientX: rest.x, clientY: rest.y }); }
+      if (!pointers.size) { knob = null; canvas.classList.remove('zieht'); }
       if (e.type === 'pointerup' && !pointers.size && moved < 8) {
         const now = performance.now();
         if (now - lastTap < 320) { animateTo(isReadable() ? NULL : READABLE, 700); lastTap = 0; }
