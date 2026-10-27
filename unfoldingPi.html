@@ -150,7 +150,7 @@
     // ─── Ansicht ───
     // Einzelnes pi: Ganzzahl und Dezimalpunkt sind ein statisches Overlay (nie Teil des Stroms); ONE_DOT = false ist der alte Zustand (Punkt im Strom).
     const ONE_DOT = true, DOT_ALPHA = 1;
-    let dotCache = null;   // dotMetrics (unten); hier, weil leftMax es schon beim Anlegen der Ansicht braucht
+    let dotCache = null;   // dotMetrics (unten); hier, weil es schon beim Anlegen der Ansicht braucht
     const ORIGIN = UnfoldingView.MARGIN + 24;   // Zelle 0 (die 3); links davon 24 px Greifflaeche fuer das linke Ende
     const fontSize = () => Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
     const cellCtx = document.createElement('canvas').getContext('2d');
@@ -159,10 +159,9 @@
       intPart: intPart0, decimals: decimals0,   // schon beim ersten Layout da: die Grenzen richten sich nach der Kettenlaenge
       // Einzelnes pi: wie ein Glied. Ganzzahl und Punkt zeichnet das Overlay (statisch), der Strom nur die Nachkommastellen jenseits des Punkts.
       dot: !ONE_DOT, fixedStart: true, origin: ORIGIN, rCells: 1.5, rMinCells: 1.5,
-      // Linkes Ende (die 3) einschiebbar: "|.141". L darf bis dicht an den Punkt; liegt R auf dem Punkt (Strich deckt ihn), bis auf ihn: ein Strich.
-      leftGrip: true,
-      clear: () => dotBand,
-      leftMax: (R) => { const pt = ORIGIN + 1.5 * cellW(), s = dotMetrics().half + 3; return pt - s + Math.max(0, s - Math.max(0, R - pt)); },
+      // Linkes Ende (die 3) faltet sich in den Punkt: "|.141". fold: Die Ganzzahl endet am Punkt, die Stellen ueberqueren ihn nie (Sausen, Rad, Wischen
+      // schieben nur sie); liegen beide Enden auf dem Punkt, ist es ein Strich.
+      leftGrip: true, fold: true,
       colorElement: stage,
       rate: () => -driftValue,
       // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
@@ -540,7 +539,10 @@
       if (!multi && !ONE_DOT) return;
       g.globalAlpha = DOT_ALPHA;
       // Ganz eingeschoben liegt der Strich auf dem Punkt und deckt ihn ("3|"); erst beim Herausziehen erscheint er
-      const covered = !multi && view && canvas.getBoundingClientRect().left + view.state().R - stage.getBoundingClientRect().left < pts[0].x + dm.half;
+      const covered = !multi && view && (() => {
+        const st = view.state(), off = canvas.getBoundingClientRect().left - stage.getBoundingClientRect().left;
+        return off + st.R < pts[0].x + dm.half || off + st.L > pts[0].x - dm.half || st.uLeft > 0.5;   // Strich/Falte auf dem Punkt: nur sie, kein Punkt darunter
+      })();
       if (!covered) for (const q of pts) g.fillText('.', (PUNKT_X(q) - dm.dx) * dpr, (q.y + dm.dy) * dpr);
       g.globalAlpha = 1;
     }
@@ -706,16 +708,11 @@
     }
     // Einzelnes pi/e/...: die Canvas liegt wie ein Glied (Anfang = Zelle der Ganzzahl), die Ganzzahl steht buendig links vom Punkt,
     // der Punkt in der Mitte der freien Flaeche; beides zeichnet das Overlay, der Strom ist rechts vom Punkt sichtbar.
-    let dotBand = null;
     function centreSingle() {
       if (multi) return;
       const A = freeArea(), SW = stage.clientWidth, w = cellW(), ip = singleInt().length;
       const left = A.cx - (ip + 0.5) * w - ORIGIN;
       Object.assign(canvas.style, { position: 'absolute', left: left + 'px', top: '0px', width: (SW - left) + 'px', height: A.y1 + 'px', margin: '0' });
-      if (ONE_DOT) {
-        const hh = dotMetrics().half + 1.5;
-        dotBand = [A.cx - hh - left, A.cx + hh - left];   // Freihaltezone um den Punkt, Canvas-Koordinaten (das Modul spart sie je Bild aus)
-      }
       // keine Maske: WebKit blendet bei einem Verlauf mit Stopp bei -1e6 px die ganze Zeichenflaeche aus
       canvas.style.maskImage = canvas.style.webkitMaskImage = ''; delete canvas.dataset.inkSide; delete canvas.dataset.inkAt;
       view.resize();
@@ -800,7 +797,7 @@
     // Strich eingeschoben/herausgezogen: Punkt neu zeichnen, sobald sich R aendert (Einzelmodus)
     let lastR = null;
     (function watchR() {
-      if (!multi && view) { const r = view.state().R; if (r !== lastR) { lastR = r; centreSingle(); drawDots(single.points.length ? single.points : [{ x: freeArea().cx, y: freeArea().cy }]); } }
+      if (!multi && view) { const st = view.state(), r = st.R + ':' + st.L + ':' + (st.uLeft > 0.5); if (r !== lastR) { lastR = r; centreSingle(); drawDots(single.points.length ? single.points : [{ x: freeArea().cx, y: freeArea().cy }]); } }
       requestAnimationFrame(watchR);
     })();
     panel.addSlider('drift', {
