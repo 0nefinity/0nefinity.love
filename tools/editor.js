@@ -9,7 +9,7 @@
 // Hintergrund. Markierter Text bekommt eine kleine Leiste (fett, kursiv, Link, Kommentar, Formatierung weg).
 // Kommentare (HTML und JS) erscheinen mit der Sprechblase an ihrem Platz und sind dort direkt schreibbar.
 // Alle Knoepfe rendern aus einem Zustand (render()).
-// Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar unter den Symbolen.
+// Backend: eigener Editor-Dienst hinter /api/edit/ (nicht in diesem Repo). Fehler stehen sichtbar unter den Symbolen.
 // Andere Seiten (timbreitmar.de) binden dieselbe Datei als /api/edit/editor.js ein und stellen sie per
 // data-Attribut um: data-mode="direct" (eine Arbeitskopie, Speichern ist sofort live, kein Veroeffentlichen),
 // data-me / data-logout (eigener Login des Editor-Dienstes statt /api/auth/*).

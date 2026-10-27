@@ -3,8 +3,8 @@
 // --local ersetzt meta.js der Zielseite durch die Datei (Test vor dem Deploy).
 // Playwright/Chromium per Umgebung: PLAYWRIGHT_PATH, CHROME_PATH.
 const fs = require('fs');
-const { chromium, devices } = require(process.env.PLAYWRIGHT_PATH || '/home/timbr/winkelapp/web/node_modules/playwright');
-const CHROME = process.env.CHROME_PATH || '/home/timbr/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell';
+const { chromium, devices } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+const CHROME = process.env.CHROME_PATH || undefined;
 
 const args = process.argv.slice(2);
 const base = args.find(a => a.startsWith('http')) || 'https://dev.0nefinity.love';

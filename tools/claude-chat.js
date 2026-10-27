@@ -1,7 +1,7 @@
 // Seiten-Chat: eingeloggt (dev-Login, /api/auth/me) bekommt die Seite rechts einen eingeklappten Knopf
 // "claude"; offen zeigt er den Verlauf der zugeordneten Claude-Sitzung und ein Eingabefeld.
 // Der eigentliche Chat laeuft in einem iframe auf https://kanal.0nefinity.love (eigene Origin, eigener
-// Passkey-Login, Dienst ~/0nefinity/seitenchat/server.py). Diese Datei sieht keine Nachrichten und keine
+// Passkey-Login, eigener Dienst ausserhalb dieses Repos). Diese Datei sieht keine Nachrichten und keine
 // Zugangsdaten; der dev-Login entscheidet nur, ob der Knopf erscheint.
 // Einbinden: <script src="/tools/claude-chat.js" defer></script>
 (function claudeChat() {
