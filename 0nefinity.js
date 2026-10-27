@@ -1331,7 +1331,6 @@ canvas {
       // Oberste Zeile: Symbole untereinander, Trennzeichen daneben, + / - darunter aendert die Anzahl
       const setSymbolCount = (n) => {
         cfg.symbolCount = Math.max(0, Math.floor(n));
-        panel.set('symbolCount', cfg.symbolCount);
         rebuildSymbolRows();
       };
       panel.addSymbolRow('labels', {
@@ -1339,10 +1338,12 @@ canvas {
         onChange: (i, v) => { cfg.labels[i] = v; },
         onAdd: () => setSymbolCount(cfg.symbolCount + 1),
         onRemove: () => setSymbolCount(cfg.symbolCount - 1),
+        onResize: n => setSymbolCount(n),
         min: 0,
         layout: 'column',
         side: { key: 'equivs', label: 'Separator', values: cfg.equivs.slice(), onChange: (i, v) => { cfg.equivs[i] = v; } },
       });
+      panel.addToggle('sync', { label: 'sync', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } });
       panel.addDivider();
 
       const autoToggleChange = v => {
@@ -1477,14 +1478,6 @@ canvas {
         })
         .endSection();
 
-      panel.addDivider();
-      panel.beginSection('symbols')
-        .addSlider('symbolCount', {
-          label: 'Symbol count', min: 0, max: 12, step: 1, decimals: 0, value: cfg.symbolCount,
-          onChange: v => { cfg.symbolCount = Math.max(0, Math.floor(num(v))); rebuildSymbolRows(); }
-        })
-        .addToggle('sync', { label: 'Same separator for all', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } })
-        .endSection();
 
       function rebuildSymbolRows() {
         const n = cfg.symbolCount;
