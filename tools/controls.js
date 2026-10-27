@@ -375,6 +375,138 @@
         };
     }
 
+    // === VOREINSTELLUNGEN JE SEITE ===
+    // Der Editor (dev, eingeloggt) schreibt { "<key>": Wert } als <script type="application/json"
+    // id="control-defaults"> in den Head der Seite; Veroeffentlichen bringt sie mit der Seite live.
+    // Vorrang: URL > Voreinstellung > Code-Wert. Traegt die URL Zustand (ausser ?von=), gilt nur die URL.
+    const DEFAULTS_ID = 'control-defaults';
+    const DEFAULTS_RE = /[ \t]*<script type="application\/json" id="control-defaults">[\s\S]*?<\/script>\n?/;
+
+    const pageDefaults = {
+        parse(text) {
+            if (text == null) return {};
+            let data;
+            try { data = JSON.parse(text); } catch (e) { throw new Error(`#${DEFAULTS_ID}: kaputtes JSON (${e.message})`); }
+            if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`#${DEFAULTS_ID}: erwartet ein Objekt`);
+            return data;
+        },
+        urlCarriesState(search) {
+            const p = new URLSearchParams(search || '');
+            p.delete('von');
+            return [...p.keys()].length > 0;
+        },
+        upsertScript(html, values) {
+            const rest = html.replace(DEFAULTS_RE, '');
+            if (!Object.keys(values).length) return rest;
+            const at = rest.search(/<\/head\s*>/i);
+            if (at < 0) throw new Error('Seite hat kein </head>, Voreinstellungen nicht gespeichert');
+            const json = JSON.stringify(values).replace(/</g, '\\u003c');
+            return rest.slice(0, at) + `<script type="application/json" id="${DEFAULTS_ID}">${json}</script>\n` + rest.slice(at);
+        },
+    };
+
+    let pageDefaultsCache = null;
+    function currentPageDefaults() {
+        if (pageDefaultsCache) return pageDefaultsCache;
+        const el = document.getElementById(DEFAULTS_ID);
+        let values = {};
+        try {
+            values = pageDefaults.parse(el ? el.textContent : null);
+        } catch (e) {
+            // Laut, aber die Seite laeuft mit den Code-Werten weiter: Besucher sollen keine kaputte Seite sehen.
+            console.error('[controls] ' + e.message);
+        }
+        pageDefaultsCache = { values, ignore: pageDefaults.urlCarriesState(location.search) };
+        return pageDefaultsCache;
+    }
+
+    function cloneValue(v) {
+        return v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v;
+    }
+
+    // seen: Keys, deren Code-Wert schon erfasst ist (Seiten, die ihr Panel neu bauen, uebergeben danach
+    // ihren aktuellen Stand, nicht den Code-Wert). code: der Code-Wert je Key.
+    const pageDefaultState = { seen: new Set(), code: {}, panels: [], watching: false };
+
+    function isEditing() {
+        return document.documentElement.classList.contains('oe-editing');
+    }
+
+    function watchEditMode() {
+        if (pageDefaultState.watching || typeof MutationObserver === 'undefined') return;
+        pageDefaultState.watching = true;
+        new MutationObserver(() => pageDefaultState.panels.forEach(p => p._syncDefaultPins()))
+            .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    async function editApi(method, route, body) {
+        const opts = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
+        if (body) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.headers['X-0ne-Edit'] = '1';
+            opts.body = JSON.stringify(body);
+        }
+        let res;
+        try {
+            res = await fetch('/api/edit/' + route, opts);
+        } catch (e) {
+            throw new Error('Editor-Dienst nicht erreichbar');
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data.error || 'HTTP ' + res.status) + (data.detail ? ' (' + data.detail + ')' : ''));
+        return data;
+    }
+
+    function defaultsToast(text, retry) {
+        document.querySelectorAll('.ctrl-defaults-toast').forEach(t => t.remove());
+        const t = document.createElement('div');
+        t.className = 'oe-toast ctrl-defaults-toast';
+        t.dataset.oeUi = '';
+        t.dataset.kind = retry ? 'error' : '';
+        t.setAttribute('role', retry ? 'alert' : 'status');
+        t.append(text);
+        const addBtn = (label, fn) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'oe-btn oe-small';
+            b.textContent = label;
+            b.addEventListener('click', () => { t.remove(); if (fn) fn(); });
+            t.append(b);
+        };
+        if (retry) {
+            addBtn('nochmal', retry);
+            addBtn('schließen');
+            console.error('[controls] ' + text);
+        } else {
+            setTimeout(() => t.remove(), 4000);
+        }
+        document.body.appendChild(t);
+    }
+
+    // Schreibt die Voreinstellungen in den Quelltext der Seite (Editor-Endpunkt "source", Commit auf
+    // claude-dev). Nacheinander, damit schnelle Klicks sich nicht gegenseitig ueberschreiben.
+    let defaultsQueue = Promise.resolve();
+    function savePageDefaults(mutate, okText) {
+        const run = async () => {
+            const path = location.pathname;
+            try {
+                const next = mutate({ ...currentPageDefaults().values });
+                const src = await editApi('GET', 'source?path=' + encodeURIComponent(path));
+                const r = await editApi('POST', 'source', { path, text: pageDefaults.upsertScript(src.text, next), sha: src.sha });
+                currentPageDefaults().values = next;
+                pageDefaultState.panels.forEach(p => p._markDefaultPins());
+                window.dispatchEvent(new CustomEvent('controls:defaults-saved', { detail: { live_differs: r.live_differs } }));
+                defaultsToast(okText);
+            } catch (e) {
+                defaultsToast('Voreinstellung nicht gespeichert: ' + e.message, () => savePageDefaults(mutate, okText));
+            }
+        };
+        defaultsQueue = defaultsQueue.then(run);
+        return defaultsQueue;
+    }
+
+    const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l-1 6 3 3.5H7L10 9zM12 12.5V21"/></svg>';
+
     // === PANEL CLASS ===
     class ControlPanel {
         constructor(options = {}) {
@@ -2286,6 +2418,7 @@
          * Add a unified Slider + Stepper row (Slider + [-] [input] [+])
          */
         addSlider(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, min, max, step, value, decimals = 0, onChange, transform = null } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2477,6 +2610,7 @@
          * Add a toggle checkbox row
          */
         addToggle(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, value = false, onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2552,6 +2686,7 @@
          * Add a select dropdown row
          */
         addSelect(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, options, value, onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2619,6 +2754,7 @@
          * Add a dropdown count picker row
          */
         addCountPicker(key, config) {
+            config = this._withPageDefault(key, config);
             const {
                 label,
                 options = [],
@@ -2699,6 +2835,7 @@
          * Add a text input row (textarea for multiline, resizable)
          */
         addText(key, config) {
+            config = this._withPageDefault(key, config);
             const { label, value = '', placeholder = '', onChange } = config;
             this.params[key] = value;
             if (onChange) this.callbacks[key] = onChange;
@@ -2725,6 +2862,7 @@
          * Add a single-line text input row
          */
         addInput(key, config) {
+            config = this._withPageDefault(key, config);
             const {
                 label,
                 value = '',
@@ -2765,6 +2903,7 @@
          * @param {Object} config - { values, labels?, label?, captions?, inputmode?, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
          */
         addSymbolRow(key, config) {
+            config = this._withPageDefault(key, config, 'values');
             const { values = [], labels = [], label = '', captions = null, inputmode = '', onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
             this.params[key] = values.slice();
             const row = document.createElement('div');
@@ -3374,6 +3513,7 @@
             btn.textContent = icon;
             bindResponsiveButtonActivation(btn, () => {
                 if (onClick) onClick();
+                this._reapplyPageDefaults();
             });
 
             // Insert before layout toggle (same logic as enableUndoRedo)
@@ -3598,6 +3738,117 @@
 
             this.headerButtonsEl.appendChild(btn);
             return this;
+        }
+
+        // === Voreinstellungen je Seite ===
+        // Erster Aufruf je Key: Code-Wert merken und durch die Voreinstellung ersetzen. Die Seite erfaehrt
+        // den Wert ueber ihr eigenes onChange, im Microtask nach ihrem synchronen Aufbau.
+        _withPageDefault(key, config, field = 'value') {
+            const st = pageDefaultState;
+            if (!st.panels.includes(this)) st.panels.push(this);
+            watchEditMode();
+            if (isEditing()) queueMicrotask(() => this._syncDefaultPins());
+            if (st.seen.has(key)) return config;
+            st.seen.add(key);
+            st.code[key] = cloneValue(config[field]);
+            const pd = currentPageDefaults();
+            if (pd.ignore || !Object.prototype.hasOwnProperty.call(pd.values, key)) return config;
+            const value = cloneValue(pd.values[key]);
+            if (field === 'values' && !(Array.isArray(value) && value.length === (config.values || []).length)) {
+                console.error(`[controls] Voreinstellung "${key}" passt nicht zur Zahl der Symbole, ignoriert`);
+                return config;
+            }
+            if (!this._pendingDefaults) {
+                this._pendingDefaults = [];
+                queueMicrotask(() => {
+                    const keys = this._pendingDefaults;
+                    this._pendingDefaults = null;
+                    keys.forEach(k => this._emitPageValue(k, st.code[k]));
+                });
+            }
+            this._pendingDefaults.push(key);
+            return { ...config, [field]: value };
+        }
+
+        _emitPageValue(key, before) {
+            const value = this.params[key];
+            const sym = this._symbolRows && this._symbolRows[key];
+            try {
+                if (sym) {
+                    if (sym.onChange) value.forEach((v, i) => { if (!before || before[i] !== v) sym.onChange(i, v, value); });
+                } else if (this.callbacks[key]) {
+                    this.callbacks[key](value, key);
+                }
+            } catch (e) {
+                console.error(`[controls] Voreinstellung "${key}" anwenden:`, e);
+            }
+        }
+
+        // Nach dem Reset der Seite: Voreinstellungen statt Code-Werte, auf allen Panels der Seite.
+        _reapplyPageDefaults() {
+            const { values } = currentPageDefaults();
+            for (const panel of pageDefaultState.panels) {
+                for (const key of Object.keys(values)) {
+                    if (!(key in panel.params)) continue;
+                    const sym = panel._symbolRows && panel._symbolRows[key];
+                    if (sym && !(Array.isArray(values[key]) && values[key].length === panel.params[key].length)) continue;
+                    panel.set(key, cloneValue(values[key]));
+                    panel._emitPageValue(key);
+                }
+            }
+        }
+
+        /** Voreinstellung eines Keys: aus dem Editor gesetzt, sonst der Wert aus dem Seitencode. */
+        defaultOf(key) {
+            const { values } = currentPageDefaults();
+            return cloneValue(Object.prototype.hasOwnProperty.call(values, key) ? values[key] : pageDefaultState.code[key]);
+        }
+
+        // Stecknadel je Zeile, nur im Bearbeiten-Modus des Editors (html.oe-editing).
+        _syncDefaultPins() {
+            if (!this.bodyEl || !isEditing()) return;
+            if (!this._pinObserver) {
+                this._pinObserver = new MutationObserver(() => { if (isEditing()) this._syncDefaultPins(); });
+                this._pinObserver.observe(this.bodyEl, { childList: true, subtree: true });
+            }
+            this.bodyEl.querySelectorAll('.ctrl-row[data-key]').forEach(row => {
+                const key = row.dataset.key;
+                if (!pageDefaultState.seen.has(key) || !(key in this.params) || row.querySelector(':scope > .ctrl-default-pin')) return;
+                const pin = document.createElement('button');
+                pin.type = 'button';
+                pin.className = 'ctrl-default-pin';
+                pin.dataset.oeUi = '';
+                pin.innerHTML = PIN_SVG;
+                pin.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const label = (row.querySelector('.ctrl-label')?.textContent || key).trim();
+                    const current = cloneValue(this.params[key]);
+                    const { values } = currentPageDefaults();
+                    const remove = Object.prototype.hasOwnProperty.call(values, key) && JSON.stringify(values[key]) === JSON.stringify(current);
+                    savePageDefaults(next => {
+                        if (remove) delete next[key]; else next[key] = current;
+                        return next;
+                    }, remove ? `Voreinstellung "${label}" entfernt` : `"${label}" ist jetzt Voreinstellung (auf dev)`);
+                });
+                row.appendChild(pin);
+            });
+            this._markDefaultPins();
+        }
+
+        _markDefaultPins() {
+            if (!this.bodyEl) return;
+            const { values } = currentPageDefaults();
+            this.bodyEl.querySelectorAll('.ctrl-default-pin').forEach(pin => {
+                const key = pin.parentElement.dataset.key;
+                const on = Object.prototype.hasOwnProperty.call(values, key);
+                pin.classList.toggle('active', on);
+                const title = on
+                    ? `Voreinstellung: ${JSON.stringify(values[key])}. Klick: aktuellen Wert setzen, bei gleichem Wert entfernen`
+                    : 'Aktuellen Wert als Voreinstellung speichern';
+                pin.title = title;
+                pin.setAttribute('aria-label', title);
+            });
         }
 
         /**
@@ -3826,6 +4077,9 @@
          * Inject CSS manually (auto-called on panel creation)
          */
         injectCSS,
+
+        /** Voreinstellungen je Seite (siehe VOREINSTELLUNGEN JE SEITE) */
+        pageDefaults,
 
         /**
          * List of standard fonts for pickers
