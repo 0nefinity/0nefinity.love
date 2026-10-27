@@ -86,6 +86,50 @@ function stripHtmlComments($content) {
     return $stripped === null ? $content : $stripped;
 }
 
+// Muster aus dem Block "intern: begin/end" in .htaccess (dort 404); der Viewer liefert dieselben Pfade nicht aus,
+// auch nicht bei direktem Aufruf von /tools/weird-text-viewer.php?path=... Fehlt der Block: 500 statt still offen.
+function internPatterns($documentRoot) {
+    $file = rtrim($documentRoot, '/') . '/.htaccess';
+    $lines = @file($file, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) {
+        failInclude('/.htaccess', 'not readable');
+    }
+    $lines = array_map('trim', $lines);
+    $start = array_search('# intern: begin', $lines, true);
+    $end = array_search('# intern: end', $lines, true);
+    if ($start === false || $end === false || $end <= $start) {
+        failInclude('/.htaccess', 'intern block missing');
+    }
+    $patterns = [];
+    foreach (array_slice($lines, $start + 1, $end - $start - 1) as $line) {
+        if ($line === '' || $line[0] === '#') {
+            continue;
+        }
+        if (preg_match('/^RewriteRule\s+"([^"]+)"\s+-\s+\[([^\]]*)\]$/', $line, $m) !== 1) {
+            failInclude('/.htaccess', 'unreadable intern line');
+        }
+        $flags = in_array('NC', explode(',', $m[2]), true) ? 'i' : '';
+        $patterns[] = '#' . str_replace('#', '\#', $m[1]) . '#' . $flags;
+    }
+    if (!$patterns) {
+        failInclude('/.htaccess', 'intern block empty');
+    }
+    return $patterns;
+}
+
+function isIntern($relativePath, $patterns) {
+    foreach ($patterns as $pattern) {
+        $hit = preg_match($pattern, $relativePath);
+        if ($hit === false) {
+            failInclude('/.htaccess', 'bad intern pattern ' . $pattern);
+        }
+        if ($hit === 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function resolveRequestedFile($documentRoot) {
     $requestedPath = (string)($_GET['path'] ?? '');
     if ($requestedPath === '' || strpos($requestedPath, "\0") !== false) {
@@ -124,6 +168,11 @@ function resolveRequestedFile($documentRoot) {
     $realRelative = ltrim(substr($normalizedRealPath, strlen($normalizedRoot)), '/');
     if (preg_match('#(^|/)\.(git|ssh|vscode|auth|php_tmp|htaccess|htpasswd|env[^/]*|gitignore|gitattributes|gitmodules)(/|$)#i', $realRelative) === 1
         || preg_match('#(^|/)\.(git|ssh|vscode|auth|php_tmp|htaccess|htpasswd|env[^/]*|gitignore|gitattributes|gitmodules)(/|$)#i', $normalizedRelativePath) === 1) {
+        failNotFound();
+    }
+
+    $intern = internPatterns($normalizedRoot);
+    if (isIntern($realRelative, $intern) || isIntern($normalizedRelativePath, $intern)) {
         failNotFound();
     }
 
