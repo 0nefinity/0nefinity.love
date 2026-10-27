@@ -4528,7 +4528,10 @@
                     range.step = getProjectedSliderStep(cfg ? cfg.step : undefined);
                     range.value = clamp(toSliderRangeValue(numericValue, cfg), bounds.min, bounds.max);
                 }
-                if (valueInput) valueInput.value = formatSliderControlValue(numericValue, decs, cfg);
+                if (valueInput) {
+                    valueInput.value = formatSliderControlValue(numericValue, decs, cfg);
+                    fitSliderValueInput(valueInput, cfg, numericValue, decs);
+                }
             }
 
             const textarea = row.querySelector('.ctrl-textarea');
