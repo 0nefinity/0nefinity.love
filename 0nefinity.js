@@ -1364,6 +1364,34 @@ canvas {
         rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
         panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
       };
+      // Reset-Knopf (controls.js): Choreografie von vorn, FPS wieder auf Bildschirm-Hz wie beim Laden.
+      const codeFps = cfg.fps;
+      panel.addResetButton({
+        onClick: () => {
+          const prev = { autoOffset, autoPausedAt, userChangedFps, snapshot: { ...snapshot } };
+          return () => {
+            ({ autoOffset, autoPausedAt, userChangedFps } = prev);
+            snapshot = prev.snapshot;
+            saveSnapshot();
+            if (autoSpeedEnabled) rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
+          };
+        },
+        afterReset: () => {
+          if (detectionDone && panel.get('fps') === codeFps) {
+            fps = detectedHz;
+            cfg.fps = fps;
+            panel.set('fps', fps);
+            updateSnapshotFactor(fps / 60);
+            userChangedFps = false;
+            updateFpsHint();
+          }
+          autoOffset = 0;
+          autoPausedAt = null;
+          resetSnapshot();
+          rotationSpeed = autoSpeedEnabled ? computeAutoSpeed(getWarpedElapsed()) : manualSpeed;
+          panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+        }
+      });
 
       panel.beginSection('speed')
         .addSlider('speed', {
