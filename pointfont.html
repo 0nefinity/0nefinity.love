@@ -618,7 +618,8 @@
 	            const text = panel.get('text') || '';
 	            if (!text.trim()) return 0;
 
-	            const mainFontSize = parseFloat(panel.get('mainFontSize')) || 150;
+	            const parsedMainFontSize = parseFloat(panel.get('mainFontSize'));
+	            const mainFontSize = Number.isFinite(parsedMainFontSize) ? parsedMainFontSize : 150;
 	            const font = panel.get('font') || 'Arial';
 	            const letterSpacing = parseFloat(panel.get('letterSpacing')) || 0;
 	            const lineHeight = mainFontSize * 1.2;
