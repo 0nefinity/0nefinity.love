@@ -45,6 +45,27 @@
         document.head.appendChild(link);
     }
 
+    // Stylesheet-Wachposten: Ein Browser kann neues controls.js mit altem meta.css mischen. Die Symbolspalte
+    // ist dann ein Haufen untereinander. Kein Grid = Stylesheet veraltet: einmal am Cache vorbei holen und neu laden,
+    // klappt das nicht, laut melden.
+    function verifySymbolCss(strip, row) {
+        if (!strip.isConnected || getComputedStyle(strip).display === 'grid') return;
+        const FLAG = 'ctrl-css-heal';
+        const warn = (msg, err) => {
+            console.error('[controls] ' + msg, err || '');
+            const el = document.createElement('div');
+            el.setAttribute('role', 'alert');
+            el.textContent = msg;
+            row.prepend(el);
+        };
+        let tried = false;
+        try { tried = !!sessionStorage.getItem(FLAG); sessionStorage.setItem(FLAG, '1'); } catch (e) { tried = true; }
+        if (tried) { warn('meta.css is out of date and could not be refreshed; please reload the page'); return; }
+        fetch('/meta.css', { cache: 'reload' })
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); location.reload(); })
+            .catch(e => warn('Reloading meta.css failed: ' + (e && e.message || e), e));
+    }
+
     // === UTILITY FUNCTIONS ===
 
     function clamp(val, min, max) {
@@ -3529,6 +3550,7 @@
             }
             this._renderSymbolRow(key);
             this._currentContainer.appendChild(row);
+            if (column) requestAnimationFrame(() => verifySymbolCss(strip, row));
             return this;
         }
 
