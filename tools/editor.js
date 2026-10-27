@@ -316,7 +316,7 @@
       np: window.OneEditorNewPage.mount({ bar: moreIn, request: api, beforeCreate: wait }),
       marks: window.OneEditorMarks.mount({ bar: moreIn, root: () => root || document.querySelector('main') || document.body }),
       fmt: window.OneEditorFormat.mount({
-        host: selHost, before: (h) => { touch(h); snap(h, 'force'); }, after: () => { markDirty(); syncSelBar(); },
+        host: selHost, before: () => snap('force'), after: () => { markDirty(); syncSelBar(); },
         blockOf, setBlock: (t) => setBlock(t), md: isMd, bar: () => bar, fail: (m) => say(m, 'error'),
       }),
     };
