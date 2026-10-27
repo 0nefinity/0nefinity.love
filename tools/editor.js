@@ -11,14 +11,18 @@
 // Andere Seiten (timbreitmar.de) binden dieselbe Datei als /api/edit/editor.js ein und stellen sie per
 // data-Attribut um: data-mode="direct" (eine Arbeitskopie, Speichern ist sofort live, kein Veroeffentlichen),
 // data-me / data-logout (eigener Login des Editor-Dienstes statt /api/auth/*).
+// data-mode="draft" (www.0nefinity.love): eingeloggt liefert nginx den Entwurf (main + eigene Aenderungen), Speichern
+// geht in den Entwurf, der Veroeffentlichen-Knopf bringt alles Unveroeffentlichte auf main; der Punkt am Knopf
+// zeigt es an (GET draft-status). Besucher bekommen weiter main und dieses Skript nie.
 (function oneEditor() {
   const tag = document.currentScript;
   const CFG = {
     direct: tag?.dataset.mode === 'direct',
+    draft: tag?.dataset.mode === 'draft',
     me: tag?.dataset.me || '/api/auth/me',
     logout: tag?.dataset.logout || '/api/auth/logout',
   };
-  if (!CFG.direct && !location.hostname.startsWith('dev.')) return;
+  if (!CFG.direct && !CFG.draft && !location.hostname.startsWith('dev.')) return;
 
   const INLINE = new Set(['A', 'B', 'I', 'EM', 'STRONG', 'SPAN', 'BR', 'SUB', 'SUP', 'CODE', 'SMALL',
     'MARK', 'U', 'S', 'ABBR', 'Q', 'KBD', 'WBR']);
@@ -75,7 +79,7 @@
   let leaving = false;
   let bar, status, btnCmt, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
   // ready: Quelltext geladen; inline: Seite ist inline bearbeitbar; live: dev weicht von live ab.
-  const st = { ready: false, inline: false, live: false };
+  const st = { ready: false, inline: false, live: false, draftCount: 0, draftFiles: [] };
   // Eigener Verlauf statt Browser-Undo: der kennt keine Autosave-Grenzen und vergisst alles, sobald
   // innerHTML gesetzt wird. Eintrag = Element + Inhalt davor; Tippen am selben Element ohne 1 s Pause ist ein Schritt.
   let undoStack = [];
@@ -149,7 +153,7 @@
   }
 
   async function request(method, route, body) {
-    const opts = { method, credentials: 'same-origin', keepalive: route === 'save' || route === 'publish', headers: { Accept: 'application/json' } };
+    const opts = { method, credentials: 'same-origin', keepalive: route === 'save' || route === 'publish' || route === 'publish-all', headers: { Accept: 'application/json' } };
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
       opts.headers['X-0ne-Edit'] = '1';
@@ -228,6 +232,30 @@
   function setLive(differs) {
     st.live = !!differs;
     render();
+    if (CFG.draft) refreshDraftSoon();
+  }
+
+  // Entwurfsmodus: was ist noch nicht auf main? Punkt am Veroeffentlichen-Knopf; ein haengender Abgleich
+  // mit main (Konflikt) steht als Fehlermeldung da, nie still.
+  let draftTimer = null;
+  let draftConflictShown = null;
+  function refreshDraftSoon() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(refreshDraft, 800);
+  }
+
+  async function refreshDraft() {
+    if (!CFG.draft) return;
+    try {
+      const d = await request('GET', 'draft-status');
+      st.draftCount = d.count || 0;
+      st.draftFiles = (d.files || []).map((f) => f.path);
+      if (d.conflict && d.conflict !== draftConflictShown) {
+        draftConflictShown = d.conflict;
+        showToast('Entwurf und veröffentlichte Seite ändern dieselbe Stelle (' + d.conflict + '), Abgleich steht', '', null, 0, 'error');
+      } else if (!d.conflict) draftConflictShown = null;
+      render();
+    } catch (e) { say('Entwurfsstand: ' + e.message, 'error'); }
   }
 
   // Markdown-Seiten: Der Browser schickt base (Serialisierung beim Laden) und text (jetzt); der Server fuehrt
@@ -1691,7 +1719,7 @@
     ov.title((forPublish ? 'veröffentlichen: ' : 'Änderungen: ') + hist.file);
     const h1 = document.createElement('h3');
     h1.className = 'oe-ov-h';
-    h1.textContent = CFG.direct ? 'noch nicht im Verlauf' : 'dev gegenüber live';
+    h1.textContent = CFG.direct ? 'noch nicht im Verlauf' : CFG.draft ? 'Entwurf gegenüber veröffentlicht' : 'dev gegenüber live';
     if (!CFG.direct || pending.diff) ov.body.append(h1, renderDiff(pending.diff));
     if (hist.live_differs && !pubTimer) {
       const go = button('jetzt veröffentlichen', () => { closeOverlay(); startPublish(); });
@@ -1732,11 +1760,13 @@
   let pubWithDeps = false;
 
   function startPublish(withDeps) {
-    if (pubTimer || !st.live) return;
+    if (pubTimer || !(CFG.draft ? st.draftCount : st.live)) return;
     st.live = false;
     pubWithDeps = withDeps === true;
     pubTimer = setTimeout(() => firePublish(false), PUBLISH_UNDO_MS);
-    showToast('veröffentlicht', 'rückgängig', cancelPublish, PUBLISH_UNDO_MS + 400);
+    const n = st.draftCount || 0;
+    showToast(CFG.draft ? (n > 1 ? 'veröffentlicht (' + n + ' Dateien)' : 'veröffentlicht') : 'veröffentlicht',
+      'rückgängig', cancelPublish, PUBLISH_UNDO_MS + 400);
     syncPause();
     render();
   }
@@ -1757,7 +1787,8 @@
     syncPause();
     try {
       if (!leave && !(await flushed())) throw new Error('Änderungen noch nicht gespeichert');
-      await api('POST', 'publish', { path: pagePath, with_deps: pubWithDeps });
+      if (CFG.draft) await api('POST', 'publish-all', {});
+      else await api('POST', 'publish', { path: pagePath, with_deps: pubWithDeps });
       pollPublish(0);
     } catch (e) { publishFailed(e.message); }
   }
@@ -1782,6 +1813,7 @@
       const j = r.publish || {};
       if (j.state === 'error') publishFailed(j.error || 'unbekannter Fehler', j.deps);
       else if ((j.state === 'queued' || j.state === 'running') && n < 120) pollPublish(n + 1);
+      else if (j.state === 'done' && CFG.draft) refreshDraft();
       else if (j.state === 'queued' || j.state === 'running') publishFailed('dauert ungewöhnlich lange');
     }, n ? 1000 : 400);
   }
@@ -1816,6 +1848,8 @@ oe-run{display:inline}
 /* Hover nur mit echter Maus: am Handy bleibt :hover nach dem Antippen haengen. Aktiv = invertiert. */
 @media (hover:hover){.oe-btn:not([aria-pressed=true]):not(.oe-primary):hover:not(:disabled){border-color:var(--text-color,#fff)!important}
   .oe-btn.oe-mini:hover:not(:disabled){opacity:1}}
+.oe-btn.oe-has-dot{position:relative}
+.oe-btn.oe-has-dot::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--text-color,#fff);box-shadow:0 0 0 2px var(--bg-color,#000)}
 .oe-btn:focus{outline:none!important}
 .oe-btn:focus-visible{outline:2px solid var(--text-color,#fff)!important;outline-offset:1px}
 .oe-btn:disabled{opacity:.3!important;cursor:default}
@@ -1955,7 +1989,13 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       set(menuSrc, off || !!overlay);
       set(menuDiff, off || !!overlay);
     }
-    if (btnPub) set(btnPub, off || !st.live || !!pubTimer);
+    if (btnPub) {
+      set(btnPub, off || !(CFG.draft ? st.draftCount : st.live) || !!pubTimer);
+      if (CFG.draft) {
+        btnPub.classList.toggle('oe-has-dot', !!st.draftCount && !pubTimer);
+        btnPub.title = st.draftCount ? 'veröffentlichen (' + st.draftCount + ' unveröffentlicht: ' + st.draftFiles.slice(0, 8).join(', ') + ')' : 'nichts zu veröffentlichen';
+      }
+    }
     if (extras) extras.fn.setEditing(editing);
   }
 
@@ -2108,6 +2148,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       if (isMd()) await loadMd();
       await loadExtras().catch((e) => say(e.message, 'error'));
       render();
+      refreshDraft();
       checkPublishError();
       if (st.inline && stored('oe-edit') === '1') toggleEdit();
     } catch (e) {
