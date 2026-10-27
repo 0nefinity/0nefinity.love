@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ein Nullgespräch</title>
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    .stage {
+      position: fixed; inset: 0;
+      background: var(--bg-color);
+      color: var(--text-color);
+      user-select: none; -webkit-user-select: none;
+    }
+    .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
+    #gespraech { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    /* Lesemodus: eine durchsichtige Rolle liegt ueber der Zeichenflaeche und liefert Mausrad, Touch-Scrollen, Scrollleiste, Tastatur. */
+    #rolle {
+      position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+      touch-action: pan-y; scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--text-color) 30%, transparent) transparent;
+    }
+    #rolle > div { width: 1px; }
+    /* Schiebemodus: die Rolle gibt die Zeiger frei, Ziehen dreht und schiebt die Zeilen. */
+    .stage.schieben #rolle { pointer-events: none; overflow: hidden; }
+    .stage.schieben #gespraech { cursor: grab; }
+    .stage.schieben #gespraech.zieht { cursor: grabbing; }
+    #modus {
+      position: absolute; right: 14px; bottom: 14px; z-index: 2;
+      font: inherit; font-size: 13px; letter-spacing: .02em; color: var(--text-color);
+      background: color-mix(in srgb, var(--bg-color) 82%, transparent);
+      border: 1px solid color-mix(in srgb, var(--text-color) 28%, transparent);
+      border-radius: 999px; padding: 7px 14px; cursor: pointer; user-select: none;
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      transition: border-color .15s, background-color .15s;
+    }
+    #modus:hover { border-color: color-mix(in srgb, var(--text-color) 55%, transparent); }
+    #modus[aria-pressed="true"] { border-color: var(--text-color); }
+    #modus:focus-visible { outline: 2px solid var(--text-color); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <div class="stage _018" id="stage">
+    <canvas id="gespraech"></canvas>
+    <div id="rolle" tabindex="-1" aria-label="Gespräch"><div id="rolleHoehe"></div></div>
+    <button id="modus" type="button" aria-pressed="false" title="Ziehen dreht und schiebt die Zeilen übereinander">Verschieben</button>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // Jede Zeile k des Gesprächs liegt bei j = k - stelle (Periode p > 0: j auf (-p/2, p/2] gefaltet).
+    // Zeile j wird um j * winkel gedreht und entlang der gedrehten Senkrechten um j * verschiebung Zeilen versetzt.
+    // winkel 0, verschiebung 0: alles am Ursprung (Nullgebilde). winkel 0, verschiebung 1: der lesbare Dialog.
+    // Standard ist der lesbare Dialog; durchs Gespräch wandert man mit Mausrad, Touch oder Scrollleiste.
+    const DATA_URL = '/_nullgespraeche/1.json';
+    const DEG = Math.PI / 180;
+    const READABLE = { winkel: 0, verschiebung: 1 };
+    const NULL = { winkel: 0, verschiebung: 0 };
+    const MAX_ZEICHNEN = 90;
+
+    const stage = document.getElementById('stage');
+    const canvas = document.getElementById('gespraech');
+    const rolle = document.getElementById('rolle');
+    const rolleHoehe = document.getElementById('rolleHoehe');
+    const modusBtn = document.getElementById('modus');
+    const ctx = canvas.getContext('2d');
+
+    const st = { winkel: 0, verschiebung: 1, periode: 0, stelle: 0 };
+    let messages = null;
+    let lines = [];            // { text, wer, msg, img, sw } oder null fuer die Leerzeile zwischen zwei Nachrichten
+    let W = 0, H = 0, dpr = 1, sd = 1, fontPx = 16, lh = 24, colW = 300;
+    let fontFamily = 'sans-serif';
+    let color = '', dirty = true, error = null, drawn = 0, panelDirty = false;
+    let panel = null, anim = null, building = 0;
+
+    function fail(message) {
+      if (error) return;
+      error = message;
+      console.error('[EinNullgespraech] ' + message);
+      stage.classList.add('fehler');
+    }
+
+    // ─── Layout ───
+    function wrap(text) {
+      const out = [];
+      for (const para of text.split('\n')) {
+        if (!para.trim()) { out.push(''); continue; }
+        let cur = '';
+        for (let word of para.split(/ +/)) {
+          // Woerter breiter als die Spalte (lange Ziffernfolgen) zeichenweise brechen.
+          while (ctx.measureText(word).width > colW) {
+            let n = 1;
+            while (n < word.length && ctx.measureText(word.slice(0, n + 1)).width <= colW) n++;
+            if (cur) { out.push(cur); cur = ''; }
+            out.push(word.slice(0, n));
+            word = word.slice(n);
+          }
+          if (!word) continue;
+          const next = cur ? cur + ' ' + word : word;
+          if (cur && ctx.measureText(next).width > colW) { out.push(cur); cur = word; }
+          else cur = next;
+        }
+        out.push(cur);
+      }
+      return out;
+    }
+    function layout() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height; dpr = window.devicePixelRatio || 1;
+      sd = Math.min(dpr, 2);
+      const cw = Math.max(1, Math.round(W * dpr)), ch = Math.max(1, Math.round(H * dpr));
+      if (canvas.width !== cw) canvas.width = cw;
+      if (canvas.height !== ch) canvas.height = ch;
+      fontFamily = getComputedStyle(stage).fontFamily || 'sans-serif';
+      fontPx = W < 600 ? 15 : 16;
+      lh = Math.round(fontPx * 1.55);
+      colW = Math.min(W - 2 * Math.max(16, W * 0.05), fontPx * 34);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = fontPx + 'px ' + fontFamily;
+      const anchor = lines.length ? lineAt(st.stelle) : null;
+      lines = [];
+      if (messages) {
+        messages.forEach((m, i) => {
+          if (i > 0) lines.push(null);
+          for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i, img: null, sw: 0 } : null);
+        });
+      }
+      if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg);
+      if (st.stelle < 0) st.stelle = 0;
+      rolleHoehe.style.height = Math.max(0, lines.length - 1) * lh + H + 'px';
+      rolle.scrollTop = st.stelle * lh;
+      scheduleBuild();
+      if (panel) syncPanel();
+      dirty = true;
+    }
+    function lineAt(s) {
+      for (let k = Math.round(s); k < lines.length; k++) if (lines[k]) return lines[k];
+      return null;
+    }
+
+    // ─── Zeilen-Bitmaps ───
+    // Jede Zeile wird einmal als kleines Bitmap gesetzt (Textsatz, Antialiasing); im Frame bleibt nur drawImage mit Transform.
+    function makeSprite(l) {
+      const w = ctx.measureText(l.text).width;
+      const sw = Math.ceil(w) + 4;
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(sw * sd); c.height = Math.ceil(lh * sd);
+      const g = c.getContext('2d');
+      g.scale(sd, sd);
+      g.font = fontPx + 'px ' + fontFamily;
+      g.textBaseline = 'middle';
+      g.fillStyle = color;
+      g.fillText(l.text, 2, lh / 2);
+      l.img = c; l.sw = sw;
+    }
+    function dropSprites() { for (const l of lines) if (l) l.img = null; scheduleBuild(); }
+    // Vorab in kleinen Haeppchen bauen, damit das erste Uebereinanderschieben nicht stockt.
+    function scheduleBuild() {
+      if (building) return;
+      building = setTimeout(buildChunk, 0);
+    }
+    function buildChunk() {
+      building = 0;
+      if (!lines.length || !color) return;
+      ctx.font = fontPx + 'px ' + fontFamily;
+      const t0 = performance.now();
+      let left = false;
+      for (const l of lines) {
+        if (!l || l.img) continue;
+        if (performance.now() - t0 > 6) { left = true; break; }
+        makeSprite(l);
+      }
+      dirty = true;
+      if (left) building = setTimeout(buildChunk, 8);
+    }
+
+    // ─── Geometrie ───
+    function fold(j) {
+      const p = st.periode;
+      if (!(p > 0)) return j;
+      return j - p * Math.round(j / p);
+    }
+    // Lage der Zeile k: Mittelpunkt des Zeilenanfangs (Bildschirm, CSS-Pixel) und Drehung.
+    function place(k) {
+      const j = fold(k - st.stelle);
+      const a = j * st.winkel * DEG;
+      const off = j * st.verschiebung * lh;
+      const s = Math.sin(a), c = Math.cos(a);
+      // lokale x = -colW/2 (Zeilenanfang), lokale y = off; gedreht um a.
+      const lx = -colW / 2, ly = off;
+      return { x: W / 2 + lx * c - ly * s, y: H / 2 + lx * s + ly * c, a, j, off };
+    }
+
+    // ─── Zeichnen ───
+    function refreshColor() {
+      const cs = getComputedStyle(stage).color;
+      if (cs !== color) { color = cs; dropSprites(); dirty = true; }
+    }
+    function draw() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const reach = Math.hypot(W, H) / 2 + colW + lh;
+      const c = dpr;
+      const t0 = performance.now();
+      let n = 0, missing = false;
+      // Liegen sehr viele Zeilen im Bild (Nullgebilde), sehen sie gleich aus: nur jede stride-te zeichnen
+      // (stabil nach k) und die Deckkraft so anheben, als lagen stride Ebenen uebereinander.
+      let vis = 0;
+      for (let k = 0; k < lines.length; k++) {
+        if (lines[k] && Math.abs(fold(k - st.stelle) * st.verschiebung * lh) <= reach) vis++;
+      }
+      const stride = Math.max(1, Math.ceil(vis / MAX_ZEICHNEN));
+      for (let k = 0; k < lines.length; k++) {
+        const l = lines[k];
+        if (!l || (stride > 1 && k % stride)) continue;
+        const j = fold(k - st.stelle);
+        const off = j * st.verschiebung * lh;
+        if (Math.abs(off) > reach) continue;
+        if (!l.img) {
+          if (performance.now() - t0 > 12) { missing = true; continue; }
+          ctx.font = fontPx + 'px ' + fontFamily;
+          makeSprite(l);
+        }
+        const a = j * st.winkel * DEG;
+        const cos = Math.cos(a) * c, sin = Math.sin(a) * c;
+        // Ursprung Bildmitte, Achsen um a gedreht, dann lokal (-colW/2, off).
+        ctx.setTransform(cos, sin, -sin, cos, W / 2 * c, H / 2 * c);
+        ctx.globalAlpha = 1 - (1 - (l.wer === 'claude' ? 0.58 : 0.94)) ** stride;
+        ctx.drawImage(l.img, -colW / 2 - 2, off - lh / 2, l.sw, lh);
+        n++;
+      }
+      ctx.globalAlpha = 1;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      drawn = n;
+      if (missing) dirty = true;
+    }
+    function frame(t) {
+      if (anim) stepAnim(t);
+      if (panelDirty && panel) { panelDirty = false; syncPanel(); }
+      if (dirty && messages) { dirty = false; draw(); }
+      requestAnimationFrame(frame);
+    }
+
+    // ─── Zustand ───
+    function setState(patch, fromPanel, fromScroll) {
+      for (const k of Object.keys(patch)) {
+        const v = Number(patch[k]);
+        if (!Number.isFinite(v)) continue;
+        if (k === 'periode') st.periode = Math.max(0, v);
+        else if (k === 'stelle') st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), v));
+        else if (k in st) st[k] = v;
+      }
+      if (!fromScroll && 'stelle' in patch && Math.abs(rolle.scrollTop - st.stelle * lh) > 1) rolle.scrollTop = st.stelle * lh;
+      if (!fromPanel && panel) panelDirty = true;
+      saveUrl();
+      dirty = true;
+    }
+    function syncPanel() {
+      panel.set('winkel', round(st.winkel, 3));
+      panel.set('verschiebung', round(st.verschiebung, 3));
+      panel.set('periode', st.periode);
+      panel.set('stelle', round(st.stelle, 1));
+    }
+    const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
+
+    let urlTimer = 0;
+    function saveUrl() {
+      clearTimeout(urlTimer);
+      urlTimer = setTimeout(() => {
+        const u = new URL(location.href);
+        const isDefault = isReadable() && !st.periode && !st.stelle;
+        for (const k of Object.keys(st)) {
+          if (isDefault) u.searchParams.delete(k);
+          else u.searchParams.set(k, String(round(st[k], 4)));
+        }
+        history.replaceState(null, '', u);
+      }, 250);
+    }
+    function loadUrl() {
+      const q = new URLSearchParams(location.search);
+      const patch = {};
+      for (const k of Object.keys(st)) if (q.has(k)) patch[k] = q.get(k);
+      return patch;
+    }
+
+    // Weiches Umschalten (Doppeltipp, Zuruecksetzen).
+    function animateTo(target, ms) {
+      anim = { from: { winkel: st.winkel, verschiebung: st.verschiebung }, to: target, t0: performance.now(), ms };
+    }
+    function stepAnim(t) {
+      const u = Math.min(1, (t - anim.t0) / anim.ms);
+      const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+      const patch = {};
+      for (const k of Object.keys(anim.to)) patch[k] = anim.from[k] + (anim.to[k] - anim.from[k]) * e;
+      if (u >= 1) anim = null;
+      setState(patch);
+    }
+    const isReadable = () => Math.abs(st.winkel) < 1e-6 && Math.abs(st.verschiebung - 1) < 1e-6;
+
+    // ─── Lesen: normales Scrollen ───
+    rolle.addEventListener('scroll', () => {
+      if (Math.abs(rolle.scrollTop - st.stelle * lh) <= 1) return;
+      setState({ stelle: rolle.scrollTop / lh }, false, true);
+    }, { passive: true });
+
+    // ─── Schieben: Ziehen wie an einem Drehknopf ───
+    // Der Zeiger kreist um die Bildmitte: der Winkelzuwachs je Ereignis (auf (-180, 180] normalisiert, aufsummiert)
+    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Zwei Finger: durchs Gespraech wandern.
+    const pointers = new Map();
+    let lastTap = 0, moved = 0, pairY = null, knob = null, schieben = false;
+    const WINKEL_PRO_GRAD = 0.05, VERSCH_PRO_PX = 1 / 320;
+    function setSchieben(on) {
+      schieben = on;
+      stage.classList.toggle('schieben', on);
+      modusBtn.setAttribute('aria-pressed', String(on));
+      pointers.clear(); knob = null; pairY = null;
+      canvas.classList.remove('zieht');
+    }
+    modusBtn.addEventListener('click', () => setSchieben(!schieben));
+    modusBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    modusBtn.addEventListener('pointerup', (e) => e.stopPropagation());
+
+    function polar(e) {
+      const r = canvas.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      return { th: Math.atan2(dy, dx), r: Math.hypot(dx, dy) };
+    }
+    function knobStart(e) { knob = polar(e); }
+    function knobMove(e) {
+      const q = polar(e);
+      let d = q.th - knob.th;
+      if (d > Math.PI) d -= 2 * Math.PI; else if (d <= -Math.PI) d += 2 * Math.PI;
+      setState({ winkel: st.winkel + d / DEG * WINKEL_PRO_GRAD, verschiebung: st.verschiebung + (q.r - knob.r) * VERSCH_PRO_PX });
+      knob = q;
+    }
+    stage.addEventListener('pointerdown', (e) => {
+      anim = null;
+      moved = 0;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!schieben) return;
+      canvas.setPointerCapture(e.pointerId);
+      if (pointers.size === 1) knobStart(e);
+      pairY = pointers.size === 2 ? avgY() : null;
+      canvas.classList.add('zieht');
+    });
+    stage.addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (!schieben) return;
+      if (pointers.size === 1) {
+        if (!knob) knobStart(e);
+        knobMove(e);
+      } else if (pointers.size === 2) {
+        const y = avgY();
+        if (pairY !== null) scrollBy(-(y - pairY));
+        pairY = y;
+      }
+    });
+    const end = (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      pairY = pointers.size === 2 ? avgY() : null;
+      if (pointers.size === 1) { const [rest] = pointers.values(); knob = polar({ clientX: rest.x, clientY: rest.y }); }
+      if (!pointers.size) { knob = null; canvas.classList.remove('zieht'); }
+      if (e.type === 'pointerup' && !pointers.size && moved < 8) {
+        const now = performance.now();
+        if (now - lastTap < 320) { animateTo(isReadable() ? NULL : READABLE, 700); lastTap = 0; }
+        else lastTap = now;
+      }
+    };
+    stage.addEventListener('pointerup', end);
+    stage.addEventListener('pointercancel', end);
+    function avgY() { let s = 0; for (const p of pointers.values()) s += p.y; return s / pointers.size; }
+    function scrollBy(px) {
+      const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh;
+      setState({ stelle: st.stelle + px / step });
+    }
+    // Im Schiebemodus liegt die Rolle still; dann scrollt das Rad die Stelle selbst.
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const px = e.deltaMode === 1 ? e.deltaY * lh : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
+      scrollBy(px);
+    }, { passive: false });
+    window.addEventListener('keydown', (e) => {
+      if (e.target && /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)) return;
+      const k = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
+      if (k) { e.preventDefault(); setState({ stelle: st.stelle + k }); }
+    });
+
+    // ─── Boot ───
+    function buildPanel() {
+      panel = Controls.createPanel({ position: 'left', id: 'ein-nullgespraech' });
+      panel.addSlider('winkel', { label: 'Winkel', min: -180, max: 180, step: 0.01, value: st.winkel, decimals: 2, onChange: (v) => setState({ winkel: v }, true) });
+      panel.addSlider('verschiebung', { label: 'Verschiebung', min: 0, max: 4, step: 0.001, value: st.verschiebung, decimals: 3, onChange: (v) => setState({ verschiebung: v }, true) });
+      panel.addSlider('periode', { label: 'Periode', min: 0, max: Math.max(1, lines.length), step: 1, value: st.periode, decimals: 0, onChange: (v) => setState({ periode: v }, true) });
+      panel.addSlider('stelle', { label: 'Stelle', min: 0, max: Math.max(1, lines.length - 1), step: 0.1, value: st.stelle, decimals: 1, onChange: (v) => setState({ stelle: v }, true) });
+      panel.addResetButton({ title: 'Lesbar', onClick: () => { setState({ periode: 0 }); animateTo(READABLE, 700); } });
+    }
+
+    window.einNullgespraech = {
+      state() { return Object.assign({}, st, { lines: lines.length, messages: messages ? messages.length : 0, drawn, lineHeight: lh, error, readable: isReadable(), schieben, width: W, height: H }); },
+      set(patch) { anim = null; setState(patch); draw(); dirty = false; },
+      setSchieben,
+      // Lage der k-ten Textzeile (Zaehlung ohne Leerzeilen) auf dem Bildschirm.
+      textLine(n) {
+        let seen = -1;
+        for (let k = 0; k < lines.length; k++) if (lines[k] && ++seen === n) return Object.assign({ k, text: lines[k].text, wer: lines[k].wer }, place(k));
+        return null;
+      }
+    };
+
+    fetch(DATA_URL, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status + ' fuer ' + DATA_URL); return r.json(); })
+      .then((data) => {
+        if (!Array.isArray(data) || !data.length || !data.every((m) => (m.wer === 'tim' || m.wer === 'claude') && typeof m.text === 'string')) {
+          throw new Error('Gespraechsdaten ungueltig');
+        }
+        messages = data;
+        layout();
+        buildPanel();
+        const patch = loadUrl();
+        setState(patch);
+        if (('winkel' in patch || 'verschiebung' in patch) && !isReadable()) setSchieben(true);
+      })
+      .catch((e) => fail(e.message));
+
+    refreshColor();
+    const themeObs = new MutationObserver(refreshColor);
+    for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
+    window.addEventListener('resize', () => { if (messages) layout(); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages) layout(); });
+    requestAnimationFrame(frame);
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
