@@ -240,6 +240,19 @@
         return formatValue(value, decimals);
     }
 
+    // Size the value field for the widest number it can show (range ends + current), so "315.00" or "-200.00" never clips.
+    function fitSliderValueInput(input, config, value, decimals) {
+        if (!input) return;
+        const candidates = [value];
+        if (config) candidates.push(config.min, config.max);
+        let chars = 1;
+        for (const v of candidates) {
+            if (!Number.isFinite(Number(v))) continue;
+            chars = Math.max(chars, formatSliderControlValue(Number(v), decimals, config).length);
+        }
+        input.style.width = `calc(${chars}ch + 0.4em)`;
+    }
+
     function parseSliderControlValue(value, config) {
         const transform = getSliderTransform(config);
         if (typeof transform?.parseDisplayValue === 'function') {
@@ -2505,6 +2518,7 @@
             const decBtn = row.querySelector('[data-action="dec"]');
             const incBtn = row.querySelector('[data-action="inc"]');
             const configTrigger = row.querySelector('.ctrl-config-trigger');
+            fitSliderValueInput(input, sliderCfg, initialValue, sliderCfg.decimals);
             const syncSliderUI = (rawValue, updateInput = true) => {
                 const cfg = this._sliderConfigs[key];
                 const currentValue = Number.isFinite(rawValue) ? rawValue : 0;
@@ -2521,6 +2535,7 @@
                 if (updateInput) {
                     input.value = formatSliderControlValue(currentValue, decs, cfg);
                 }
+                fitSliderValueInput(input, cfg, currentValue, decs);
             };
 
             const updateValue = (newVal, updateInput = true) => {
