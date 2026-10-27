@@ -2096,68 +2096,79 @@ pre {
     background: var(--ui-fill-25) !important;
 }
 
-/* Voreinstellung speichern (nur im Bearbeiten-Modus des Editors, controls.js) */
-.ctrl-default-pin {
+/* Voreinstellung speichern und Beschriftungen bearbeiten (nur Bearbeiten-Modus des Editors, controls.js) */
+.ctrl-preset-bar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    margin: 0 0 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-surface-strong);
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.ctrl-preset-bar[hidden] {
     display: none;
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    padding: 0;
+}
+
+.ctrl-preset-count {
+    flex: 1 0 auto;
+    color: var(--ui-text-70);
+    font-variant-numeric: tabular-nums;
+}
+
+.ctrl-preset-bar button {
+    min-height: 28px;
+    padding: 4px 10px;
     border: none;
     border-radius: 6px;
-    background: transparent !important;
-    color: var(--ui-text-70) !important;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    opacity: 0.45;
-    z-index: 1;
-}
-
-html.oe-editing .ctrl-default-pin {
-    display: inline-flex;
-}
-
-/* Platz fuer die Nadel, damit sie weder Label noch Symbolfelder verdeckt */
-html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
-    padding-left: 26px;
-}
-
-.ctrl-default-pin svg {
-    width: 15px;
-    height: 15px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.ctrl-default-pin:hover,
-.ctrl-default-pin:focus-visible {
-    opacity: 1;
-}
-
-.ctrl-default-pin.active {
-    opacity: 1;
+    background: var(--ui-fill-20) !important;
     color: var(--text-color, #fff) !important;
+    font: inherit;
+    cursor: pointer;
 }
 
-.ctrl-default-pin.active svg {
-    fill: currentColor;
+.ctrl-preset-bar button:hover,
+.ctrl-preset-bar button:focus-visible {
+    background: var(--ui-fill-25) !important;
+}
+
+.ctrl-preset-bar .ctrl-preset-save {
+    border: 1px solid var(--text-color, #fff);
+}
+
+html.oe-editing .ctrl-panel .ctrl-label,
+html.oe-editing .ctrl-panel .ctrl-section-title,
+html.oe-editing .ctrl-panel .ctrl-button {
+    cursor: text;
+    outline: 1px dashed color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
+    outline-offset: 2px;
+}
+
+.ctrl-label-edit {
+    position: fixed;
+    transform: translateY(-50%);
+    z-index: 10003;
+    box-sizing: border-box;
+    padding: 4px 8px;
+    border: 1px solid var(--text-color, #fff);
+    border-radius: 4px;
+    background: var(--ui-surface-strong, #111);
+    color: var(--text-color, #fff);
+    font: 16px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+    outline: none;
 }
 
 @media (max-width: 768px) {
-    .ctrl-default-pin {
-        width: 32px;
-        height: 32px;
-    }
-
-    html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
-        padding-left: 32px;
+    .ctrl-preset-bar button {
+        min-height: 36px;
     }
 }
 
