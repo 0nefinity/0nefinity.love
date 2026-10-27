@@ -98,6 +98,7 @@
     redo: 'M15 15l5-5-5-5M20 10H10a5 5 0 0 0 0 10h4',
     link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
     clear: 'M6 5h12M12 5v14M5 19L19 5',
+    upload: 'M12 16V5M7 10l5-5 5 5M5 20h14',
   };
 
   function icon(kind) {
@@ -1621,12 +1622,11 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     set(btnSrc, off || !!overlay);
     set(btnCmt, off, cmtOn);
     set(btnDiff, off || !!overlay);
-    if (btnPub) {
+    if (menuSrc) {
       set(menuSrc, off || !!overlay);
       set(menuDiff, off || !!overlay);
-      set(btnPub, off || !st.live || !!pubTimer);
-      btnPub.title = st.live ? 'diese Seite nach 0nefinity.love' : 'live ist auf demselben Stand';
     }
+    if (btnPub) set(btnPub, off || !st.live || !!pubTimer);
   }
 
   function mini(kind, label, fn) {
@@ -1659,6 +1659,10 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     head.className = 'oe-head';
     // Feste Reihenfolge, rechts verankert: das Stift-Symbol bleibt beim Umschalten an seinem Platz.
     head.append(btnUndo, btnRedo, btnEdit, btnSrc, btnCmt, btnDiff);
+    if (!CFG.direct) {
+      btnPub = mini('upload', 'veröffentlichen', startPublish);
+      head.append(btnPub);
+    }
     if (!menuWrap()) {
       bar.classList.add('oe-solo');
       head.append(mini('power', 'ausloggen', logout));
@@ -1709,7 +1713,6 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     const sec = document.createElement('div');
     sec.id = 'oe-admin';
     sec.dataset.oeUi = '';
-    btnPub = button('veröffentlichen', startPublish);
     const analytics = document.createElement('a');
     analytics.className = 'oe-btn';
     analytics.href = ANALYTICS;
@@ -1720,11 +1723,11 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     menuSrc = mini('code', 'Quelltext', openSource);
     menuDiff = mini('diff', 'Änderungen', () => openChanges(false));
     for (const b of [menuSrc, menuDiff]) b.classList.add('oe-narrow');
-    for (const b of [btnPub, analytics, out]) b.classList.add('oe-small');
+    for (const b of [analytics, out]) b.classList.add('oe-small');
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(menuSrc, menuDiff, btnPub, analytics, out);
+    sec.append(menuSrc, menuDiff, analytics, out);
     wrap.prepend(sec);
   }
 
