@@ -801,12 +801,17 @@
     }
   }
 
+  // Focus stays in the document after a bar undo/redo, otherwise the next tap lands on a disabled button or another field.
+  function keepFocus() {
+    if (editing && root && !root.contains(document.activeElement)) root.focus({ preventScroll: true });
+  }
   function undo() {
     if (!editing) return;
     if (!undoStack.length && !openGrp && extras?.np.undoCreate()) return;
     step(true);
+    keepFocus();
   }
-  function redo() { if (editing) step(false); }
+  function redo() { if (editing) { step(false); keepFocus(); } }
 
   // Zur Stelle eines Schritts springen, ohne etwas zu aendern.
   function jumpToStep(e, applied) {
@@ -2668,6 +2673,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     btnFmt.classList.add('oe-nar');
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
+    for (const b of [btnUndo, btnRedo]) b.addEventListener('mousedown', (ev) => ev.preventDefault());
     const head = document.createElement('div');
     head.className = 'oe-head';
     // Der Stift steht rechts und bleibt beim Umschalten an seinem Platz; alles andere klappt links davon auf,
