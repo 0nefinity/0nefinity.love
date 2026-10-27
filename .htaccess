@@ -34,6 +34,10 @@ RewriteRule ^buypi$ https://%{HTTP_HOST}/buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ https://%{HTTP_HOST}/README [R=302,L]
 RewriteRule ^foldingpi/?$ https://%{HTTP_HOST}/unfoldingPi [R=302,L,NC]
 
+# editor-renames: 301 for renamed pages (written by the editor)
+RewriteRule "^8B([.]md)?/?$" "https://%{HTTP_HOST}/8Butterfly" [R=301,L]
+# end editor-renames
+
 # Pi-Quadrat Weiterleitung
 RewriteRule ^piquadrat/?$ https://%{HTTP_HOST}/kreisausdingen?anzahl=4&radius=53&zoom=1.00&panX=0.00&panY=0.00&zeichen=pi(30) [R=302,L]
 
@@ -138,7 +142,7 @@ IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitatt
 # 'unsafe-inline'/'unsafe-eval' nötig wegen vorhandenem Inline-Code (Skripte/Styles)
 # und Libraries wie p5/pixi die Function() nutzen.
 <IfModule mod_headers.c>
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' https://kanal.0nefinity.love; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set X-Content-Type-Options "nosniff"
 </IfModule>
