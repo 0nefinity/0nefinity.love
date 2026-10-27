@@ -120,7 +120,7 @@ IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitatt
 # nachzieht, sind das vier Rueckfragen pro Seitenaufruf fuer Dateien, die sich
 # seit Wochen nicht geaendert haben.
 #
-# Bewusst gestaffelt, weil "Dateien bearbeiten -> sofort live" laut CLAUDE.md
+# Bewusst gestaffelt, weil "Dateien bearbeiten -> sofort live"
 # ein Feature dieses Projekts ist:
 #   Schriften  ein Jahr  - 15949 Dateien, namensversioniert, aendern sich nie
 #   Skripte/CSS 5 Minuten - killt die Rueckfragen innerhalb eines Besuchs,
