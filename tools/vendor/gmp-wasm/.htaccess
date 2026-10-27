@@ -1,0 +1,4 @@
+# Lizenztexte und README roh als Text ausliefern. Die .htaccess im Wurzelverzeichnis schickt .txt/.md
+# sonst durch tools/weird-text-viewer.php (HTML-Seite); ohne eigene Rewrite-Regeln hier (kein Inherit) gilt sie nicht.
+RewriteEngine On
+AddDefaultCharset UTF-8

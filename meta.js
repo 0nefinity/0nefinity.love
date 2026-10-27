@@ -828,6 +828,9 @@ document.body.appendChild(preMeasureElement);
 let preFitAnimationFrameId = null;
 
 function fitPreBlocksToTextWidth() {
+    // Im Editor (tools/editor.js) bleibt die Schriftgroesse stehen: die Handy-Tastatur loest resize aus,
+    // ein Neu-Einpassen liess den Text unter dem Finger springen.
+    if (window.__oneEditing) return;
     document.querySelectorAll('pre').forEach(pre => {
         pre.style.fontSize = '';
         const computedStyle = window.getComputedStyle(pre);

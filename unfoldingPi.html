@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <script src="/tools/math-notation.js" defer></script>
+  <script src="/tools/claude-chat.js" defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>(un)foldingPi</title>
+  <style>
+    html, body { height: 100%; overflow: hidden; touch-action: none; }
+    /* speed zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
+    .ctrl-row[data-key="drift"] .ctrl-value-input { width: 4.6em; }
+    /* Touch-Ziel: mindestens 44 x 44 px */
+    .ctrl-row[data-key="notation"] .ctrl-button { min-height: 44px; min-width: 44px; white-space: nowrap; padding: 0 1rem; width: max-content; min-width: max-content; max-width: none; flex: none; }
+    .stage {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      background: var(--bg-color);
+      color: var(--text-color);
+      user-select: none; -webkit-user-select: none;
+    }
+    .stage.hinweis { box-shadow: inset 0 0 0 2px #b8860b; }
+    .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
+    /* Wartezustand: die Anzeige steht an der letzten berechneten Stelle und wartet auf den Worker (kein Ende, kein Fehler). */
+    .stage.warte::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-color); pointer-events: none; animation: warte-puls 1.6s ease-in-out infinite; }
+    @keyframes warte-puls { 0%, 100% { opacity: 0.08; } 50% { opacity: 0.45; } }
+    /* Hinweis nur bei Geraetegrenze: klein, gedaempft, ohne Interaktion. */
+    .limit-hint { position: absolute; top: 0.75rem; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center; font-size: 0.7rem; color: var(--text-color); opacity: 0.45; pointer-events: none; }
+    #pi { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+    /* Glieder (Kette, Stern): je Glied eine Canvas, Lage setzt das Skript */
+    .glied { position: absolute; display: block; touch-action: none; }
+    .punkt { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; }
+    .ctrl-row[data-key="form"] .ctrl-button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--text-color); }
+    /* Stellenanzeige: feste Stelle unter der Zeile, nur der Text wechselt */
+    .stellen { position: absolute; left: 0; right: 0; top: 68%; text-align: center; font-size: 1.25rem; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--text-color); pointer-events: none; white-space: nowrap; }
+
+    /* ─── Steuer-Panel: ruhig, dunkel, ein Raster ─── */
+    #pi-compression { --pi-h: 36px; --pi-gap: 6px; --ctrl-label-width: 7rem; font-size: 15px; }
+    @media (pointer: coarse), (max-width: 640px) { #pi-compression { --pi-h: 44px; } }
+    #pi-compression.position-left .ctrl-panel-body { max-height: 82vh; }
+    #pi-compression .ctrl-drag-indicator { opacity: 0.3; box-shadow: none; }
+    #pi-compression .ctrl-label { justify-content: flex-start; text-align: left; font-size: 14px; opacity: 0.72; hyphens: none; }
+    #pi-compression .ctrl-value-input { font-size: 15px; }
+    #pi-compression .ctrl-button { font-size: 15px; }
+    #pi-compression .ctrl-row { margin-bottom: 0.7rem; }
+    .pi-consts { display: block; padding-bottom: 0.9rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--ui-fill-15); }
+    .pi-consts button, .pi-consts select { font: inherit; font-size: 15px; color: var(--text-color); }
+    .pi-head { display: flex; align-items: center; justify-content: space-between; min-height: var(--pi-h); margin-bottom: var(--pi-gap); }
+    .pi-form { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; background: var(--ui-fill-05); border-radius: 8px; width: 12rem; }
+    .pi-form[data-off] { visibility: hidden; }
+    .pi-form button { height: calc(var(--pi-h) - 4px); padding: 0; line-height: 1; border: 0; border-radius: 6px; background: transparent; cursor: pointer; opacity: 0.6; }
+    .pi-form button[aria-pressed="true"] { background: var(--ui-fill-15); opacity: 1; }
+    .pi-list { display: flex; flex-direction: column; gap: var(--pi-gap); height: calc(3 * var(--pi-h) + 2 * var(--pi-gap)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }
+    .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem var(--pi-h); gap: var(--pi-gap); height: var(--pi-h); }
+    .pi-sel { position: relative; display: block; min-width: 0; }
+    .pi-sel::after { content: ''; position: absolute; right: 0.95rem; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--ui-text-70); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
+    .pi-select { appearance: none; -webkit-appearance: none; width: 100%; height: var(--pi-h); padding: 0 2rem 0 0.8rem; border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; font-size: 16px; }
+    .pi-select option { background: var(--bg-color, #000); color: var(--text-color, #fff); }
+    .pi-mirror, .pi-del, .pi-add { height: var(--pi-h); border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; padding: 0; }
+    .pi-mirror[aria-pressed="true"] { background: var(--ui-fill-20); box-shadow: inset 0 0 0 1px var(--ui-border-strong); }
+    .pi-del { font-size: 20px; line-height: 1; }
+    .pi-mirror:disabled, .pi-del:disabled { opacity: 0.3; cursor: default; }
+    .pi-add { width: 8.5rem; background: transparent; box-shadow: inset 0 0 0 1px var(--ui-border-soft); opacity: 0.85; }
+    @media (hover: hover) { .pi-select:hover, .pi-mirror:not(:disabled):hover, .pi-del:not(:disabled):hover, .pi-add:hover { background: var(--ui-fill-12); } }
+    .pi-consts :focus-visible { outline: 2px solid var(--ui-border-stronger); outline-offset: 1px; }
+  </style>
+</head>
+<body>
+  <div class="stage _018" id="stage">
+    <canvas id="pi"></canvas>
+    <div class="stellen" id="stellen" aria-live="polite">&nbsp;</div>
+  </div>
+
+  <script src="/tools/irrational.js"></script>
+  <script src="/tools/pi-file.js"></script>
+  <script src="/tools/unfolding-view.js"></script>
+  <script>
+  (() => {
+    'use strict';
+
+    // Pi-Anfang (Ziffern inkl. der 3, ohne Punkt): sofort da; der Worker liefert den Rest und prüft sich daran.
+    const RESERVE =
+      "31415926535897932384626433832795028841971693993751058209749445923078164062862089"+
+      "98628034825342117067982148086513282306647093844609550582231725359408128481117450"+
+      "28410270193852110555964462294895493038196442881097566593344612847564823378678316"+
+      "52712019091456485669234603486104543266482133936072602491412737245870066063155881"+
+      "74881520920962829254091715364367892590360011330530548820466521384146951941511609"+
+      "43305727036575959195309218611738193261179310511854807446237996274956735188575272"+
+      "48912279381830119491298336733624406566430860213949463952247371907021798609437027"+
+      "70539217176293176752384674818467669405132000568127145263560827785771342757789609"+
+      "17363717872146844090122495343014654958537105079227968925892354201995611212902196"+
+      "08640344181598136297747713099605187072113499999983729780499510597317328160963185"+
+      "95024459455346908302642522308253344685035261931188171010003137838752886587533208"+
+      "38142061717766914730359825349042875546873115956286388235378759375195778185778053"+
+      "2171226806613001927876611195909216420198";
+
+    // Die Ansicht (tools/unfolding-view.js) hält die Kette: Ganzzahl (Irrational.constants[].intPart), ".", Nachkommastellen.
+    const CONSTS = Irrational.constants;
+    const constOf = (id) => CONSTS.find((k) => k.id === id);
+    const params = new URLSearchParams(location.search);
+    let cid = params.get('c') || 'pi';
+    let requestedTotal = 0;
+    let piError = null;
+    let piNotice = null;
+    let limitState = null;
+    let handle = null;
+    let file = null;   // Pi-Stellendatei (tools/pi-file.js): nur fuer pi, traegt die Stellen jenseits der am Geraet gerechneten
+    const FILE_URL = '/pi-daten/pi-1e9.b196', FILE_DIGITS = 1000000000;
+    const testCfg = () => window.unfoldingPiTest || {};
+    const deviceCap = () => (file ? (testCfg().deviceDigits || 100000) + 1 : Infinity);
+    const startChain = () => view.setDigits(...chainStart());
+    const chainStart = () => [constOf(cid) ? constOf(cid).intPart : '0', cid === 'pi' ? RESERVE.slice(1) : ''];
+
+    const stage  = document.getElementById('stage');
+    const canvas = document.getElementById('pi');
+    let panel = null;   // Regler (tools/controls.js): Sausen, Verdichtungsfaktor, Konstante; im Boot angelegt
+    let driftEl = null, driftValue = 0;   // Sausen in Stellen/s: negativ = Regler links = vorwaerts
+    // Standardgrenze des Sausens: +-10.000 Stellen/s, Step 1. Im Popup (min/max) beliebig weit verstellbar;
+    // die Kennlinie bleibt logarithmisch zwischen 0 und der Grenze.
+    const DRIFT_MAX = 10000;
+    // Zahlen ausgeschrieben ohne Tausenderpunkt, nie in Exponentialschreibweise: 10000, 1000000, 0,5.
+    // Eingaben mit Tausenderpunkten (1.000.000) werden weiter verstanden.
+    const fmtDE = (v, decimals) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: Math.max(0, decimals | 0), useGrouping: false }).format(v);
+    function parseDE(text) {
+      let t = String(text ?? '').trim().replace(/\s/g, '');
+      // Mit Komma: Punkte sind Tausender. Ohne Komma: Punkte nur dann Tausender, wenn sie Dreiergruppen trennen (1.000.000).
+      if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+      else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+      const n = Number(t);
+      return t && Number.isFinite(n) ? n : NaN;
+    }
+    const driftTransform = {
+      toSliderValue(v, cfg) {
+        const lim = (v > 0 ? cfg.max : -cfg.min);
+        if (!v || !(lim > 0)) return 0;
+        return Math.sign(v) * lim * Math.log1p(Math.min(Math.abs(v), lim)) / Math.log1p(lim);
+      },
+      fromSliderValue(s, cfg) {
+        const lim = (s > 0 ? cfg.max : -cfg.min);
+        if (!(lim > 0) || Math.abs(s) < 0.02 * lim) return 0;   // Totzone um die Mitte: kein Kriechen
+        return Math.sign(s) * Math.expm1(Math.min(1, Math.abs(s) / lim) * Math.log1p(lim));
+      },
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
+    };
+
+    // ─── Ansicht ───
+    // Einzelnes pi: Ganzzahl und Dezimalpunkt sind ein statisches Overlay (nie Teil des Stroms); ONE_DOT = false ist der alte Zustand (Punkt im Strom).
+    const ONE_DOT = true, DOT_ALPHA = 1;
+    let dotCache = null;   // dotMetrics (unten); hier, weil es schon beim Anlegen der Ansicht braucht
+    const ORIGIN = UnfoldingView.MARGIN + 24;   // Zelle 0 (die 3); links davon 24 px Greifflaeche fuer das linke Ende
+    const fontSize = () => Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
+    const cellCtx = document.createElement('canvas').getContext('2d');
+    const [intPart0, decimals0] = chainStart();
+    const view = UnfoldingView.create(canvas, {
+      intPart: intPart0, decimals: decimals0,   // schon beim ersten Layout da: die Grenzen richten sich nach der Kettenlaenge
+      // Einzelnes pi: wie ein Glied. Ganzzahl und Punkt zeichnet das Overlay (statisch), der Strom nur die Nachkommastellen jenseits des Punkts.
+      dot: !ONE_DOT, fixedStart: true, origin: ORIGIN, rCells: 1.5, rMinCells: 1.5,
+      // Linkes Ende (die 3) faltet sich in den Punkt: "|.141". fold: Die Ganzzahl endet am Punkt, die Stellen ueberqueren ihn nie (Sausen, Rad, Wischen
+      // schieben nur sie); liegen beide Enden auf dem Punkt, ist es ein Strich.
+      leftGrip: true, fold: true,
+      colorElement: stage,
+      rate: () => -driftValue,
+      // Die Seite meldet nur die echte Front; den Vorrat darüber legt der Worker fest.
+      onNeedDigits: (total) => requestDigits(total),
+      onFront: (atFront) => { if (!multi) stage.classList.toggle('warte', !piError && !limitState && !file && atFront); },
+      onPointerInfo: (info) => { pointerInfo = info; showPlace(); }
+    });
+
+    // ─── Stellenanzeige ───
+    // 0-Notation (Standard): die Ganzzahl ist "0.", die erste Nachkommastelle "1.". Alternative: Zaehlung ab der Ganzzahl
+    // (bei pi heisst die 3 "3.", die erste Nachkommastelle "4."). Kettenindex i: 0 = Ganzzahl, 1 = Komma, ab 2 Nachkommastellen.
+    const NOTATION_KEY = 'unfoldingPi.notation';
+    let notation = 'zero', pointerInfo = null;
+    try { if (localStorage.getItem(NOTATION_KEY) === 'int') notation = 'int'; }
+    catch (e) { console.error('unfoldingPi: Notation nicht lesbar', e); }
+    const placeEl = document.getElementById('stellen');
+    function placeNumber(i) {
+      const off = notation === 'int' ? (Number(constOf(cid) ? constOf(cid).intPart : 0) || 0) : 0;
+      return (i === 0 ? 0 : Math.max(1, i - 1)) + off;
+    }
+    function placeText(info) {
+      if (!info) return '\u00a0';
+      if (info.c) {
+        // Glied: centrum = 0., erste Nachkommastelle = 1.; "change notation" zaehlt ab der Ganzzahl der Konstante
+        const gname = nameOf(info.c), off = notation === 'int' ? (Number(constOf(info.c).intPart) || 0) : 0;
+        const g = (k) => fmtDE(k + off, 0) + '.';
+        if (info.kind === 'digit') return info.index === 0 ? 'centrum of ' + gname + ' (a little circle)' : g(info.index) + ' digit of ' + gname;
+        if (info.kind === 'left') return g(0) + '-' + g(info.hi) + ' digits of ' + gname;
+        if (info.kind === 'right') return g(info.lo) + '-every digit of ' + gname;
+        return g(0) + '-every digit of ' + gname;
+      }
+      const name = cid === 'pi' ? 'pi' : symbolOf(cid);
+      const n = (i) => fmtDE(placeNumber(i), 0) + '.';
+      if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
+      if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
+      if (info.kind === 'end') return fmtDE(info.count, 0) + ' digits of ' + name;
+      if (info.kind === 'right') return n(info.lo) + '-every digit of ' + name;
+      return n(0) + '-every digit of ' + name;
+    }
+    function showPlace() { placeEl.textContent = placeText(pointerInfo); }
+    function setNotation(v) {
+      if (v !== 'zero' && v !== 'int') throw new TypeError('Notation unbekannt: ' + v);
+      notation = v;
+      try { localStorage.setItem(NOTATION_KEY, v); }
+      catch (e) { console.error('unfoldingPi: Notation nicht speicherbar', e); }
+      showPlace();
+    }
+
+    // ─── Konstanten-Rechner (tools/irrational.js) ───
+    function fail(message) {
+      if (piError) return;
+      piError = message;
+      console.error('[unfoldingPi] ' + message);
+      stage.classList.remove('warte', 'hinweis');
+      stage.classList.add('fehler');
+      driftEl.disabled = true;
+      driftValue = 0;
+      panel.set('drift', 0);
+      view.setLocked(true);
+      view.invalidate();
+      if (multi) for (const it of multi.items) { it.view.setLocked(true); it.view.invalidate(); }
+    }
+    // Nicht sperrender Hinweis (Rueckfall auf BigInt ohne WebAssembly): gleicher Rahmenweg wie fail(), der Drift laeuft weiter.
+    function notice(message) {
+      if (piNotice || piError) return;
+      piNotice = message;
+      console.warn('[unfoldingPi] ' + message);
+      stage.classList.add('hinweis');
+      view.invalidate();
+    }
+    function onLimit(lim) {
+      limitState = lim;
+      stage.classList.remove('warte');
+      if (file) { if (handle) handle.close(); view.invalidate(); return; }   // Geraetegrenze: die Datei traegt weiter
+      if (lim.kind === 'device' && !document.getElementById('limit-hint')) {
+        const hint = document.createElement('div');
+        hint.id = 'limit-hint';
+        hint.className = 'limit-hint';
+        hint.textContent = 'use better hardware to get access to more digits';
+        stage.appendChild(hint);
+      }
+      if (handle) handle.close(); // der Worker gibt seinen WASM-Speicher frei; die Anzeige bleibt
+      view.invalidate();
+    }
+    function onDigits(u8, offset) {
+      try {
+        view.appendDigits(u8, offset);
+      } catch (e) {
+        if (e instanceof RangeError) {
+          // V8-Stringgrenze: Rechenwerk-Grenze, kein Text, die Anzeige bleibt stehen.
+          const digits = view.state().chainLength - 2;
+          console.warn('[unfoldingPi] engine limit: string length at ' + digits + ' digits');
+          limitState = { kind: 'engine', reason: 'string length', digits };
+          stage.classList.remove('warte');
+          if (handle) handle.close();
+          return;
+        }
+        if (e instanceof UnfoldingView.DigitError) { fail(e.message); return; }
+        fail('Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+      }
+    }
+    function startFile() {
+      if (file) { file.close(); file = null; }
+      view.setRemote(null);
+      if (cid !== 'pi' || testCfg().file === false) return;
+      file = PiFile.create({
+        url: testCfg().fileUrl || FILE_URL, digits: FILE_DIGITS,
+        onError: (e) => fail('Pi-Datei: ' + e.message),
+        onChange: () => view.invalidate()
+      });
+      view.setRemote(file);
+    }
+    function startWorker() {
+      if (handle) { handle.close(); handle = null; }
+      startFile();
+      limitState = null;
+      requestedTotal = 0;
+      piError = null;
+      driftEl.disabled = false;
+      view.setLocked(false);
+      stage.classList.remove('warte', 'hinweis', 'fehler');
+      const old = document.getElementById('limit-hint');
+      if (old) old.remove();
+      piNotice = null;
+      startChain();
+      try {
+        handle = Irrational.open(cid, { onDigits, onLimit, onNotice: notice, onError: (e) => fail(e.message) }, window.unfoldingPiTest);
+      } catch (e) { fail('Rechner nicht startbar: ' + e.message); return; }
+      requestDigits(2000);
+    }
+    function requestDigits(total) {
+      if (!handle || piError || limitState || total <= requestedTotal) return;
+      const t = Math.min(total, deviceCap());
+      if (t <= requestedTotal) return;
+      requestedTotal = t;
+      handle.want(t);
+    }
+    function symbolOf(id) { return constOf(id).symbol; }
+    function setConstant(id) {
+      if (id === cid) return;
+      cid = id;
+      glieder = [{ uid: glieder[0].uid, c: id, dir: 'r' }];
+      syncRows();
+      const u = new URL(location.href);
+      u.searchParams.set('c', id);
+      history.replaceState(null, '', u);
+      document.title = id === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(id);
+      showPlace();
+      startWorker();
+      view.rewind();
+      centreSingle();
+    }
+
+    // ─── Glieder: Kette und Stern ───
+    // Ein Glied ist der bisherige Modus (#pi). Ab zwei Gliedern bekommt jedes Glied eine eigene Canvas und Ansicht: nur
+    // Nachkommastellen ab einem centrum (Kreis), ausgerollt, Schrift wie #pi. Kette: die Breite in gleiche Plaetze geteilt,
+    // r beginnt am linken Rand seines Platzes, l (gespiegelt) am rechten; l gefolgt von r teilt sich ein centrum. Stern: alle
+    // Strahlen aus der Buehnenmitte, Winkel 360/n; ein Strahl ueber 90..270 Grad laeuft gespiegelt (Ziffern nie kopfueber).
+    // Gleiche Konstanten teilen einen Rechner. Keine Pi-Datei: die Geraetegrenze gilt wie bei e.
+    let uidSeq = 0, glieder = [{ uid: ++uidSeq, c: cid, dir: 'r' }], form = 'kette', multi = null, pointerItem = null;
+    let factorValue = view.state().factor;
+    const MARGIN = UnfoldingView.MARGIN;
+    const nameOf = (id) => (id === 'pi' ? 'pi' : symbolOf(id));
+    // Zellbreite wie in tools/unfolding-view.js (measure): das centrum jedes Glieds liegt bei MARGIN + w/2 auf seiner Achse.
+    function cellW() {
+      const dpr = window.devicePixelRatio || 1;
+      cellCtx.font = (fontSize() * dpr) + 'px "Courier New", Courier, monospace';
+      return Math.max(1, Math.round(cellCtx.measureText('0').width)) / dpr;
+    }
+    function parseGlieder() {
+      const k = params.get('kette'), s = params.get('stern');
+      if (k === null && s === null) return null;
+      const star = k === null, out = [], bad = [];
+      for (const part of (star ? s : k).split('.').filter(Boolean)) {
+        const m = star ? /^([a-z0-9]+)$/.exec(part) : /^([a-z0-9]+)-([lr])$/.exec(part);
+        if (m && constOf(m[1])) out.push({ c: m[1], dir: star ? 'r' : m[2] });
+        else bad.push(part);
+      }
+      return { form: star ? 'stern' : 'kette', list: out, bad };
+    }
+    function saveUrl() {
+      const u = new URL(location.href);
+      for (const k of ['c', 'kette', 'stern']) u.searchParams.delete(k);
+      if (glieder.length === 1) u.searchParams.set('c', glieder[0].c);
+      else if (form === 'kette') u.searchParams.set('kette', glieder.map((g) => g.c + '-' + g.dir).join('.'));
+      else u.searchParams.set('stern', glieder.map((g) => g.c).join('.'));
+      history.replaceState(null, '', u);
+    }
+    function updateWaiting() {
+      if (!multi) return;
+      stage.classList.toggle('warte', !piError && multi.items.some((it) => it.front && !multi.workers.get(it.c).limit));
+    }
+    function showLimitHint() {
+      if (document.getElementById('limit-hint')) return;
+      const hint = document.createElement('div');
+      hint.id = 'limit-hint';
+      hint.className = 'limit-hint';
+      hint.textContent = 'use better hardware to get access to more digits';
+      stage.appendChild(hint);
+    }
+    function openWorker(m, c) {
+      const wk = { handle: null, req: 0, limit: null };
+      m.workers.set(c, wk);
+      const live = () => multi === m;
+      const onMDigits = (u8, offset) => {
+        if (!live()) return;
+        for (const it of m.items) {
+          if (it.c !== c) continue;
+          try { it.view.appendDigits(u8, offset); }
+          catch (e) {
+            if (e instanceof RangeError) {
+              console.warn('[unfoldingPi] engine limit (' + c + '): string length at ' + (it.view.state().chainLength - 1) + ' digits');
+              wk.limit = { kind: 'engine', reason: 'string length' };
+              if (wk.handle) wk.handle.close();
+              updateWaiting();
+              return;
+            }
+            fail(e instanceof UnfoldingView.DigitError ? e.message : 'Stellen nicht verarbeitbar: ' + (e && e.message ? e.message : e));
+            return;
+          }
+        }
+      };
+      const onMLimit = (lim) => {
+        if (!live()) return;
+        wk.limit = lim;
+        if (lim.kind === 'device') showLimitHint();
+        if (wk.handle) wk.handle.close();
+        updateWaiting();
+      };
+      try {
+        wk.handle = Irrational.open(c, { onDigits: onMDigits, onLimit: onMLimit, onNotice: (msg) => { if (live()) notice(msg); }, onError: (e) => { if (live()) fail(e.message); } }, window.unfoldingPiTest);
+      } catch (e) { fail('Rechner nicht startbar: ' + e.message); }
+      return wk;
+    }
+    function wantDigits(m, c, total) {
+      const wk = m.workers.get(c) || openWorker(m, c);
+      if (!wk.handle || wk.limit || piError || total <= wk.req) return;
+      wk.req = total;
+      wk.handle.want(total);
+    }
+    function teardownMulti() {
+      if (!multi) return;
+      const m = multi;
+      multi = null;
+      for (const wk of m.workers.values()) if (wk.handle) wk.handle.close();
+      for (const it of m.items) { it.view.destroy(); it.canvas.remove(); }
+      if (m.punkt) m.punkt.remove();
+      if (m.themeObs) m.themeObs.disconnect();
+      if (pointerItem) { pointerItem = null; pointerInfo = null; showPlace(); }
+    }
+    // Lage jedes Glieds; setzt it.dir/it.rot und die Canvas-Geometrie (CSS-px der Buehne).
+    // Freie Flaeche: Desktop rechts neben dem Bedienfeld, Handy ueber dem Bedienblatt. Ihre Mitte ist die Konstante: dort steht der Punkt.
+    // Handy: das Bedienblatt (Bottom Sheet) deckt die untere Fensterhaelfte. Beschriftung und Ziffernzeile ruecken mit ihm hoch und
+    // bleiben darueber sichtbar; die Mitte (x) bleibt. Gleiche Quelle wie controls.js: Oberkante des Blatts (panel.el), Ereignis
+    // ctrl-panel-layout-change; waehrend des Ziehens gibt es kein Ereignis je Bild, darum zusaetzlich die Abfrage in watchR.
+    const LINE_HALF = 34, LABEL_GAP = 10;
+    function liftState() {
+      const H = window.innerHeight, base = { lift: 0, labelTop: 0.68 * stage.clientHeight };
+      if (window.innerWidth > 768 || typeof panel === 'undefined' || !panel || !panel.el) return base;
+      const pTop = panel.el.getBoundingClientRect().top;
+      if (!(pTop > 0) || pTop >= H) return base;
+      const labelH = placeEl.offsetHeight || 28;
+      const labelTop = Math.max(0, Math.min(base.labelTop, pTop - labelH - LABEL_GAP));
+      const centre = Math.max(LINE_HALF, Math.min(H / 2, labelTop - LINE_HALF));
+      return { lift: H / 2 - centre, labelTop };
+    }
+    function applyLift() {
+      const st = liftState();
+      placeEl.style.top = st.lift > 0 || st.labelTop < 0.68 * stage.clientHeight ? st.labelTop + 'px' : '';
+      return st.lift;
+    }
+    let lastPanelTop = -1;
+    function watchPanel() {
+      if (!panel || !panel.el) return;
+      const t = window.innerWidth > 768 ? -2 : Math.round(panel.el.getBoundingClientRect().top);
+      if (t !== lastPanelTop) { lastPanelTop = t; if (multi) { layoutMulti(); for (const it of multi.items) if (it.view) it.view.resize(); } else centreSingle(); }
+    }
+    function freeArea() {
+      // Der Punkt steht in der Mitte des FENSTERS (Tim), nie in der Mitte der freien Flaeche; das Bedienfeld darf den Inhalt ueberdecken.
+      const SW = stage.clientWidth, SH = stage.clientHeight, sr = stage.getBoundingClientRect();
+      return { x0: 0, x1: SW, y0: 0, y1: SH, cx: window.innerWidth / 2 - sr.left, cy: window.innerHeight / 2 - sr.top - applyLift() };
+    }
+    // Tinte nur jenseits des Punkts ('from': x >= v, 'to': x <= v, Canvas-Koordinaten). Maske statt clip-path: clip-path schneidet
+    // auch die Trefferflaeche, dann trifft die Maus auf der Stossstelle kein Glied.
+    function inkMask(cv, side, v) {
+      if (!CLIP) { cv.style.maskImage = cv.style.webkitMaskImage = ''; delete cv.dataset.inkSide; delete cv.dataset.inkAt; return; }
+      const img = side === 'from' ? 'linear-gradient(to right, transparent ' + v + 'px, #000 ' + v + 'px)' : 'linear-gradient(to right, #000 ' + v + 'px, transparent ' + v + 'px)';
+      cv.style.maskImage = cv.style.webkitMaskImage = img;
+      cv.dataset.inkSide = side; cv.dataset.inkAt = String(v);
+    }
+    function layoutMulti() {
+      if (!multi) return;
+      const SW = stage.clientWidth, SH = stage.clientHeight, w = cellW(), p0 = MARGIN + w / 2, n = multi.items.length;
+      const A = freeArea();
+      if (form === 'kette') {
+        const dh = dotMetrics().half, dc = dh + 0.5;
+        // Bezugsstelle: gerade Zahl = mittlere Verbindungsstelle (Grenze n/2), ungerade = Punkt des mittleren Glieds (ANNAHME)
+        const mid = Math.floor(n / 2);
+        const j = n % 2 === 0 ? mid : (multi.items[mid].dir === 'r' ? mid : mid + 1);
+        let s = Infinity;
+        multi.items.forEach((it, i) => {
+          const a = i - j;
+          if (it.dir === 'r') { if (a < 0) s = Math.min(s, (A.cx - p0 - A.x0) / -a); if (a + 1 > 0) s = Math.min(s, (A.x1 - A.cx + p0) / (a + 1)); }
+          else { if (a + 1 > 0) s = Math.min(s, (A.x1 - A.cx - p0) / (a + 1)); if (a < 0) s = Math.min(s, (A.cx + p0 - A.x0) / -a); }
+        });
+        const slotW = Math.max(2 * p0, s), bd = (i) => A.cx + (i - j) * slotW;
+        const cx = multi.items.map((it, i) => (it.dir === 'r' ? bd(i) : bd(i + 1)));
+        multi.items.forEach((it, i) => {
+          const nx = multi.items[i + 1];
+          let left = it.dir === 'r' ? bd(i) - p0 : bd(i + 1) + p0 - slotW, width = slotW, z = 1;
+          // Das verdichtete Ende stoesst ohne Luecke an den Punkt des Nachbarn (Ende = Rand - MARGIN; Punkt = Tintenrand).
+          it.abut = false;
+          if (ABUT && nx && it.dir === 'r' && nx.dir === 'r') { width = cx[i + 1] - dh - ABUT_GAP + MARGIN - left; z = 2; it.abut = true; }
+          if (ABUT && i > 0 && it.dir === 'l' && multi.items[i - 1].dir === 'l') { const r = left + width; left = cx[i - 1] + dh + ABUT_GAP - MARGIN; width = r - left; z = 2; it.abut = true; }
+          if (!it.abut) z = 3;   // freies Ende ueber dem Nachbarn: ganz eingeschoben liegt es unter dessen Stossstelle und liesse sich sonst nicht greifen
+          it.rot = 0;
+          it.cl = cx[i] - left;   // centrum in Canvas-Koordinaten
+          it.lx = cx[i]; it.ly = A.cy;
+          Object.assign(it.canvas.style, {
+            left: left + 'px', top: '0px', width: width + 'px', height: A.y1 + 'px', zIndex: String(z),
+            transform: '', transformOrigin: '',
+            clipPath: ''
+          });
+          inkMask(it.canvas, it.dir === 'r' ? 'from' : 'to', it.dir === 'r' ? cx[i] + dc - left : cx[i] - dc - left);
+        });
+        drawDots(cx.map((x) => ({ x, y: A.cy })));
+        return;
+      }
+      const xmin = A.x0;
+      const cx = A.cx, cy = A.cy, BH = Math.round(3 * fontSize()), dh = dotMetrics().half, dc = dh + 0.5;
+      multi.cx = cx; multi.cy = cy;
+      multi.items.forEach((it, k) => {
+        const th = 360 * k / n, rad = th * Math.PI / 180, co = Math.cos(rad), si = Math.sin(rad);
+        const tx = co > 1e-9 ? (SW - cx) / co : co < -1e-9 ? (cx - xmin) / -co : Infinity;
+        const ty = si > 1e-9 ? (A.y1 - cy) / si : si < -1e-9 ? cy / -si : Infinity;
+        const CW = Math.max(2 * p0, Math.min(tx, ty) - 4 + p0);
+        const flip = th > 90 && th < 270;
+        it.angle = th;
+        it.rot = flip ? th - 180 : th;
+        it.dir = flip ? 'l' : 'r';
+        it.cl = flip ? CW - p0 : p0;   // centrum auf der Achse der Canvas (ungespiegelt)
+        Object.assign(it.canvas.style, {
+          left: (cx - it.cl) + 'px', top: (cy - BH / 2) + 'px', width: CW + 'px', height: BH + 'px',
+          transformOrigin: it.cl + 'px ' + (BH / 2) + 'px', transform: 'rotate(' + it.rot + 'deg)',
+          clipPath: ''
+        });
+        inkMask(it.canvas, flip ? 'to' : 'from', flip ? it.cl - dc : it.cl + dc);
+      });
+      drawDots([{ x: cx, y: cy }]);
+    }
+    // Der Dezimalpunkt: genau einer je Verbindungsstelle, auf einer eigenen Canvas ueber den Gliedern, nie Teil einer Kette
+    // (die Glieder zeichnen ihn nicht, dot: false), damit er beim Sausen, Ziehen und Rad fest steht. Das Glyph "." der Schrift,
+    // waagerecht mit der Tintenmitte auf dem centrum, senkrecht wie die Ziffern (Grundlinie, nicht Mitte).
+    const ABUT_GAP = 4;   // freier Streifen zwischen verdichtetem Ende und Punkt, sonst verschmilzt der Punkt mit dem Block
+    const ABUT = true, CLIP = true, DEDUPE = true, PUNKT_X = (pt) => pt.x;
+    // Lage des Punkts aus der echten Tinte (Pixelmessung), nicht aus TextMetrics (WebKit liefert dort andere Werte):
+    // half = halbe Tintenbreite, dx = Tintenmitte rechts vom Zeichenpunkt (textAlign center), dy = Verschiebung, mit der die
+    // Unterkante des Punkts auf der Unterkante der Ziffer "1" liegt (Grundlinie wie in "3.14").
+    const single = { punkt: null, points: [] };
+    const singleInt = () => String(constOf(cid) ? constOf(cid).intPart : 3);
+    function dotMetrics() {
+      const fs = fontSize();
+      if (dotCache && dotCache.fs === fs) return dotCache;
+      const K = 4, S = Math.ceil(fs * 3 * K), cv = document.createElement('canvas');
+      cv.width = S; cv.height = S;
+      const g = cv.getContext('2d', { willReadFrequently: true });
+      g.font = (fs * K) + 'px "Courier New", Courier, monospace';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#000';
+      const ink = (ch) => {
+        g.clearRect(0, 0, S, S);
+        g.fillText(ch, S / 2, S / 2);
+        const d = g.getImageData(0, 0, S, S).data;
+        let l = S, r = 0, t = S, b = 0;
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (d[(y * S + x) * 4 + 3] > 100) { if (x < l) l = x; if (x + 1 > r) r = x + 1; if (y < t) t = y; if (y + 1 > b) b = y + 1; }
+        if (r <= l) throw new Error('dotMetrics: Glyph ' + ch + ' ohne Tinte');
+        return { l, r, t, b };
+      };
+      const dot = ink('.'), one = ink('1');
+      dotCache = { fs, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K };
+      return dotCache;
+    }
+    function drawDots(raw) {
+      const T = multi || single;
+      if (!T.punkt) return;
+      const pts = [];
+      for (const q of raw) if (!DEDUPE || !pts.some((o) => Math.abs(o.x - q.x) < 0.5 && Math.abs(o.y - q.y) < 0.5)) pts.push(q);
+      T.points = pts;
+      const cv = T.punkt, dpr = window.devicePixelRatio || 1, SW = stage.clientWidth, SH = stage.clientHeight;
+      cv.style.width = SW + 'px'; cv.style.height = SH + 'px';
+      // Rückspeicher nur bei neuer Größe neu anlegen (WebKit verliert sonst nach vielen Größenänderungen die Zeichenfläche)
+      const BW = Math.max(1, Math.round(SW * dpr)), BHt = Math.max(1, Math.round(SH * dpr));
+      if (cv.width !== BW) cv.width = BW;
+      if (cv.height !== BHt) cv.height = BHt;
+      const g = cv.getContext('2d'), dm = dotMetrics();
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, BW, BHt);
+      // Ohne Transform gezeichnet: WebKit wendet nach dem Wechsel in den Bearbeiten-Modus setTransform(dpr) doppelt an (Zeichnung 2x verschoben)
+      g.font = (fontSize() * dpr) + 'px "Courier New", Courier, monospace';
+      g.textAlign = 'center'; g.textBaseline = 'middle';   // wie die Ziffern; dy (dotMetrics) legt die Punkt-Unterkante auf die der Ziffern
+      g.fillStyle = getComputedStyle(stage).color;
+      if (!multi && !ONE_DOT) return;
+      g.globalAlpha = DOT_ALPHA;
+      // Ganz eingeschoben liegt der Strich auf dem Punkt und deckt ihn ("3|"); erst beim Herausziehen erscheint er
+      const covered = !multi && view && (() => {
+        const st = view.state(), off = canvas.getBoundingClientRect().left - stage.getBoundingClientRect().left;
+        return off + st.R < pts[0].x + dm.half || off + st.L > pts[0].x - dm.half || (!st.fold && st.uLeft > 0.5);   // Strich/Falte auf dem Punkt: nur sie, kein Punkt darunter
+      })();
+      if (!covered) for (const q of pts) g.fillText('.', (PUNKT_X(q) - dm.dx) * dpr, (q.y + dm.dy) * dpr);
+      g.globalAlpha = 1;
+    }
+    // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
+    function starLocal(it, e) {
+      const r = stage.getBoundingClientRect(), a = it.rot * Math.PI / 180;
+      return it.cl + (e.clientX - r.left - multi.cx) * Math.cos(a) + (e.clientY - r.top - multi.cy) * Math.sin(a);
+    }
+    function buildMulti() {
+      teardownMulti();
+      if (handle) { handle.close(); handle = null; }
+      if (file) { file.close(); file = null; }
+      view.setRemote(null);
+      view.setLocked(true);
+      canvas.style.visibility = 'hidden';
+      if (single.punkt) single.punkt.style.display = 'none';   // sonst bleibt "3." des Einzelmodus stehen und druckt ueber die Glieder
+      limitState = null;
+      piError = null;
+      piNotice = null;
+      driftEl.disabled = false;
+      stage.classList.remove('warte', 'hinweis', 'fehler');
+      const old = document.getElementById('limit-hint');
+      if (old) old.remove();
+      const m = { items: [], workers: new Map(), punkt: null, points: [], themeObs: null };
+      multi = m;
+      for (const g of glieder) {
+        const cv = document.createElement('canvas');
+        cv.className = 'glied';
+        stage.insertBefore(cv, placeEl);
+        m.items.push({ c: g.c, dir: g.dir, canvas: cv, view: null, front: false, rot: 0, angle: 0, cl: 0 });
+      }
+      m.punkt = document.createElement('canvas');
+      m.punkt.className = 'punkt';
+      stage.insertBefore(m.punkt, placeEl);
+      m.themeObs = new MutationObserver(() => { if (multi === m) drawDots(m.points); });
+      for (const el of [document.documentElement, document.body]) m.themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+      layoutMulti();
+      for (const it of m.items) {
+        it.view = UnfoldingView.create(it.canvas, {
+          intPart: '', decimals: it.c === 'pi' ? RESERVE.slice(1) : '', dot: false,
+          origin: MARGIN, unrolled: true, fixedStart: true, rMinCells: 0.5, fixedEnd: () => !!it.abut,
+          endCursor: () => { const a = ((it.rot % 180) + 180) % 180; return a < 1 || a > 179 ? 'ew-resize' : (Math.abs(a - 90) < 1 ? 'ns-resize' : 'move'); }, fontPx: fontSize, dir: it.dir, factor: factorValue,
+          colorElement: stage,
+          localX: form === 'stern' ? (e) => starLocal(it, e) : undefined,
+          rate: () => -driftValue,
+          onNeedDigits: (total) => { if (multi === m) wantDigits(m, it.c, total); },
+          onFront: (atFront) => { it.front = atFront; updateWaiting(); },
+          onPointerInfo: (info) => {
+            if (info) { pointerItem = it; pointerInfo = Object.assign({ c: it.c }, info); }
+            else if (pointerItem === it) { pointerItem = null; pointerInfo = null; }
+            else return;
+            showPlace();
+          }
+        });
+      }
+      for (const c of new Set(m.items.map((it) => it.c))) wantDigits(m, c, 2000);
+      layoutMulti();
+    }
+    function toSingle() {
+      teardownMulti();
+      canvas.style.visibility = '';
+      if (single.punkt) single.punkt.style.display = '';
+      cid = glieder[0].c;
+      document.title = cid === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(cid);
+      startWorker();
+      view.rewind();
+      view.resize();
+      centreSingle();
+    }
+    // Struktur sofort (Reset, Rueckgaengig) oder aus dem Panel: dort zeigt die Zeile die Aenderung sofort (changed), der Aufbau folgt im naechsten Takt.
+    function structure() {
+      saveUrl();
+      syncRows();
+      applyStructure();
+    }
+    function applyStructure() {
+      if (glieder.length === 1) toSingle();
+      else buildMulti();
+    }
+    let structurePending = false;
+    function changed() {
+      saveUrl();
+      syncRows();
+      if (structurePending) return;
+      structurePending = true;
+      requestAnimationFrame(() => setTimeout(() => { structurePending = false; applyStructure(); }, 0));
+    }
+    const nextUid = () => ++uidSeq;
+    function addGlied() {
+      if (glieder.length === 1) { glieder[0].dir = 'l'; glieder.push({ uid: nextUid(), c: glieder[0].c, dir: 'r' }); form = 'kette'; }
+      else glieder.push({ uid: nextUid(), c: 'pi', dir: 'r' });
+      changed();
+    }
+    function toggleMirror(g) {
+      if (glieder.length === 1) { g.dir = 'l'; glieder.push({ uid: nextUid(), c: g.c, dir: 'r' }); form = 'kette'; }
+      else g.dir = g.dir === 'r' ? 'l' : 'r';
+      changed();
+    }
+    function removeGlied(g) {
+      if (glieder.length < 2) return;
+      glieder.splice(glieder.indexOf(g), 1);
+      changed();
+    }
+    // Panel: eine Zeile je Konstante [Auswahl][mirror][x]. Die Zeilen werden gezielt ergaenzt, entfernt und umgeschrieben,
+    // nie neu aufgebaut; die Liste hat feste Hoehe (drei Zeilen), so bewegt sich beim Klick nichts.
+    const ui = { rows: new Map(), list: null, form: null };
+    const mk = (tag, cls, attrs) => { const e = document.createElement(tag); if (cls) e.className = cls; if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+    function buildConstPanel() {
+      panel.beginSection('consts', { className: 'pi-consts' });
+      const sec = panel.bodyEl.lastElementChild;
+      const head = mk('div', 'pi-head');
+      ui.form = mk('div', 'pi-form', { role: 'group', 'aria-label': 'arrangement' });
+      for (const [key, label, tip] of [['kette', 'chain', 'one after another: a compression point per constant'], ['stern', 'star', 'all rays run towards one centre']]) {
+        const b = mk('button', '', { type: 'button', title: tip, 'data-button-key': key });
+        b.textContent = label;
+        b.addEventListener('click', () => { if (form !== key) { form = key; changed(); } });
+        ui.form.appendChild(b);
+      }
+      const add = mk('button', 'pi-add', { type: 'button', 'data-button-key': 'add' });
+      add.textContent = '+ constant';
+      add.addEventListener('click', addGlied);
+      head.append(add, ui.form);
+      ui.list = mk('div', 'pi-list');
+      sec.append(head, ui.list);
+      panel.endSection();
+    }
+    function makeRow() {
+      const row = mk('div', 'pi-row');
+      const wrap = mk('label', 'pi-sel');
+      const sel = mk('select', 'pi-select', { 'aria-label': 'constant' });
+      for (const k of CONSTS) sel.add(new Option(k.symbol, k.id));
+      wrap.appendChild(sel);
+      const mir = mk('button', 'pi-mirror', { type: 'button', 'data-button-key': 'dir', title: 'mirror: 3.141... becomes ...141.141...' });
+      mir.textContent = 'mirror';
+      const del = mk('button', 'pi-del', { type: 'button', 'data-button-key': 'del', 'aria-label': 'remove constant', title: 'remove constant' });
+      del.textContent = '×';
+      sel.addEventListener('change', () => { const g = row._g; if (sel.value === g.c) return; if (glieder.length === 1) setConstant(sel.value); else { g.c = sel.value; changed(); } });
+      mir.addEventListener('click', () => toggleMirror(row._g));
+      del.addEventListener('click', () => removeGlied(row._g));
+      row.append(wrap, mir, del);
+      row._sel = sel; row._mir = mir; row._del = del;
+      return row;
+    }
+    function syncRows() {
+      const many = glieder.length > 1, want = new Set();
+      for (const g of glieder) { if (!g.uid) g.uid = nextUid(); want.add(g.uid); }
+      for (const [uid, r] of ui.rows) if (!want.has(uid)) { r.remove(); ui.rows.delete(uid); }
+      let prev = null;
+      for (const g of glieder) {
+        let r = ui.rows.get(g.uid);
+        if (!r) { r = makeRow(); ui.rows.set(g.uid, r); }
+        r._g = g;
+        const ref = prev ? prev.nextSibling : ui.list.firstChild;
+        if (r !== ref) ui.list.insertBefore(r, ref);
+        prev = r;
+        if (r._sel.value !== g.c) r._sel.value = g.c;
+        r._mir.setAttribute('aria-pressed', String(many && g.dir === 'l'));
+        r._mir.disabled = many && form === 'stern';
+        r._del.disabled = !many;
+      }
+      if (many) ui.form.removeAttribute('data-off'); else ui.form.setAttribute('data-off', '');
+      for (const b of ui.form.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.buttonKey === form)); b.tabIndex = many ? 0 : -1; }
+    }
+    // Einzelnes pi/e/...: die Canvas liegt wie ein Glied (Anfang = Zelle der Ganzzahl), die Ganzzahl steht buendig links vom Punkt,
+    // der Punkt in der Mitte der freien Flaeche; beides zeichnet das Overlay, der Strom ist rechts vom Punkt sichtbar.
+    function centreSingle() {
+      if (multi) return;
+      const A = freeArea(), SW = stage.clientWidth, w = cellW(), ip = singleInt().length;
+      const left = A.cx - (ip + 0.5) * w - ORIGIN;
+      Object.assign(canvas.style, { position: 'absolute', left: left + 'px', top: '0px', width: (SW - left) + 'px', height: A.y1 + 'px', margin: '0' });
+      canvas.style.top = (A.cy - A.y1 / 2) + 'px';
+      // keine Maske: WebKit blendet bei einem Verlauf mit Stopp bei -1e6 px die ganze Zeichenflaeche aus
+      canvas.style.maskImage = canvas.style.webkitMaskImage = ''; delete canvas.dataset.inkSide; delete canvas.dataset.inkAt;
+      view.resize();
+      drawDots([{ x: A.cx, y: A.cy }]);
+    }
+    window.addEventListener('resize', () => { if (multi) layoutMulti(); else centreSingle(); });
+
+    // ─── Boot ───
+    panel = Controls.createPanel({ position: 'left', id: 'pi-compression', desktopInitialHeightFraction: 0.62, mobileInitialOpenMaxViewportFraction: 0.4 });
+    if (window.ResizeObserver && panel.el) new ResizeObserver(() => { if (multi) { layoutMulti(); for (const it of multi.items) if (it.view) it.view.resize(); } else centreSingle(); }).observe(panel.el);
+    // Debug-Anzeige (nur im Bearbeiten-Modus, html.oe-editing wie tools/editor.js): duenne Linien ueber der Buehne,
+    // pointer-events: none; aus = nichts gezeichnet, keine Schleife.
+    const DEBUG_KEY = 'unfoldingPi.debug';
+    const debug = (() => {
+      const root = document.documentElement;
+      const editing = () => root.classList.contains('oe-editing');
+      let on = false, layer = null, raf = 0, info = null;
+      try { on = localStorage.getItem(DEBUG_KEY) === '1'; } catch (e) { /* kein Speicher: Schalter gilt nur fuer diese Sitzung */ }
+      const css = 'position:absolute;pointer-events:none;box-sizing:border-box;';
+      const box = (x, y, w, h, col, st) => { const d = document.createElement('div'); d.style.cssText = css + 'left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h + 'px;border:1px ' + (st || 'solid') + ' ' + col + ';'; layer.appendChild(d); return d; };
+      const targets = () => (multi ? multi.items.map((it, i) => ({ name: 'link ' + i, cv: it.canvas, v: it.view })) : [{ name: 'pi', cv: canvas, v: view }]);
+      function frame() {
+        raf = 0;
+        if (!on || !editing()) return;
+        layer.textContent = '';
+        const SW = window.innerWidth, SH = window.innerHeight, lines = [];
+        const wx = SW / 2, wy = SH / 2;
+        const v1 = document.createElement('div'); v1.style.cssText = css + 'left:' + (wx - 0.5) + 'px;top:0;width:1px;height:' + SH + 'px;background:rgba(120,170,255,.35);'; layer.appendChild(v1);
+        const h1 = document.createElement('div'); h1.style.cssText = css + 'left:0;top:' + (wy - 0.5) + 'px;width:' + SW + 'px;height:1px;background:rgba(120,170,255,.35);'; layer.appendChild(h1);
+        const pts = multi ? multi.points : single.points;
+        for (const q of pts || []) box(q.x - 3, q.y - 3, 6, 6, 'rgba(255,200,90,.8)');
+        for (const t of targets()) {
+          if (!t.v) continue;
+          const z = t.v.zones(), st = t.v.state(), cs = t.cv.style;
+          const frameDiv = (x, w, col, dash) => { const d = box(x, 0, w, parseFloat(cs.height) || t.cv.clientHeight, col, dash); d.style.left = (parseFloat(cs.left) + x) + 'px'; d.style.top = cs.top; d.style.transformOrigin = cs.transformOrigin ? cs.transformOrigin.replace(/^(\S+)/, (m) => (parseFloat(m) - x) + 'px') : ''; d.style.transform = cs.transform; return d; };
+          frameDiv(0, parseFloat(cs.width) || t.cv.clientWidth, 'rgba(255,255,255,.18)');
+          frameDiv(z.r[0], Math.max(1, z.r[1] - z.r[0]), 'rgba(110,220,160,.7)', 'dashed');
+          frameDiv(z.r[0] - 0.5, 1, 'rgba(255,120,120,.8)');
+          if (z.l) { frameDiv(z.l[0], Math.max(1, z.l[1] - z.l[0]), 'rgba(110,220,160,.7)', 'dashed'); frameDiv(z.l[1] - 0.5, 1, 'rgba(255,120,120,.8)'); }
+          if (st.hover && st.hover.kind === 'digit') frameDiv(st.hover.x0, Math.max(1, st.hover.x1 - st.hover.x0), 'rgba(200,160,255,.7)');
+          lines.push(t.name + '  X0 ' + st.X0.toFixed(1) + '  L ' + st.L.toFixed(1) + '  R ' + st.R.toFixed(1) + '  digits ' + Math.max(0, st.startIndex | 0) + '-' + (st.endIndex | 0));
+        }
+        const pn = panel && panel.el ? panel.el.getBoundingClientRect().width : 0;
+        lines.push('panel ' + Math.round(pn) + '  window ' + SW + 'x' + SH);
+        info.textContent = lines.join('\n');
+        raf = requestAnimationFrame(frame);
+      }
+      function sync() {
+        const show = on && editing();
+        if (show && !layer) {
+          layer = document.createElement('div'); layer.className = 'pi-debug'; layer.style.cssText = css + 'inset:0;z-index:50;';
+          info = document.createElement('pre'); info.style.cssText = css + 'right:8px;bottom:8px;margin:0;z-index:51;font:11px/1.4 monospace;color:rgba(255,255,255,.65);background:rgba(0,0,0,.45);padding:6px 8px;white-space:pre;';
+          stage.appendChild(layer); stage.appendChild(info);
+        }
+        if (layer) { layer.style.display = info.style.display = show ? '' : 'none'; if (!show) layer.textContent = ''; }
+        if (show && !raf) raf = requestAnimationFrame(frame);
+      }
+      const rowOf = () => panel && panel.el && panel.el.querySelector('.ctrl-row[data-key="debug"]');
+      function syncRow() { const r = rowOf(); if (r) r.style.display = editing() ? '' : 'none'; sync(); }
+      new MutationObserver(syncRow).observe(root, { attributes: true, attributeFilter: ['class'] });
+      return {
+        set(v) { on = !!v; try { localStorage.setItem(DEBUG_KEY, on ? '1' : '0'); } catch (e) { console.warn('debug-Schalter nicht gespeichert', e); } sync(); },
+        get on() { return on; }, syncRow
+      };
+    })();
+    panel.addToggle('debug', { label: 'debug', value: debug.on, onChange: (v) => debug.set(v) });
+    debug.syncRow();
+    buildConstPanel();
+    // Stern: die Arme ueberlappen am Zentrum, oben liegt der kuerzeste Arm (ganz eingeschoben bleibt sein Griff erreichbar)
+    (function starZ() {
+      if (multi && form === 'stern') {
+        const its = multi.items.filter((it) => it.view).map((it) => { const st = it.view.state(); return { it, len: st.R - st.L }; }).sort((a, b) => b.len - a.len);
+        its.forEach((o, k) => { const z = String(3 + k); if (o.it.canvas.style.zIndex !== z) o.it.canvas.style.zIndex = z; });
+      }
+      requestAnimationFrame(starZ);
+    })();
+    single.punkt = document.createElement('canvas');
+    single.punkt.className = 'punkt';
+    stage.insertBefore(single.punkt, placeEl);
+    new MutationObserver(() => { if (!multi) centreSingle(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+    centreSingle();
+    // Strich eingeschoben/herausgezogen: Punkt neu zeichnen, sobald sich R aendert (Einzelmodus)
+    let lastR = null;
+    (function watchR() {
+      watchPanel();
+      if (!multi && view) { const st = view.state(), r = st.R + ':' + st.L + ':' + (st.uLeft > 0.5); if (r !== lastR) { lastR = r; centreSingle(); drawDots(single.points.length ? single.points : [{ x: freeArea().cx, y: freeArea().cy }]); } }
+      requestAnimationFrame(watchR);
+    })();
+    panel.addSlider('drift', {
+      label: 'speed', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
+      onChange: (v) => { driftValue = +v || 0; }
+    });
+    driftEl = panel.bodyEl.querySelector('.ctrl-row[data-key="drift"] .ctrl-range');
+    driftEl.id = 'drift';
+    driftEl.setAttribute('aria-label', 'speed');
+    // Verdichtung je Abstand der Enden, Faktor 0..1 (siehe tools/unfolding-view.js). Reglerweg s: bis 0,5 linear, darueber
+    // kubisch auf 1 zu (f = 1 - 0,5 (2 (1 - s))^3), damit nahe 1 jeder Schritt feiner wird.
+    const factorTransform = {
+      toSliderValue(v) { const f = Math.max(0, Math.min(1, +v || 0)); return f <= 0.5 ? f : 1 - Math.cbrt(2 * (1 - f)) / 2; },
+      fromSliderValue(s) { const x = Math.max(0, Math.min(1, +s || 0)); return x <= 0.5 ? x : 1 - 0.5 * Math.pow(2 * (1 - x), 3); },
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
+    };
+    panel.addSlider('f', {
+      label: 'compression', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
+      onChange: (v) => {
+        factorValue = +v || 0;
+        view.setFactor(factorValue);
+        if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
+      }
+    });
+    panel.addButton('notation', { label: 'change notation', onClick: () => setNotation(notation === 'zero' ? 'int' : 'zero') });
+    // Zuruecksetzen stellt den Startzustand her: ein Glied pi (nur die 3, der Punkt und der Strich), URL ohne Zustandsparameter;
+    // die Regler setzt der Knopf selbst zurueck. Rueckgaengig bringt Glieder und Form wieder.
+    panel.addResetButton({
+      onClick: () => {
+        const prev = { list: glieder.map((g) => Object.assign({}, g)), form };
+        if (glieder.length > 1 || glieder[0].c !== 'pi') {
+          glieder = [{ uid: glieder[0].uid, c: 'pi', dir: 'r' }];
+          form = 'kette';
+          structure();
+        }
+        return () => { glieder = prev.list; form = prev.form; structure(); };
+      },
+      afterReset: () => {
+        // die Regler-Voreinstellung der Konstante kann die aus der URL sein (?c=e): Startzustand ist immer pi
+        if (glieder.length === 1 && cid !== 'pi') setConstant('pi');
+        const u = new URL(location.href);
+        for (const k of ['c', 'kette', 'stern']) u.searchParams.delete(k);
+        history.replaceState(history.state, '', u.pathname + (u.search || '') + u.hash);
+      }
+    });
+    // Zustand aus der URL: ?kette=pi-l.pi-r oder ?stern=pi.pi.e (sonst ?c=<id>, ein Glied)
+    const parsed = parseGlieder();
+    if (parsed) { form = parsed.form; if (parsed.list.length) glieder = parsed.list; cid = glieder[0].c; }
+    syncRows();
+    if (glieder.length > 1) buildMulti();
+    else {
+      startChain();
+      if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
+      else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
+      if (!piError) startWorker();
+    }
+    if (parsed && parsed.bad.length) fail('Unbekannte Glieder: ' + parsed.bad.join(', '));
+
+    // Nur lesende Zustandsabfrage für Tests.
+    window.unfoldingPi = {
+      state() {
+        return Object.assign(view.state(), {
+          constant: cid, limit: limitState, error: piError, notice: piNotice,
+          waiting: stage.classList.contains('warte'), requestedTotal, form: multi ? form : null, count: glieder.length
+        });
+      },
+      digits() { return view.digits(); },
+      shown() { return view.shown(); },
+      file() { return file ? Object.assign(file.stats(), { length: file.length }) : null; },
+      fileAt(i) { return file ? file.at(i) : null; },
+      fileWant(lo, hi) { if (file) file.want(lo, hi, 0); },
+      columns() { return view.columns(); },
+      renderLog() { return view.renderLog(); },
+      glyphAlpha() { return view.glyphAlpha(); },
+      glyphInk() { return view.glyphInk(); },
+      hover(x) { view.setHover(x); },
+      place() { return { text: placeEl.textContent, notation, info: pointerInfo }; },
+      // Glieder im Mehrgliedmodus (sonst null): Konstante, Richtung der Ansicht, Winkel (Stern), Zustand, Kette, Canvas
+      glieder() {
+        return multi ? multi.items.map((it) => ({ c: it.c, dir: it.dir, angle: it.angle, rot: it.rot, cl: it.cl, state: it.view.state(), digits: it.view.digits(), canvas: it.canvas })) : null;
+      },
+      // Punkt-Canvas im Mehrgliedmodus (sonst null) und die Stellen der Punkte (CSS-px der Buehne)
+      punkt() { return multi ? { canvas: multi.punkt, points: multi.points } : { canvas: single.punkt, points: single.points }; },
+      controls: panel
+    };
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>

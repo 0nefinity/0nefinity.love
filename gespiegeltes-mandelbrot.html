@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+<meta charset="UTF-8">
+<title>gespiegeltes Mandelbrot</title>
+<style>
+#feld { touch-action: none; cursor: grab; }
+#feld:active { cursor: grabbing; }
+#feld canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#deko { pointer-events: none; }
+
+#steuer {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--visible-viewport-bottom, 0px) + var(--oe-bar-platz, 0px) + 1rem);
+  transform: translateX(-50%);
+  z-index: 10;
+  width: max-content;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem 0.5rem;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  text-shadow: none;
+}
+#steuer * { text-shadow: none; }
+
+#wert {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-libertinus-math);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-color);
+  white-space: nowrap;
+}
+
+.zeile {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+#steuer button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color) 9%, transparent);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  transition: background 150ms;
+}
+#steuer button:hover {
+  background: color-mix(in srgb, var(--text-color) 16%, transparent);
+  color: var(--text-color);
+  scale: none;
+}
+#steuer button:active { scale: none; }
+#steuer button:focus-visible,
+#r:focus-visible { outline: 1px solid var(--ui-border-stronger); outline-offset: 1px; }
+#steuer button[aria-pressed="true"] {
+  background: var(--text-color);
+  color: var(--bg-color);
+}
+
+#r-feld {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  font-family: var(--font-libertinus-math);
+  font-size: 1.125rem;
+  color: var(--text-color);
+  font-variant-numeric: tabular-nums;
+}
+#r {
+  width: 8.5rem;
+  height: 44px;
+  margin: 0;
+  accent-color: var(--text-color);
+  background: transparent;
+}
+#r-zahl { min-width: 2.6em; }
+
+#fehler {
+  position: fixed;
+  top: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  background: var(--ui-surface-strong);
+  color: #e0a4a4;
+  font-size: 0.875rem;
+}
+#fehler[hidden] { display: none; }
+
+@media (max-width: 420px) {
+  #steuer { padding: 0.35rem 0.4rem; gap: 0.25rem 0.35rem; }
+  #steuer button { padding: 0 0.55rem; font-size: 0.875rem; }
+  #r { width: 6.5rem; }
+  #wert { font-size: 1rem; }
+}
+</style>
+</head>
+<body>
+<div id="feld" class="_018-canvas">
+  <canvas id="bild" aria-label="Mandelbrot-Menge, innen echt, außen am Kreis gespiegelt; Spiegelpunkt verschiebbar"></canvas>
+  <canvas id="deko" aria-hidden="true"></canvas>
+</div>
+<div id="steuer">
+  <p id="wert" aria-live="off"></p>
+  <div class="zeile" role="group" aria-label="Spiegelpunkte">
+    <button type="button" data-preset="0">Seepferdchen</button>
+    <button type="button" data-preset="1">Elefanten</button>
+    <button type="button" data-preset="2">𝑐 = 𝑖</button>
+  </div>
+  <div class="zeile">
+    <label id="r-feld"><span>𝑟</span><input id="r" type="range" min="-3" max="2" step="0.005" aria-label="Radius r"><span id="r-zahl"></span></label>
+    <button id="rasten" type="button" aria-pressed="true">einrasten</button>
+  </div>
+</div>
+<p id="fehler" role="alert" hidden></p>
+<script>
+"use strict";
+(() => {
+  const feld = document.getElementById("feld");
+  const bild = document.getElementById("bild");
+  const deko = document.getElementById("deko");
+  const dctx = deko.getContext("2d");
+  const wert = document.getElementById("wert");
+  const rIn = document.getElementById("r");
+  const rZahl = document.getElementById("r-zahl");
+  const rasten = document.getElementById("rasten");
+  const fehler = document.getElementById("fehler");
+
+  const fail = (msg) => {
+    console.error(msg);
+    fehler.textContent = msg;
+    fehler.hidden = false;
+  };
+
+  // The login editor's toolbar (tools/editor.js) is fixed to the bottom edge;
+  // keep the controls above it while it is there.
+  (() => {
+    let beobachtet = null;
+    const messen = () => {
+      const platz = beobachtet ? Math.max(0, window.innerHeight - beobachtet.getBoundingClientRect().top) : 0;
+      document.documentElement.style.setProperty("--oe-bar-platz", platz + "px");
+    };
+    const ro = new ResizeObserver(messen);
+    const pruefen = () => {
+      const bar = document.getElementById("oe-bar");
+      if (bar === beobachtet) return;
+      if (beobachtet) ro.unobserve(beobachtet);
+      beobachtet = bar;
+      if (bar) ro.observe(bar);
+      messen();
+    };
+    new MutationObserver(pruefen).observe(document.body, { childList: true });
+    window.addEventListener("resize", messen);
+    pruefen();
+  })();
+
+  // Misiurewicz points from the Forschungsheft, section (g) and (h)
+  const PRESETS = [
+    { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 },
+    { c: [0.37213770544957649, 0.090398233158172877], r: 2.5 },
+    { c: [0, 1], r: 2.5 },
+  ];
+
+  // state: mirror point cM, radius r; view in the w-plane: center (vx, vy), sw = w units per CSS pixel
+  let cMx = PRESETS[0].c[0], cMy = PRESETS[0].c[1], r = PRESETS[0].r;
+  let vx = 0, vy = 0, sw = 0;
+  let snapOn = true;
+  let cssW = 1, cssH = 1, dpr = 1, quality = 1;
+
+  // ---- WebGL ----
+  const gl = bild.getContext("webgl2", { antialias: false, preserveDrawingBuffer: true });
+  if (!gl) { fail("WebGL 2 fehlt in diesem Browser."); return; }
+
+  const VS = `#version 300 es
+in vec2 p;
+void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+
+  // Perturbation around a double-precision reference orbit (texture), with rebasing
+  // (Zhuoran): pixels iterate only dz = z - Z, so the c-plane can be resolved far below
+  // float32 resolution around the reference. Inside |w| <= 1: c = cM + r w;
+  // outside: c = cM + r / conj(w) (circle inversion, continuous on |w| = 1).
+  const FS = `#version 300 es
+precision highp float;
+precision highp int;
+uniform sampler2D uRef;
+uniform int uRefLen;
+uniform int uMaxit;
+uniform vec2 uRes;
+uniform vec2 uVc;
+uniform float uS;
+uniform float uR;
+uniform vec2 uD;
+uniform int uMode;
+uniform int uVcOut;
+out vec4 o;
+
+vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
+vec2 cdiv(vec2 a, vec2 b) {
+  float m = max(abs(b.x), abs(b.y));
+  vec2 bb = b / m;
+  return vec2(a.x * bb.x + a.y * bb.y, a.y * bb.x - a.x * bb.y) / (dot(bb, bb) * m);
+}
+vec2 invConj(vec2 w) {
+  float m = max(abs(w.x), abs(w.y));
+  vec2 u = w / m;
+  return u / (dot(u, u) * m);
+}
+vec2 refAt(int m) { return texelFetch(uRef, ivec2(m & 4095, m >> 12), 0).rg; }
+
+void main() {
+  vec2 off = (gl_FragCoord.xy - 0.5 * uRes) * uS;
+  vec2 w = uVc + off;
+  bool outside = max(abs(w.x), abs(w.y)) > 1.0 || dot(w, w) > 1.0;
+  vec2 ic = invConj(w);
+  vec2 dc;
+  if (uMode == 1 && outside == (uVcOut == 1)) {
+    if (outside) {
+      vec2 q = cdiv(cdiv(off, w), uVc);
+      dc = -uR * vec2(q.x, -q.y);
+    } else {
+      dc = uR * off;
+    }
+  } else {
+    dc = (outside ? uR * ic : uR * w) - uD;
+  }
+  float pxc = outside ? uR * uS * dot(ic, ic) : uR * uS;
+
+  vec2 dz = vec2(0.0), der = vec2(0.0), z = vec2(0.0);
+  int m = 0;
+  bool esc = false;
+  float zz = 0.0;
+  for (int i = 0; i < 100000; i++) {
+    if (i >= uMaxit) break;
+    vec2 Z = refAt(m);
+    z = Z + dz;
+    der = 2.0 * cmul(z, der) + vec2(1.0, 0.0);
+    dz = 2.0 * cmul(Z, dz) + cmul(dz, dz) + dc;
+    m++;
+    z = refAt(m) + dz;
+    zz = dot(z, z);
+    if (zz > 1.0e6) { esc = true; break; }
+    if (zz < dot(dz, dz) || m >= uRefLen - 1) { dz = z; m = 0; }
+  }
+  float g = 18.0;
+  if (esc) {
+    float az = sqrt(zz);
+    // |der| reaches 1e22 in deep zooms; scale before squaring (float max 3.4e38)
+    float dm = max(abs(der.x), abs(der.y));
+    float d = az * log(az) / (dm * length(der / dm)) / pxc;
+    float t = max(0.0, 1.0 - log2(1.0 + d) / 7.0);
+    g = 6.0 + 240.0 * t * t * t;
+  }
+  o = vec4(vec3(g / 255.0), 1.0);
+}`;
+
+  function shader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  let prog;
+  try {
+    prog = gl.createProgram();
+    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
+    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  } catch (e) {
+    fail("Shader-Fehler: " + e.message);
+    return;
+  }
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "p");
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = {};
+  for (const n of ["uRef", "uRefLen", "uMaxit", "uRes", "uVc", "uS", "uR", "uD", "uMode", "uVcOut"]) U[n] = gl.getUniformLocation(prog, n);
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.uniform1i(U.uRef, 0);
+  gl.getExtension("EXT_color_buffer_float");
+
+  // reference orbit Z_0 = 0, Z_{m+1} = Z_m^2 + c, in doubles; stops after escape
+  function uploadRef(cx, cy, maxit) {
+    const L = maxit + 2;
+    const rows = Math.ceil(L / 4096);
+    const data = new Float32Array(4096 * rows * 2);
+    let zx = 0, zy = 0, n = 1;
+    for (; n < L; n++) {
+      const t = zx * zx - zy * zy + cx;
+      zy = 2 * zx * zy + cy;
+      zx = t;
+      data[2 * n] = zx;
+      data[2 * n + 1] = zy;
+      if (zx * zx + zy * zy > 1e6) { n++; break; }
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, 4096, rows, 0, gl.RG, gl.FLOAT, data);
+    return n;
+  }
+
+  function draw() {
+    const W = Math.max(1, Math.round(cssW * dpr * quality));
+    const H = Math.max(1, Math.round(cssH * dpr * quality));
+    if (bild.width !== W || bild.height !== H) { bild.width = W; bild.height = H; }
+    gl.viewport(0, 0, W, H);
+    const s = sw * cssW / W;   // w units per canvas pixel
+
+    // reference: cM when the view reaches out to |w| -> infinity or sits on the origin,
+    // else the c of the view center (deep zoom anywhere else)
+    const half = Math.hypot(W, H) / 2 * s;
+    const vAbs = Math.hypot(vx, vy);
+    const vcOut = vAbs > 1;
+    let mode = 0, rx = cMx, ry = cMy;
+    if (vAbs > half) {
+      mode = 1;
+      if (vcOut) {
+        const d = vx * vx + vy * vy;
+        rx = cMx + r * vx / d; ry = cMy + r * vy / d;
+      } else {
+        rx = cMx + r * vx; ry = cMy + r * vy;
+      }
+    }
+    const wmax = vAbs + half;
+    const pxcMin = r * s / Math.max(1, wmax * wmax);
+    const maxit = Math.round(Math.min(6000, Math.max(250, 250 + 45 * Math.log2(1 / pxcMin))));
+    const L = uploadRef(rx, ry, maxit);
+
+    gl.uniform1i(U.uRefLen, L);
+    gl.uniform1i(U.uMaxit, maxit);
+    gl.uniform2f(U.uRes, W, H);
+    gl.uniform2f(U.uVc, vx, vy);
+    gl.uniform1f(U.uS, s);
+    gl.uniform1f(U.uR, r);
+    gl.uniform2f(U.uD, rx - cMx, ry - cMy);
+    gl.uniform1i(U.uMode, mode);
+    gl.uniform1i(U.uVcOut, vcOut ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    drawDeko();
+  }
+
+  // w -> CSS pixel
+  const toScreen = (wx, wy) => [cssW / 2 + (wx - vx) / sw, cssH / 2 - (wy - vy) / sw];
+  const toW = (x, y) => [vx + (x - cssW / 2) * sw, vy - (y - cssH / 2) * sw];
+
+  function drawDeko() {
+    deko.width = Math.round(cssW * dpr);
+    deko.height = Math.round(cssH * dpr);
+    dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const [ox, oy] = toScreen(0, 0);
+    const rad = 1 / sw;
+    if (rad > 4 && rad < 1e6) {
+      dctx.beginPath();
+      dctx.arc(ox, oy, rad, 0, 2 * Math.PI);
+      dctx.lineWidth = 1;
+      dctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+      dctx.stroke();
+    }
+    dctx.beginPath();
+    dctx.arc(ox, oy, 11, 0, 2 * Math.PI);
+    dctx.lineWidth = 2;
+    dctx.strokeStyle = dragging ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.85)";
+    dctx.stroke();
+    dctx.beginPath();
+    dctx.arc(ox, oy, 2, 0, 2 * Math.PI);
+    dctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    dctx.fill();
+  }
+
+  // ---- scheduling: low resolution while moving, full resolution when idle ----
+  let raf = 0, idle = 0;
+  function request(moving) {
+    if (moving) quality = 0.5;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
+    clearTimeout(idle);
+    idle = setTimeout(() => { quality = 1; draw(); saveUrl(); }, moving ? 160 : 0);
+  }
+
+  // ---- readout and URL ----
+  const fmt = (x, n) => (x < 0 ? "−" : "") + Math.abs(x).toFixed(n).replace(".", ",");
+  function showValues() {
+    wert.textContent = `𝑐 = ${fmt(cMx, 6)} ${cMy < 0 ? "−" : "+"} ${fmt(Math.abs(cMy), 6)} 𝑖`;
+    rZahl.textContent = fmt(r, 2);
+    rIn.value = String(Math.log2(r));
+    const i = PRESETS.findIndex((p) => p.c[0] === cMx && p.c[1] === cMy && p.r === r);
+    document.querySelectorAll("[data-preset]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.preset === i)));
+    rasten.setAttribute("aria-pressed", String(snapOn));
+  }
+  function saveUrl() {
+    const u = new URL(location.href);
+    u.searchParams.set("c", cMx + "," + cMy);
+    u.searchParams.set("r", String(r));
+    u.searchParams.set("w", vx + "," + vy);
+    u.searchParams.set("s", String(sw));
+    if (snapOn) u.searchParams.delete("frei"); else u.searchParams.set("frei", "1");
+    history.replaceState(null, "", u);
+  }
+  function loadUrl() {
+    const q = new URL(location.href).searchParams;
+    const pair = (k) => {
+      const v = (q.get(k) || "").split(",").map(Number);
+      return v.length === 2 && v.every(Number.isFinite) ? v : null;
+    };
+    const c = pair("c"), w = pair("w");
+    const rr = Number(q.get("r")), ss = Number(q.get("s"));
+    if (c) { cMx = c[0]; cMy = c[1]; }
+    if (rr > 0 && Number.isFinite(rr)) r = rr;
+    if (w) { vx = w[0]; vy = w[1]; }
+    if (ss > 0 && Number.isFinite(ss)) sw = ss;
+    snapOn = q.get("frei") !== "1";
+  }
+
+  // ---- snap to the boundary of M (doubles) ----
+  function probe(cx, cy) {
+    let zx = 0, zy = 0, dx = 0, dy = 0;
+    for (let n = 0; n < 20000; n++) {
+      const ndx = 2 * (zx * dx - zy * dy) + 1;
+      dy = 2 * (zx * dy + zy * dx);
+      dx = ndx;
+      const t = zx * zx - zy * zy + cx;
+      zy = 2 * zx * zy + cy;
+      zx = t;
+      const a = zx * zx + zy * zy;
+      if (a > 1e12) {
+        const az = Math.sqrt(a), ad = Math.hypot(dx, dy);
+        // direction of growing potential: conj(dz / z)
+        const qx = (dx * zx + dy * zy) / a, qy = -(dy * zx - dx * zy) / a;
+        const qa = Math.hypot(qx, qy);
+        return { d: az * Math.log(az) / ad, gx: qx / qa, gy: qy / qa };
+      }
+    }
+    return null;
+  }
+  function snap(cx, cy, tol) {
+    let p = probe(cx, cy);
+    if (!p) {
+      search:
+      for (let rho = tol; rho < 4; rho *= 1.5) {
+        for (let k = 0; k < 48; k++) {
+          const a = (k / 48) * 2 * Math.PI;
+          const q = probe(cx + rho * Math.cos(a), cy + rho * Math.sin(a));
+          if (q) { cx += rho * Math.cos(a); cy += rho * Math.sin(a); p = q; break search; }
+        }
+      }
+      if (!p) return [cx, cy];
+    }
+    for (let i = 0; i < 400 && p.d > tol; i++) {
+      const nx = cx - p.d * p.gx, ny = cy - p.d * p.gy;
+      const q = probe(nx, ny);
+      if (!q) {
+        // stepped into M: bisect between the last outside point and this one
+        let ax = cx, ay = cy, bx = nx, by = ny;
+        for (let j = 0; j < 60 && Math.hypot(bx - ax, by - ay) > tol; j++) {
+          const mx = (ax + bx) / 2, my = (ay + by) / 2;
+          if (probe(mx, my)) { ax = mx; ay = my; } else { bx = mx; by = my; }
+        }
+        return [ax, ay];
+      }
+      cx = nx; cy = ny; p = q;
+    }
+    return [cx, cy];
+  }
+
+  // ---- input ----
+  const pts = new Map();
+  let dragging = null;
+
+  function zoomAt(f, x, y) {
+    const [ax, ay] = toW(x, y);
+    sw = Math.min(1e13, Math.max(1e-30, sw * f));
+    vx = ax - (x - cssW / 2) * sw;
+    vy = ay + (y - cssH / 2) * sw;
+  }
+
+  feld.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const b = feld.getBoundingClientRect();
+    zoomAt(Math.exp(e.deltaY * 0.0015), e.clientX - b.left, e.clientY - b.top);
+    request(true);
+  }, { passive: false });
+
+  feld.addEventListener("pointerdown", (e) => {
+    feld.setPointerCapture(e.pointerId);
+    const b = feld.getBoundingClientRect();
+    const x = e.clientX - b.left, y = e.clientY - b.top;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const [hx, hy] = toScreen(0, 0);
+    if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy };
+      drawDeko();
+    } else if (dragging) {
+      dragging = null;
+    }
+  });
+  feld.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const b = feld.getBoundingClientRect();
+    if (dragging && dragging.id === e.pointerId) {
+      // M slides under the fixed mirror: the point under the finger moves with it
+      cMx = dragging.cx - r * (e.clientX - dragging.x) * sw;
+      cMy = dragging.cy + r * (e.clientY - dragging.y) * sw;
+      p.x = e.clientX; p.y = e.clientY;
+      showValues();
+      request(true);
+      return;
+    }
+    if (pts.size === 1) {
+      vx -= (e.clientX - p.x) * sw;
+      vy += (e.clientY - p.y) * sw;
+    } else if (pts.size === 2) {
+      const [a, c] = [...pts.values()];
+      const before = Math.hypot(a.x - c.x, a.y - c.y);
+      p.x = e.clientX; p.y = e.clientY;
+      const after = Math.hypot(a.x - c.x, a.y - c.y);
+      if (before > 0 && after > 0) zoomAt(before / after, (a.x + c.x) / 2 - b.left, (a.y + c.y) / 2 - b.top);
+    }
+    p.x = e.clientX; p.y = e.clientY;
+    request(true);
+  });
+  const up = (e) => {
+    pts.delete(e.pointerId);
+    if (dragging && dragging.id === e.pointerId) {
+      dragging = null;
+      if (snapOn) {
+        [cMx, cMy] = snap(cMx, cMy, Math.max(1e-15, r * sw * 0.25));
+        showValues();
+      }
+      request(false);
+    }
+  };
+  feld.addEventListener("pointerup", up);
+  feld.addEventListener("pointercancel", up);
+  feld.addEventListener("dblclick", () => { fitView(); request(false); });
+
+  rIn.addEventListener("input", () => {
+    r = Math.pow(2, Number(rIn.value));
+    showValues();
+    request(true);
+  });
+  rasten.addEventListener("click", () => {
+    snapOn = !snapOn;
+    if (snapOn) [cMx, cMy] = snap(cMx, cMy, Math.max(1e-15, r * sw * 0.25));
+    showValues();
+    request(false);
+  });
+  document.querySelectorAll("[data-preset]").forEach((btn) => btn.addEventListener("click", () => {
+    const p = PRESETS[+btn.dataset.preset];
+    [cMx, cMy] = p.c;
+    r = p.r;
+    fitView();
+    showValues();
+    request(false);
+  }));
+
+  function fitView() {
+    vx = 0; vy = 0;
+    sw = (2 * 1.6) / Math.min(cssW, cssH);
+  }
+
+  function resize() {
+    dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const b = feld.getBoundingClientRect();
+    const old = Math.min(cssW, cssH);
+    cssW = Math.max(1, b.width);
+    cssH = Math.max(1, b.height);
+    if (sw > 0) sw *= old / Math.min(cssW, cssH);
+    request(false);
+  }
+  window.addEventListener("resize", resize);
+
+  bild.addEventListener("webglcontextlost", (e) => { e.preventDefault(); fail("Grafikkontext verloren, Seite neu laden."); });
+
+  const b0 = feld.getBoundingClientRect();
+  cssW = Math.max(1, b0.width);
+  cssH = Math.max(1, b0.height);
+  dpr = Math.min(1.5, window.devicePixelRatio || 1);
+  fitView();
+  loadUrl();
+  showValues();
+  quality = 1;
+  draw();
+  saveUrl();
+})();
+</script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
