@@ -64,7 +64,7 @@ $csrf = csrf_token();
           action="<?= $setup ? '/api/auth/setup' : '/api/auth/login' ?>">
       <?php if ($setup): ?>
         <h1>Setup 0nefinity</h1>
-        <p class="sub">First run. Read your setup-token via<br><code>docker exec 0nefinity-live cat /var/www/html/.auth/setup-token</code></p>
+        <p class="sub">First run. Read your setup-token from<br><code>.auth/setup-token</code> on the server</p>
         <?= csrf_field() ?>
         <label>Username
           <input type="text" name="username" value="<?= htmlspecialchars(FIXED_USERNAME) ?>" readonly autocomplete="username">
