@@ -1234,6 +1234,21 @@ canvas {
       ]
     };
 
+    const AUTO_SPEED_DEFAULT = JSON.parse(JSON.stringify(AUTO_SPEED_CONFIG));
+    const CHOREO_KEY = '0nefinity-symbol-choreography';
+    function restoreChoreo(src) {
+      Object.assign(AUTO_SPEED_CONFIG.START_PHASE, src.START_PHASE);
+      AUTO_SPEED_CONFIG.SPEED_STEPS.length = 0;
+      src.SPEED_STEPS.forEach(st => AUTO_SPEED_CONFIG.SPEED_STEPS.push({ ...st }));
+    }
+    function saveChoreo() {
+      try { localStorage.setItem(CHOREO_KEY, JSON.stringify(AUTO_SPEED_CONFIG)); } catch (e) { }
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem(CHOREO_KEY) || 'null');
+      if (stored && stored.START_PHASE && Array.isArray(stored.SPEED_STEPS)) restoreChoreo(stored);
+    } catch (e) { }
+
     // Animationsparameter initialisieren
     // degPerCircle: nur Display-Konvention. Intern bleibt rotationSpeed in echten 360°-Grad/Frame.
     // Das Speed-Feld zeigt user-units = rotationSpeed * degPerCircle / 360.
@@ -1254,9 +1269,10 @@ canvas {
     let dtSamples = [];
     let detectionDone = false;
 
+    const FPS_LABEL = 'Frame rate';
     function updateFpsHint() {
       const label = settingsPanel && settingsPanel.bodyEl.querySelector('[data-key="fps"] .ctrl-label');
-      if (label) label.textContent = (detectionDone && fps > detectedHz) ? 'FPS (simulated)' : 'FPS';
+      if (label) label.textContent = (detectionDone && fps > detectedHz) ? FPS_LABEL + ' (simulated)' : FPS_LABEL;
     }
 
     // Speed-Display Vertikal-Offset, persistiert via localStorage
@@ -1312,6 +1328,44 @@ canvas {
       applyPanelVisibility();
       const num = (v, fallback = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : fallback; };
 
+      // Oberste Zeile: Symbole untereinander, Trennzeichen daneben, + / - darunter aendert die Anzahl
+      const setSymbolCount = (n) => {
+        cfg.symbolCount = Math.max(0, Math.floor(n));
+        panel.set('symbolCount', cfg.symbolCount);
+        rebuildSymbolRows();
+      };
+      panel.addSymbolRow('labels', {
+        values: cfg.labels.slice(0, cfg.symbolCount),
+        onChange: (i, v) => { cfg.labels[i] = v; },
+        onAdd: () => setSymbolCount(cfg.symbolCount + 1),
+        onRemove: () => setSymbolCount(cfg.symbolCount - 1),
+        min: 0,
+        layout: 'column',
+        side: { key: 'equivs', label: 'Separator', values: cfg.equivs.slice(), onChange: (i, v) => { cfg.equivs[i] = v; } },
+      });
+      panel.addDivider();
+
+      const autoToggleChange = v => {
+        cfg.auto = !!v;
+        autoSpeedEnabled = cfg.auto;
+        if (!autoSpeedEnabled) {
+          // Stand der Choreografie merken, damit Wiedereinschalten dort weitermacht
+          autoPausedAt = getWarpedElapsed();
+          return;
+        }
+        manualSpeed = toReal(num(panel.get('speed')));
+        if (autoPausedAt === null) {
+          autoOffset = 0;
+          resetSnapshot();
+        } else {
+          snapshot.warpedSeconds = autoPausedAt;
+          snapshot.realTimestamp = Date.now();
+          saveSnapshot();
+          autoPausedAt = null;
+        }
+        rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
+        panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+      };
       // Reset-Knopf (controls.js): Choreografie von vorn, FPS wieder auf Bildschirm-Hz wie beim Laden.
       const codeFps = cfg.fps;
       panel.addResetButton({
@@ -1342,38 +1396,6 @@ canvas {
       });
 
       panel.beginSection('speed')
-        .addToggle('speedDisplay', { label: 'Speed display', value: cfg.speedDisplay, onChange: v => { cfg.speedDisplay = !!v; } })
-        .addSlider('speedOffset', {
-          label: 'Display offset', min: -100, max: 200, step: 1, decimals: 0, value: cfg.speedOffset,
-          onChange: v => {
-            cfg.speedOffset = num(v);
-            try { localStorage.setItem(SPEED_OFFSET_KEY, String(cfg.speedOffset)); } catch (e) { }
-          }
-        })
-        .addToggle('auto', {
-          label: 'Auto speed', value: cfg.auto,
-          onChange: v => {
-            cfg.auto = !!v;
-            autoSpeedEnabled = cfg.auto;
-            if (!autoSpeedEnabled) {
-              // Stand der Choreografie merken, damit Wiedereinschalten dort weitermacht
-              autoPausedAt = getWarpedElapsed();
-              return;
-            }
-            manualSpeed = toReal(num(panel.get('speed')));
-            if (autoPausedAt === null) {
-              autoOffset = 0;
-              resetSnapshot();
-            } else {
-              snapshot.warpedSeconds = autoPausedAt;
-              snapshot.realTimestamp = Date.now();
-              saveSnapshot();
-              autoPausedAt = null;
-            }
-            rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
-            panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
-          }
-        })
         .addSlider('speed', {
           label: 'Speed', min: 0, max: 1440, step: 0.1, decimals: 1, value: cfg.speed,
           onChange: v => {
@@ -1388,54 +1410,81 @@ canvas {
             }
           }
         })
-        .addSlider('degPerCircle', {
-          label: 'Deg / circle', min: 1, max: 720, step: 1, decimals: 0, value: cfg.degPerCircle,
-          onChange: v => {
-            const d = num(v, NaN);
-            if (!Number.isFinite(d) || d <= 0) return;
-            cfg.degPerCircle = d;
-            degPerCircle = d;
-            panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
-          }
-        })
-        .addSlider('fps', {
-          label: 'FPS', min: 0, max: 240, step: 1, decimals: 0, value: cfg.fps,
-          onChange: v => {
-            fps = num(v);
-            cfg.fps = fps;
-            userChangedFps = true;
-            updateSnapshotFactor(fps / 60);
-            updateFpsHint();
-          }
+        .addToggle('auto', {
+          label: 'Auto speed', value: cfg.auto, onChange: autoToggleChange,
+          details: p => { p.beginSection('autoChoreo').endSection(); }
         })
         .endSection();
+
+      // Choreografie: Start (von, nach, Rampe, Halten) und Stufen (+Tempo, Rampe, Halten), Schleife ueber die Stufen
+      function editChoreo(apply) {
+        apply();
+        saveChoreo();
+        if (autoSpeedEnabled) {
+          rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
+          panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+        }
+      }
+      function renderChoreo() {
+        const sp = AUTO_SPEED_CONFIG.START_PHASE;
+        const steps = AUTO_SPEED_CONFIG.SPEED_STEPS;
+        const startFields = ['startSpeed', 'rampTo', 'rampDuration', 'holdDuration'];
+        const stepFields = ['increment', 'rampDuration', 'holdDuration'];
+        const setField = (obj, field, v) => {
+          const n = parseFloat(String(v).replace(',', '.'));
+          if (!Number.isFinite(n)) return;
+          if (field !== 'startSpeed' && field !== 'rampTo' && field !== 'increment' && n < 0) return;
+          editChoreo(() => { obj[field] = n; });
+        };
+        panel.fillSection('autoChoreo', p => {
+          p.addSymbolRow('autoStart', {
+            label: 'Start', inputmode: 'decimal',
+            captions: ['from', 'to', 'ramp s', 'hold s'],
+            labels: ['Start speed', 'Start target speed', 'Start ramp seconds', 'Start hold seconds'],
+            values: startFields.map(f => String(sp[f])),
+            onChange: (i, v) => setField(sp, startFields[i], v)
+          });
+          steps.forEach((step, i) => {
+            p.addSymbolRow('autoStep' + i, {
+              label: 'Step ' + (i + 1), inputmode: 'decimal',
+              captions: i === 0 ? ['+ speed', 'ramp s', 'hold s'] : null,
+              labels: ['Step ' + (i + 1) + ' speed change', 'Step ' + (i + 1) + ' ramp seconds', 'Step ' + (i + 1) + ' hold seconds'],
+              values: stepFields.map(f => String(step[f])),
+              onChange: (j, v) => setField(step, stepFields[j], v)
+            });
+          });
+          p.addButtonGroup('autoChoreoActions', {
+            buttons: [
+              { key: 'addStep', label: '+ Step', onClick: () => { editChoreo(() => { const last = steps[steps.length - 1]; steps.push(last ? { ...last } : { increment: 120, rampDuration: 0.8, holdDuration: 1.5 }); }); renderChoreo(); } },
+              { key: 'removeStep', label: '\u2212 Step', onClick: () => { if (!steps.length) return; editChoreo(() => { steps.pop(); }); renderChoreo(); } },
+              { key: 'resetChoreo', label: 'Reset', title: 'Default choreography', onClick: () => { editChoreo(() => restoreChoreo(AUTO_SPEED_DEFAULT)); renderChoreo(); } }
+            ]
+          });
+        });
+      }
+      renderChoreo();
 
       panel.addDivider();
       panel.beginSection('shape')
-        .addToggle('rotate', { label: 'Rotate glyphs', value: cfg.rotate, onChange: v => { cfg.rotate = !!v; } })
-        .addSlider('textSize', { label: 'Text size %', min: 0, max: 100, step: 1, decimals: 0, value: cfg.textSize, onChange: v => { cfg.textSize = num(v); resizeCanvasToFitContent(); } })
-        .addSlider('triangleSize', { label: 'Radius %', min: -100, max: 100, step: 1, decimals: 0, value: cfg.triangleSize, onChange: v => { cfg.triangleSize = num(v); resizeCanvasToFitContent(); } })
+        .addSlider('textSize', { label: 'Symbol size %', min: 0, max: 100, step: 1, decimals: 0, value: cfg.textSize, onChange: v => { cfg.textSize = num(v); resizeCanvasToFitContent(); } })
+        .addSlider('triangleSize', { label: 'Circle radius %', min: -100, max: 100, step: 1, decimals: 0, value: cfg.triangleSize, onChange: v => { cfg.triangleSize = num(v); resizeCanvasToFitContent(); } })
+        .addToggle('rotate', { label: 'Rotate symbols', value: cfg.rotate, onChange: v => { cfg.rotate = !!v; } })
         .addSlider('equivSize', { label: 'Separator size %', min: 0, max: 100, step: 1, decimals: 0, value: cfg.equivSize, onChange: v => { cfg.equivSize = num(v); resizeCanvasToFitContent(); } })
         .addSlider('equivLength', { label: 'Separator length %', min: 0, max: 300, step: 1, decimals: 0, value: cfg.equivLength, onChange: v => { cfg.equivLength = num(v); resizeCanvasToFitContent(); } })
-        .addToggle('duplicate', { label: 'Duplicate separator', value: cfg.duplicate, onChange: v => { cfg.duplicate = !!v; updateDuplicateSpacingVisibility(); } })
-        .addSlider('duplicateSpacing', { label: 'Spacing', min: 0, max: 5, step: 0.1, decimals: 1, value: cfg.duplicateSpacing, onChange: v => { cfg.duplicateSpacing = num(v); } })
+        .addToggle('duplicate', {
+          label: 'Double separator', value: cfg.duplicate, onChange: v => { cfg.duplicate = !!v; },
+          details: p => p.addSlider('duplicateSpacing', { label: 'Separator gap', min: 0, max: 5, step: 0.1, decimals: 1, value: cfg.duplicateSpacing, onChange: v => { cfg.duplicateSpacing = num(v); } })
+        })
         .endSection();
-
-      function updateDuplicateSpacingVisibility() {
-        const row = panel.bodyEl.querySelector('[data-key="duplicateSpacing"]');
-        if (row) row.style.display = cfg.duplicate ? '' : 'none';
-      }
-      updateDuplicateSpacingVisibility();
 
       panel.addDivider();
       panel.beginSection('symbols')
         .addSlider('symbolCount', {
-          label: 'Count', min: 0, max: 12, step: 1, decimals: 0, value: cfg.symbolCount,
+          label: 'Symbol count', min: 0, max: 12, step: 1, decimals: 0, value: cfg.symbolCount,
           onChange: v => { cfg.symbolCount = Math.max(0, Math.floor(num(v))); rebuildSymbolRows(); }
         })
-        .addToggle('sync', { label: 'Sync separator', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } })
+        .addToggle('sync', { label: 'Same separator for all', value: cfg.sync, onChange: v => { cfg.sync = !!v; rebuildSymbolRows(); } })
         .endSection();
-      panel.beginSection('symrows').endSection();
 
       function rebuildSymbolRows() {
         const n = cfg.symbolCount;
@@ -1450,22 +1499,34 @@ canvas {
           cfg.equivs.length = n;
         }
 
-        panel.removeSection('symrows');
-        panel.beginSection('symrows');
-        const sec = panel.bodyEl.querySelector('#symbol-controls-section-symrows');
-        panel.bodyEl.querySelector('#symbol-controls-section-symbols').after(sec);
-        if (n > 0 && cfg.sync) {
-          panel.addInput('equiv0', { label: 'Separator', value: cfg.equivs[0], onChange: v => { cfg.equivs[0] = v; } });
-        }
-        for (let i = 0; i < n; i++) {
-          panel.addInput('label' + i, { label: 'Symbol ' + (i + 1), value: cfg.labels[i], onChange: v => { cfg.labels[i] = v; } });
-          if (!cfg.sync) {
-            panel.addInput('equiv' + i, { label: 'Separator ' + (i + 1), value: cfg.equivs[i], onChange: v => { cfg.equivs[i] = v; } });
-          }
-        }
-        panel.endSection();
+        panel.set('equivs', n > 0 ? cfg.equivs.slice() : []);
+        panel.set('labels', cfg.labels.slice(0, n));
       }
       rebuildSymbolRows();
+
+      panel.addDivider();
+      panel.beginSection('timing')
+        .addSlider('degPerCircle', {
+          label: 'Degrees per turn', min: 1, max: 720, step: 1, decimals: 0, value: cfg.degPerCircle,
+          onChange: v => {
+            const d = num(v, NaN);
+            if (!Number.isFinite(d) || d <= 0) return;
+            cfg.degPerCircle = d;
+            degPerCircle = d;
+            panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+          }
+        })
+        .addSlider('fps', {
+          label: FPS_LABEL, min: 0, max: 240, step: 1, decimals: 0, value: cfg.fps,
+          onChange: v => {
+            fps = num(v);
+            cfg.fps = fps;
+            userChangedFps = true;
+            updateSnapshotFactor(fps / 60);
+            updateFpsHint();
+          }
+        })
+        .endSection();
 
       panel.addDivider();
       panel.beginSection('export')
@@ -1474,6 +1535,20 @@ canvas {
         .addToggle('gifInfinite', { label: 'GIF infinite (live, Stop)', value: cfg.gifInfinite, onChange: v => { cfg.gifInfinite = !!v; } })
         .addButton('createGif', { label: 'Create GIF', onClick: createGif })
         .addToggle('debug', { label: 'Debug (buggy)', value: cfg.debug, onChange: v => { cfg.debug = !!v; } })
+        .endSection();
+
+      panel.addDivider();
+      panel.beginSection('monitor')
+        .addToggle('speedDisplay', {
+          label: 'Speed monitor', value: cfg.speedDisplay, onChange: v => { cfg.speedDisplay = !!v; },
+          details: p => p.addSlider('speedOffset', {
+            label: 'Speed monitor offset', min: -100, max: 200, step: 1, decimals: 0, value: cfg.speedOffset,
+            onChange: v => {
+              cfg.speedOffset = num(v);
+              try { localStorage.setItem(SPEED_OFFSET_KEY, String(cfg.speedOffset)); } catch (e) { }
+            }
+          })
+        })
         .endSection();
       addInfoIcon(panel.bodyEl.querySelector('[data-key="screenshot"]'));
     }
@@ -1549,6 +1624,7 @@ canvas {
 
       const T = elapsed - startPhaseEnd;
       const cycleDur = steps.reduce((a, s) => a + s.rampDuration + s.holdDuration, 0);
+      if (!(cycleDur > 0)) return sp.rampTo;
       const incPerCycle = steps.reduce((a, s) => a + s.increment, 0);
       const cyclesCompleted = Math.floor(T / cycleDur);
       const tInCycle = T - cyclesCompleted * cycleDur;
@@ -1577,6 +1653,7 @@ canvas {
       if (elapsed < startPhaseEnd) return true;
       const steps = AUTO_SPEED_CONFIG.SPEED_STEPS;
       const cycleDur = steps.reduce((a, s) => a + s.rampDuration + s.holdDuration, 0);
+      if (!(cycleDur > 0)) return true;
       const T = elapsed - startPhaseEnd;
       const tInCycle = T - Math.floor(T / cycleDur) * cycleDur;
       let acc = 0;

@@ -3147,14 +3147,18 @@
          * @param {string} key - Unique key, params[key] is the array of values
          * With `label` the row gets the normal label column (e.g. one step of a sequence); `captions` puts a
          * small heading above each field, `inputmode` is passed to every field (e.g. 'decimal').
-         * @param {Object} config - { values, labels?, label?, captions?, inputmode?, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
+         * `layout: 'column'` stacks the fields vertically (+ / - below them). `side` adds a second column of
+         * fields with its own key (params[side.key]): one value sits centered beside the column, several sit
+         * each between two symbols (value i between symbol i and i + 1).
+         * @param {Object} config - { values, labels?, label?, captions?, inputmode?, layout?, side?: { key, values, labels?, label?, onChange }, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
          */
         addSymbolRow(key, config) {
             config = this._withPageDefault(key, config, 'values');
-            const { values = [], labels = [], label = '', captions = null, inputmode = '', onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
+            const { values = [], labels = [], label = '', captions = null, inputmode = '', layout = 'row', onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
+            const column = layout === 'column';
             this.params[key] = values.slice();
             const row = document.createElement('div');
-            row.className = 'ctrl-row ctrl-symbol-row' + (label ? ' ctrl-symbol-row-labeled' : '');
+            row.className = 'ctrl-row ctrl-symbol-row' + (label ? ' ctrl-symbol-row-labeled' : '') + (column ? ' ctrl-symbol-row-column' : '');
             row.dataset.key = key;
             if (label) {
                 const labelEl = document.createElement('label');
@@ -3166,23 +3170,31 @@
             strip.className = 'ctrl-symbol-strip';
             row.appendChild(strip);
             this._symbolRows = this._symbolRows || {};
-            const state = { strip, labels, captions, inputmode, onChange, onAdd, onRemove, min, max };
+            const state = { strip, labels, captions, inputmode, column, onChange, onAdd, onRemove, min, max };
             this._symbolRows[key] = state;
+            if (column && config.side) {
+                const side = this._withPageDefault(config.side.key, config.side, 'values');
+                this.params[side.key] = (side.values || []).slice();
+                state.side = side.key;
+                // Eigener Key fuer Zuruecksetzen, Nadel und reveal; gezeichnet wird immer die ganze Zeile.
+                this._symbolRows[side.key] = { owner: key, labels: side.labels || [], label: side.label || '', onChange: side.onChange };
+            }
             this._renderSymbolRow(key);
             this._currentContainer.appendChild(row);
             return this;
         }
 
         _renderSymbolRow(key) {
+            if (this._symbolRows[key].owner) key = this._symbolRows[key].owner;
             const st = this._symbolRows[key];
             const values = this.params[key];
             st.strip.textContent = '';
-            values.forEach((v, i) => {
+            const makeInput = (k, i, v, aria, onChange) => {
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.className = 'ctrl-input ctrl-symbol-input';
                 input.value = v ?? '';
-                input.setAttribute('aria-label', st.labels[i] || ('Symbol ' + (i + 1)));
+                input.setAttribute('aria-label', aria);
                 ['autocomplete', 'autocapitalize'].forEach(a => input.setAttribute(a, 'off'));
                 input.spellcheck = false;
                 input.setAttribute('data-1p-ignore', '');
@@ -3191,9 +3203,15 @@
                 input.setAttribute('data-form-type', 'other');
                 if (st.inputmode) input.setAttribute('inputmode', st.inputmode);
                 input.addEventListener('input', () => {
-                    this.params[key][i] = input.value;
-                    if (st.onChange) st.onChange(i, input.value, this.params[key]);
+                    this.params[k][i] = input.value;
+                    if (onChange) onChange(i, input.value, this.params[k]);
                 });
+                return input;
+            };
+            // Spalte: jedes Symbol belegt zwei Halbzeilen, ein Seitenfeld kann so genau zwischen zwei Symbolen sitzen
+            const place = (el, line, col) => { if (st.column) { el.style.gridRow = line + ' / span 2'; el.style.gridColumn = String(col); } };
+            values.forEach((v, i) => {
+                const input = makeInput(key, i, v, st.labels[i] || ('Symbol ' + (i + 1)), st.onChange);
                 if (st.captions) {
                     const cell = document.createElement('label');
                     cell.className = 'ctrl-symbol-cell';
@@ -3201,11 +3219,37 @@
                     cap.className = 'ctrl-symbol-caption';
                     cap.textContent = st.captions[i] || '';
                     cell.append(cap, input);
+                    place(cell, 2 * i + 1, 1);
                     st.strip.appendChild(cell);
                 } else {
+                    place(input, 2 * i + 1, 1);
                     st.strip.appendChild(input);
                 }
             });
+            if (st.side) {
+                const sideSt = this._symbolRows[st.side];
+                const sideValues = this.params[st.side];
+                const slot = document.createElement('div');
+                slot.className = 'ctrl-symbol-side';
+                slot.dataset.key = st.side;
+                if (sideSt.label) slot.dataset.label = sideSt.label;
+                slot.style.gridColumn = '2';
+                slot.style.gridRow = '1 / span ' + Math.max(2, 2 * values.length + (sideValues.length === 1 ? 0 : 1));
+                const centered = sideValues.length === 1;
+                sideValues.forEach((v, i) => {
+                    const aria = sideSt.labels[i] || ((sideSt.label || 'Feld') + (centered ? '' : ' ' + (i + 1)));
+                    const input = makeInput(st.side, i, v, aria, sideSt.onChange);
+                    if (!centered) input.style.gridRow = (2 * i + 2) + ' / span 2';
+                    slot.appendChild(input);
+                });
+                if (centered) slot.classList.add('ctrl-symbol-side-centered');
+                st.strip.appendChild(slot);
+            }
+            const btnWrap = st.column ? document.createElement('div') : st.strip;
+            if (st.column) {
+                btnWrap.className = 'ctrl-symbol-btns';
+                place(btnWrap, 2 * values.length + 2, 1);
+            }
             const addBtn = (text, title, enabled, fn) => {
                 const b = document.createElement('button');
                 b.type = 'button';
@@ -3214,10 +3258,11 @@
                 b.title = title;
                 b.disabled = !enabled;
                 bindResponsiveButtonActivation(b, fn);
-                st.strip.appendChild(b);
+                btnWrap.appendChild(b);
             };
             if (st.onRemove) addBtn('\u2212', 'Symbol entfernen', values.length > st.min, () => st.onRemove(this.params[key]));
             if (st.onAdd) addBtn('+', 'Symbol hinzufügen', values.length < st.max, () => st.onAdd(this.params[key]));
+            if (st.column && btnWrap.childNodes.length) st.strip.appendChild(btnWrap);
         }
 
         /**
@@ -4043,7 +4088,7 @@
                 this._pinObserver = new MutationObserver(() => { if (isEditing()) this._syncDefaultPins(); });
                 this._pinObserver.observe(this.bodyEl, { childList: true, subtree: true });
             }
-            this.bodyEl.querySelectorAll('.ctrl-row[data-key]').forEach(row => {
+            this.bodyEl.querySelectorAll('.ctrl-row[data-key], .ctrl-symbol-side[data-key]').forEach(row => {
                 const key = row.dataset.key;
                 if (!pageDefaultState.seen.has(key) || !(key in this.params) || row.querySelector(':scope > .ctrl-default-pin')) return;
                 const pin = document.createElement('button');
@@ -4054,7 +4099,7 @@
                 pin.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const label = (row.querySelector('.ctrl-label')?.textContent || key).trim();
+                    const label = (row.querySelector('.ctrl-label')?.textContent || row.dataset.label || key).trim();
                     const current = cloneValue(this.params[key]);
                     const { values } = currentPageDefaults();
                     const remove = Object.prototype.hasOwnProperty.call(values, key) && JSON.stringify(values[key]) === JSON.stringify(current);
