@@ -15,7 +15,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SITEMAP_FILE = os.path.join(ROOT_DIR, 'sitemap.xml')
 
 EXCLUDE_DIRS = {'.git', '.ssh', '.vscode', '00_Archiv', '__pycache__'}
-EXCLUDE_FILES = {'meta.json'}
+EXCLUDE_FILES = {'meta.json', 'autofill-probe.html'}
 
 HTACCESS_FILE = os.path.join(ROOT_DIR, '.htaccess')
 _INTERN_RULE = re.compile(r'^RewriteRule\s+"([^"]+)"\s+-\s+\[([^\]]*)\]\s*$')
