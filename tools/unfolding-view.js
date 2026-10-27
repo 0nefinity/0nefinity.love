@@ -168,8 +168,10 @@
     // fold: Kopf = Ganzzahl und Komma (Index < headLen), Rest = Nachkommastellen mit Anfang am Punkt F
     const bs = () => (fold ? headLen : 0);
     const foldX = () => +opts.origin + (headLen - 0.5) * w;
-    const Lg = () => (fold ? foldX() : L);      // linker Anker der Stellen
-    const Xg = () => X0 + bs() * w;             // lineare Lage der ersten Stelle
+    // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (Punktglyphe steht auf der Mitte, nicht unter dem Fuss der Ziffer); schrumpft mit dem Abstand R - Punkt auf 0
+    const gapX = () => (fold ? Math.min(0.5 * w, Math.max(0, R - foldX())) : 0);
+    const Lg = () => (fold ? foldX() + gapX() : L);      // linker Anker der Stellen
+    const Xg = () => X0 + bs() * w + gapX();             // lineare Lage der ersten Stelle
     const x0Cap = () => (fold ? +opts.origin - 0.5 * w : L);   // fold: die erste Stelle liegt am Punkt
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
@@ -688,7 +690,7 @@
         if (!Number.isFinite(X0)) throw new TypeError('UnfoldingView: origin muss eine Zahl sein, war ' + opts.origin);
         if (opts.unrolled) R = W - MARGIN;
       } else {
-        X0 = fold ? Lg() - hOf((oldIdx - bs()) * w, deff()) - bs() * w : L - hOf(oldIdx * w, deff());
+        X0 = fold ? Lg() - hOf((oldIdx - bs()) * w, deff()) - bs() * w - gapX() : L - hOf(oldIdx * w, deff());
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
@@ -990,7 +992,7 @@
         const startIndex = Math.max(0, fold && leftU(dd) <= 0 && pHs >= 0.5 ? 0 : startIdx());   // fold: lesbare Ganzzahl zaehlt ab Zeichen 0
         const endIndex = Math.max(0, (R - dd - X0 - (fold ? 0.5 * w : 0)) / w);   // fold: die Stellen beginnen eine halbe Zelle frueher (kein Komma-Feld)
         return {
-          L, R, X0, d, dEff: dd, fold: fold ? { x: foldX(), hs: pHs } : null, factor, w, W, H, dpr, uLeft: leftU(dd),
+          L, R, X0, d, dEff: dd, fold: fold ? { x: foldX(), hs: pHs, gap: gapX() } : null, factor, w, W, H, dpr, uLeft: leftU(dd),
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,
