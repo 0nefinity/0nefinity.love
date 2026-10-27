@@ -32,9 +32,10 @@
   const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
   const SPECIAL = '\\`*_{}[]()>#+-.!|~';
   const DROP_ATTRS = new Set(['contenteditable', 'spellcheck', 'data-md-ignore']);
+  const dropAttr = (n) => DROP_ATTRS.has(n) || n.startsWith('data-018-') || n.startsWith('data-oe');
 
   const tag = (n) => (n.nodeType === 1 ? n.nodeName.toLowerCase() : '');
-  const isIgnored = (n) => n.nodeType === 1 && n.hasAttribute('data-md-ignore');
+  const isIgnored = (n) => n.nodeType === 1 && (n.hasAttribute('data-md-ignore') || n.hasAttribute('data-oe-ui'));
   const isWord = (c) => c !== undefined && c !== '' && /[\p{L}\p{N}_]/u.test(c);
   const attrEsc = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
@@ -93,7 +94,7 @@
   function openTag(el) {
     let s = '<' + tag(el);
     for (const a of el.attributes) {
-      if (DROP_ATTRS.has(a.name) || a.name.startsWith('data-018-')) continue;
+      if (dropAttr(a.name)) continue;
       s += ' ' + a.name + (a.value === '' ? '' : '="' + attrEsc(a.value) + '"');
     }
     return s + '>';
@@ -107,7 +108,7 @@
         if (isIgnored(n)) { n.remove(); continue; }
         strip(n);
       }
-      for (const a of [...e.attributes]) if (DROP_ATTRS.has(a.name) || a.name.startsWith('data-018-')) e.removeAttribute(a.name);
+      for (const a of [...e.attributes]) if (dropAttr(a.name)) e.removeAttribute(a.name);
     };
     strip(clone);
     let html = clone.outerHTML;
@@ -352,7 +353,11 @@
   function serialize(root) {
     root = root || contentRoot();
     if (!root) throw new MdSerializeError('no markdown content on this page');
-    return joinBlocks(blocks(root, {}));
+    // the login editor wraps text runs in <oe-run>; they are not content
+    const copy = root.cloneNode(true);
+    for (const w of copy.querySelectorAll('oe-run')) w.replaceWith(...w.childNodes);
+    copy.normalize();
+    return joinBlocks(blocks(copy, {}));
   }
 
   function payload(base) {
