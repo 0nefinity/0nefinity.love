@@ -3431,9 +3431,11 @@
          * @param {string} key - Unique key, params[key] is the array of values
          * With `label` the row gets the normal label column (e.g. one step of a sequence); `captions` puts a
          * small heading above each field, `inputmode` is passed to every field (e.g. 'decimal').
-         * `layout: 'column'` stacks the fields vertically (+ / - below them). `side` adds a second column of
-         * fields with its own key (params[side.key]): one value sits beside the first symbol, several sit
-         * each between two symbols (value i between symbol i and i + 1).
+         * `layout: 'column'` renders one aligned block: heading row, one row per symbol [symbol][side field],
+         * footer row with - / + under the symbols and the optional `toggle` ({ key, label, value, onChange }) under the
+         * side column. `side` adds a second column with its own key (params[side.key]): value i sits in the row of
+         * symbol i; a single value sits in the first row and the other rows show it dimmed and read-only.
+         * `heading` / `side.label` caption the two columns.
          * @param {Object} config - { values, labels?, label?, captions?, inputmode?, layout?, side?: { key, values, labels?, label?, onChange }, onChange(index, value, values), onAdd(values), onRemove(values), onResize(n) (Zuruecksetzen auf andere Anzahl), min, max }
          */
         addSymbolRow(key, config) {
@@ -3454,8 +3456,18 @@
             strip.className = 'ctrl-symbol-strip';
             row.appendChild(strip);
             this._symbolRows = this._symbolRows || {};
-            const state = { strip, labels, captions, inputmode, column, onChange, onAdd, onRemove, onResize, min, max };
+            const state = { strip, heading: '', labels, captions, inputmode, column, onChange, onAdd, onRemove, onResize, min, max };
             this._symbolRows[key] = state;
+            if (column && config.toggle) {
+                // Toggle laeuft ueber addToggle (Voreinstellungen, Callbacks); die Zeile wandert in den Fuss des Blocks
+                const holder = document.createElement('div');
+                const prev = this._currentContainer;
+                this._currentContainer = holder;
+                try { this.addToggle(config.toggle.key, config.toggle); } finally { this._currentContainer = prev; }
+                state.toggleRow = holder.firstElementChild;
+                state.toggleRow.classList.add('ctrl-symbol-toggle');
+            }
+            state.heading = config.heading || '';
             if (column && config.side) {
                 const side = this._withPageDefault(config.side.key, config.side, 'values');
                 this.params[side.key] = (side.values || []).slice();
@@ -3492,8 +3504,20 @@
                 });
                 return input;
             };
-            // Spalte: jedes Symbol belegt zwei Halbzeilen, ein Seitenfeld kann so genau zwischen zwei Symbolen sitzen
-            const place = (el, line, col) => { if (st.column) { el.style.gridRow = line + ' / span 2'; el.style.gridColumn = String(col); } };
+            // Spalte: Kopfzeile in Zeile 1, Symbol i (und Seitenfeld i) in Zeile i + 2, Fuss darunter
+            const place = (el, line, col) => { if (st.column) { el.style.gridRow = String(line); el.style.gridColumn = String(col); } };
+            const sideSt = st.side ? this._symbolRows[st.side] : null;
+            if (st.column) {
+                const head = (text, col) => {
+                    const h = document.createElement('span');
+                    h.className = 'ctrl-symbol-head';
+                    h.textContent = text;
+                    place(h, 1, col);
+                    st.strip.appendChild(h);
+                };
+                if (st.heading && values.length) head(st.heading, 1);
+                if (sideSt && sideSt.label && values.length) head(sideSt.label, 2);
+            }
             values.forEach((v, i) => {
                 const input = makeInput(key, i, v, st.labels[i] || ('Symbol ' + (i + 1)), st.onChange);
                 if (st.captions) {
@@ -3503,37 +3527,48 @@
                     cap.className = 'ctrl-symbol-caption';
                     cap.textContent = st.captions[i] || '';
                     cell.append(cap, input);
-                    place(cell, 2 * i + 1, 1);
+                    place(cell, i + 2, 1);
                     st.strip.appendChild(cell);
                 } else {
-                    place(input, 2 * i + 1, 1);
+                    place(input, i + 2, 1);
                     st.strip.appendChild(input);
                 }
             });
-            if (st.side) {
-                const sideSt = this._symbolRows[st.side];
+            if (st.side && values.length) {
                 const sideValues = this.params[st.side];
-                const slot = document.createElement('div');
-                slot.className = 'ctrl-symbol-side';
-                slot.dataset.key = st.side;
-                if (sideSt.label) slot.dataset.label = sideSt.label;
-                slot.style.gridColumn = '2';
-                const centered = sideValues.length === 1;
-                // Ein Feld steht oben neben dem ersten Symbol, mehrere je zwischen zwei Symbolen
-                slot.style.gridRow = centered ? '1 / span 2' : '1 / span ' + Math.max(2, 2 * values.length + 1);
+                const single = sideValues.length === 1;
+                const mirrors = [];
                 sideValues.forEach((v, i) => {
-                    const aria = sideSt.labels[i] || ((sideSt.label || 'Feld') + (centered ? '' : ' ' + (i + 1)));
-                    const input = makeInput(st.side, i, v, aria, sideSt.onChange);
-                    if (!centered) input.style.gridRow = (2 * i + 2) + ' / span 2';
-                    slot.appendChild(input);
+                    const aria = sideSt.labels[i] || ((sideSt.label || 'Feld') + (single ? '' : ' ' + (i + 1)));
+                    const input = makeInput(st.side, i, v, aria, (idx, val, all) => {
+                        mirrors.forEach(m => { m.value = val; });
+                        if (sideSt.onChange) sideSt.onChange(idx, val, all);
+                    });
+                    input.classList.add('ctrl-symbol-side-input');
+                    place(input, i + 2, 2);
+                    st.strip.appendChild(input);
                 });
-                if (centered) slot.classList.add('ctrl-symbol-side-single');
-                st.strip.appendChild(slot);
+                if (single) {
+                    // Synchron: ein Feld, die uebrigen Zeilen zeigen es gedimmt und gesperrt
+                    for (let i = 1; i < values.length; i++) {
+                        const m = document.createElement('input');
+                        m.type = 'text';
+                        m.className = 'ctrl-input ctrl-symbol-input ctrl-symbol-side-input ctrl-symbol-mirror';
+                        m.value = sideValues[0] ?? '';
+                        m.disabled = true;
+                        m.tabIndex = -1;
+                        m.setAttribute('aria-hidden', 'true');
+                        place(m, i + 2, 2);
+                        mirrors.push(m);
+                        st.strip.appendChild(m);
+                    }
+                }
             }
+            const footRow = values.length + 2;
             const btnWrap = st.column ? document.createElement('div') : st.strip;
             if (st.column) {
                 btnWrap.className = 'ctrl-symbol-btns';
-                place(btnWrap, 2 * values.length + 2, 1);
+                place(btnWrap, footRow, 1);
             }
             const addBtn = (text, title, enabled, fn) => {
                 const b = document.createElement('button');
@@ -3548,6 +3583,10 @@
             if (st.onRemove) addBtn('\u2212', 'Symbol entfernen', values.length > st.min, () => st.onRemove(this.params[key]));
             if (st.onAdd) addBtn('+', 'Symbol hinzufügen', values.length < st.max, () => st.onAdd(this.params[key]));
             if (st.column && btnWrap.childNodes.length) st.strip.appendChild(btnWrap);
+            if (st.column && st.toggleRow) {
+                place(st.toggleRow, footRow, 2);
+                st.strip.appendChild(st.toggleRow);
+            }
         }
 
         /**
