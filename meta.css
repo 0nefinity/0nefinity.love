@@ -2045,7 +2045,7 @@ pre {
     align-self: stretch;
 }
 
-.ctrl-symbol-row-column .ctrl-symbol-side-centered {
+.ctrl-symbol-row-column .ctrl-symbol-side-single {
     display: flex;
     align-items: center;
 }
