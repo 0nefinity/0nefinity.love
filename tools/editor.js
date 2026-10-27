@@ -77,7 +77,7 @@
   let saving = null;
   let saveAgain = false;
   let leaving = false;
-  let bar, status, btnCmt, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
+  let bar, more, moreIn, status, btnCmt, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
   // ready: Quelltext geladen; inline: Seite ist inline bearbeitbar; live: dev weicht von live ab.
   const st = { ready: false, inline: false, live: false, draftCount: 0, draftFiles: [] };
   // Eigener Verlauf statt Browser-Undo: der kennt keine Autosave-Grenzen und vergisst alles, sobald
@@ -290,15 +290,14 @@
       s.onerror = () => no(new Error('editor-' + n + '.js nicht ladbar'));
       document.head.append(s);
     })));
-    const head = bar.querySelector('.oe-head');
     const wait = async () => (await flushed()) !== false;
     extras = {
       fn: window.OneEditorFilename.mount({
         file: source.file, request: api, path: () => pagePath, beforeRename: wait,
         onRenamed: (r) => { pagePath = r.url; source.file = r.file; },
       }),
-      np: window.OneEditorNewPage.mount({ bar: head, request: api, beforeCreate: wait }),
-      marks: window.OneEditorMarks.mount({ bar: head, root: () => root || document.querySelector('main') || document.body }),
+      np: window.OneEditorNewPage.mount({ bar: moreIn, request: api, beforeCreate: wait }),
+      marks: window.OneEditorMarks.mount({ bar: moreIn, root: () => root || document.querySelector('main') || document.body }),
       fmt: window.OneEditorFormat.mount({
         host: selHost, before: (h) => { touch(h); snap(h, 'force'); }, after: () => { markDirty(); syncSelBar(); },
         blockOf, setBlock: (t) => setBlock(t), md: isMd, bar: () => bar, fail: (m) => say(m, 'error'),
@@ -1925,6 +1924,20 @@
   font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;pointer-events:none}
 #oe-bar>*{pointer-events:auto}
 body.menu-open #oe-bar{display:none}
+.oe-more{display:grid;grid-template-columns:0fr;opacity:0;visibility:hidden;
+  transition:grid-template-columns .22s ease,opacity .16s ease,visibility 0s .22s}
+.oe-more[data-open]{grid-template-columns:1fr;opacity:1;visibility:visible;transition:grid-template-columns .22s ease,opacity .2s ease .04s,visibility 0s}
+.oe-more-in{display:flex;align-items:center;gap:2px;min-width:0;overflow:hidden}
+@media (prefers-reduced-motion:reduce){.oe-more,.oe-more[data-open]{transition:none}}
+#oe-bar button{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#oe-tip{position:fixed;z-index:2147483005;pointer-events:none;display:flex;align-items:center;gap:8px;max-width:min(260px,calc(100vw - 16px));
+  padding:5px 9px;border-radius:5px;box-sizing:border-box;background:color-mix(in srgb,var(--bg-color,#000) 86%,var(--text-color,#fff));
+  border:1px solid color-mix(in srgb,var(--text-color,#fff) 28%,transparent);color:var(--text-color,#fff);
+  font:12px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35);
+  opacity:0;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease}
+#oe-tip[data-on]{opacity:1;transform:none}
+#oe-tip kbd{flex:none;font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 5px;border-radius:3px;
+  background:color-mix(in srgb,var(--text-color,#fff) 14%,transparent);color:inherit;opacity:.85}
 @media (min-width:720px){body.menu-open #oe-bar{display:flex;right:calc(var(--menu-effective-width) + 12px);max-width:calc(100vw - var(--menu-effective-width) - 24px)}}
 oe-run{display:inline}
 .oe-overlay,#oe-admin{text-align:left}
@@ -2093,8 +2106,117 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
         btnPub.title = st.draftCount ? 'veröffentlichen (' + st.draftCount + ' unveröffentlicht: ' + st.draftFiles.slice(0, 8).join(', ') + ')' : 'nichts zu veröffentlichen';
       }
     }
-    if (extras) { extras.fn.setEditing(editing); extras.fmt.setEditing(editing); }
+    if (extras) { extras.fn.setEditing(editing); extras.fmt.setEditing(editing); extras.marks.setActive(editing); }
     for (const b of [btnFmt, menuFmt]) if (b) b.hidden = !editing;
+    more.toggleAttribute('data-open', !!editing);
+    more.inert = !editing;
+    // Unveroeffentlichtes bleibt auch zugeklappt sichtbar: Punkt am Stift.
+    const unpub = btnPub && !pubTimer && !!(CFG.draft ? st.draftCount : st.live);
+    btnEdit.classList.toggle('oe-has-dot', !!unpub && !editing);
+    btnEdit.title = 'bearbeiten ein/aus' + (unpub && !editing ? ' (unveröffentlichte Änderungen)' : '');
+    adoptTips(bar);
+  }
+
+  // ------------------------------------------------------------ tooltips
+
+  // Eigener Tooltip fuer alle Leisten-Knoepfe (Hover und Tastaturfokus am Desktop, langer Druck am Handy).
+  // 'title' wandert nach data-tip (sonst erschiene zusaetzlich der Browser-Tooltip) und dient als aria-label.
+  const KEYWORDS = /^(Strg|Ctrl|Cmd|Alt|Umschalt|Shift)\b/;
+  function adoptTips(scope) {
+    for (const el of scope.querySelectorAll('button[title],a[title],button,.oe-btn')) {
+      const t = el.getAttribute('title');
+      if (t) { el.dataset.tip = t; el.removeAttribute('title'); }
+      if (!el.hasAttribute('aria-label') && el.dataset.tip) el.setAttribute('aria-label', el.dataset.tip.replace(/\s*\([^()]*\)\s*$/, ''));
+    }
+  }
+
+  function initTips() {
+    const SEL = '#oe-bar button, #oe-bar a, .oe-sel button, .oe-btn';
+    const tip = document.createElement('div');
+    tip.id = 'oe-tip';
+    tip.dataset.oeUi = '';
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    let cur = null;
+    let delay = 0;
+    let press = 0;
+    let hold = 0;
+    let longPressed = false;
+
+    const hide = () => { clearTimeout(delay); clearTimeout(hold); cur = null; tip.removeAttribute('data-on'); };
+    const target = (e) => (e.target.closest ? e.target.closest(SEL) : null);
+
+    function show(el) {
+      adoptTips(el.parentElement || el);
+      const text = el.dataset.tip || el.getAttribute('aria-label');
+      if (!text) return;
+      let label = text;
+      let keys = '';
+      const m = /^(.*?)\s*\(([^()]+)\)$/.exec(text);
+      if (m && KEYWORDS.test(m[2])) { label = m[1]; keys = m[2]; }
+      tip.textContent = '';
+      const sp = document.createElement('span');
+      sp.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+      tip.append(sp);
+      if (keys) { const k = document.createElement('kbd'); k.textContent = keys; tip.append(k); }
+      cur = el;
+      const r = el.getBoundingClientRect();
+      tip.style.left = '0px';
+      tip.style.top = '0px';
+      const w = tip.offsetWidth;
+      const h = tip.offsetHeight;
+      let top = r.bottom + 8;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+      const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+      tip.setAttribute('data-on', '');
+    }
+
+    document.addEventListener('pointerover', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const el = target(e);
+      if (!el) return;
+      if (el === cur) return;
+      clearTimeout(delay);
+      delay = setTimeout(() => show(el), cur ? 0 : 350);
+    }, true);
+    document.addEventListener('pointerout', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const el = target(e);
+      if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) hide();
+    }, true);
+    document.addEventListener('focusin', (e) => {
+      const el = target(e);
+      if (el && el.matches(':focus-visible')) show(el);
+    }, true);
+    document.addEventListener('focusout', hide, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); }, true);
+    window.addEventListener('scroll', hide, { passive: true, capture: true });
+
+    document.addEventListener('pointerdown', (e) => {
+      hide();
+      longPressed = false;
+      if (e.pointerType === 'mouse') return;
+      const el = target(e);
+      if (!el) return;
+      clearTimeout(press);
+      press = setTimeout(() => { longPressed = true; show(el); }, 500);
+    }, true);
+    const release = () => {
+      clearTimeout(press);
+      if (longPressed) hold = setTimeout(hide, 1800);
+    };
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+    // Der Druck, der den Tooltip zeigte, soll den Knopf nicht ausloesen.
+    document.addEventListener('click', (e) => {
+      if (!longPressed || !target(e)) return;
+      longPressed = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+    document.addEventListener('contextmenu', (e) => { if (target(e) && e.pointerType !== 'mouse') e.preventDefault(); }, true);
   }
 
   function mini(kind, label, fn) {
@@ -2129,16 +2251,25 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
     const head = document.createElement('div');
     head.className = 'oe-head';
-    // Feste Reihenfolge, rechts verankert: das Stift-Symbol bleibt beim Umschalten an seinem Platz.
-    head.append(btnUndo, btnRedo, btnFmt, btnHist, btnEdit, btnSrc, btnCmt, btnDiff);
+    // Der Stift steht rechts und bleibt beim Umschalten an seinem Platz; alles andere klappt links davon auf,
+    // solange Bearbeiten an ist.
+    more = document.createElement('div');
+    more.className = 'oe-more';
+    more.inert = true;
+    moreIn = document.createElement('div');
+    moreIn.className = 'oe-more-in';
+    moreIn.setAttribute('role', 'group');
+    moreIn.append(btnUndo, btnRedo, btnFmt, btnHist, btnSrc, btnCmt, btnDiff);
     if (!CFG.direct) {
       btnPub = mini('upload', 'veröffentlichen', startPublish);
-      head.append(btnPub);
+      moreIn.append(btnPub);
     }
     if (!menuWrap()) {
       bar.classList.add('oe-solo');
-      head.append(mini('power', 'ausloggen', logout));
+      moreIn.append(mini('power', 'ausloggen', logout));
     }
+    more.append(moreIn);
+    head.append(more, btnEdit);
     bar.append(head, status);
     bar.addEventListener('keydown', (e) => e.stopPropagation());
     document.body.appendChild(bar);
@@ -2229,6 +2360,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 
     css();
     buildBar();
+    initTips();
     buildSelBar();
     buildAdminMenu();
     render();
