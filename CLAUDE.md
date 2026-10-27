@@ -87,6 +87,7 @@ Einzige Ausnahme: `why-coordinatesystem-is-chicken.html` behaelt ihr eigenes Huh
 ## Coding-Regeln
 
 - **Controls:** Immer `0` als gültigen Eingabewert erlauben, Ranges so unbegrenzt wie möglich (→ ∞). Keine künstlichen Obergrenzen.
+- **Eingabefelder:** Jedes Text-Feld (`input`/`textarea`) ausser dem Login bekommt `autocomplete="off"` plus `data-1p-ignore data-lpignore data-bwignore data-form-type="other"`, sonst bietet Chrome/Android Passwort- und Login-Vorschlaege an; `meta.js` setzt das per Waechter auf alles, was Skripte erzeugen. Kein `type=password` ausser im Login. Pruefen: `python3 tests/autofill/static-check.py` (laeuft im pre-commit) und `node tests/autofill/run.js <baseUrl> [--local <repo>]`.
 - **Styling:** Farben ausschließlich über `meta.css`-Variablen setzen. `meta.js`, `controls.js` und `zoom.js` für Standard-Interaktionen nutzen — nicht neu erfinden.
 - **Performance:** Muss auch auf alter Hardware ("Gurke") flüssig laufen. Rechenintensive Aufgaben in Web Worker auslagern (`tools/workers/`).
 - **Dateinamen:** Auf Deutsch, beschreibend, Leerzeichen und Emojis sind erlaubt und gewollt.
