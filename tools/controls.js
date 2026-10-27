@@ -1830,6 +1830,7 @@
             this.el.appendChild(this.bodyEl);
             this.bodyEl.addEventListener('scroll', this._handleSelectViewportChange, { passive: true });
             window.addEventListener('resize', this._handleSelectViewportChange);
+            this._installClickAnchor();
 
             if (typeof MutationObserver === 'function') {
                 this._bodyMutationObserver = new MutationObserver(() => this._scheduleLayoutUpdate());
@@ -2001,6 +2002,55 @@
                 this._updateBodyHeight();
                 this._updateBarWidth();
             });
+        }
+
+        // Bedienung im Panel: das angefasste Element bleibt auf dem Bildschirm, wo es ist. Aendert sich darueber oder
+        // darunter Inhalt (Symbol +/-, sync, Details), gleicht scrollTop das aus. Gewollte Bewegung bleibt reveal() beim
+        // Ziehen in der Szene (Zeiger ausserhalb des Panels, hier kein Anker).
+        _installClickAnchor() {
+            const body = this.bodyEl;
+            let anchor = null, holdUntil = 0, down = false, raf = 0;
+            // Mitte statt Oberkante: :active skaliert den Knopf und verschiebt die Kante um ein paar px
+            const mid = el => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+            const resolve = a => {
+                if (a.el.isConnected) return a.el;
+                const root = a.key ? body.querySelector(`[data-key="${CSS.escape(a.key)}"]`) : body;
+                const list = root ? root.querySelectorAll(a.sel) : [];
+                return list[Math.min(a.idx, list.length - 1)] || null;
+            };
+            const tick = () => {
+                raf = 0;
+                if (!anchor) return;
+                const el = resolve(anchor);
+                if (el) {
+                    const d = mid(el) - anchor.top;
+                    if (Math.abs(d) > 0.4 && body.scrollHeight > body.clientHeight) body.scrollTop += d;
+                    anchor.el = el;
+                }
+                if (down || performance.now() < holdUntil) raf = requestAnimationFrame(tick);
+                else anchor = null;
+            };
+            const start = () => { if (!raf) raf = requestAnimationFrame(tick); };
+            body.addEventListener('pointerdown', e => {
+                const t = e.target instanceof Element ? e.target.closest('button, input, select, label, .ctrl-row') : null;
+                if (!t || !body.contains(t)) return;
+                const keyed = t.closest('[data-key]');
+                const key = keyed && body.contains(keyed) ? keyed.dataset.key : '';
+                const sel = t.tagName.toLowerCase() + (t.classList.length ? '.' + [...t.classList].join('.') : '');
+                const root = key ? keyed : body;
+                const idx = Math.max(0, [...root.querySelectorAll(sel)].indexOf(t));
+                anchor = { el: t, key, sel, idx, top: mid(t) };
+                down = true;
+                holdUntil = performance.now() + 900;
+                start();
+            }, true);
+            const up = () => { down = false; holdUntil = performance.now() + 900; start(); };
+            body.addEventListener('pointerup', up, true);
+            body.addEventListener('pointercancel', up, true);
+            body.addEventListener('click', () => { holdUntil = performance.now() + 900; start(); }, true);
+            body.addEventListener('change', () => { holdUntil = performance.now() + 900; start(); }, true);
+            body.addEventListener('wheel', () => { anchor = null; }, { passive: true });
+            body.addEventListener('touchmove', () => { anchor = null; }, { passive: true });
         }
 
         // Update body max-height based on panel position (desktop)
