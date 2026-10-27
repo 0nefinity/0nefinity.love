@@ -53,8 +53,14 @@
   const ONE = 'M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z';
 
   let editing = false;
-  let originals = new Map();
-  let touched = new Set();
+  // Start-Inhalt jeder Textstelle (fuer die Vorpruefung und das Einfrieren); gespeichert wird das ganze Dokument.
+  let hostStart = new Map();
+  // Dokumentstand der letzten Speicherung (Serialisierung der Wurzel, Inseln als Grundzustand).
+  let docBase = null;
+  let islandSeq = 0;
+  const islandBase = new Map();
+  let startEls = new WeakSet();
+  let styledAtStart = new WeakSet();
   let pagePath = location.pathname;
   let busy = 0;
   let overlay = null;
@@ -84,12 +90,8 @@
   // innerHTML gesetzt wird. Eintrag = Element + Inhalt davor; Tippen am selben Element ohne 1 s Pause ist ein Schritt.
   let undoStack = [];
   let redoStack = [];
-  // Schritt = {i: Nummer der Stelle in Dokumentreihenfolge, t: Zeit, p/s: gleicher Anfang/Schluss im HTML,
-  // a: entfernter, b: eingefuegter Teil}. Das ueberlebt Neuladen (localStorage je Seite); openGrp ist der noch
+  // Schritt = {t: Zeit, p/s: gleicher Anfang/Schluss im Dokument-HTML (Skelett), a: entfernter, b: eingefuegter Teil}. Das ueberlebt Neuladen (localStorage je Seite); openGrp ist der noch
   // offene Tippschritt.
-  let hostList = [];
-  // Absatzformat (editor-format.js): urspruengliches Element je Textstelle, solange es vom Stand der Datei abweicht.
-  let tagOrig = new Map();
   let openGrp = null;
   let grpTimer = null;
   let hist = null;
@@ -212,6 +214,11 @@
     return setTimeout(again, Math.min(30000, 1000 * 2 ** Math.min(retryN, 5)));
   }
 
+  // Klicks auf Editor-Knoepfe duerfen das Seitenmenue nicht auf- oder zuklappen.
+  function keepClicks(el) {
+    for (const t of ['click', 'touchend']) el.addEventListener(t, (e) => e.stopPropagation());
+  }
+
   function showToast(text, label, action, ms, kind) {
     hideToast();
     toast = document.createElement('div');
@@ -219,6 +226,7 @@
     toast.dataset.oeUi = '';
     toast.dataset.kind = kind || '';
     toast.setAttribute('role', 'status');
+    keepClicks(toast);
     toast.append(text);
     if (action) {
       const b = button(label, () => { const fn = action; hideToast(); fn(); });
@@ -324,7 +332,10 @@
 
   // controls.js speichert Voreinstellungen ueber denselben Endpunkt: Quelltext neu holen (neuer sha),
   // damit "veroeffentlichen" erscheint und eine Quelltext-Bearbeitung nicht am alten Stand scheitert.
+  let pubOffUntil = 0;
   window.addEventListener('controls:defaults-saved', () => {
+    pubOffUntil = Date.now() + 1500;
+    setTimeout(() => render(), 1600);
     loadSource().catch(e => say(e.message, 'error'));
   });
 
@@ -367,7 +378,7 @@
   async function dropUnlocatable(hosts) {
     if (isMd()) return;
     let r;
-    try { r = await api('POST', 'check', { path: pagePath, origs: hosts.map((h) => originals.get(h)) }); } catch (e) {
+    try { r = await api('POST', 'check', { path: pagePath, origs: hosts.map((h) => hostStart.get(h)) }); } catch (e) {
       // Nur eine Vorabprüfung: ist der Dienst weg, meldet das Speichern es laut; ein altes Backend ohne Route ebenso still.
       if (/nicht erreichbar/.test(String(e.message))) console.warn('[editor] ' + e.message);
       else if (!/not_found|404/.test(String(e.message))) say('Prüfung der Textstellen: ' + e.message, 'error');
@@ -375,13 +386,12 @@
     }
     if (!editing) return;
     const size = new Map();
-    for (const h of hosts) size.set(originals.get(h), (size.get(originals.get(h)) || 0) + 1);
+    for (const h of hosts) size.set(hostStart.get(h), (size.get(hostStart.get(h)) || 0) + 1);
     hosts.forEach((h, i) => {
-      if (!h.hasAttribute('data-oe') || touched.has(h)) return;
+      if (!h.hasAttribute('data-oe') || cleanHTML(h) !== hostStart.get(h)) return;
       const n = r.hits[i];
-      if (n === 1 || (n > 1 && n === size.get(originals.get(h)))) return;
-      release(h);
-      originals.delete(h);
+      if (n === 1 || (n > 1 && n === size.get(hostStart.get(h)))) return;
+      freeze(h);
     });
     render();
   }
@@ -408,19 +418,177 @@
   function guardClick(e) {
     if (e.target.closest && e.target.closest('.oe-cmt')) return;
     // Strg/Cmd-Klick folgt einem Link im bearbeitbaren Text.
-    if (editing && !e.ctrlKey && !e.metaKey && e.target.closest && e.target.closest('[data-oe]')) e.preventDefault();
+    if (editing && !e.ctrlKey && !e.metaKey && e.target.closest && inZone(e.target)) e.preventDefault();
   }
 
-  function touch(el) {
-    if (touched.has(el)) return;
-    originals.set(el, cleanHTML(el));
-    touched.add(el);
+  // ------------------------------------------------------------ dokument
+  // Die Seite ist beim Bearbeiten ein einziges Dokument: gespeichert wird der Unterschied zwischen zwei
+  // Serialisierungen der Wurzel (docBase = zuletzt gespeichert, serial = jetzt) als Stellen mit Umgebung (hunks).
+  // Inseln (Canvas, Menue, Skript-Texte, eingefrorene Stellen) zaehlen immer mit ihrem Grundzustand; \u0001 markiert
+  // ihre Grenze, damit die Umgebung einer Stelle nie in eine Insel hineinreicht.
+
+  const SENT = '\u0001';
+  const UI_ISL = '[data-oe-ui]:not(.oe-cmt):not(.oe-cmtgroup)';
+
+  function scrubClone(c) {
+    c.removeAttribute('data-oe');
+    c.removeAttribute('data-oe-isl');
+    c.classList.remove('oe-cur');
+    if (!c.getAttribute('class')) c.removeAttribute('class');
+    return c;
+  }
+
+  // Grundzustand einer Insel: ihr HTML vor dem Sperren, ohne Oberflaeche.
+  function cleanOuter(el) {
+    const c = el.cloneNode(true);
+    c.querySelectorAll('[data-oe-ui]').forEach((n) => n.remove());
+    scrubClone(c);
+    for (const n of c.querySelectorAll('[data-oe],[data-oe-isl],.oe-cur')) scrubClone(n);
+    return c.outerHTML;
+  }
+
+  // Editor-Oberflaechen (Leiste, Panels, Toasts) direkt unter der Wurzel gehoeren nicht ins Gerippe: sonst verschiebt jedes
+  // neu erscheinende Panel die Suffix-Laengen der Rueckgaengig-Schritte. setSkel haengt sie unveraendert hinten wieder an.
+  const looseUi = (parent) => [...parent.children].filter((n) => n.matches(UI_ISL));
+
+  // mode 'doc': Inseln mit Grundzustand zwischen Markern; 'skel': Inseln als <oe-isl n=..> (fuer Rueckgaengig).
+  function serial(mode) {
+    for (const n of root.querySelectorAll(UI_ISL)) if (!n.hasAttribute('data-oe-isl')) n.setAttribute('data-oe-isl', 'u' + ++islandSeq);
+    const c = root.cloneNode(true);
+    if (mode === 'skel') looseUi(c).forEach((n) => n.remove());
+    c.querySelectorAll('[data-oe-ui]').forEach((n) => { if (mode === 'doc' || !n.matches(UI_ISL)) n.remove(); });
+    for (const n of c.querySelectorAll('[data-oe-isl]')) {
+      const m = document.createElement('oe-isl');
+      m.setAttribute('n', n.getAttribute('data-oe-isl'));
+      n.replaceWith(m);
+    }
+    for (const w of c.querySelectorAll('oe-run')) w.replaceWith(...w.childNodes);
+    for (const n of c.querySelectorAll('[data-oe],.oe-cur')) scrubClone(n);
+    let h = c.innerHTML;
+    if (mode === 'doc') h = h.replace(/<oe-isl n="([^"]+)"><\/oe-isl>/g, (_, id) => SENT + (islandBase.get(id) ?? '') + SENT);
+    return h;
+  }
+
+  const skel = () => serial('skel');
+
+  // ---- Unterschied zweier Dokumentstaende als Stellen (hunks)
+
+  const TOKENS = /(\u0001|<!--[\s\S]*?-->|<\/?[a-zA-Z][^>]*>|\s+)/;
+  const tokenize = (str) => str.split(TOKENS).filter((x) => x !== '');
+
+  // Myers-Diff ueber Token; liefert die abweichenden Bereiche {a0,a1,b0,b1}. Ueber maxD Abweichungen ein einziger Bereich.
+  function diffRegions(A, B, maxD = 500) {
+    const n = A.length;
+    const m = B.length;
+    let p = 0;
+    while (p < n && p < m && A[p] === B[p]) p++;
+    let q = 0;
+    while (q < n - p && q < m - p && A[n - 1 - q] === B[m - 1 - q]) q++;
+    const a = A.slice(p, n - q);
+    const b = B.slice(p, m - q);
+    if (!a.length && !b.length) return [];
+    const N = a.length;
+    const M = b.length;
+    const max = Math.min(N + M, maxD);
+    const off = max + 1;
+    const v = new Int32Array(2 * max + 3);
+    const trace = [];
+    let found = -1;
+    outer: for (let d = 0; d <= max; d++) {
+      trace.push(v.slice());
+      for (let k = -d; k <= d; k += 2) {
+        let x = (k === -d || (k !== d && v[off + k - 1] < v[off + k + 1])) ? v[off + k + 1] : v[off + k - 1] + 1;
+        let y = x - k;
+        while (x < N && y < M && a[x] === b[y]) { x++; y++; }
+        v[off + k] = x;
+        if (x >= N && y >= M) { found = d; break outer; }
+      }
+    }
+    if (found < 0) return [{ a0: p, a1: p + N, b0: p, b1: p + M }];
+    const delA = new Uint8Array(N);
+    const insB = new Uint8Array(M);
+    let x = N;
+    let y = M;
+    for (let d = found; d > 0; d--) {
+      const vv = trace[d];
+      const k = x - y;
+      const down = k === -d || (k !== d && vv[off + k - 1] < vv[off + k + 1]);
+      const pk = down ? k + 1 : k - 1;
+      const px = vv[off + pk];
+      const py = px - pk;
+      if (down) insB[py] = 1; else delA[px] = 1;
+      x = px;
+      y = py;
+    }
+    const out = [];
+    let i = 0;
+    let j = 0;
+    while (i < N || j < M) {
+      if (i < N && j < M && !delA[i] && !insB[j]) { i++; j++; continue; }
+      const r = { a0: i + p, b0: j + p };
+      while (i < N && delA[i]) i++;
+      while (j < M && insB[j]) j++;
+      r.a1 = i + p;
+      r.b1 = j + p;
+      out.push(r);
+    }
+    return out;
+  }
+
+  const tagName = (t) => (/^<\/?([a-zA-Z][\w:-]*)/.exec(t) || [])[1];
+  const isTag = (t) => t[0] === '<' && t[1] !== '!';
+
+  // Skripte der Seite schalten Klassen und Stile um: ein Bereich, in dem sich nur Attribute von Tags aendern, ist keine Textaenderung.
+  function attrOnly(A, B) {
+    if (A.length !== B.length) return false;
+    return A.every((t, i) => t === B[i] || (isTag(t) && isTag(B[i]) && tagName(t) === tagName(B[i])));
+  }
+
+  function makeHunks(base, cur, ctx) {
+    const A = tokenize(base);
+    const B = tokenize(cur);
+    const merged = [];
+    for (const r of diffRegions(A, B)) {
+      const last = merged[merged.length - 1];
+      if (last && r.a0 - last.a1 < 4) { last.a1 = r.a1; last.b1 = r.b1; } else merged.push({ ...r });
+    }
+    const strip = (t) => t.split(SENT).join('');
+    const out = [];
+    for (const r of merged) {
+      const ta = A.slice(r.a0, r.a1);
+      const tb = B.slice(r.b0, r.b1);
+      const old = ta.join('');
+      const neu = tb.join('');
+      if (strip(old) === strip(neu) || attrOnly(ta, tb)) continue;
+      if (old.split(SENT).length > neu.split(SENT).length) throw new Error('Ein nicht bearbeitbarer Teil der Seite wurde verändert, nicht gespeichert');
+      let pre = '';
+      for (let i = r.a0 - 1; i >= 0 && pre.length < ctx && A[i] !== SENT; i--) pre = A[i] + pre;
+      let post = '';
+      for (let i = r.a1; i < A.length && post.length < ctx && A[i] !== SENT; i++) post += A[i];
+      out.push({ pre, old: strip(old), new: strip(neu), post });
+    }
+    return out;
+  }
+
+  // Dokument wird aus einem Skelett neu aufgebaut; die lebenden Inseln (Canvas, Menue) wandern an ihren Platz zurueck.
+  function setSkel(html) {
+    const live = new Map();
+    for (const n of root.querySelectorAll('[data-oe-isl]')) live.set(n.getAttribute('data-oe-isl'), n);
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    const marks = [...t.content.querySelectorAll('oe-isl')];
+    if (marks.some((m) => !live.has(m.getAttribute('n')))) return false;
+    for (const m of marks) m.replaceWith(live.get(m.getAttribute('n')));
+    const keep = looseUi(root);
+    keep.forEach((n) => n.remove());
+    root.replaceChildren(...t.content.childNodes, ...keep);
+    return true;
   }
 
   const histKey = () => 'oe-hist:' + location.host + pagePath;
 
   function persistHist() {
-    const save = () => localStorage.setItem(histKey(), JSON.stringify({ v: 1, u: undoStack, r: redoStack }));
+    const save = () => localStorage.setItem(histKey(), JSON.stringify({ v: 2, u: undoStack, r: redoStack }));
     try {
       save();
     } catch (e) {
@@ -438,17 +606,17 @@
     redoStack = [];
     try {
       const j = JSON.parse(stored(histKey()) || 'null');
-      if (j && j.v === 1 && Array.isArray(j.u) && Array.isArray(j.r)) { undoStack = j.u; redoStack = j.r; }
+      if (j && j.v === 2 && Array.isArray(j.u) && Array.isArray(j.r)) { undoStack = j.u; redoStack = j.r; }
     } catch (e) { showToast('Verlauf unlesbar, neu begonnen', '', null, 0, 'error'); }
   }
 
-  function diffEntry(i, before, after) {
+  function diffEntry(before, after) {
     const m = Math.min(before.length, after.length);
     let p = 0;
     while (p < m && before.charCodeAt(p) === after.charCodeAt(p)) p++;
     let s = 0;
     while (s < m - p && before.charCodeAt(before.length - 1 - s) === after.charCodeAt(after.length - 1 - s)) s++;
-    return { i, t: Date.now(), p, s, a: before.slice(p, before.length - s), b: after.slice(p, after.length - s) };
+    return { t: Date.now(), p, s, a: before.slice(p, before.length - s), b: after.slice(p, after.length - s) };
   }
 
   function closeGroup() {
@@ -456,19 +624,29 @@
     const g = openGrp;
     openGrp = null;
     if (!g) return;
-    const i = hostList.indexOf(g.el);
-    const after = cleanHTML(g.el);
-    if (i >= 0 && after !== g.before) { undoStack.push(diffEntry(i, g.before, after)); persistHist(); }
+    const after = skel();
+    if (after !== g.before) { undoStack.push(diffEntry(g.before, after)); persistHist(); }
     render();
     refreshHist();
   }
 
+  // Der Block, in dem die Schreibmarke steht.
+  const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, td, th, dt, dd, figcaption, div';
+  function curBlock() {
+    const sel = getSelection();
+    const n = sel.rangeCount && sel.focusNode;
+    const el = n && (n.nodeType === 1 ? n : n.parentElement);
+    const b = el && el.closest(BLOCKS);
+    return b && root && root !== b && root.contains(b) ? b : null;
+  }
+
   // Tippen am selben Ort ohne Pause (1,2 s) und ohne Wortgrenze ist ein Schritt; alles andere schliesst ihn.
-  function snap(el, kind, data) {
+  function snap(kind, data) {
     const now = Date.now();
     const g = openGrp;
+    const blk = curBlock();
     const brk = kind === 'type' && /\s/.test(data || '');
-    if (g && g.el === el && g.kind === kind && kind !== 'force' && !g.closeNext && now - g.last < GROUP_MS) {
+    if (g && g.blk === blk && g.kind === kind && kind !== 'force' && !g.closeNext && now - g.last < GROUP_MS) {
       g.last = now;
       if (brk) g.closeNext = true;
       clearTimeout(grpTimer);
@@ -478,7 +656,7 @@
     closeGroup();
     ownAt = performance.now();
     redoStack = [];
-    openGrp = { el, kind, before: cleanHTML(el), last: now, closeNext: brk };
+    openGrp = { blk, kind, before: skel(), last: now, closeNext: brk };
     grpTimer = setTimeout(closeGroup, GROUP_MS);
     render();
   }
@@ -493,11 +671,11 @@
     sel.addRange(r);
   }
 
-  // Stelle im Text: Zeichenposition im HTML -> Textposition (ohne Marken der Oberflaeche).
+  // Stelle im Text: Zeichenposition im Skelett -> Textposition (ohne Oberflaeche und Inseln).
   function placeCaret(el, html, pos) {
     const n = new DOMParser().parseFromString('<body>' + html.slice(0, Math.max(0, pos)), 'text/html').body.textContent.length;
     const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-      acceptNode: (t) => (t.parentElement && t.parentElement.closest('[data-oe-ui]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+      acceptNode: (t) => (t.parentElement && t.parentElement.closest('[data-oe-ui], [data-oe-isl]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
     });
     let left = n;
     let node;
@@ -523,25 +701,17 @@
   // Wendet einen Schritt an. Passt der Text an der Stelle nicht mehr (Seite zwischendurch anders), wird nichts
   // ueberschrieben.
   function applyEntry(e, undoing) {
-    const el = hostList[e.i];
-    if (!el || !el.isConnected || !el.hasAttribute('data-oe') || !originals.has(el)) return false;
+    if (!root) return false;
+    const cur = skel();
     const from = undoing ? e.b : e.a;
     const to = undoing ? e.a : e.b;
-    if (e.k === 'tag') {
-      if (el.tagName.toLowerCase() !== from) return false;
-      touch(el);
-      swapTag(el, to);
-      markDirty();
-      return true;
-    }
-    const cur = cleanHTML(el);
     if (e.p + e.s > cur.length || cur.slice(e.p, cur.length - e.s) !== from) return false;
-    touch(el);
     ownAt = performance.now();
     const next = cur.slice(0, e.p) + to + cur.slice(cur.length - e.s);
-    el.innerHTML = next;
+    if (!setSkel(next)) return false;
+    markStart();
     if (cmtOn) renderBadges();
-    placeCaret(el, next, e.p + to.length);
+    placeCaret(root, next, e.p + to.length);
     markDirty();
     return true;
   }
@@ -621,11 +791,9 @@
   // Zur Stelle eines Schritts springen, ohne etwas zu aendern.
   function jumpToStep(e, applied) {
     if (e.k === 'rename') return;
-    const el = hostList[e.i];
-    if (!el || !el.isConnected || !el.hasAttribute('data-oe')) { showToast('Stelle nicht mehr bearbeitbar', '', null, 0, 'error'); return; }
-    if (e.k === 'tag') { focusHost(el); return; }
-    const cur = cleanHTML(el);
-    placeCaret(el, cur, Math.min(cur.length, e.p + (applied ? e.b : e.a).length));
+    if (!root) return;
+    const cur = skel();
+    placeCaret(root, cur, Math.min(cur.length, e.p + (applied ? e.b : e.a).length));
   }
 
   // ------------------------------------------------------------ verlauf
@@ -645,8 +813,8 @@
     t.textContent = new Date(e.t).toLocaleTimeString('de-DE');
     const x = document.createElement('span');
     const nm = (f) => f.split('/').pop();
-    const a = e.k === 'tag' ? '<' + e.a + '>' : e.k === 'rename' ? nm(e.a) : excerpt(e.a);
-    const c = e.k === 'tag' ? '<' + e.b + '>' : e.k === 'rename' ? nm(e.b) : excerpt(e.b);
+    const a = e.k === 'rename' ? nm(e.a) : excerpt(e.a);
+    const c = e.k === 'rename' ? nm(e.b) : excerpt(e.b);
     if (a) { const d = document.createElement('del'); d.textContent = a; x.append(d, ' '); }
     if (c) { const n = document.createElement('ins'); n.textContent = c; x.append(n); }
     b.append(t, x);
@@ -714,17 +882,33 @@
     }
     if (badgeEvt(e)) return;
     const host = selHost();
-    if (!host) {
-      // Ausserhalb einer Textstelle (Luecke zwischen Bloecken, Auswahl ueber mehrere Stellen) wuerde nichts
-      // gespeichert. Abbrechen; Handy-Tastaturen melden Eingaben teils nicht abbrechbar, dann nimmt input sie zurueck.
+    if (!host || hitsIsland(e)) {
+      // Auswahl reicht in einen nicht bearbeitbaren Teil (Canvas, Menue, eingefrorener Text) oder ausserhalb des
+      // Dokuments: nichts aendern. Handy-Tastaturen melden Eingaben teils nicht abbrechbar, dann nimmt input sie zurueck.
       if (e.cancelable) e.preventDefault();
       else stray = strayAt();
       showToast('hier nicht bearbeitbar', '', null, 2500);
       return;
     }
     ownAt = lastTypeAt = performance.now();
-    touch(host);
-    snap(host, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force', e.data);
+    snap(t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force', e.data);
+  }
+
+  function hitsIsland(e) {
+    const ranges = [];
+    const sel = getSelection();
+    if (sel.rangeCount) ranges.push(sel.getRangeAt(0));
+    if (e.getTargetRanges) {
+      for (const t of e.getTargetRanges()) {
+        const r = document.createRange();
+        r.setStart(t.startContainer, t.startOffset);
+        r.setEnd(t.endContainer, t.endOffset);
+        ranges.push(r);
+      }
+    }
+    const isl = root ? root.querySelectorAll('[data-oe-isl]') : [];
+    for (const r of ranges) for (const n of isl) if (r.intersectsNode(n)) return true;
+    return false;
   }
 
   let stray = null;
@@ -763,6 +947,7 @@
     }
     const host = selHost();
     if (!host) return;
+    if (/^(delete|insertParagraph|insertFromPaste)/.test(e.inputType || '')) tidyStyles();
     if (extras) extras.fmt.tidy(host);
     for (const b of host.querySelectorAll('.oe-cmt')) {
       const info = badgeInfo.get(b);
@@ -781,9 +966,32 @@
     markDirty();
   }
 
-  function editHost(node) {
+  // Die Wurzel, wenn der Knoten im bearbeitbaren Dokument liegt (nicht in einer Insel, nicht in der Oberflaeche).
+  function inZone(node) {
     const el = node && (node.nodeType === 1 ? node : node.parentElement);
-    return el && el.closest('[data-oe]');
+    if (!el || !root || !root.contains(el) || el.closest('[data-oe-isl]') || el.closest(OUTSIDE)) return null;
+    return root;
+  }
+  const editHost = inZone;
+
+  // Browser setzen beim Zusammenfuegen und Einfuegen gern style-Attribute und leere span/font: was nicht schon
+  // beim Start da war, wird entfernt, damit nur der Text in die Datei kommt.
+  function markStart() {
+    startEls = new WeakSet();
+    styledAtStart = new WeakSet();
+    if (!root) return;
+    for (const n of root.querySelectorAll('*')) {
+      startEls.add(n);
+      if (n.hasAttribute('style')) styledAtStart.add(n);
+    }
+  }
+
+  function tidyStyles() {
+    for (const n of root.querySelectorAll('[style],span,font')) {
+      if (n.closest('[data-oe-isl],[data-oe-ui]')) continue;
+      if (n.hasAttribute('style') && !styledAtStart.has(n)) n.removeAttribute('style');
+      if (!startEls.has(n) && (n.localName === 'span' || n.localName === 'font') && !n.attributes.length) n.replaceWith(...n.childNodes);
+    }
   }
 
   // Formatierung ueber execCommand: der Browser setzt b, i, a, die alle als Inline-Text gelten.
@@ -791,8 +999,7 @@
     const sel = getSelection();
     const el = sel.rangeCount && editHost(sel.anchorNode);
     if (!el || el !== editHost(sel.focusNode)) return;
-    touch(el);
-    snap(el, 'force');
+    snap('force');
     document.execCommand(cmd, false, value);
     if (cmd === 'removeFormat') document.execCommand('unlink');
     markDirty();
@@ -823,7 +1030,7 @@
       save();
       return;
     }
-    if (e.target.closest('[data-oe], [data-oe-ui], input, textarea, .oe-sel, .oe-cmt')) return;
+    if (e.target.isContentEditable || e.target.closest('input, textarea, select, .oe-sel, .oe-cmt')) return;
     const k = mod && e.key.toLowerCase();
     if (k === 'z' || k === 'y') {
       e.preventDefault();
@@ -838,8 +1045,7 @@
     e.preventDefault();
     const host = selHost();
     if (!host) return;
-    touch(host);
-    snap(host, 'force');
+    snap('force');
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     document.execCommand('insertText', false, text);
   }
@@ -860,9 +1066,9 @@
         caretAfter(inBadge());
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        touch(host);
-        snap(host, 'force');
-        document.execCommand('insertLineBreak');
+        snap('force');
+        const b = curBlock();
+        document.execCommand(b && /^(P|H[1-6]|LI|BLOCKQUOTE|DD|DT|FIGCAPTION)$/.test(b.tagName) ? 'insertParagraph' : 'insertLineBreak');
       }
     }
     e.stopPropagation();
@@ -921,7 +1127,7 @@
   function linkAt(node) {
     const el = node && (node.nodeType === 1 ? node : node.parentElement);
     const a = el && el.closest('a');
-    return a && a.closest('[data-oe]') ? a : null;
+    return a && inZone(a) ? a : null;
   }
 
   function placeSelBar(rect) {
@@ -939,7 +1145,7 @@
 
   function syncSelBar() {
     if (badgeAt && inBadge() !== badgeAt) leaveBadge(badgeAt);
-    const h = editing ? selHost() : null;
+    const h = editing && selHost() ? curBlock() : null;
     if (h !== cur) {
       if (cur) cur.classList.remove('oe-cur');
       if (h) h.classList.add('oe-cur');
@@ -1019,17 +1225,18 @@
     } else {
       editing = true;
       document.documentElement.classList.add('oe-editing');
-      originals = new Map();
-      touched = new Set();
-      tagOrig = new Map();
+      hostStart = new Map();
+      docBase = null;
       const hosts = candidates();
-      hostList = hosts.slice();
       loadHist();
       for (const el of hosts) {
-        originals.set(el, cleanHTML(el));
+        hostStart.set(el, cleanHTML(el));
         el.dataset.oe = '';
       }
       claimRoot(hosts);
+      markStart();
+      docBase = serial('doc');
+      document.execCommand('defaultParagraphSeparator', false, 'p');
       watcher = new MutationObserver(onForeignChange);
       watcher.observe(document.body, { subtree: true, childList: true, characterData: true });
       dropUnlocatable(hosts);
@@ -1068,9 +1275,28 @@
     for (const t of ['keydown', 'keyup', 'keypress']) root.addEventListener(t, keepKeys);
   }
 
-  function island(el) {
+  // Eine Insel ist im Dokument nicht bearbeitbar und wird immer mit ihrem Grundzustand gespeichert.
+  function island(el, base) {
+    const id = String(++islandSeq);
+    islandBase.set(id, base === undefined ? cleanOuter(el) : base);
+    el.setAttribute('data-oe-isl', id);
     islands.push([el, el.getAttribute('contenteditable')]);
     el.setAttribute('contenteditable', 'false');
+  }
+
+  // Eine Textstelle, die ein Skript umschreibt, wird eingefroren: nicht mehr bearbeitbar, im Dokument wie am Start.
+  function freeze(el) {
+    if (!hostStart.has(el) || el.hasAttribute('data-oe-isl') || !el.isConnected) return;
+    const start = hostStart.get(el);
+    let base;
+    if (el.localName === 'oe-run') base = start;
+    else {
+      const c = el.cloneNode(false);
+      c.innerHTML = start;
+      base = scrubClone(c).outerHTML;
+    }
+    delete el.dataset.oe;
+    island(el, base);
   }
 
   function releaseRoot() {
@@ -1084,26 +1310,25 @@
     for (const [el, was] of islands) {
       if (was === null) el.removeAttribute('contenteditable'); else el.setAttribute('contenteditable', was);
     }
+    for (const n of root.querySelectorAll('[data-oe-isl]')) n.removeAttribute('data-oe-isl');
     islands = [];
+    islandBase.clear();
     root = null;
-  }
-
-  function release(el) {
-    delete el.dataset.oe;
-    island(el);
   }
 
   // Die Textstelle, in der die Schreibmarke steht (es gibt nur noch einen fokussierten Editor, die Wurzel).
   function selHost() {
     const sel = getSelection();
     if (!sel.rangeCount) return null;
-    const a = editHost(sel.anchorNode);
-    return a && a === editHost(sel.focusNode) ? a : null;
+    const a = inZone(sel.anchorNode);
+    return a && a === inZone(sel.focusNode) ? a : null;
   }
 
   function focusHost(el) {
     (root && root.contains(el) ? root : el).focus({ preventScroll: true });
   }
+
+  const FOREIGN_BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, pre, figcaption, dd, dt, oe-run';
 
   function onForeignChange(muts) {
     const now = performance.now();
@@ -1114,17 +1339,16 @@
       const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
       if (t && t.closest('[data-oe-ui]')) continue;
       if ([...m.addedNodes, ...m.removedNodes].some(ui)) continue;
-      const host = editHost(m.target);
-      if (!host || host.closest('[data-oe-ui]')) continue;
+      if (!root || !t || t.closest('[data-oe-isl]') || t === root) continue;
+      let host = t.closest('[data-oe]');
+      if (!host || !root.contains(host)) host = t.closest(FOREIGN_BLOCKS);
+      if (!host || host === root || !root.contains(host) || host.closest('[data-oe-ui]') || host.closest('[data-oe-isl]')) continue;
       // Wer gerade tippt, wird nie ausgesperrt (Handy: Tippen in Text mit Animation).
-      if (host === selHost() && now - lastTypeAt < 2000) continue;
+      const sn = getSelection().anchorNode;
+      if (sn && host.contains(sn) && now - lastTypeAt < 2000) continue;
       gone.add(host);
     }
-    for (const el of gone) {
-      release(el);
-      originals.delete(el);
-      touched.delete(el);
-    }
+    for (const el of gone) freeze(el);
     if (!gone.size) return;
     render();
   }
@@ -1132,18 +1356,16 @@
   function stopEditing() {
     if (watcher) watcher.disconnect();
     watcher = null;
-    for (const el of originals.keys()) delete el.dataset.oe;
+    for (const el of document.querySelectorAll('[data-oe]')) delete el.dataset.oe;
     releaseRoot();
     unwrapRuns();
     if (cur) cur.classList.remove('oe-cur');
     cur = null;
-    originals = new Map();
-    touched = new Set();
-    tagOrig = new Map();
+    hostStart = new Map();
+    docBase = null;
     closeGroup();
     undoStack = [];
     redoStack = [];
-    hostList = [];
     if (hist) toggleHist(false);
     editing = false;
     if (selBar) { fillSelBar(); selBar.hidden = true; }
@@ -1153,90 +1375,41 @@
   }
 
   function dirty() {
-    return [...originals].filter(([el, orig]) => touched.has(el) && (cleanHTML(el) !== orig || tagChanged(el)));
+    return !!root && docBase !== null && serial('doc') !== docBase;
   }
 
   // ---- Absatzformat (Normal/H1-H3): das Element wird durch ein anderes ersetzt, Inhalt und Attribute bleiben.
-  // Gespeichert wird dann das ganze Element (aeusserer Rahmen samt Inhalt), nicht nur der Inhalt.
+  // Im Dokument-Modell ist das eine gewoehnliche Aenderung am HTML: Schritt und Speichern laufen ueber den Vergleich.
   const BLOCK_TAGS = /^(p|h[1-6])$/;
-  const tagNow = (el) => el.tagName.toLowerCase();
-  const tagChanged = (el) => tagOrig.has(el) && tagNow(el) !== tagOrig.get(el).tag;
 
-  function blockOf(el) {
-    const t = el && tagNow(el);
-    return t && BLOCK_TAGS.test(t) && el.hasAttribute('data-oe') ? t : null;
+  function blockOf() {
+    const b = curBlock();
+    const t = b && b.tagName.toLowerCase();
+    return t && BLOCK_TAGS.test(t) ? t : null;
   }
 
-  function startTag(el) {
-    const a = [];
-    for (const { name, value } of el.attributes) {
-      if (name === 'data-oe') continue;
-      let v = value;
-      if (name === 'class') {
-        v = value.split(/\s+/).filter((c) => c && c !== 'oe-cur').join(' ');
-        if (!v) continue;
-      }
-      a.push(' ' + name + '="' + v.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"');
-    }
-    return '<' + tagNow(el) + a.join('') + '>';
-  }
-
-  function swapTag(el, tag) {
+  function setBlock(tag) {
+    const el = curBlock();
+    if (!el || !blockOf()) return false;
+    if (el.tagName.toLowerCase() === tag) return true;
+    snap('force');
     ownAt = performance.now();
-    const next = extras.fmt.keep(el, () => {
+    extras.fmt.keep(root, () => {
       const n = document.createElement(tag);
       for (const a of el.attributes) n.setAttribute(a.name, a.value);
       n.append(...el.childNodes);
       el.replaceWith(n);
-      return n;
     });
-    const i = hostList.indexOf(el);
-    if (i >= 0) hostList[i] = next;
-    for (const m of [originals, tagOrig]) if (m.has(el)) { m.set(next, m.get(el)); m.delete(el); }
-    if (touched.delete(el)) touched.add(next);
-    if (cur === el) cur = next;
     if (cmtOn) renderBadges();
-    return next;
-  }
-
-  function setBlock(tag) {
-    const el = selHost();
-    if (!el || !blockOf(el)) return false;
-    const from = tagNow(el);
-    if (from === tag) return true;
-    closeGroup();
-    touch(el);
-    if (!tagOrig.has(el)) tagOrig.set(el, { tag: from, start: startTag(el) });
-    const i = hostList.indexOf(el);
-    swapTag(el, tag);
-    if (i >= 0) { undoStack.push({ i, t: Date.now(), k: 'tag', a: from, b: tag }); redoStack = []; persistHist(); }
     markDirty();
-    refreshHist();
     syncSelBar();
     return true;
-  }
-
-  // Ganzes Element wie im Quelltext: Rahmen + Inhalt. Fuer Stellen ohne Rahmenwechsel gilt der heutige Rahmen.
-  function framed(el, inner, info) {
-    const o = info || { tag: tagNow(el), start: startTag(el) };
-    return o.start + inner + '</' + o.tag + '>';
-  }
-
-  function changeSet(pend) {
-    const full = new Map([...originals].map(([h, o]) => [h, framed(h, o, tagOrig.get(h))]));
-    return pend.map(([el, orig, neu, now]) => {
-      if (!tagOrig.has(el) || now.tag === tagOrig.get(el).tag) return { orig, neu, ...place(el, orig) };
-      const fo = full.get(el);
-      const same = [...full].filter(([, v]) => v === fo).map(([h]) => h);
-      same.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-      return { orig: fo, neu: framed(el, neu, now), nth: same.indexOf(el) + 1, of: same.length };
-    });
   }
 
   function markDirty() {
     ownAt = lastTypeAt = performance.now();
     clearTimeout(saveTimer);
-    if (!dirty().length) {
+    if (!dirty()) {
       // Zurueck auf den gespeicherten Stand (z. B. per Rueckgaengig nach einem Fehler): dann ist nichts offen.
       saveOk();
       render();
@@ -1246,29 +1419,33 @@
     saveTimer = setTimeout(save, AUTOSAVE_MS);
   }
 
-  // Mehrere Stellen mit gleichem Quelltext (z. B. zwei gleiche Zeilen): Nummer unter den gleichen Stellen in
-  // Dokumentreihenfolge, damit der Server die richtige trifft. Passt die Zahl nicht, lehnt er laut ab.
-  function place(el, orig) {
-    const same = [...originals].filter(([, o]) => o === orig).map(([h]) => h);
-    same.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-    return { nth: same.indexOf(el) + 1, of: same.length };
-  }
-
   // Gespeichert wird genau der Stand, der abgeschickt wurde; was waehrenddessen dazukommt, folgt im naechsten Lauf.
   async function save() {
     clearTimeout(saveTimer);
     if (saving) { saveAgain = true; return saving; }
-    const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el), { tag: tagNow(el), start: startTag(el) }]);
-    if (!pend.length) return true;
+    if (!root) return true;
+    const cur = serial('doc');
+    if (cur === docBase) return true;
     let md = null;
-    if (isMd()) {
-      try { md = window._018EditorMd.payload(mdBase); } catch (e) { saveTimer = saveFail(e, save); return false; }
-    }
+    let hunks = null;
+    try {
+      if (isMd()) md = window._018EditorMd.payload(mdBase);
+      else hunks = makeHunks(docBase, cur, 80);
+    } catch (e) { saveTimer = saveFail(e, save); return false; }
+    if (hunks && !hunks.length) { docBase = cur; saveOk(); render(); return true; }
     saving = (async () => {
       try {
-        const r = await api('POST', 'save', md ? { path: pagePath, ...md } : { path: pagePath, changes: changeSet(pend) });
+        let r;
+        try {
+          r = await api('POST', 'save', md ? { path: pagePath, ...md } : { path: pagePath, hunks });
+        } catch (e) {
+          // Mehrdeutige Stelle: mit mehr Umgebung noch einmal.
+          if (md || !/mehrfach/.test(String(e.message))) throw e;
+          r = await api('POST', 'save', { path: pagePath, hunks: makeHunks(docBase, cur, 900) });
+        }
         if (md) mdBase = md.text;
-        for (const [el, , neu, now] of pend) { originals.set(el, neu); if (tagOrig.has(el)) tagOrig.set(el, now); }
+        docBase = cur;
+        for (const h of document.querySelectorAll('[data-oe]')) hostStart.set(h, cleanHTML(h));
         setLive(r.live_differs);
         saveOk();
         watchCommit();
@@ -1284,7 +1461,7 @@
     const ok = await saving;
     if (saveAgain) {
       saveAgain = false;
-      if (ok && dirty().length) return save();
+      if (ok && dirty()) return save();
     }
     return ok;
   }
@@ -1308,8 +1485,8 @@
       if (!open.length) break;
       await Promise.all(open);
     }
-    if (dirty().length) await save();
-    return !dirty().length && !pendingItems.size;
+    if (dirty()) await save();
+    return !dirty() && !pendingItems.size;
   }
 
   // Seite wird verlassen: was noch offen ist, geht ohne Rueckfrage raus. Speichern laeuft mit keepalive und
@@ -1318,7 +1495,7 @@
     leaving = true;
     closeGroup();
     flushItems();
-    if (dirty().length && !saving) save();
+    if (dirty() && !saving) save();
     if (pubTimer) firePublish(true);
   }
 
@@ -1537,8 +1714,7 @@
       }
       ownAt = lastTypeAt = performance.now();
       if (info.host) {
-        touch(info.host);
-        snap(info.host, 'cmt');
+        snap('cmt');
       }
       return;
     }
@@ -1634,8 +1810,7 @@
     if (!host || (ae && ae.closest('.oe-cmt'))) return;
     const r = sel.getRangeAt(0).cloneRange();
     r.collapse(false);
-    touch(host);
-    snap(host, 'force');
+    snap('force');
     ownAt = performance.now();
     const node = document.createComment('  ');
     r.insertNode(node);
@@ -2055,10 +2230,11 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:4px 6px 4px 12px;border-radius:6px;box-sizing:border-box;
   border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);color:var(--text-color,#fff);
   font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-wrap:anywhere}
+.oe-toast .oe-btn{white-space:nowrap}
 .oe-toast[data-kind=error]{background:var(--text-color,#fff);color:var(--bg-color,#000);font-weight:600}
 .oe-toast[data-kind=error] .oe-btn{color:var(--bg-color,#000)!important;border-color:var(--bg-color,#000)!important}
-.oe-editing [data-oe]{outline:1px dashed color-mix(in srgb,var(--text-color,#fff) 40%,transparent);outline-offset:2px;cursor:text}
-.oe-editing [data-oe].oe-cur{outline:1px solid var(--text-color,#fff)}
+.oe-editing [data-oe-root]{cursor:text}
+.oe-editing .oe-cur{background:color-mix(in srgb,var(--text-color,#fff) 5%,transparent);border-radius:3px}
 [data-oe-root]{outline:none}
 .oe-editing,.oe-editing body{overscroll-behavior-y:contain}
 .oe-overlay{position:fixed;inset:0;z-index:2147483001;display:flex;flex-direction:column;background:var(--bg-color,#000);
@@ -2164,7 +2340,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       set(menuDiff, off || !!overlay);
     }
     if (btnPub) {
-      set(btnPub, off || !(CFG.draft ? st.draftCount : st.live) || !!pubTimer);
+      set(btnPub, off || !(CFG.draft ? st.draftCount : st.live) || !!pubTimer || Date.now() < pubOffUntil);
       if (CFG.draft) {
         btnPub.classList.toggle('oe-has-dot', !!st.draftCount && !pubTimer);
         btnPub.title = st.draftCount ? 'veröffentlichen (' + st.draftCount + ' unveröffentlicht: ' + st.draftFiles.slice(0, 8).join(', ') + ')' : 'nichts zu veröffentlichen';
@@ -2298,6 +2474,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     bar.dataset.oeUi = '';
     bar.setAttribute('role', 'toolbar');
     bar.setAttribute('aria-label', 'Editor');
+    keepClicks(bar);
     status = document.createElement('span');
     status.className = 'oe-status';
     status.setAttribute('role', 'status');
@@ -2434,7 +2611,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       if (document.visibilityState !== 'hidden') return;
       closeGroup();
       flushItems();
-      if (dirty().length) save();
+      if (dirty()) save();
     });
     window.addEventListener('pagehide', flushOnLeave);
 
