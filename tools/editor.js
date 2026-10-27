@@ -335,8 +335,7 @@
     };
     extras.marks.btn.classList.add('oe-nar');
     btnFmt.after(extras.marks.btn);
-    extras.np.btn.classList.add('oe-anchor');
-    btnPage.after(extras.np.btn);
+    extras.np.btn.classList.add('oe-ghost');
     extras.fmt.onPanel((on) => { if (btnFmt) btnFmt.setAttribute('aria-pressed', String(on)); });
     if (selBar) fillSelBar();
   }
@@ -2317,8 +2316,6 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent)}
 @media (max-width:480px){#oe-bar.oe-solo{top:auto;right:8px;max-width:calc(100vw - 16px)}}
 #oe-bar .oe-ghost{display:none!important}
-#oe-bar .oe-anchor{position:absolute!important;width:1px!important;height:1px!important;min-width:0!important;min-height:0!important;
-  padding:0!important;border:0!important;opacity:0!important;pointer-events:none!important;overflow:hidden}
 .oe-sep{flex:none;width:1px;height:16px;margin:0 3px;background:color-mix(in srgb,var(--text-color,#fff) 25%,transparent)}
 #oe-pop{position:fixed;z-index:2147483004;min-width:190px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:4px;border-radius:6px;
   border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);color:var(--text-color,#fff);
@@ -2552,7 +2549,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   const narrow = () => matchMedia('(max-width:480px)').matches;
   function pageItems() {
     return [
-      { icon: 'page', label: 'Neue Seite', fn: () => extras && extras.np.open(), disabled: !extras },
+      { icon: 'page', label: 'Neue Seite', fn: () => extras && extras.np.create(), disabled: !extras },
       { icon: 'pencil', label: 'Umbenennen', disabled: !extras, fn: () => {
         const n = extras && extras.fn.el.querySelector('.oef-name');
         if (!n) return;
