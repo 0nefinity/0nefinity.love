@@ -2102,6 +2102,10 @@ html.oe-editing .ctrl-symbol-side:has(> .ctrl-default-pin) {
     display: none;
 }
 
+.ctrl-details.ctrl-details-off {
+    opacity: 0.45;
+}
+
 @media (max-width: 768px) {
     .ctrl-details-btn {
         width: 40px;

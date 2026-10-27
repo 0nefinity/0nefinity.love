@@ -2285,9 +2285,7 @@
                         contentEl.style.transition = '';
                         contentEl.style.transform = '';
                     }
-                    if (this.bodyEl) {
-                        this.bodyEl.style.overflowY = '';
-                    }
+                    // overflowY bleibt: setzt _syncDesktopBodyOverflow, Leeren liess das Panel nach jedem Refresh ans Anfangs-Scroll springen
                     this._clearMobileCanvasOcclusion();
                     return;
                 }
@@ -2885,7 +2883,8 @@
             checkbox.addEventListener('change', () => {
                 this.params[key] = checkbox.checked;
                 if (this.callbacks[key]) this.callbacks[key](this.params[key], key);
-                if (!checkbox.checked) this._setToggleDetailsOpen(key, false);
+                // Ausschalten klappt die Unter-Einstellungen nicht zu: das Panel darunter darf nicht springen.
+                this._toggleDetails?.[key]?.sub.classList.toggle('ctrl-details-off', !checkbox.checked);
             });
 
             this._currentContainer.appendChild(row);
@@ -2894,7 +2893,8 @@
         }
 
         // Unter-Einstellungen eines Schalters: Stift rechts neben dem Haken klappt sie auf. Regel: der Stift
-        // schaltet einen ausgeschalteten Schalter mit ein, Ausschalten klappt die Unter-Einstellungen zu.
+        // schaltet einen ausgeschalteten Schalter mit ein; Ein-/Ausschalten per Haken aendert nie die Hoehe,
+        // ausgeschaltet sind offene Unter-Einstellungen nur ausgegraut (ctrl-details-off).
         _addToggleDetails(key, row, checkbox, build) {
             row.classList.add('ctrl-row-has-details');
             const pencil = document.createElement('button');
@@ -2908,6 +2908,7 @@
             const sub = document.createElement('div');
             sub.className = 'ctrl-details';
             sub.hidden = true;
+            sub.classList.toggle('ctrl-details-off', !checkbox.checked);
             row.after(sub);
             const prev = this._currentContainer;
             this._currentContainer = sub;
@@ -2928,7 +2929,7 @@
 
         _setToggleDetailsOpen(key, open) {
             const d = this._toggleDetails && this._toggleDetails[key];
-            if (!d) return;
+            if (!d || d.sub.hidden === !open) return;
             d.sub.hidden = !open;
             d.pencil.setAttribute('aria-expanded', open ? 'true' : 'false');
             d.pencil.classList.toggle('active', !!open);
