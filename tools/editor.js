@@ -2219,7 +2219,7 @@ oe-run{display:inline}
 @media (hover:hover){.oe-btn:not([aria-pressed=true]):not(.oe-primary):hover:not(:disabled){border-color:var(--text-color,#fff)!important}
   .oe-btn.oe-mini:hover:not(:disabled){opacity:1}}
 .oe-btn.oe-has-dot{position:relative}
-.oe-btn.oe-has-dot::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--text-color,#fff);box-shadow:0 0 0 2px var(--bg-color,#000)}
+.oe-btn.oe-has-dot::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--oe-accent,#e8a33d);box-shadow:0 0 0 2px var(--bg-color,#000)}
 .oe-btn:focus{outline:none!important}
 .oe-btn:focus-visible{outline:2px solid var(--text-color,#fff)!important;outline-offset:1px}
 .oe-btn:disabled{opacity:.3!important;cursor:default}
@@ -2378,7 +2378,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     // Unveroeffentlichtes bleibt auch zugeklappt sichtbar: Punkt am Stift.
     const unpub = btnPub && !pubTimer && !!(CFG.draft ? st.draftCount : st.live);
     btnEdit.classList.toggle('oe-has-dot', !!unpub && !editing);
-    btnEdit.title = 'bearbeiten ein/aus' + (unpub && !editing ? ' (unveröffentlichte Änderungen)' : '');
+    btnEdit.title = 'bearbeiten ein/aus' + (unpub && !editing ? ' · Punkt: unveröffentlichte Änderungen' : '');
     adoptTips(bar);
   }
 
