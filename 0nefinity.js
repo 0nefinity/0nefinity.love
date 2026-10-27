@@ -1244,6 +1244,7 @@ canvas {
     let rotationSpeed = manualSpeed;
     let autoSpeedEnabled = cfg.auto;
     let autoOffset = 0;
+    let autoPausedAt = null;
 
     // Time-Warp Modell: fps veraendert nicht die Bewegung pro Frame, sondern wie schnell
     // der Cycle progressiert. speed-Wert pro Frame ist konstant, fps streckt/staucht Cycle-Zeit.
@@ -1325,13 +1326,23 @@ canvas {
           onChange: v => {
             cfg.auto = !!v;
             autoSpeedEnabled = cfg.auto;
-            if (autoSpeedEnabled) {
-              manualSpeed = toReal(num(panel.get('speed')));
+            if (!autoSpeedEnabled) {
+              // Stand der Choreografie merken, damit Wiedereinschalten dort weitermacht
+              autoPausedAt = getWarpedElapsed();
+              return;
+            }
+            manualSpeed = toReal(num(panel.get('speed')));
+            if (autoPausedAt === null) {
               autoOffset = 0;
               resetSnapshot();
-              rotationSpeed = AUTO_SPEED_CONFIG.START_PHASE.startSpeed + autoOffset;
-              panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
+            } else {
+              snapshot.warpedSeconds = autoPausedAt;
+              snapshot.realTimestamp = Date.now();
+              saveSnapshot();
+              autoPausedAt = null;
             }
+            rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
+            panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
           }
         })
         .addSlider('speed', {
