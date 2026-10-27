@@ -14,7 +14,7 @@
  *     colorElement      // optional: Element, dessen CSS-Farbe die Schrift bestimmt (Standard: canvas)
  *     dir               // optional: 'r' (Standard) oder 'l': gespiegelt, die Kette laeuft nach links, Ziffern bleiben aufrecht
  *     dot               // optional: false = den Punkt nicht zeichnen (der Besitzer zeichnet das centrum); sonst das Glyph "." der Schrift
- *     fixedStart        // optional: true = nur das aeussere Ende R ist greifbar; Anfang (3/centrum), L, Wischen und Mausrad sind gesperrt
+ *     fixedStart        // optional: true = L (Anfang/centrum) steht fest; greifbar sind das aeussere Ende R und der Inhalt (Wischen, Mausrad schieben nur die Ziffern durch)
  *     origin            // optional: Lage der Ganzzahl beim Start (CSS-px ab Anfang der Achse; Standard: Mitte)
  *     unrolled          // optional: true = ausgerollt starten (R am Rand), bis zum ersten Ziehen/Rad
  *     fontPx            // optional: Schriftgroesse in CSS-px (Zahl oder Funktion); Standard 6 % der Fensterbreite, 28..56
@@ -22,6 +22,7 @@
  *                       // dann aus dem Layout (clientWidth/clientHeight), nicht aus der gedrehten Huelle
  *   });
  *   view.resize()                       // neu messen, nachdem der Besitzer die Canvas umgelegt hat
+ *   view.setOrigin(x)                   // Anfang (Ganzzahl) auf x setzen, solange links nichts eingerollt ist
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
@@ -648,7 +649,7 @@
     }
     // Der nächste Griff gewinnt: die 3 (nur solange links nichts eingerollt ist), R, L (nur wenn eingerollt).
     function hitTest(x) {
-      if (opts.fixedStart) return Math.abs(x - R) <= HIT ? 'R' : null;
+      if (opts.fixedStart) return Math.abs(x - R) <= HIT ? 'R' : (x > L && x < R ? 'swipe' : null);
       const rolled = rolledLeft();
       const cands = [];
       const t0 = posOf(0), t1 = Math.max(posOf(1), t0);
@@ -742,7 +743,7 @@
     // die 3 wieder vorn steht. Die Seite scrollt dabei nicht (passive: false, preventDefault).
     function onWheel(e) {
       e.preventDefault();
-      if (locked || opts.fixedStart) return;
+      if (locked) return;
       unroll = false;
       const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? W : 1);
       const delta = (e.deltaY + e.deltaX) * unit;
@@ -817,6 +818,14 @@
       settle(rolledLeft() ? 'x' : 'three');
     }
     function resize() { applySize(false); }
+    // Anfang neu setzen (nur solange links nichts eingerollt ist): die ganze Kette rutscht, L/X0/R mit.
+    function setOrigin(x) {
+      if (!Number.isFinite(+x)) throw new TypeError('UnfoldingView.setOrigin: Zahl erwartet, war ' + x);
+      if (rolledLeft()) return;
+      const dx = +x - L;
+      X0 += dx; L += dx; R = Math.min(R + dx, W - MARGIN);
+      settle('three');
+    }
     function rewind() {
       X0 = L;
       settle('three');
@@ -860,7 +869,7 @@
     }
 
     return {
-      setDigits, appendDigits, rewind, resize, setFactor, destroy, refreshColor, setRemote,
+      setDigits, appendDigits, rewind, resize, setOrigin, setFactor, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       setHover,
       // Testhaken: ein Bild rendern und je Stauchspalte festhalten, was dort gezaehlt wurde (Kettenbereich a..b, Zahl je Zeichen
