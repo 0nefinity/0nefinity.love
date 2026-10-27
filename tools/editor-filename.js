@@ -9,7 +9,7 @@
 //     beforeRename: async () => true,          // z. B. offene Speicherungen abwarten; false = abbrechen
 //     onRenamed: (res) => {},                  // {old, file, url, links, warnings}: editor.js setzt pagePath/file neu
 //   });
-//   fn.setEditing(true|false); fn.setFile('x.html'); fn.destroy();
+//   fn.setEditing(true|false); fn.setFile('x.html'); fn.renameTo('stem') -> Promise<bool>; fn.destroy();
 //
 // Ablauf: Enter oder Verlassen des Feldes speichert, Escape verwirft. Der neue Name steht sofort da (ausgegraut,
 // bis der Server fertig ist); danach history.replaceState auf die neue URL. Scheitert es, bleibt die Eingabe
@@ -49,6 +49,7 @@
   z-index:999;max-width:calc(100vw - 2 * var(--oef-btn) - 8px);
   color:var(--text-color,#fff);font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
 @media (max-width:768px) and (min-resolution:2dppx){.oef{--oef-btn:5.5rem}}
+@media (max-width:480px){.oef:not(.oef-hosted){top:calc(var(--visible-viewport-top,0px) + var(--oef-btn) + 4px);left:8px;max-width:calc(100vw - 16px)}}
 .oef.oef-hosted{position:static;max-width:none}
 .oef[hidden]{display:none}
 .oef-row{display:flex;align-items:center;min-height:28px;padding:0 6px;border-radius:4px;
@@ -130,12 +131,13 @@
       return MSG[m] !== undefined && MSG[m] ? MSG[m] : m;
     }
 
+    // Liefert true, wenn der Server umbenannt hat, sonst false (Fehler steht dann sichtbar im Feld).
     async function commit(name) {
       const stem = name.normalize('NFC').trim().replace(/\.(html|md)$/i, '').trim();
-      if (!pending && stem === shown) { say(''); return paint(); }
+      if (!pending && stem === shown) { say(''); paint(); return false; }
       const bad = clientCheck(stem);
-      if (bad) { pending = stem; say(bad, 'error'); return paint(); }
-      if (busy) { pending = stem; return; }
+      if (bad) { pending = stem; say(bad, 'error'); paint(); return false; }
+      if (busy) { pending = stem; return false; }
       pending = stem;
       busy = true;
       say('');
@@ -154,8 +156,10 @@
         if (w.length) say(w.join(' · '), 'info');
         else say(n ? `umbenannt, ${n} Link${n === 1 ? '' : 's'} angepasst` : 'umbenannt', 'info');
         if (!w.length) setTimeout(() => { if (msg.dataset.kind === 'info') say(''); }, 4000);
+        return true;
       } catch (e) {
         say(readable(e), 'error', () => commit(pending !== null ? pending : shown));
+        return false;
       } finally {
         busy = false;
         paint();
@@ -201,6 +205,7 @@
     return {
       el: root,
       setEditing(on) { editing = !!on; paint(); },
+      renameTo(stem) { return commit(stem); },
       setFile(file) { cur = split(file); shown = cur.stem; pending = null; say(''); paint(); },
       destroy() { root.remove(); },
     };
