@@ -101,6 +101,14 @@ function resolveRequestedFile($documentRoot) {
         failNotFound();
     }
 
+    // Heikle Dot-Ordner/-Dateien (wie in .htaccess) nie ausliefern; Pruefung auf dem aufgeloesten Pfad,
+    // damit Symlinks und ../-Tricks nichts umgehen.
+    $realRelative = ltrim(substr($normalizedRealPath, strlen($normalizedRoot)), '/');
+    if (preg_match('#(^|/)\.(git|ssh|vscode|auth|php_tmp|htaccess|htpasswd|env[^/]*|gitignore|gitattributes|gitmodules)(/|$)#i', $realRelative) === 1
+        || preg_match('#(^|/)\.(git|ssh|vscode|auth|php_tmp|htaccess|htpasswd|env[^/]*|gitignore|gitattributes|gitmodules)(/|$)#i', $normalizedRelativePath) === 1) {
+        failNotFound();
+    }
+
     return [$realPath, $normalizedRelativePath];
 }
 

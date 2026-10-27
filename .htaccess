@@ -1,7 +1,7 @@
 RewriteEngine On
 
 # Heikle Dot-Ordner direkt blocken, bevor andere Rewrite-Regeln greifen
-RewriteRule "(^|/)\.(git|ssh|vscode)(/|$)" - [F,L,NC]
+RewriteRule "(^|/)\.(git|ssh|vscode|auth|php_tmp)(/|$)" - [F,L,NC]
 
 # Ein Favicon fuer alles: /favicon.ico im Wurzelverzeichnis. Alte Icon-Pfade zeigen darauf.
 RewriteRule ^(favicon\.(png|svg)|apple-touch-icon(-precomposed)?\.png|profilbilder/favicon/index/.+)$ /favicon.ico [L]
@@ -69,8 +69,8 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} !\.
 RewriteRule ^([^/]+)/?$ /tools/color.php?c=$1 [L,QSA]
 
-# Offenes Directory Listing (bewusst)
-Options +Indexes +IncludesNOEXEC
+# Kein Directory Listing (Sicherheits-Hygiene 2026-10-27; vorher bewusst offen)
+Options -Indexes +IncludesNOEXEC
 AddOutputFilter INCLUDES .html
 IndexOptions FancyIndexing NameWidth=* FoldersFirst
 IndexOrderDefault Ascending Name
@@ -117,6 +117,7 @@ IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitatt
 # 'unsafe-inline'/'unsafe-eval' nötig wegen vorhandenem Inline-Code (Skripte/Styles)
 # und Libraries wie p5/pixi die Function() nutzen.
 <IfModule mod_headers.c>
+  Header always unset X-Powered-By
   Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set X-Content-Type-Options "nosniff"
