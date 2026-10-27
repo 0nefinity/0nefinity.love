@@ -98,7 +98,7 @@
   function wallLampAngleDeg() {
     const user = params.spotAngle ?? PARAMS_CONFIG.spotAngle.default;
     if (!dualMode || gebFiveLamps) return user;
-    const reachDeg = Math.atan((DUAL_GAP / 2 + 1) * (params.sphereRadius ?? 1) / Math.max(params.lightDistance, 0.001)) * 180 / Math.PI;
+    const reachDeg = Math.atan((DUAL_GAP / 2 + 1) * (params.sphereRadius ?? 1) / Math.max(Math.abs(params.lightDistance), 0.001)) * 180 / Math.PI;
     return Math.min(89, Math.max(user, reachDeg / 0.7));
   }
   function derivedGlyphs(base) { return { left: base.right, right: base.left, floor: base.floor }; }
@@ -179,7 +179,7 @@
     glyphRotInf:      { id: 'glyphRotInf',          urlKey: 'rInf',      min: 0,     max: 360,    step: 1,    default: 315,  decimals: 2, dynamicStep: true },
 
     // Licht-Position
-    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: 0,     max: 100000,    step: 0.01, default: 40,   decimals: 2, dynamicStep: true },
+    lightDistance:    { id: 'lightDistance',        urlKey: 'ldist',     min: -100000, max: 100000,    step: 0.01, default: 40,   decimals: 2, dynamicStep: true },
     lampScale:        { id: 'lampScale',            urlKey: 'lamp',      min: 0,     max: 500,     step: 1,    default: 5,    decimals: 2, dynamicStep: true },
 
     // Spotlight-Parameter
@@ -357,17 +357,21 @@
     const d = params.lightDistance;
     const w = params.wallDistance;
     const yW = wallLampY();
-    spotFloor.position.set(0, floorLampY(), 0);
-    spotFloor.target.position.set(0, floorY(), 0);
+    // Negativer Abstand: Lampe auf der anderen Seite der Kugel, zielt weiter auf ihre Wand.
+    // Liegt sie genau auf der Wand, rückt das Ziel ein Stück weiter, sonst hat der Spot keine Richtung.
+    const aim = (lamp, target) => (Math.abs(lamp - target) < 1e-3 ? target - 0.01 : target);
+    const yF = floorLampY();
+    spotFloor.position.set(0, yF, 0);
+    spotFloor.target.position.set(0, aim(yF, floorY()), 0);
     spotBack.position.set(0, yW, d);
-    spotBack.target.position.set(0, yW, -w);
+    spotBack.target.position.set(0, yW, aim(d, -w));
     spotSide.position.set(d, yW, 0);
-    spotSide.target.position.set(-w, yW, 0);
+    spotSide.target.position.set(aim(d, -w), yW, 0);
     if (spotBackB) {
       spotBackB.position.set(0, 0, d);
-      spotBackB.target.position.set(0, 0, -w);
+      spotBackB.target.position.set(0, 0, aim(d, -w));
       spotSideB.position.set(d, 0, 0);
-      spotSideB.target.position.set(-w, 0, 0);
+      spotSideB.target.position.set(aim(d, -w), 0, 0);
     }
   }
 
@@ -482,7 +486,7 @@
       // Shadow-Kamera dynamisch anpassen
       const r = params.sphereRadius ?? 1;
       spot.shadow.camera.near = Math.max(0.1, params.lightDistance - r * 2);
-      spot.shadow.camera.far = params.lightDistance + params.wallDistance + 1;
+      spot.shadow.camera.far = Math.abs(params.lightDistance) + params.wallDistance + 1;
       spot.shadow.camera.fov = Math.max(1, params.spotAngle ?? 25) * 1.2;
       spot.shadow.camera.updateProjectionMatrix();
     });
@@ -1644,7 +1648,7 @@
     wallDistance:     { label: 'Wall distance',    sliderMin: -20, sliderMax: 100, step: 0.01, decimals: 2 },
     brightness:       { label: 'Light brightness', sliderMin: 0,   sliderMax: 500, step: 0.1,  decimals: 1 },
     ambientIntensity: { label: 'Ambient light',    sliderMin: 0,   sliderMax: 10,  step: 0.01, decimals: 2 },
-    lightDistance:    { label: 'Light distance',   sliderMin: 0,   sliderMax: 200, step: 0.01, decimals: 2 },
+    lightDistance:    { label: 'Light distance',   sliderMin: -200, sliderMax: 200, step: 0.01, decimals: 2 },
     spotAngle:        { label: 'Light cone angle', sliderMin: 0,   sliderMax: 90,  step: 0.01, decimals: 2 },
     lampScale:        { label: 'Lamp size',        sliderMin: 0,   sliderMax: 50,  step: 0.01, decimals: 2 },
   };
@@ -1701,7 +1705,7 @@
     const oldDecay = params.spotDecay ?? 0;
     if (newDecay === oldDecay) return;
 
-    const effectiveDist = (params.lightDistance ?? 15) + (params.wallDistance ?? 5);
+    const effectiveDist = Math.max(0.1, Math.abs((params.lightDistance ?? 15) + (params.wallDistance ?? 5)));
     const startBrightness = params.brightness ?? 80;
     const targetBrightness = Math.round(startBrightness * Math.pow(effectiveDist, newDecay - oldDecay) * 100) / 100;
 
@@ -1752,6 +1756,11 @@
   }
 
   // Gemeinsamer Weg fuer Klick auf die Kugel und Panel-Schalter.
+  // Zeigt im Panel die Zeile, deren Wert ein Ziehen/Scrollen/Tippen im Bild gerade ändert.
+  function revealInPanel(keys) {
+    if (panel && typeof panel.reveal === 'function') panel.reveal(keys);
+  }
+
   function setInvertMode(on) {
     if (on === invertMode) return;
     invertMode = on;
@@ -1967,7 +1976,7 @@
 	      // Shadow-Kamera eng um die Kugel = mehr Auflösung pro Pixel!
 	      const r = params.sphereRadius ?? 1;
 	      spot.shadow.camera.near = Math.max(0.1, params.lightDistance - r * 2);
-	      spot.shadow.camera.far = params.lightDistance + params.wallDistance + 1;
+	      spot.shadow.camera.far = Math.abs(params.lightDistance) + params.wallDistance + 1;
 	      spot.shadow.camera.fov = params.spotAngle * 1.2;  // etwas größer als Spot
 
 	      const target = new THREE.Object3D();
@@ -2314,7 +2323,7 @@
       const u = cone.material.uniforms;
       u.uBrightness.value = (params.brightness ?? 80) / 100;
       u.uDecay.value = params.spotDecay ?? 0;
-      u.uLightDistance.value = params.lightDistance ?? 15;
+      u.uLightDistance.value = Math.abs(params.lightDistance ?? 15);
     }
   }
 
@@ -2631,6 +2640,7 @@
 
     // Start-Wert je nach Typ
     dragStartDist = (dragType === 'fog') ? params.wallDistance : params.lightDistance;
+    revealInPanel(dragType === 'fog' ? 'wallDistance' : 'lightDistance');
 
     // Achse und Normale bestimmen
     const axisInfo = getAxisForObject(hit.object, hit.type);
@@ -2707,6 +2717,7 @@
       params.lightDistance = roundedDist;
     }
     syncPanelFromParams();
+    revealInPanel(dragType === 'fog' ? 'wallDistance' : 'lightDistance');
 
     // Geometrie und Uniforms sofort aktualisieren
     updateGeometryFromParams();
@@ -2735,6 +2746,7 @@
         if (hit && hit.type === 'sphere') {
           // Klick auf Kugel: Invert-Modus togglen
           setInvertMode(!invertMode);
+          revealInPanel('invertMode');
           stopCursorBlink();  // Fokus verlieren
           return;
         } else if (hit && hit.type === 'lamp') {
@@ -2836,6 +2848,7 @@
       newAngle = parseFloat(newAngle.toPrecision(10));
       params.spotAngle = newAngle;
       syncPanelFromParams();
+      revealInPanel('spotAngle');
     } else if (type === 'lamp') {
       // Lamp Size ändern + Brightness proportional koppeln
       const cfg = PARAMS_CONFIG.lampScale;
@@ -2856,6 +2869,7 @@
       }
 
       syncPanelFromParams();
+      revealInPanel(['lampScale', 'brightness']);
     } else if (type === 'sphere') {
       // Sphere Radius ändern
       const cfg = PARAMS_CONFIG.sphereRadius;
@@ -2866,6 +2880,7 @@
       params.sphereRadius = Math.round(newRadius * factor) / factor;
 
       syncPanelFromParams();
+      revealInPanel('sphereRadius');
     }
 
     updateGeometryFromParams();
@@ -3007,6 +3022,7 @@
         updateGlyphTextures();
         needsUniformUpdate = true;
         syncPanelFromParams();
+        revealInPanel('glyphs');
         updateURLFromParams();
       }
       return;
@@ -3019,6 +3035,7 @@
       updateGlyphTextures();
       needsUniformUpdate = true;
       syncPanelFromParams();
+      revealInPanel('glyphs');
       updateURLFromParams();
       return;
     }
@@ -3036,6 +3053,7 @@
       updateGlyphTextures();
       needsUniformUpdate = true;
       syncPanelFromParams();
+      revealInPanel('glyphs');
       updateURLFromParams();
     }
   }
