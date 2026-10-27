@@ -1,13 +1,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Versions-URLs: meta.css, controls.js, meta.js, zoom.js und 0nefinity.js tragen ihre Aenderungszeit (Unix-Sekunden) in der URL. Ohne das kann ein Browser nach einem Deploy neues controls.js mit altem meta.css mischen (max-age=300 je Datei) und zeigt ein kaputtes Panel. -->
+<!--#config timefmt="%s" -->
 <!-- 0nefinity ist ein Licht in der Dunkelheit. Darkmode User verstehen das. Lightmode User sind sowieso geblendet. -->
 <!--#if expr="%{REQUEST_URI} !~ /why-coordinatesystem-is-chicken/" --><link rel="icon" href="/favicon.ico" sizes="any"><!--#endif -->
 <link rel="preload" href="/tools/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/Ysabeau/Ysabeau.ttf" as="font" type="font/ttf" crossorigin>
 <link href="/fonts-auswahl.css" rel="stylesheet">
 <link href="/tools/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/un0nefinity-fonts.css" rel="stylesheet">
-<link href="/meta.css" rel="stylesheet" />
-<script src="/tools/zoom.js"></script>
+<link href="/meta.css?v=<!--#flastmod virtual="/meta.css" -->" rel="stylesheet" />
+<script src="/tools/zoom.js?v=<!--#flastmod virtual="/tools/zoom.js" -->"></script>
 <script src="/tools/tools/decimal.js"></script>
-<script src="/tools/controls.js"></script>
-<script src="/meta.js"></script>
+<script src="/tools/controls.js?v=<!--#flastmod virtual="/tools/controls.js" -->"></script>
+<script src="/meta.js?v=<!--#flastmod virtual="/meta.js" -->"></script>
 <!--#if expr="%{HTTP_HOST} =~ /^dev\./" --><script src="/tools/live-reload.js" defer></script><script src="/tools/editor.js" defer></script><!--#endif -->
