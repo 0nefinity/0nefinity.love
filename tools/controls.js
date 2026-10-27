@@ -2683,6 +2683,66 @@
         }
 
         /**
+         * Symbol row: one compact text field per symbol, side by side, full panel width.
+         * Meant as the first row of a panel. Scrolls sideways when it gets wider than the panel.
+         * + / - only appear when the page passes onAdd / onRemove (pages with a variable symbol count).
+         * @param {string} key - Unique key, params[key] is the array of values
+         * @param {Object} config - { values, labels?, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
+         */
+        addSymbolRow(key, config) {
+            const { values = [], labels = [], onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
+            this.params[key] = values.slice();
+            const row = document.createElement('div');
+            row.className = 'ctrl-row ctrl-symbol-row';
+            row.dataset.key = key;
+            const strip = document.createElement('div');
+            strip.className = 'ctrl-symbol-strip';
+            row.appendChild(strip);
+            this._symbolRows = this._symbolRows || {};
+            const state = { strip, labels, onChange, onAdd, onRemove, min, max };
+            this._symbolRows[key] = state;
+            this._renderSymbolRow(key);
+            this._currentContainer.appendChild(row);
+            return this;
+        }
+
+        _renderSymbolRow(key) {
+            const st = this._symbolRows[key];
+            const values = this.params[key];
+            st.strip.textContent = '';
+            values.forEach((v, i) => {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'ctrl-input ctrl-symbol-input';
+                input.value = v ?? '';
+                input.setAttribute('aria-label', st.labels[i] || ('Symbol ' + (i + 1)));
+                ['autocomplete', 'autocapitalize'].forEach(a => input.setAttribute(a, 'off'));
+                input.spellcheck = false;
+                input.setAttribute('data-1p-ignore', '');
+                input.setAttribute('data-lpignore', 'true');
+                input.setAttribute('data-bwignore', '');
+                input.setAttribute('data-form-type', 'other');
+                input.addEventListener('input', () => {
+                    this.params[key][i] = input.value;
+                    if (st.onChange) st.onChange(i, input.value, this.params[key]);
+                });
+                st.strip.appendChild(input);
+            });
+            const addBtn = (text, title, enabled, fn) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'ctrl-stepper-btn ctrl-symbol-btn';
+                b.textContent = text;
+                b.title = title;
+                b.disabled = !enabled;
+                bindResponsiveButtonActivation(b, fn);
+                st.strip.appendChild(b);
+            };
+            if (st.onRemove) addBtn('\u2212', 'Symbol entfernen', values.length > st.min, () => st.onRemove(this.params[key]));
+            if (st.onAdd) addBtn('+', 'Symbol hinzufügen', values.length < st.max, () => st.onAdd(this.params[key]));
+        }
+
+        /**
          * Add a styled text input with expandable options (color, opacity, background)
          * @param {string} key - Unique key
          * @param {Object} config - Configuration
@@ -3460,6 +3520,12 @@
          */
         set(key, value) {
             this.params[key] = value;
+
+            if (this._symbolRows && this._symbolRows[key]) {
+                this.params[key] = Array.isArray(value) ? value.slice() : [];
+                this._renderSymbolRow(key);
+                return this;
+            }
 
             const row = this.bodyEl?.querySelector(`[data-key="${key}"]`);
             if (!row) return this;

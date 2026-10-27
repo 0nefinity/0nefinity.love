@@ -24,11 +24,6 @@
   </script>
 
   <style>
-    #shadows-controls .glyph-row { display: flex; align-items: center; gap: 6px; }
-    #shadows-controls .glyph-row > :first-child { flex: 0 0 auto; min-width: 1.2em; }
-    #shadows-controls .glyph-row input[type=text], #shadows-controls .glyph-row input:not([type]) { width: 3.2em; flex: 0 0 auto; }
-    #shadows-controls .glyph-rot { margin-left: auto; flex: 0 0 auto; }
-    #shadows-controls .glyph-rot .ctrl-range, #shadows-controls .glyph-rot .ctrl-config-trigger { display: none; }
     body {
       margin: 0; overflow: hidden;
     }
@@ -1634,7 +1629,8 @@
   let panel = null;
   const ROT_PARAMS = ['glyphRotInf', 'glyphRot0', 'glyphRot1'];
   const GLYPH_PARAMS = ['glyphSize', ...ROT_PARAMS];
-  const GLYPH_PANEL_KEYS = { glyph0: 'left', glyph1: 'right', glyphInf: 'floor' };
+  // Reihenfolge der Symbolzeile im Panel: 0, 1, ∞
+  const GLYPH_SLOTS = [['left', 'glyphRot0', '0'], ['right', 'glyphRot1', '1'], ['floor', 'glyphRotInf', '∞']];
 
   // key = params-Schluessel, sliderMin/Max = sichtbarer Regler-Bereich (Eingabe und URL duerfen bis PARAMS_CONFIG.min/max)
   const PANEL_SLIDERS = [
@@ -1664,7 +1660,7 @@
     ROT_PARAMS.forEach((k) => panel.set(k, params[k]));
     panel.set('invertMode', invertMode);
     panel.set('shapeCube', shapeCube);
-    Object.entries(GLYPH_PANEL_KEYS).forEach(([panelKey, charKey]) => panel.set(panelKey, glyphChars[charKey] ?? ''));
+    panel.set('glyphs', GLYPH_SLOTS.map(([charKey]) => glyphChars[charKey] ?? ''));
     panel.set('fontKey', currentFontKey);
   }
 
@@ -1805,40 +1801,27 @@
     history.replaceState(null, '', window.location.pathname);
   }
 
-  // Oberste Panel-Zeilen: [Zeichen] [Textfeld] [Drehung - Wert +]. Die Drehung ist ein normaler Slider-Parameter
-  // (params.glyphRot*, URL r0/r1/rInf, Reset); hier wird nur seine Zeile in die Textzeile eingehaengt.
+  // Oberste Panel-Zeile: die drei Symbole nebeneinander, darunter je ein Drehungs-Regler (params.glyphRot*, URL r0/r1/rInf, Reset).
   function addGlyphRows() {
-    [['glyph0', '0', 'left', 'glyphRot0'], ['glyph1', '1', 'right', 'glyphRot1'], ['glyphInf', '∞', 'floor', 'glyphRotInf']]
-      .forEach(([panelKey, label, charKey, rotKey]) => {
-        panel.addInput(panelKey, {
-          label,
-          value: glyphChars[charKey] ?? '',
-          // Leere Eingabe = nichts auf der Kugel (kein Fallback)
-          onChange: (v) => {
-            glyphChars[charKey] = v;
-            updateURLFromParams();
-            updateGlyphTextures();
-            needsUniformUpdate = true;
-          },
-        });
-        panel.addSlider(rotKey, {
-          label: '',
-          min: 0, max: 360, step: 0.01, decimals: 2,
-          value: params[rotKey],
-          onChange: (v) => onSliderInput(rotKey, v),
-        });
-        const inputRow = panel.bodyEl.querySelector(`[data-key="${panelKey}"]`);
-        const sliderRow = panel.bodyEl.querySelector(`[data-key="${rotKey}"]`);
-        const group = sliderRow.querySelector('.ctrl-slider-group');
-        const holder = document.createElement('div');
-        holder.dataset.key = rotKey;
-        holder.className = 'glyph-rot';
-        holder.title = 'Drehung (Grad)';
-        holder.appendChild(group);
-        inputRow.classList.add('glyph-row');
-        inputRow.appendChild(holder);
-        sliderRow.remove();
+    panel.addSymbolRow('glyphs', {
+      values: GLYPH_SLOTS.map(([charKey]) => glyphChars[charKey] ?? ''),
+      labels: GLYPH_SLOTS.map(([, , label]) => 'Symbol ' + label),
+      // Leere Eingabe = nichts auf der Kugel (kein Fallback)
+      onChange: (i, v) => {
+        glyphChars[GLYPH_SLOTS[i][0]] = v;
+        updateURLFromParams();
+        updateGlyphTextures();
+        needsUniformUpdate = true;
+      },
+    });
+    GLYPH_SLOTS.forEach(([, rotKey, label]) => {
+      panel.addSlider(rotKey, {
+        label: 'Rotation ' + label,
+        min: 0, max: 360, step: 0.01, decimals: 2,
+        value: params[rotKey],
+        onChange: (v) => onSliderInput(rotKey, v),
       });
+    });
     panel.addDivider();
   }
 
