@@ -11,3 +11,6 @@ if echo "$staged" | grep -vE '^includes/(something-in-the-body\.html|search-inde
   python3 tools/generate-menu.py
   git add includes/something-in-the-body.html includes/search-index.json
 fi
+
+# Autofill: no password/login heuristics on non-login fields (tests/autofill/)
+python3 tests/autofill/static-check.py
