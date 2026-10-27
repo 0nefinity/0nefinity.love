@@ -456,11 +456,28 @@
         return document.documentElement.classList.contains('oe-editing');
     }
 
+    // Bearbeiten-Modus (html.oe-editing, gesetzt von tools/editor.js): nur dann gibt es die Voreinstellungs-Leiste
+    // und editierbare Beschriftungen. Regler aendern sich auch ueber Canvas-Ziehen und Seitencode, ohne DOM-Ereignis
+    // im Panel; deshalb prueft ein kurzer Takt, solange der Modus laeuft (plus sofort nach jeder Eingabe).
+    let presetTimer = 0;
     function watchEditMode() {
         if (pageDefaultState.watching || typeof MutationObserver === 'undefined') return;
         pageDefaultState.watching = true;
-        new MutationObserver(() => pageDefaultState.panels.forEach(p => p._syncDefaultPins()))
-            .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        const sync = () => {
+            if (isEditing()) {
+                if (!presetTimer) presetTimer = setInterval(refreshPresetBars, 300);
+                refreshPresetBars();
+            } else {
+                clearInterval(presetTimer);
+                presetTimer = 0;
+                cancelLabelEdit();
+                refreshPresetBars();
+            }
+        };
+        new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        const soon = () => { if (isEditing()) requestAnimationFrame(refreshPresetBars); };
+        ['input', 'change', 'pointerup', 'keyup'].forEach(t => document.addEventListener(t, soon, true));
+        sync();
     }
 
     async function editApi(method, route, body) {
@@ -481,52 +498,314 @@
         return data;
     }
 
-    function defaultsToast(text, retry) {
+    // Meldung unten mittig. undo: Knopf "Rückgängig" (Gmail-Muster, 6 s). retry: Fehler mit "nochmal", bleibt stehen.
+    function defaultsToast(text, { undo = null, retry = null, fatal = false } = {}) {
         document.querySelectorAll('.ctrl-defaults-toast').forEach(t => t.remove());
         const t = document.createElement('div');
-        t.className = 'oe-toast ctrl-defaults-toast';
+        t.className = 'ctrl-reset-toast ctrl-defaults-toast';
         t.dataset.oeUi = '';
-        t.dataset.kind = retry ? 'error' : '';
-        t.setAttribute('role', retry ? 'alert' : 'status');
-        t.append(text);
-        const addBtn = (label, fn) => {
+        t.dataset.kind = retry || fatal ? 'error' : '';
+        t.setAttribute('role', retry || fatal ? 'alert' : 'status');
+        const label = document.createElement('span');
+        label.textContent = text;
+        t.append(label);
+        const addBtn = (name, fn) => {
             const b = document.createElement('button');
             b.type = 'button';
-            b.className = 'oe-btn oe-small';
-            b.textContent = label;
+            b.textContent = name;
             b.addEventListener('click', () => { t.remove(); if (fn) fn(); });
             t.append(b);
         };
-        if (retry) {
-            addBtn('nochmal', retry);
+        if (retry || fatal) {
+            if (retry) addBtn('nochmal', retry);
             addBtn('schließen');
             console.error('[controls] ' + text);
         } else {
-            setTimeout(() => t.remove(), 4000);
+            if (undo) addBtn('Rückgängig', undo);
+            setTimeout(() => t.remove(), undo ? 6000 : 4000);
         }
         document.body.appendChild(t);
     }
 
-    // Schreibt die Voreinstellungen in den Quelltext der Seite (Editor-Endpunkt "source", Commit auf
-    // claude-dev). Nacheinander, damit schnelle Klicks sich nicht gegenseitig ueberschreiben.
-    let defaultsQueue = Promise.resolve();
-    function savePageDefaults(mutate, okText) {
+    // Schreibt in den Quelltext der Seite (Editor-Endpunkt "source", Commit auf claude-dev). Alle Schreibzuege laufen
+    // nacheinander (Voreinstellungen und Beschriftungen), damit sie sich nicht gegenseitig ueberschreiben.
+    let sourceQueue = Promise.resolve();
+    function writeSource(transform) {
         const run = async () => {
             const path = location.pathname;
-            try {
-                const next = mutate({ ...currentPageDefaults().values });
-                const src = await editApi('GET', 'source?path=' + encodeURIComponent(path));
-                const r = await editApi('POST', 'source', { path, text: pageDefaults.upsertScript(src.text, next), sha: src.sha });
-                currentPageDefaults().values = next;
-                pageDefaultState.panels.forEach(p => p._markDefaultPins());
-                window.dispatchEvent(new CustomEvent('controls:defaults-saved', { detail: { live_differs: r.live_differs } }));
-                defaultsToast(okText);
-            } catch (e) {
-                defaultsToast('Voreinstellung nicht gespeichert: ' + e.message, () => savePageDefaults(mutate, okText));
-            }
+            const src = await editApi('GET', 'source?path=' + encodeURIComponent(path));
+            const text = transform(src.text);
+            const r = await editApi('POST', 'source', { path, text, sha: src.sha });
+            window.dispatchEvent(new CustomEvent('controls:defaults-saved', { detail: { live_differs: r.live_differs } }));
+            return r;
         };
-        defaultsQueue = defaultsQueue.then(run);
-        return defaultsQueue;
+        const p = sourceQueue.then(run);
+        sourceQueue = p.catch(() => {});
+        return p;
+    }
+
+    // Optimistisch: die Voreinstellung gilt sofort (Leiste verschwindet), das Schreiben laeuft im Hintergrund.
+    // Scheitert es, kehrt der alte Stand zurueck (die Leiste erscheint wieder) und die Meldung bietet "nochmal".
+    function savePageDefaults(mutate, okText, undoValues = null) {
+        const cur = currentPageDefaults();
+        const prev = cur.values;
+        let next;
+        try {
+            next = mutate({ ...prev });
+        } catch (e) {
+            defaultsToast('Voreinstellung nicht gespeichert: ' + e.message, { retry: () => savePageDefaults(mutate, okText, undoValues) });
+            return Promise.resolve();
+        }
+        cur.values = next;
+        refreshPresetBars();
+        return writeSource(html => pageDefaults.upsertScript(html, next)).then(() => {
+            defaultsToast(okText, undoValues ? { undo: () => savePageDefaults(() => ({ ...undoValues }), 'Voreinstellung zurückgenommen') } : {});
+        }, (e) => {
+            if (cur.values === next) cur.values = prev;
+            refreshPresetBars();
+            defaultsToast('Voreinstellung nicht gespeichert: ' + e.message, { retry: () => savePageDefaults(mutate, okText, undoValues) });
+        });
+    }
+
+    // === VOREINSTELLUNGS-LEISTE (nur Bearbeiten-Modus) ===
+    // Ein Knopf fuer die ganze Seite: alle Regler, die vom Startzustand (defaultOf) abweichen, werden auf einmal
+    // zur Voreinstellung. Gleicht ein Wert dem Code-Wert, faellt sein Eintrag weg.
+    function changedValues() {
+        const out = {};
+        for (const panel of livePanels()) {
+            for (const key of Object.keys(panel.params)) {
+                if (!pageDefaultState.seen.has(key)) continue;
+                const cur = panel.params[key];
+                if (JSON.stringify(cur) !== JSON.stringify(panel.defaultOf(key))) out[key] = cloneValue(cur);
+            }
+        }
+        return out;
+    }
+
+    function savePreset() {
+        const changed = changedValues();
+        const keys = Object.keys(changed);
+        if (!keys.length) return;
+        const undoValues = { ...currentPageDefaults().values };
+        const code = pageDefaultState.code;
+        savePageDefaults(next => {
+            for (const k of keys) {
+                if (JSON.stringify(changed[k]) === JSON.stringify(code[k])) delete next[k];
+                else next[k] = changed[k];
+            }
+            return next;
+        }, keys.length === 1 ? 'Voreinstellung gespeichert (1 Wert, auf dev)' : `Voreinstellung gespeichert (${keys.length} Werte, auf dev)`, undoValues);
+    }
+
+    function buildPresetBar() {
+        const bar = document.createElement('div');
+        bar.className = 'ctrl-preset-bar';
+        bar.dataset.oeUi = '';
+        bar.setAttribute('role', 'group');
+        bar.setAttribute('aria-label', 'Voreinstellung');
+        bar.hidden = true;
+        const count = document.createElement('span');
+        count.className = 'ctrl-preset-count';
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'ctrl-preset-save';
+        save.textContent = 'als Voreinstellung speichern';
+        const reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'ctrl-preset-reset';
+        reset.textContent = 'zurücksetzen';
+        bindResponsiveButtonActivation(save, () => { savePreset(); refreshPresetBars(); });
+        bindResponsiveButtonActivation(reset, () => { resetPage(); refreshPresetBars(); });
+        bar.append(count, save, reset);
+        return bar;
+    }
+
+    function refreshPresetBars() {
+        const n = isEditing() ? Object.keys(changedValues()).length : 0;
+        for (const panel of pageDefaultState.panels) {
+            if (!panel.bodyEl) continue;
+            let bar = panel._presetBar;
+            if (!bar) {
+                if (!n) continue;
+                bar = panel._presetBar = buildPresetBar();
+            }
+            if (n && bar.parentNode !== panel.bodyEl) panel.bodyEl.prepend(bar);
+            else if (n && panel.bodyEl.firstChild !== bar) panel.bodyEl.prepend(bar);
+            bar.hidden = !n;
+            const text = n === 1 ? '1 geändert' : `${n} geändert`;
+            const c = bar.firstChild;
+            if (c.textContent !== text) c.textContent = text;
+        }
+    }
+
+    // === BESCHRIFTUNGEN BEARBEITEN (nur Bearbeiten-Modus) ===
+    // Klick auf Label, Abschnittstitel oder Knopftext oeffnet ein Feld darueber; Enter/Verlassen uebernimmt, Esc
+    // verwirft. Der neue Text steht sofort da, das Schreiben in den Seitenquelltext laeuft im Hintergrund: der
+    // String wird dort ersetzt, wo die Seite ihn definiert. Steht er nur in controls.js (gilt fuer alle Seiten)
+    // oder ist er dynamisch erzeugt, bleibt der alte Text und eine Meldung sagt warum.
+    const LABEL_SEL = '.ctrl-panel .ctrl-label, .ctrl-panel .ctrl-section-title, .ctrl-panel .ctrl-button';
+    const CONTROLS_SRC = (document.currentScript && document.currentScript.src) || '/tools/controls.js';
+    let labelEdit = null;
+
+    function labelTarget(node) {
+        const el = node && node.closest && node.closest(LABEL_SEL);
+        return el && !el.children.length && el.textContent.trim() ? el : null;
+    }
+
+    function labelKey(el) {
+        const sec = el.closest('.ctrl-section');
+        if (el.matches('.ctrl-section-title')) return sec ? sec.id.replace(/^.*-section-/, '') : '';
+        const row = el.closest('.ctrl-row[data-key]');
+        return el.dataset.buttonKey || (row ? row.dataset.key : '');
+    }
+
+    function cancelLabelEdit() {
+        if (!labelEdit) return;
+        const { input, off } = labelEdit;
+        labelEdit = null;
+        off();
+        input.remove();
+    }
+
+    function commitLabelEdit() {
+        if (!labelEdit) return;
+        const { el, input } = labelEdit;
+        const oldText = el.textContent;
+        const newText = input.value.replace(/\s+/g, ' ').trim();
+        cancelLabelEdit();
+        if (!newText || newText === oldText.trim()) return;
+        renameLabel(el, oldText.trim(), newText, labelKey(el));
+    }
+
+    function startLabelEdit(el) {
+        if (labelEdit && labelEdit.el === el) return;
+        commitLabelEdit();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'ctrl-label-edit';
+        input.dataset.oeUi = '';
+        input.value = el.textContent.trim();
+        input.setAttribute('aria-label', 'Beschriftung');
+        input.autocomplete = 'off';
+        input.setAttribute('data-1p-ignore', '');
+        input.setAttribute('data-lpignore', 'true');
+        const place = () => {
+            const r = el.getBoundingClientRect();
+            const w = Math.min(Math.max(r.width + 24, 140), window.innerWidth - 16);
+            input.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+            input.style.top = r.top + r.height / 2 + 'px';
+            input.style.width = w + 'px';
+        };
+        place();
+        window.addEventListener('resize', place);
+        window.addEventListener('scroll', place, true);
+        const off = () => {
+            window.removeEventListener('resize', place);
+            window.removeEventListener('scroll', place, true);
+        };
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); commitLabelEdit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); cancelLabelEdit(); }
+        });
+        input.addEventListener('blur', () => { if (labelEdit && labelEdit.input === input) commitLabelEdit(); });
+        document.body.appendChild(input);
+        labelEdit = { el, input, off };
+        input.focus();
+        input.select();
+    }
+
+    // Klicks auf Beschriftungen gehoeren im Bearbeiten-Modus dem Editieren: weder Label-Weiterleitung an den
+    // Regler noch die Aktion eines Knopfes laufen. (Touch-Knoepfe feuern schon bei pointerdown.)
+    function labelClickGuard(e) {
+        if (!isEditing()) return;
+        const el = labelTarget(e.target);
+        if (!el) return;
+        if (e.type === 'click') {
+            e.preventDefault();
+            startLabelEdit(el);
+        }
+        e.stopImmediatePropagation();
+    }
+    if (typeof document !== 'undefined' && document.addEventListener) {
+        ['pointerdown', 'touchstart', 'click'].forEach(t => document.addEventListener(t, labelClickGuard, true));
+    }
+
+    function jsLiteralText(text, q) {
+        let out = text.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').split(q).join('\\' + q);
+        if (q === '`') out = out.replace(/\$\{/g, '\\${');
+        return out.replace(/<\//g, '<\\/');
+    }
+
+    function labelHits(src, label) {
+        const hits = [];
+        for (const q of ["'", '"', '`']) {
+            const lit = q + jsLiteralText(label, q) + q;
+            let i = -1;
+            while ((i = src.indexOf(lit, i + 1)) >= 0) {
+                hits.push({ start: i + 1, end: i + lit.length - 1, q, at: i, ctx: /\b(label|title|text|caption|name)\s*:\s*$/.test(src.slice(Math.max(0, i - 30), i)) });
+            }
+        }
+        return hits;
+    }
+
+    // Ergebnis: { text } mit ersetztem Quelltext oder { error } mit Klartext. where: 'page' | 'controls' | 'none'
+    function replaceLabelInSource(src, oldText, newText, key) {
+        const hits = labelHits(src, oldText);
+        if (!hits.length) return { error: 'missing' };
+        let pool = hits.filter(h => h.ctx);
+        if (!pool.length) pool = hits;
+        if (pool.length > 1 && key) {
+            const near = pool.filter(h => {
+                const before = src.slice(Math.max(0, h.at - 600), h.at);
+                return before.includes("'" + key + "'") || before.includes('"' + key + '"');
+            });
+            if (near.length) pool = near;
+        }
+        if (pool.length !== 1) return { error: 'ambiguous', count: pool.length };
+        const h = pool[0];
+        return { text: src.slice(0, h.start) + jsLiteralText(newText, h.q) + src.slice(h.end) };
+    }
+
+    let controlsSourceCache = null;
+    async function labelInControlsJs(label) {
+        if (controlsSourceCache == null) {
+            const res = await fetch(CONTROLS_SRC, { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('controls.js nicht lesbar (HTTP ' + res.status + ')');
+            controlsSourceCache = await res.text();
+        }
+        return labelHits(controlsSourceCache, label).length > 0;
+    }
+
+    function setLabelEverywhere(oldEl, text) {
+        if (oldEl && oldEl.isConnected) oldEl.textContent = text;
+    }
+
+    function renameLabel(el, oldText, newText, key, isUndo = false) {
+        setLabelEverywhere(el, newText);
+        const fail = (msg, final) => {
+            setLabelEverywhere(el, oldText);
+            defaultsToast(msg, final ? { fatal: true } : { retry: () => renameLabel(el, oldText, newText, key, isUndo) });
+        };
+        let problem = null;
+        return writeSource(html => {
+            const r = replaceLabelInSource(html, oldText, newText, key);
+            if (r.error) { problem = r; throw new Error('label:' + r.error); }
+            return r.text;
+        }).then(() => {
+            defaultsToast(isUndo ? 'Beschriftung zurückgesetzt' : `Beschriftung geändert: "${newText}"`,
+                isUndo ? {} : { undo: () => renameLabel(el, newText, oldText, key, true) });
+        }, async (e) => {
+            if (!problem) return fail('Beschriftung nicht gespeichert: ' + e.message);
+            if (problem.error === 'ambiguous') {
+                return fail(`Beschriftung nicht geändert: "${oldText}" kommt ${problem.count}-mal im Quelltext vor, die Stelle ist nicht eindeutig`, true);
+            }
+            let shared = false;
+            try { shared = await labelInControlsJs(oldText); } catch (err) { return fail('Beschriftung nicht gespeichert: ' + err.message); }
+            fail(shared
+                ? `"${oldText}" ist in controls.js festgelegt und gilt für alle Seiten, nicht geändert`
+                : `Beschriftung nicht geändert: "${oldText}" steht nicht als Text im Seitenquelltext (wird per Code erzeugt)`, true);
+        });
     }
 
     // === ZURUECKSETZEN (Knopf im Panel-Kopf, jede Seite) ===
@@ -653,8 +932,6 @@
         document.body.appendChild(t);
     }
 
-    const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l-1 6 3 3.5H7L10 9zM12 12.5V21"/></svg>';
-
     // === PANEL CLASS ===
     class ControlPanel {
         constructor(options = {}) {
@@ -672,6 +949,7 @@
 	                mobileInitialOpenMaxViewportFraction: Number.isFinite(Number(options.mobileInitialOpenMaxViewportFraction))
 	                    ? Number(options.mobileInitialOpenMaxViewportFraction)
 	                    : (1 / 3),
+                desktopInitialHeightFraction: Number.isFinite(Number(options.desktopInitialHeightFraction)) ? Number(options.desktopInitialHeightFraction) : (1 / 3),
                 ...options
             };
 	            this.options.position = normalizedPosition;
@@ -1814,7 +2092,7 @@
 	            this.bodyEl.style.maxHeight = '';
 		            const bottomOffset = rect.bottom >= viewportHeight - 2 ? 0 : 16;
 		            const maxPanelHeight = Math.max(fixedChromeHeight, viewportHeight - bottomOffset - 70);
-		            const preferredPanelHeight = Math.min(maxPanelHeight, Math.max(fixedChromeHeight, viewportHeight / 3));
+		            const preferredPanelHeight = Math.min(maxPanelHeight, Math.max(fixedChromeHeight, viewportHeight * this.options.desktopInitialHeightFraction));
 		            const preferredBodyHeight = Math.max(0, preferredPanelHeight - fixedChromeHeight);
 		            const naturalBodyHeight = this._getDesktopNaturalBodyHeight();
 	            const bodyHeight = Math.min(naturalBodyHeight, preferredBodyHeight);
@@ -3205,9 +3483,11 @@
          * @param {string} key - Unique key, params[key] is the array of values
          * With `label` the row gets the normal label column (e.g. one step of a sequence); `captions` puts a
          * small heading above each field, `inputmode` is passed to every field (e.g. 'decimal').
-         * `layout: 'column'` stacks the fields vertically (+ / - below them). `side` adds a second column of
-         * fields with its own key (params[side.key]): one value sits beside the first symbol, several sit
-         * each between two symbols (value i between symbol i and i + 1).
+         * `layout: 'column'` renders one aligned block: heading row, one row per symbol [symbol][side field],
+         * footer row with - / + under the symbols and the optional `toggle` ({ key, label, value, onChange }) under the
+         * side column. `side` adds a second column with its own key (params[side.key]): value i sits in the row of
+         * symbol i; a single value sits in the first row and the other rows show it dimmed and read-only.
+         * `heading` / `side.label` caption the two columns.
          * @param {Object} config - { values, labels?, label?, captions?, inputmode?, layout?, side?: { key, values, labels?, label?, onChange }, onChange(index, value, values), onAdd(values), onRemove(values), onResize(n) (Zuruecksetzen auf andere Anzahl), min, max }
          */
         addSymbolRow(key, config) {
@@ -3228,8 +3508,18 @@
             strip.className = 'ctrl-symbol-strip';
             row.appendChild(strip);
             this._symbolRows = this._symbolRows || {};
-            const state = { strip, labels, captions, inputmode, column, onChange, onAdd, onRemove, onResize, min, max };
+            const state = { strip, heading: '', labels, captions, inputmode, column, onChange, onAdd, onRemove, onResize, min, max };
             this._symbolRows[key] = state;
+            if (column && config.toggle) {
+                // Toggle laeuft ueber addToggle (Voreinstellungen, Callbacks); die Zeile wandert in den Fuss des Blocks
+                const holder = document.createElement('div');
+                const prev = this._currentContainer;
+                this._currentContainer = holder;
+                try { this.addToggle(config.toggle.key, config.toggle); } finally { this._currentContainer = prev; }
+                state.toggleRow = holder.firstElementChild;
+                state.toggleRow.classList.add('ctrl-symbol-toggle');
+            }
+            state.heading = config.heading || '';
             if (column && config.side) {
                 const side = this._withPageDefault(config.side.key, config.side, 'values');
                 this.params[side.key] = (side.values || []).slice();
@@ -3266,8 +3556,20 @@
                 });
                 return input;
             };
-            // Spalte: jedes Symbol belegt zwei Halbzeilen, ein Seitenfeld kann so genau zwischen zwei Symbolen sitzen
-            const place = (el, line, col) => { if (st.column) { el.style.gridRow = line + ' / span 2'; el.style.gridColumn = String(col); } };
+            // Spalte: Kopfzeile in Zeile 1, Symbol i (und Seitenfeld i) in Zeile i + 2, Fuss darunter
+            const place = (el, line, col) => { if (st.column) { el.style.gridRow = String(line); el.style.gridColumn = String(col); } };
+            const sideSt = st.side ? this._symbolRows[st.side] : null;
+            if (st.column) {
+                const head = (text, col) => {
+                    const h = document.createElement('span');
+                    h.className = 'ctrl-symbol-head';
+                    h.textContent = text;
+                    place(h, 1, col);
+                    st.strip.appendChild(h);
+                };
+                if (st.heading && values.length) head(st.heading, 1);
+                if (sideSt && sideSt.label && values.length) head(sideSt.label, 2);
+            }
             values.forEach((v, i) => {
                 const input = makeInput(key, i, v, st.labels[i] || ('Symbol ' + (i + 1)), st.onChange);
                 if (st.captions) {
@@ -3277,37 +3579,48 @@
                     cap.className = 'ctrl-symbol-caption';
                     cap.textContent = st.captions[i] || '';
                     cell.append(cap, input);
-                    place(cell, 2 * i + 1, 1);
+                    place(cell, i + 2, 1);
                     st.strip.appendChild(cell);
                 } else {
-                    place(input, 2 * i + 1, 1);
+                    place(input, i + 2, 1);
                     st.strip.appendChild(input);
                 }
             });
-            if (st.side) {
-                const sideSt = this._symbolRows[st.side];
+            if (st.side && values.length) {
                 const sideValues = this.params[st.side];
-                const slot = document.createElement('div');
-                slot.className = 'ctrl-symbol-side';
-                slot.dataset.key = st.side;
-                if (sideSt.label) slot.dataset.label = sideSt.label;
-                slot.style.gridColumn = '2';
-                const centered = sideValues.length === 1;
-                // Ein Feld steht oben neben dem ersten Symbol, mehrere je zwischen zwei Symbolen
-                slot.style.gridRow = centered ? '1 / span 2' : '1 / span ' + Math.max(2, 2 * values.length + 1);
+                const single = sideValues.length === 1;
+                const mirrors = [];
                 sideValues.forEach((v, i) => {
-                    const aria = sideSt.labels[i] || ((sideSt.label || 'Feld') + (centered ? '' : ' ' + (i + 1)));
-                    const input = makeInput(st.side, i, v, aria, sideSt.onChange);
-                    if (!centered) input.style.gridRow = (2 * i + 2) + ' / span 2';
-                    slot.appendChild(input);
+                    const aria = sideSt.labels[i] || ((sideSt.label || 'Feld') + (single ? '' : ' ' + (i + 1)));
+                    const input = makeInput(st.side, i, v, aria, (idx, val, all) => {
+                        mirrors.forEach(m => { m.value = val; });
+                        if (sideSt.onChange) sideSt.onChange(idx, val, all);
+                    });
+                    input.classList.add('ctrl-symbol-side-input');
+                    place(input, i + 2, 2);
+                    st.strip.appendChild(input);
                 });
-                if (centered) slot.classList.add('ctrl-symbol-side-single');
-                st.strip.appendChild(slot);
+                if (single) {
+                    // Synchron: ein Feld, die uebrigen Zeilen zeigen es gedimmt und gesperrt
+                    for (let i = 1; i < values.length; i++) {
+                        const m = document.createElement('input');
+                        m.type = 'text';
+                        m.className = 'ctrl-input ctrl-symbol-input ctrl-symbol-side-input ctrl-symbol-mirror';
+                        m.value = sideValues[0] ?? '';
+                        m.disabled = true;
+                        m.tabIndex = -1;
+                        m.setAttribute('aria-hidden', 'true');
+                        place(m, i + 2, 2);
+                        mirrors.push(m);
+                        st.strip.appendChild(m);
+                    }
+                }
             }
+            const footRow = values.length + 2;
             const btnWrap = st.column ? document.createElement('div') : st.strip;
             if (st.column) {
                 btnWrap.className = 'ctrl-symbol-btns';
-                place(btnWrap, 2 * values.length + 2, 1);
+                place(btnWrap, footRow, 1);
             }
             const addBtn = (text, title, enabled, fn) => {
                 const b = document.createElement('button');
@@ -3322,6 +3635,10 @@
             if (st.onRemove) addBtn('\u2212', 'Symbol entfernen', values.length > st.min, () => st.onRemove(this.params[key]));
             if (st.onAdd) addBtn('+', 'Symbol hinzufügen', values.length < st.max, () => st.onAdd(this.params[key]));
             if (st.column && btnWrap.childNodes.length) st.strip.appendChild(btnWrap);
+            if (st.column && st.toggleRow) {
+                place(st.toggleRow, footRow, 2);
+                st.strip.appendChild(st.toggleRow);
+            }
         }
 
         /**
@@ -4097,7 +4414,6 @@
             const st = pageDefaultState;
             if (!st.panels.includes(this)) st.panels.push(this);
             watchEditMode();
-            if (isEditing()) queueMicrotask(() => this._syncDefaultPins());
             if (st.seen.has(key)) return config;
             st.seen.add(key);
             st.code[key] = cloneValue(config[field]);
@@ -4138,53 +4454,6 @@
         defaultOf(key) {
             const { values } = currentPageDefaults();
             return cloneValue(Object.prototype.hasOwnProperty.call(values, key) ? values[key] : pageDefaultState.code[key]);
-        }
-
-        // Stecknadel je Zeile, nur im Bearbeiten-Modus des Editors (html.oe-editing).
-        _syncDefaultPins() {
-            if (!this.bodyEl || !isEditing()) return;
-            if (!this._pinObserver) {
-                this._pinObserver = new MutationObserver(() => { if (isEditing()) this._syncDefaultPins(); });
-                this._pinObserver.observe(this.bodyEl, { childList: true, subtree: true });
-            }
-            this.bodyEl.querySelectorAll('.ctrl-row[data-key], .ctrl-symbol-side[data-key]').forEach(row => {
-                const key = row.dataset.key;
-                if (!pageDefaultState.seen.has(key) || !(key in this.params) || row.querySelector(':scope > .ctrl-default-pin')) return;
-                const pin = document.createElement('button');
-                pin.type = 'button';
-                pin.className = 'ctrl-default-pin';
-                pin.dataset.oeUi = '';
-                pin.innerHTML = PIN_SVG;
-                pin.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const label = (row.querySelector('.ctrl-label')?.textContent || row.dataset.label || key).trim();
-                    const current = cloneValue(this.params[key]);
-                    const { values } = currentPageDefaults();
-                    const remove = Object.prototype.hasOwnProperty.call(values, key) && JSON.stringify(values[key]) === JSON.stringify(current);
-                    savePageDefaults(next => {
-                        if (remove) delete next[key]; else next[key] = current;
-                        return next;
-                    }, remove ? `Voreinstellung "${label}" entfernt` : `"${label}" ist jetzt Voreinstellung (auf dev)`);
-                });
-                row.appendChild(pin);
-            });
-            this._markDefaultPins();
-        }
-
-        _markDefaultPins() {
-            if (!this.bodyEl) return;
-            const { values } = currentPageDefaults();
-            this.bodyEl.querySelectorAll('.ctrl-default-pin').forEach(pin => {
-                const key = pin.parentElement.dataset.key;
-                const on = Object.prototype.hasOwnProperty.call(values, key);
-                pin.classList.toggle('active', on);
-                const title = on
-                    ? `Voreinstellung: ${JSON.stringify(values[key])}. Klick: aktuellen Wert setzen, bei gleichem Wert entfernen`
-                    : 'Aktuellen Wert als Voreinstellung speichern';
-                pin.title = title;
-                pin.setAttribute('aria-label', title);
-            });
         }
 
         /**

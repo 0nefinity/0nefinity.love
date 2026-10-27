@@ -2009,58 +2009,126 @@ pre {
     cursor: default;
 }
 
-/* Symbolspalte (layout: 'column'): Symbole untereinander, Seitenfelder daneben auf Luecke.
-   Jedes Symbol belegt zwei Halbzeilen, ein Seitenfeld sitzt so genau zwischen zwei Symbolen. */
+/* Symbolspalte (layout: 'column'): ein Block, zwei gleich breite Spalten [Symbol][Seitenfeld],
+   Kopfzeile oben, Fuss unten (- / + unter den Symbolen, Toggle unter den Seitenfeldern).
+   Alle Zellen gleich hoch; Spaltenbreite kommt allein aus --ctrl-sym-w. */
 .ctrl-symbol-row-column {
     --ctrl-sym-h: 32px;
-    --ctrl-sym-gap: 6px;
+    --ctrl-sym-w: 5em;
+    --ctrl-sym-gap: 4px;
 }
 
-.ctrl-symbol-row-column .ctrl-symbol-strip,
-.ctrl-symbol-row-column .ctrl-symbol-side {
-    display: grid;
-    grid-auto-rows: calc((var(--ctrl-sym-h) + var(--ctrl-sym-gap)) / 2);
-    row-gap: 0;
-    align-items: center;
+@media (pointer: coarse) {
+    .ctrl-symbol-row-column {
+        --ctrl-sym-h: 44px;
+        --ctrl-sym-w: 6.5em;
+    }
 }
 
 .ctrl-symbol-row-column .ctrl-symbol-strip {
-    grid-template-columns: 5.5em 3.2em;
-    column-gap: 0.6rem;
+    display: grid;
+    grid-template-columns: repeat(2, var(--ctrl-sym-w));
+    grid-auto-rows: var(--ctrl-sym-h);
+    gap: var(--ctrl-sym-gap);
+    align-items: stretch;
     justify-content: start;
     overflow: visible;
+    padding-bottom: 0;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-strip > .ctrl-symbol-head {
+    grid-auto-rows: auto;
+    align-self: end;
+    height: auto;
+    min-height: 0;
+    margin-bottom: -2px;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: center;
+    white-space: nowrap;
+    color: var(--ui-text-70);
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-strip:has(> .ctrl-symbol-head) {
+    grid-template-rows: 14px;
 }
 
 .ctrl-panel .ctrl-symbol-row-column .ctrl-input.ctrl-symbol-input {
+    grid-column: auto;
     width: 100%;
     min-width: 0;
     max-width: none;
-    height: var(--ctrl-sym-h);
+    height: 100%;
     min-height: 0;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
     font-size: 15px;
+    text-align: center;
 }
 
-.ctrl-symbol-row-column .ctrl-symbol-side {
-    position: relative;
-    align-self: stretch;
-}
-
-.ctrl-symbol-row-column .ctrl-symbol-side-single {
-    display: flex;
-    align-items: center;
+.ctrl-symbol-row-column .ctrl-symbol-mirror {
+    opacity: 0.35;
+    cursor: default;
 }
 
 .ctrl-symbol-row-column .ctrl-symbol-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--ctrl-sym-gap);
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-btns .ctrl-symbol-btn {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    padding: 0 0 3px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 6px;
+    background: var(--ui-fill-08) !important;
+    font-size: 1.15rem;
+    opacity: 0.8;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-btns .ctrl-symbol-btn:hover:not(:disabled) {
+    opacity: 1;
+    background: var(--ui-fill-15) !important;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-btns .ctrl-symbol-btn:disabled {
+    opacity: 0.25;
+}
+
+/* sync: kleiner beschrifteter Schalter, gleiche Hoehe wie die Felder */
+.ctrl-panel .ctrl-symbol-row-column .ctrl-row.ctrl-symbol-toggle {
     display: flex;
+    flex-direction: row-reverse;
+    align-items: center;
     justify-content: center;
-    gap: 0.35rem;
-    align-self: center;
+    gap: 0.4rem;
+    margin: 0;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 6px;
+    background: var(--ui-fill-08);
+    box-sizing: border-box;
 }
 
-
-html.oe-editing .ctrl-symbol-side:has(> .ctrl-default-pin) {
-    padding-left: 26px;
+.ctrl-symbol-toggle .ctrl-label {
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    font-size: 13px;
 }
+
+.ctrl-panel .ctrl-symbol-toggle .ctrl-checkbox-wrap {
+    grid-column: auto;
+    min-height: 0;
+}
+
 
 /* Schalter mit Unter-Einstellungen: [Haken] [Stift], darunter eingerueckt aufklappbar */
 .ctrl-row-has-details .ctrl-checkbox-wrap {
@@ -2153,68 +2221,79 @@ html.oe-editing .ctrl-symbol-side:has(> .ctrl-default-pin) {
     background: var(--ui-fill-25) !important;
 }
 
-/* Voreinstellung speichern (nur im Bearbeiten-Modus des Editors, controls.js) */
-.ctrl-default-pin {
+/* Voreinstellung speichern und Beschriftungen bearbeiten (nur Bearbeiten-Modus des Editors, controls.js) */
+.ctrl-preset-bar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    margin: 0 0 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-surface-strong);
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.ctrl-preset-bar[hidden] {
     display: none;
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    padding: 0;
+}
+
+.ctrl-preset-count {
+    flex: 1 0 auto;
+    color: var(--ui-text-70);
+    font-variant-numeric: tabular-nums;
+}
+
+.ctrl-preset-bar button {
+    min-height: 28px;
+    padding: 4px 10px;
     border: none;
     border-radius: 6px;
-    background: transparent !important;
-    color: var(--ui-text-70) !important;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    opacity: 0.45;
-    z-index: 1;
-}
-
-html.oe-editing .ctrl-default-pin {
-    display: inline-flex;
-}
-
-/* Platz fuer die Nadel, damit sie weder Label noch Symbolfelder verdeckt */
-html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
-    padding-left: 26px;
-}
-
-.ctrl-default-pin svg {
-    width: 15px;
-    height: 15px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.ctrl-default-pin:hover,
-.ctrl-default-pin:focus-visible {
-    opacity: 1;
-}
-
-.ctrl-default-pin.active {
-    opacity: 1;
+    background: var(--ui-fill-20) !important;
     color: var(--text-color, #fff) !important;
+    font: inherit;
+    cursor: pointer;
 }
 
-.ctrl-default-pin.active svg {
-    fill: currentColor;
+.ctrl-preset-bar button:hover,
+.ctrl-preset-bar button:focus-visible {
+    background: var(--ui-fill-25) !important;
+}
+
+.ctrl-preset-bar .ctrl-preset-save {
+    border: 1px solid var(--text-color, #fff);
+}
+
+html.oe-editing .ctrl-panel .ctrl-label,
+html.oe-editing .ctrl-panel .ctrl-section-title,
+html.oe-editing .ctrl-panel .ctrl-button {
+    cursor: text;
+    outline: 1px dashed color-mix(in srgb, var(--text-color, #fff) 35%, transparent);
+    outline-offset: 2px;
+}
+
+.ctrl-label-edit {
+    position: fixed;
+    transform: translateY(-50%);
+    z-index: 10003;
+    box-sizing: border-box;
+    padding: 4px 8px;
+    border: 1px solid var(--text-color, #fff);
+    border-radius: 4px;
+    background: var(--ui-surface-strong, #111);
+    color: var(--text-color, #fff);
+    font: 16px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+    outline: none;
 }
 
 @media (max-width: 768px) {
-    .ctrl-default-pin {
-        width: 32px;
-        height: 32px;
-    }
-
-    html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
-        padding-left: 32px;
+    .ctrl-preset-bar button {
+        min-height: 36px;
     }
 }
 
