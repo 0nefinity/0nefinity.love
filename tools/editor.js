@@ -8,8 +8,17 @@
 // Kommentare (HTML und JS) erscheinen mit der Sprechblase an ihrem Platz und sind dort direkt schreibbar.
 // Alle Knoepfe rendern aus einem Zustand (render()).
 // Backend: ~/0nefinity/editor/server.py hinter /api/edit/. Fehler stehen sichtbar unter den Symbolen.
+// Andere Seiten (timbreitmar.de) binden dieselbe Datei als /api/edit/editor.js ein und stellen sie per
+// data-Attribut um: data-mode="direct" (eine Arbeitskopie, Speichern ist sofort live, kein Veroeffentlichen),
+// data-me / data-logout (eigener Login des Editor-Dienstes statt /api/auth/*).
 (function oneEditor() {
-  if (!location.hostname.startsWith('dev.')) return;
+  const tag = document.currentScript;
+  const CFG = {
+    direct: tag?.dataset.mode === 'direct',
+    me: tag?.dataset.me || '/api/auth/me',
+    logout: tag?.dataset.logout || '/api/auth/logout',
+  };
+  if (!CFG.direct && !location.hostname.startsWith('dev.')) return;
 
   const INLINE = new Set(['A', 'B', 'I', 'EM', 'STRONG', 'SPAN', 'BR', 'SUB', 'SUP', 'CODE', 'SMALL',
     'MARK', 'U', 'S', 'ABBR', 'Q', 'KBD', 'WBR']);
@@ -50,6 +59,7 @@
   let toast = null;
   let toastTimer = null;
   let lastTypeAt = 0;
+  const SAVED = CFG.direct ? 'gespeichert' : 'auf dev gespeichert';
   let retryN = 0;
   // Autosave: so lange nach dem letzten Tippen wird gespeichert, also ein Commit pro Schreibpause.
   const AUTOSAVE_MS = 400;
@@ -692,9 +702,9 @@
     commitPoll = setTimeout(async () => {
       let r;
       try { r = await request('GET', 'status'); } catch (e) { say('Commit-Status: ' + e.message, 'error'); return; }
-      if (r.error) say('auf dev gespeichert, aber Commit/Push hängt: ' + r.error, 'error');
+      if (r.error) say(SAVED + ', aber Commit/Push hängt: ' + r.error, 'error');
       else if (r.pending.length && tries < 20) watchCommit(tries + 1);
-      else if (r.pending.length) say('auf dev gespeichert, Commit steht seit über einer Minute aus', 'error');
+      else if (r.pending.length) say(SAVED + ', Commit steht seit über einer Minute aus', 'error');
     }, tries ? 3000 : 4500);
   }
 
@@ -1246,8 +1256,8 @@
     ov.title((forPublish ? 'veröffentlichen: ' : 'Änderungen: ') + hist.file);
     const h1 = document.createElement('h3');
     h1.className = 'oe-ov-h';
-    h1.textContent = 'dev gegenüber live';
-    ov.body.append(h1, renderDiff(pending.diff));
+    h1.textContent = CFG.direct ? 'noch nicht im Verlauf' : 'dev gegenüber live';
+    if (!CFG.direct || pending.diff) ov.body.append(h1, renderDiff(pending.diff));
     if (hist.live_differs && !pubTimer) {
       const go = button('jetzt veröffentlichen', () => { closeOverlay(); startPublish(); });
       go.classList.add('oe-primary');
@@ -1256,7 +1266,7 @@
     }
     const h2 = document.createElement('h3');
     h2.className = 'oe-ov-h';
-    h2.textContent = 'Verlauf auf dev';
+    h2.textContent = CFG.direct ? 'Verlauf' : 'Verlauf auf dev';
     ov.body.appendChild(h2);
     for (const c of hist.commits) {
       const d = document.createElement('details');
@@ -1435,7 +1445,14 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   #oe-bar .oe-btn.oe-mini{width:30px;min-width:30px!important}
   #oe-bar .oe-wide{display:none!important}
   #oe-admin .oe-narrow{display:inline-flex!important}
-  #oe-admin{gap:0;padding:4px 8px}}`;
+  #oe-admin{gap:0;padding:4px 8px}}
+/* Seite ohne 0nefinity-Menue: die Leiste steht unten rechts (oben liegt dort meist die eigene
+   Navigation der Seite) und traegt alles selbst, auch das Ausloggen. */
+#oe-bar.oe-solo{top:auto;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));flex-direction:column-reverse;
+  max-width:calc(100vw - 16px);padding:4px;border-radius:6px;background:var(--bg-color,#000);
+  border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent)}
+@media (max-width:480px){#oe-bar.oe-solo{top:auto;right:8px;max-width:calc(100vw - 16px)}
+  #oe-bar.oe-solo .oe-wide{display:inline-flex!important}}`;
     document.head.appendChild(s);
   }
 
@@ -1509,6 +1526,10 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     head.className = 'oe-head';
     // Feste Reihenfolge, rechts verankert: das Stift-Symbol bleibt beim Umschalten an seinem Platz.
     head.append(btnUndo, btnRedo, btnEdit, btnSrc, btnCmt, btnDiff);
+    if (!menuWrap()) {
+      bar.classList.add('oe-solo');
+      head.append(mini('power', 'ausloggen', logout));
+    }
     bar.append(head, status);
     bar.addEventListener('keydown', (e) => e.stopPropagation());
     document.body.appendChild(bar);
@@ -1538,7 +1559,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   async function logout() {
     if (!(await flushed())) return;
     try {
-      const r = await fetch('/api/auth/logout', {
+      const r = await fetch(CFG.logout, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ csrf }),
@@ -1586,10 +1607,10 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   async function init() {
     let me;
     try {
-      me = await fetch('/api/auth/me', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      me = await fetch(CFG.me, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     } catch (e) { return; }
     if (me.status === 401) { buildLoginEntry(); return; }
-    if (!me.ok) { console.error('[editor] /api/auth/me HTTP ' + me.status); return; }
+    if (!me.ok) { console.error('[editor] ' + CFG.me + ' HTTP ' + me.status); return; }
     const info = await me.json();
     csrf = info.csrf || '';
 
