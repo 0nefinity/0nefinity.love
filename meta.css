@@ -1905,6 +1905,120 @@ pre {
     background: var(--ui-fill-15);
 }
 
+/* Symbol row: text fields side by side, scrolls sideways instead of wrapping */
+.ctrl-panel .ctrl-row.ctrl-symbol-row {
+    display: block;
+}
+
+.ctrl-symbol-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+}
+
+.ctrl-panel .ctrl-symbol-strip .ctrl-input.ctrl-symbol-input {
+    grid-column: auto;
+    flex: 1 0 3.2em;
+    width: 3.2em;
+    min-width: 3.2em;
+    max-width: 6em;
+    text-align: center;
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
+}
+
+.ctrl-panel:not(.bar-mode) .ctrl-row.ctrl-symbol-row-labeled {
+    display: grid;
+}
+
+.ctrl-symbol-row-labeled .ctrl-symbol-strip {
+    min-width: 0;
+}
+
+.ctrl-symbol-cell {
+    flex: 1 0 3.2em;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 3.2em;
+    max-width: 6em;
+}
+
+.ctrl-panel .ctrl-symbol-cell .ctrl-input.ctrl-symbol-input {
+    width: 100%;
+    max-width: none;
+    flex: none;
+}
+
+.ctrl-symbol-caption {
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
+    color: var(--ui-text-70);
+    white-space: nowrap;
+}
+
+.ctrl-symbol-btn {
+    flex: 0 0 auto;
+}
+
+.ctrl-symbol-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+/* Schalter mit Unter-Einstellungen: [Haken] [Stift], darunter eingerueckt aufklappbar */
+.ctrl-row-has-details .ctrl-checkbox-wrap {
+    gap: 0.35rem;
+}
+
+.ctrl-details-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent !important;
+    color: var(--ui-text-70) !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.ctrl-details-btn:hover,
+.ctrl-details-btn:focus-visible {
+    opacity: 1;
+}
+
+.ctrl-details-btn.active {
+    opacity: 1;
+    background: var(--ui-fill-10) !important;
+    color: var(--text-color, #fff) !important;
+}
+
+.ctrl-details {
+    margin: -0.15rem 0 0.6rem 0.9rem;
+}
+
+.ctrl-details[hidden] {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .ctrl-details-btn {
+        width: 40px;
+        height: 40px;
+    }
+}
+
 .ctrl-textarea {
     background: var(--ui-fill-05);
     border: 1px solid var(--ui-border);

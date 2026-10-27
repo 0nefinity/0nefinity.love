@@ -2192,7 +2192,10 @@
                 section.appendChild(header);
             }
 
-            this.bodyEl.appendChild(section);
+            // Innerhalb aufgeklappter Unter-Einstellungen (addToggle details) bleibt die Section dort
+            const inDetails = this._currentContainer && this._currentContainer.classList.contains('ctrl-details');
+            this._sectionParent = inDetails ? this._currentContainer : this.bodyEl;
+            this._sectionParent.appendChild(section);
             this._sections[id] = section;
             this._currentContainer = section;
             return this;
@@ -2202,7 +2205,27 @@
          * End current section, return to body container
          */
         endSection() {
-            this._currentContainer = this.bodyEl;
+            this._currentContainer = this._sectionParent || this.bodyEl;
+            this._sectionParent = null;
+            return this;
+        }
+
+        /**
+         * Replace the rows of an existing section (header stays) by running build(panel) into it.
+         */
+        fillSection(id, build) {
+            const section = this._sections[id];
+            if (!section) return this;
+            [...section.children].forEach((child) => {
+                if (child.classList.contains('ctrl-section-header')) return;
+                this._cleanupRemovedControls(child);
+                child.remove();
+            });
+            const prev = this._currentContainer;
+            this._currentContainer = section;
+            try { build(this); } finally { this._currentContainer = prev; }
+            this._updateBodyHeight();
+            requestAnimationFrame(() => this._refreshMobileSheetLayout?.());
             return this;
         }
 
@@ -2237,6 +2260,7 @@
                 delete this.callbacks[key];
                 delete this._sliderConfigs[key];
                 delete this._selectControls[key];
+                if (this._symbolRows) delete this._symbolRows[key];
             });
         }
 
@@ -2473,10 +2497,55 @@
             checkbox.addEventListener('change', () => {
                 this.params[key] = checkbox.checked;
                 if (this.callbacks[key]) this.callbacks[key](this.params[key], key);
+                if (!checkbox.checked) this._setToggleDetailsOpen(key, false);
             });
 
             this._currentContainer.appendChild(row);
+            if (typeof config.details === 'function') this._addToggleDetails(key, row, checkbox, config.details);
             return this;
+        }
+
+        // Unter-Einstellungen eines Schalters: Stift rechts neben dem Haken klappt sie auf. Regel: der Stift
+        // schaltet einen ausgeschalteten Schalter mit ein, Ausschalten klappt die Unter-Einstellungen zu.
+        _addToggleDetails(key, row, checkbox, build) {
+            row.classList.add('ctrl-row-has-details');
+            const pencil = document.createElement('button');
+            pencil.type = 'button';
+            pencil.className = 'ctrl-details-btn';
+            pencil.setAttribute('aria-label', 'Edit settings');
+            pencil.setAttribute('aria-expanded', 'false');
+            pencil.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>';
+            checkbox.parentElement.appendChild(pencil);
+
+            const sub = document.createElement('div');
+            sub.className = 'ctrl-details';
+            sub.hidden = true;
+            row.after(sub);
+            const prev = this._currentContainer;
+            this._currentContainer = sub;
+            try { build(this); } finally { this._currentContainer = prev; }
+
+            this._toggleDetails = this._toggleDetails || {};
+            this._toggleDetails[key] = { sub, pencil };
+            bindResponsiveButtonActivation(pencil, () => {
+                if (!checkbox.checked) {
+                    checkbox.checked = true;
+                    checkbox.dispatchEvent(new Event('change'));
+                    this._setToggleDetailsOpen(key, true);
+                    return;
+                }
+                this._setToggleDetailsOpen(key, sub.hidden);
+            });
+        }
+
+        _setToggleDetailsOpen(key, open) {
+            const d = this._toggleDetails && this._toggleDetails[key];
+            if (!d) return;
+            d.sub.hidden = !open;
+            d.pencil.setAttribute('aria-expanded', open ? 'true' : 'false');
+            d.pencil.classList.toggle('active', !!open);
+            this._updateBodyHeight();
+            requestAnimationFrame(() => this._refreshMobileSheetLayout?.());
         }
 
         /**
@@ -2684,6 +2753,85 @@
 
             this._currentContainer.appendChild(row);
             return this;
+        }
+
+        /**
+         * Symbol row: one compact text field per symbol, side by side, full panel width.
+         * Meant as the first row of a panel. Scrolls sideways when it gets wider than the panel.
+         * + / - only appear when the page passes onAdd / onRemove (pages with a variable symbol count).
+         * @param {string} key - Unique key, params[key] is the array of values
+         * With `label` the row gets the normal label column (e.g. one step of a sequence); `captions` puts a
+         * small heading above each field, `inputmode` is passed to every field (e.g. 'decimal').
+         * @param {Object} config - { values, labels?, label?, captions?, inputmode?, onChange(index, value, values), onAdd(values), onRemove(values), min, max }
+         */
+        addSymbolRow(key, config) {
+            const { values = [], labels = [], label = '', captions = null, inputmode = '', onChange, onAdd, onRemove, min = 0, max = Infinity } = config;
+            this.params[key] = values.slice();
+            const row = document.createElement('div');
+            row.className = 'ctrl-row ctrl-symbol-row' + (label ? ' ctrl-symbol-row-labeled' : '');
+            row.dataset.key = key;
+            if (label) {
+                const labelEl = document.createElement('label');
+                labelEl.className = 'ctrl-label';
+                labelEl.textContent = label;
+                row.appendChild(labelEl);
+            }
+            const strip = document.createElement('div');
+            strip.className = 'ctrl-symbol-strip';
+            row.appendChild(strip);
+            this._symbolRows = this._symbolRows || {};
+            const state = { strip, labels, captions, inputmode, onChange, onAdd, onRemove, min, max };
+            this._symbolRows[key] = state;
+            this._renderSymbolRow(key);
+            this._currentContainer.appendChild(row);
+            return this;
+        }
+
+        _renderSymbolRow(key) {
+            const st = this._symbolRows[key];
+            const values = this.params[key];
+            st.strip.textContent = '';
+            values.forEach((v, i) => {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'ctrl-input ctrl-symbol-input';
+                input.value = v ?? '';
+                input.setAttribute('aria-label', st.labels[i] || ('Symbol ' + (i + 1)));
+                ['autocomplete', 'autocapitalize'].forEach(a => input.setAttribute(a, 'off'));
+                input.spellcheck = false;
+                input.setAttribute('data-1p-ignore', '');
+                input.setAttribute('data-lpignore', 'true');
+                input.setAttribute('data-bwignore', '');
+                input.setAttribute('data-form-type', 'other');
+                if (st.inputmode) input.setAttribute('inputmode', st.inputmode);
+                input.addEventListener('input', () => {
+                    this.params[key][i] = input.value;
+                    if (st.onChange) st.onChange(i, input.value, this.params[key]);
+                });
+                if (st.captions) {
+                    const cell = document.createElement('label');
+                    cell.className = 'ctrl-symbol-cell';
+                    const cap = document.createElement('span');
+                    cap.className = 'ctrl-symbol-caption';
+                    cap.textContent = st.captions[i] || '';
+                    cell.append(cap, input);
+                    st.strip.appendChild(cell);
+                } else {
+                    st.strip.appendChild(input);
+                }
+            });
+            const addBtn = (text, title, enabled, fn) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'ctrl-stepper-btn ctrl-symbol-btn';
+                b.textContent = text;
+                b.title = title;
+                b.disabled = !enabled;
+                bindResponsiveButtonActivation(b, fn);
+                st.strip.appendChild(b);
+            };
+            if (st.onRemove) addBtn('\u2212', 'Symbol entfernen', values.length > st.min, () => st.onRemove(this.params[key]));
+            if (st.onAdd) addBtn('+', 'Symbol hinzufügen', values.length < st.max, () => st.onAdd(this.params[key]));
         }
 
         /**
@@ -3465,12 +3613,19 @@
         set(key, value) {
             this.params[key] = value;
 
+            if (this._symbolRows && this._symbolRows[key]) {
+                this.params[key] = Array.isArray(value) ? value.slice() : [];
+                this._renderSymbolRow(key);
+                return this;
+            }
+
             const row = this.bodyEl?.querySelector(`[data-key="${key}"]`);
             if (!row) return this;
 
             const checkbox = row.querySelector('input[type="checkbox"]');
             if (checkbox) {
                 checkbox.checked = !!value;
+                if (!value) this._setToggleDetailsOpen(key, false);
             }
 
             const range = row.querySelector('.ctrl-range');
