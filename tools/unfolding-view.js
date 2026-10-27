@@ -89,6 +89,10 @@
     const colorEl = opts.colorElement || canvas;
     if (opts.dir !== undefined && opts.dir !== 'l' && opts.dir !== 'r') throw new TypeError("UnfoldingView: dir muss 'l' oder 'r' sein, war " + opts.dir);
     const mirror = opts.dir === 'l';
+    // fold: die Ganzzahl faltet sich in den Punkt (Mitte der Zelle des Kommas), die Nachkommastellen liegen rechts davon und
+    // ueberqueren ihn nie; L ist das linke Ende der Ganzzahl (origin .. Punkt), die Stellen rechts haengen am Punkt.
+    const fold = opts.fold === true;
+    if (fold && !(opts.fixedStart && opts.leftGrip && opts.dot === false && Number.isFinite(+opts.origin))) throw new TypeError('UnfoldingView: fold braucht fixedStart, leftGrip, origin und dot: false');
     if (![undefined, true, false].includes(opts.dot)) throw new TypeError('UnfoldingView: dot muss true oder false sein, war ' + opts.dot);
     function fontOf() {
       const v = +(typeof opts.fontPx === 'function' ? opts.fontPx() : opts.fontPx);
@@ -147,10 +151,10 @@
     // h = u - dd (1 - e^(-u/dd)): die linke Zone ist dann dL = u - h breit und die 3 liegt genau auf L.
     let uKey = '', uVal = 0;
     function leftU(dd) {
-      const h = L - X0;
+      const h = Lg() - Xg();
       if (!(h > 0)) return 0;
       if (!(dd > 0)) return h;
-      const key = L + '|' + X0 + '|' + dd;
+      const key = Lg() + '|' + Xg() + '|' + dd;
       if (key === uKey) return uVal;
       let lo = h, hi = h + dd;
       for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (m - dd * (1 - Math.exp(-m / dd)) < h) lo = m; else hi = m; }
@@ -158,9 +162,15 @@
       return uVal;
     }
     const hOf = (u, dd) => (dd > 0 ? u - dd * (1 - Math.exp(-u / dd)) : u);
-    const startIdx = () => leftU(deff()) / w;                 // Index des ersten linear sichtbaren Zeichens
+    const startIdx = () => bs() + leftU(deff()) / w;                 // Index des ersten linear sichtbaren Zeichens
     const total = () => remote ? Math.max(chainLen, remote.length) : chainLen;
     const avail = () => Math.max(0, total() - 2) * w;   // Länge aller Nachkommastellen
+    // fold: Kopf = Ganzzahl und Komma (Index < headLen), Rest = Nachkommastellen mit Anfang am Punkt F
+    const bs = () => (fold ? headLen : 0);
+    const foldX = () => +opts.origin + (headLen - 0.5) * w;
+    const Lg = () => (fold ? foldX() : L);      // linker Anker der Stellen
+    const Xg = () => X0 + bs() * w;             // lineare Lage der ersten Stelle
+    const x0Cap = () => (fold ? +opts.origin - 0.5 * w : L);   // fold: die erste Stelle liegt am Punkt
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
     function refreshColor() {
@@ -202,9 +212,9 @@
     // Rechts: unendlich viele Stellen in der Zone d vor R. Links: nur die hineingeschobenen, ihre Zone endet bei
     // lzB = X0 + u; dieselbe Exponentialkurve, so verschoben, dass Zeichen 0 genau auf L liegt.
     function warp(p, dd) {
-      if (dd <= 0) return p < L ? L : (p > R ? R : p);
+      if (dd <= 0) { const l = Lg(); return p < l ? l : (p > R ? R : p); }
       if (p > R - dd) return R - dd * Math.exp(-(p - (R - dd)) / dd);
-      const lzB = X0 + leftU(dd);
+      const lzB = Xg() + leftU(dd);
       if (p < lzB) return lzB - dd + dd * Math.exp((p - lzB) / dd);
       return p;
     }
@@ -216,11 +226,14 @@
     // Zonenbreite aus dem Abstand der Enden; offen folgt L der 3 (L = X0), eingerollt ist L ein echtes Ende.
     function autoD() {
       const f = Math.min(factor, 0.5);
+      if (fold) { d = Math.min(f * Math.max(0, R - opts.origin - w), Math.max(0, (R - foldX()) / 2)); return; }
       d = Math.min(f * Math.max(0, R - L - w), Math.max(0, (R - L) / 2));
     }
     function settle(mode) {
+      if (fold) mode = 'x';   // die Ganzzahl folgt nie den Stellen
+      const cap = x0Cap();
       if (mode === 'three') L = Math.max(MARGIN, Math.min(X0, R));
-      else if (X0 > L) { if (opts.fixedStart) X0 = L; else L = X0; }   // fixedStart: Ziffern nie vom Anfang wegschiebbar
+      else if (X0 > cap) { if (opts.fixedStart) X0 = cap; else L = X0; }   // fixedStart: Ziffern nie vom Anfang wegschiebbar
       autoD();
       const dd = deff();
       R = Math.min(R, X0 + Math.max(w, avail()) + dd, W - MARGIN);   // die Ganzzahl bleibt sichtbar; sonst X0 >= R - dd - avail()
@@ -229,17 +242,17 @@
         L = Math.max(MARGIN, X0);
       } else {
         L = opts.fixedStart ? Math.max(MARGIN, L) : Math.max(MARGIN, Math.min(L, R - 2 * dd));   // fixedStart: L steht fest am Punkt
-        if (X0 > L) X0 = L;
+        if (X0 > cap) X0 = cap;
       }
       if (opts.fixedStart && opts.leftGrip) L = Math.max(+opts.origin, Math.min(L, leftMax()));
       R = Math.max(R, L + 2 * dd, rFloor());
       dirty = true;
     }
     // Linkes Ende (leftGrip): L darf bis leftMax() vorrucken (Seite legt es fest, abhaengig vom Punkt und von R)
-    const leftMax = () => (typeof opts.leftMax === 'function' ? +opts.leftMax(R) : +opts.leftMax);
+    const leftMax = () => (fold ? foldX() : typeof opts.leftMax === 'function' ? +opts.leftMax(R) : +opts.leftMax);
 
     // Kleinste Lage von R: L + rMinCells Zellen (Standard 0 = ganz auf L); das Ende laesst sich bis auf den Dezimalpunkt einschieben
-    const rFloor = () => (opts.leftGrip ? +opts.origin : L) + (opts.rMinCells !== undefined ? +opts.rMinCells : 0) * w;   // leftGrip: der Punkt liegt fest, R folgt L nicht
+    const rFloor = () => fold ? foldX() : ((opts.leftGrip ? +opts.origin : L) + (opts.rMinCells !== undefined ? +opts.rMinCells : 0) * w);   // leftGrip: der Punkt liegt fest, R folgt L nicht
     function clampX0() { X0 = Math.max(X0, R - deff() - avail()); }
 
     function rolledLeft() { return X0 < L - 0.5; }
@@ -319,12 +332,19 @@
     // M(i) = warp(X0 + i w): Ziffern in Lesebreite, verdichtet an den Enden (Faktor bis 0,5). Ueber 0,5 mischt lambda = 2f - 1
     // die Gleichverteilung U(i) aller vorhandenen Stellen zwischen L und R hinein: pos(i) = M(i) + lambda (U(i) - M(i)).
     // Beide steigen mit i, also auch die Mischung; bei f = 1 liegt jede Stelle gleich breit zwischen L und R.
-    let pDd = 0, pLam = 0, pN = 1;
-    function prep() { pDd = deff(); pLam = Math.max(0, 2 * factor - 1); pN = Math.max(1, total()); }
+    // fold: der Kopf (Index < headLen) liegt ab L, auf den Faktor pHs gestaucht (1 = voll, 0 = alles auf dem Punkt), unabhaengig
+    // von den Stellen; die Stellen (Index >= headLen) beginnen am Punkt.
+    let pDd = 0, pLam = 0, pN = 1, pHs = 1;
+    function prep() {
+      pDd = deff(); pLam = Math.max(0, 2 * factor - 1); pN = Math.max(1, total());
+      pHs = fold ? (foldX() > +opts.origin ? Math.max(0, Math.min(1, (foldX() - L) / (foldX() - +opts.origin))) : 0) : 1;
+    }
     function posOf(i) {
+      if (fold && i < headLen) return L + pHs * i * w;
       const m = warp(X0 + i * w, pDd);
       if (!pLam) return m;
-      const u = L + (R - L) * Math.min(Math.max(i, 0), pN) / pN;
+      const b = bs(), l = Lg();
+      const u = l + (R - l) * (Math.min(Math.max(i, b), pN) - b) / Math.max(1, pN - b);
       return m + pLam * (u - m);
     }
     // Stetige Umkehrung: Index (mit Anteil) an der Stelle x, gesucht in [i0, i1].
@@ -337,9 +357,11 @@
     // Ziffern mit Breite >= th: die Breiten steigen bis zur Mitte und fallen danach, also ein zusammenhaengender Bereich.
     function span(th) {
       const N = pN, wid = (i) => posOf(i + 1) - posOf(i);
-      const ip = Math.min(N - 1, Math.max(0, Math.floor(((L + R) / 2 - X0) / w)));
+      const B = bs();
+      if (N - 1 < B) return null;
+      const ip = Math.min(N - 1, Math.max(B, Math.floor(((Lg() + R) / 2 - Xg()) / w) + B));
       if (!(wid(ip) >= th)) return null;
-      let lo = 0, hi = ip;
+      let lo = B, hi = ip;
       while (lo < hi) { const m = Math.floor((lo + hi) / 2); if (wid(m) >= th) hi = m; else lo = m + 1; }
       const a = lo;
       lo = ip; hi = N - 1;
@@ -396,7 +418,7 @@
       if (!(i1 > i0)) return;
       const x0 = posOf(i0) * dpr, x1 = posOf(i1) * dpr;
       let c0 = Math.floor(x0), c1 = Math.ceil(x1) - 1;
-      if (c1 < c0) { if (zone === zoneR) c0 = c1; else c1 = c0; }
+      if (c1 < c0) { if (zone === zoneR || fold) c0 = c1; else c1 = c0; }
       let a = i0;
       for (let c = c0; c <= c1; c++) {
         const b = c === c1 ? i1 : Math.max(a, inv((c + 1) / dpr, Math.floor(a), i1));
@@ -433,10 +455,19 @@
       const tol = R - L < 2 * HIT ? HIT : 6;
       if (x < L - tol || x > R + tol) return null;
       const rs = span(0.5 * w);
+      if (fold && x < foldX() && !(R - foldX() < 2 * HIT && x >= foldX() - tol)) {
+        // links vom Punkt: nur die Ganzzahl (bei Lesebreite als Ziffer), sonst die gefaltete Zone
+        if (pHs >= 0.5 && x >= L) {
+          const k = Math.min(headLen - 1, Math.max(0, Math.floor((x - L) / (pHs * w))));
+          return { kind: 'digit', index: k, x0: posOf(k), x1: k === headLen - 1 ? foldX() : posOf(k + 1) };
+        }
+        return { kind: 'left', hi: headLen - 1 };
+      }
+      if (fold && !rs) return { kind: 'right', lo: headLen };
       if (!rs) return { kind: 'all' };
       const ra = rs[0], rb = rs[1];
       // Sammelanzeige genau in der Ziehzone (ab dem Verdichtungspunkt nach aussen), Einzelanzeige sonst: keine Luecke, keine Ueberlappung
-      if (ra > 0 && x < posOf(ra)) return { kind: 'left', hi: ra - 1 };
+      if (ra > bs() && x < posOf(ra)) return { kind: 'left', hi: ra - 1 };
       if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1 };
       const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
       return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
@@ -463,10 +494,11 @@
       ctx.imageSmoothingEnabled = true;
       prep();
       const dd = pDd, N = total();
-      const iLinLo = Math.ceil(leftU(dd) / w - 1e-9);
+      const B = bs();
+      const iLinLo = B + Math.ceil(leftU(dd) / w - 1e-9);
       const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
       const K = stackCount(dd);
-      const iLo = Math.max(0, iLinLo - 1 - K);
+      const iLo = Math.max(B, iLinLo - 1 - K);
       const iHi = Math.min(N - 1, iLinHi + 1 + K);
       // Die Ansicht meldet nur die echte Front; den Vorrat darüber legt der Besitzer fest.
       if (opts.onNeedDigits) opts.onNeedDigits(iLinHi + 2 + K + 100);
@@ -478,7 +510,7 @@
       if (remote) remote.want(sLo, sHi, step);
       const wd = gw, hd = gh;
       const y0 = Math.round(H * dpr / 2 - hd / 2);
-      const mid = (L + R) / 2;
+      const mid = (Lg() + R) / 2;
       if (accCols !== canvas.width || ink.length !== canvas.width * hd) {
         accCols = canvas.width; acc = new Float32Array(accCols * NGA); ink = new Float32Array(accCols * hd);
       }
@@ -539,21 +571,17 @@
             continue;
           }
           ctx.globalAlpha = al;
-          if (pass === 0) { ctx.drawImage(g.img, xDev, y0, wDev, hd); if (drawLog) drawLog.push([xDev, wDev]); }
+          if (pass === 0) { ctx.drawImage(g.img, xDev, y0, wDev, hd); if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); if (drawLog) drawLog.push([xDev, wDev]); }
           else drawCropped(g.img, xDev, wDev, y0, hd, gLo, gHi);
         }
       }
       ctx.globalAlpha = 1;
-      if (sp) { region(0, ja, zoneL); region(jb + 1, N, zoneR); }
-      else region(0, N, zoneR);
+      if (fold) drawHead(y0, hd, wd);
+      if (sp) { region(B, ja, zoneL); region(jb + 1, N, zoneR); }
+      else region(B, N, zoneR);
       infinity();
       flush(zoneL, y0, hd);
       flush(zoneR, y0, hd);
-      // Freihaltezone (z. B. fuer den Dezimalpunkt der Seite): dort bleibt die Tinte weg, ausser R sitzt selbst darin (Strich auf dem Punkt)
-      if (opts.clear) {
-        const cb = opts.clear();
-        if (cb && !(R >= cb[0] && R <= cb[1])) ctx.clearRect(Math.floor(cb[0] * dpr), 0, Math.ceil((cb[1] - cb[0]) * dpr), canvas.height);
-      }
       const ni = pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') : 'null';
       info = ni;
       underline(y0);
@@ -563,6 +591,18 @@
       renderMs = performance.now() - tStart;
     }
 
+    // fold: die Ganzzahl links vom Punkt, gestaucht um pHs: lesbar als Ziffer, schmaler als eine Ziffer als Tinte in zoneL,
+    // unter einem Geraetepixel gezaehlt (region); ganz eingeschoben liegt ihre Tinte als ein Strich auf dem Punkt.
+    function drawHead(y0, hd, wd) {
+      for (let i = 0; i < headLen - 1 && i < chainLen; i++) {
+        const g = atlas[String.fromCharCode(buf[i])];
+        if (!g) continue;
+        let wDev = pHs * w * dpr, xDev = posOf(i) * dpr;
+        if (wDev >= wd * 0.999) { wDev = wd; xDev = Math.round(xDev); ctx.globalAlpha = 1; ctx.drawImage(g.img, xDev, y0, wDev, hd); if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); if (drawLog) drawLog.push([xDev, wDev]); }
+        else if (wDev >= 1) deposit(zoneL, g.t, xDev, wDev, 1);
+        else region(i, i + 1, zoneL);
+      }
+    }
     // Bild (Breite wDev ab xDev) nur im Bereich [lo, hi) zeichnen: Quellausschnitt statt Clip-Pfad.
     function drawCropped(img, xDev, wDev, y0, hd, lo, hi) {
       const a = Math.max(xDev, lo), b = Math.min(xDev + wDev, hi);
@@ -648,7 +688,7 @@
         if (!Number.isFinite(X0)) throw new TypeError('UnfoldingView: origin muss eine Zahl sein, war ' + opts.origin);
         if (opts.unrolled) R = W - MARGIN;
       } else {
-        X0 = L - hOf(oldIdx * w, deff());
+        X0 = fold ? Lg() - hOf((oldIdx - bs()) * w, deff()) - bs() * w : L - hOf(oldIdx * w, deff());
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
@@ -667,11 +707,13 @@
     // Ziehzone eines Endes: ab dem Verdichtungspunkt (Ende der lesbaren Ziffern) nach aussen, nie ueber lesbaren Ziffern.
     function zoneEdges() {
       const rs = span(0.5 * w);
-      return rs ? { r: posOf(rs[1] + 1), l: posOf(rs[0]) } : { r: L, l: R };
+      const lEdge = fold && pHs >= 0.5 ? L : (rs ? posOf(rs[0]) : R);   // fold: lesbare Ganzzahl bleibt frei, gegriffen wird links von ihr
+      return { r: rs ? posOf(rs[1] + 1) : Lg(), l: lEdge };
     }
     function hitTest(x) {
       const Z = zoneEdges();
-      const inR = x >= Z.r && x <= R + HIT, inL = x <= Z.l && x >= L - HIT;
+      const rEdge = fold && R - foldX() < 2 * HIT ? Math.min(Z.r, foldX() - 6) : Z.r;   // fold: am Punkt zusammengeschoben beginnt die Zone wie die Hover-Info 6 px davor
+      const inR = x >= rEdge && x <= R + HIT, inL = x <= Z.l && x >= L - HIT;
       if (opts.fixedStart) {
         // fixedEnd (Funktion): beide Enden stehen fest (Glied zwischen zwei Punkten), nur der Inhalt laesst sich schieben
         const endFixed = typeof opts.fixedEnd === 'function' ? !!opts.fixedEnd() : !!opts.fixedEnd;
@@ -789,7 +831,7 @@
       if (!delta) return;
       const prev = X0;
       X0 -= delta;
-      if (delta < 0) X0 = Math.min(X0, Math.max(prev, L));
+      if (delta < 0) X0 = Math.min(X0, Math.max(prev, x0Cap()));
       clampX0();
       settle('x');
     }
@@ -817,7 +859,7 @@
         // Sausen: rueckt die Kette je Bild weiter als das Fenster breit ist, liegen die Fenster auseinander. Dann haengt der
         // Versatz am Bildtakt (ganze Takte), nicht an der Bilddauer: die Fenster liegen auf einem festen Raster und lassen sich
         // vorausholen, auch wenn ein Bild ausfaellt.
-        const visW = Math.max(1, (R - deff() - X0 - leftU(deff())) / w);
+        const visW = Math.max(1, (R - deff() - Xg() - leftU(deff())) / w);
         const adv = Math.abs(rate) * dt;
         const wasBlur = blur;
         sausen = rate !== 0 && dt > 0 && adv > visW;
@@ -834,7 +876,7 @@
       if (rate !== 0 && dt > 0) {
         const prev = X0;
         X0 -= rate * w * dtEff;   // links (rate > 0): Kette läuft nach links
-        if (rate < 0) X0 = Math.min(X0, Math.max(prev, L));   // rückwärts: stoppt, wenn die 3 vorn ist
+        if (rate < 0) X0 = Math.min(X0, Math.max(prev, x0Cap()));   // rückwärts: stoppt, wenn die 3 vorn ist
         clampX0();
         settle(drag && drag.mode === 'three' ? 'three' : 'x');
       }
@@ -860,6 +902,7 @@
     // Anfang neu setzen (nur solange links nichts eingerollt ist): die ganze Kette rutscht, L/X0/R mit.
     function setOrigin(x) {
       if (!Number.isFinite(+x)) throw new TypeError('UnfoldingView.setOrigin: Zahl erwartet, war ' + x);
+      if (fold) throw new Error('UnfoldingView.setOrigin: nicht im fold-Modus');
       if (rolledLeft()) return;
       const dx = +x - L;
       X0 += dx; L += dx; R = Math.min(R + dx, W - MARGIN);
@@ -944,10 +987,10 @@
       shown() { return { lo: shownLo, codes: decoder.decode(shownCodes.subarray(0, shownN).map((c) => c || 63)), fromRemote: chainLen, marks: Array.from(shownMark.subarray(0, shownN)) }; },
       state() {
         const dd = deff();
-        const startIndex = Math.max(0, startIdx());
-        const endIndex = Math.max(0, (R - dd - X0) / w);
+        const startIndex = Math.max(0, fold && leftU(dd) <= 0 && pHs >= 0.5 ? 0 : startIdx());   // fold: lesbare Ganzzahl zaehlt ab Zeichen 0
+        const endIndex = Math.max(0, (R - dd - X0 - (fold ? 0.5 * w : 0)) / w);   // fold: die Stellen beginnen eine halbe Zelle frueher (kein Komma-Feld)
         return {
-          L, R, X0, d, dEff: dd, factor, w, W, H, dpr, uLeft: leftU(dd),
+          L, R, X0, d, dEff: dd, fold: fold ? { x: foldX(), hs: pHs } : null, factor, w, W, H, dpr, uLeft: leftU(dd),
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
           velocity, drawnCount,
