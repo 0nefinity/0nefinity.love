@@ -1676,9 +1676,12 @@
   // Auftrag an den Server, der kopiert, committet und pusht im Hintergrund. Rückgängig im Fenster bricht ab.
   const PUBLISH_UNDO_MS = 5000;
 
-  function startPublish() {
+  let pubWithDeps = false;
+
+  function startPublish(withDeps) {
     if (pubTimer || !st.live) return;
     st.live = false;
+    pubWithDeps = withDeps === true;
     pubTimer = setTimeout(() => firePublish(false), PUBLISH_UNDO_MS);
     showToast('veröffentlicht', 'rückgängig', cancelPublish, PUBLISH_UNDO_MS + 400);
     syncPause();
@@ -1701,15 +1704,21 @@
     syncPause();
     try {
       if (!leave && !(await flushed())) throw new Error('Änderungen noch nicht gespeichert');
-      await api('POST', 'publish', { path: pagePath });
+      await api('POST', 'publish', { path: pagePath, with_deps: pubWithDeps });
       pollPublish(0);
     } catch (e) { publishFailed(e.message); }
   }
 
-  function publishFailed(msg) {
+  function publishFailed(msg, deps) {
     st.live = true;
     render();
-    showToast('nicht veröffentlicht: ' + msg, 'erneut', startPublish, 0, 'error');
+    if (deps && deps.length) {
+      // the page was NOT published: it needs files that differ on live. Offer to ship them together.
+      showToast('nicht veröffentlicht: Seite braucht abweichende Dateien (' + deps.join(', ') + ')',
+        'mit veröffentlichen', () => startPublish(true), 0, 'error');
+      return;
+    }
+    showToast('nicht veröffentlicht: ' + msg, 'erneut', () => startPublish(), 0, 'error');
   }
 
   function pollPublish(n) {
@@ -1718,7 +1727,7 @@
       let r;
       try { r = await request('GET', 'status'); } catch (e) { publishFailed(e.message); return; }
       const j = r.publish || {};
-      if (j.state === 'error') publishFailed(j.error || 'unbekannter Fehler');
+      if (j.state === 'error') publishFailed(j.error || 'unbekannter Fehler', j.deps);
       else if ((j.state === 'queued' || j.state === 'running') && n < 120) pollPublish(n + 1);
       else if (j.state === 'queued' || j.state === 'running') publishFailed('dauert ungewöhnlich lange');
     }, n ? 1000 : 400);
@@ -2006,7 +2015,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     try {
       const r = await request('GET', 'status');
       const j = r.publish || {};
-      if (j.state === 'error' && Date.now() / 1000 - (j.at || 0) < 600) publishFailed(j.error || 'unbekannter Fehler');
+      if (j.state === 'error' && Date.now() / 1000 - (j.at || 0) < 600) publishFailed(j.error || 'unbekannter Fehler', j.deps);
     } catch (e) { /* kein Fehlerbild: der Status ist nur eine Zusatzabfrage */ }
   }
 
