@@ -197,6 +197,7 @@
       const n = (i) => fmtDE(placeNumber(i), 0) + '.';
       if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
       if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
+      if (info.kind === 'end') return fmtDE(info.count, 0) + ' digits of ' + name;
       if (info.kind === 'right') return n(info.lo) + '-every digit of ' + name;
       return n(0) + '-every digit of ' + name;
     }
@@ -413,10 +414,35 @@
     }
     // Lage jedes Glieds; setzt it.dir/it.rot und die Canvas-Geometrie (CSS-px der Buehne).
     // Freie Flaeche: Desktop rechts neben dem Bedienfeld, Handy ueber dem Bedienblatt. Ihre Mitte ist die Konstante: dort steht der Punkt.
+    // Handy: das Bedienblatt (Bottom Sheet) deckt die untere Fensterhaelfte. Beschriftung und Ziffernzeile ruecken mit ihm hoch und
+    // bleiben darueber sichtbar; die Mitte (x) bleibt. Gleiche Quelle wie controls.js: Oberkante des Blatts (panel.el), Ereignis
+    // ctrl-panel-layout-change; waehrend des Ziehens gibt es kein Ereignis je Bild, darum zusaetzlich die Abfrage in watchR.
+    const LINE_HALF = 34, LABEL_GAP = 10;
+    function liftState() {
+      const H = window.innerHeight, base = { lift: 0, labelTop: 0.68 * stage.clientHeight };
+      if (window.innerWidth > 768 || typeof panel === 'undefined' || !panel || !panel.el) return base;
+      const pTop = panel.el.getBoundingClientRect().top;
+      if (!(pTop > 0) || pTop >= H) return base;
+      const labelH = placeEl.offsetHeight || 28;
+      const labelTop = Math.max(0, Math.min(base.labelTop, pTop - labelH - LABEL_GAP));
+      const centre = Math.max(LINE_HALF, Math.min(H / 2, labelTop - LINE_HALF));
+      return { lift: H / 2 - centre, labelTop };
+    }
+    function applyLift() {
+      const st = liftState();
+      placeEl.style.top = st.lift > 0 || st.labelTop < 0.68 * stage.clientHeight ? st.labelTop + 'px' : '';
+      return st.lift;
+    }
+    let lastPanelTop = -1;
+    function watchPanel() {
+      if (!panel || !panel.el) return;
+      const t = window.innerWidth > 768 ? -2 : Math.round(panel.el.getBoundingClientRect().top);
+      if (t !== lastPanelTop) { lastPanelTop = t; if (multi) { layoutMulti(); for (const it of multi.items) if (it.view) it.view.resize(); } else centreSingle(); }
+    }
     function freeArea() {
       // Der Punkt steht in der Mitte des FENSTERS (Tim), nie in der Mitte der freien Flaeche; das Bedienfeld darf den Inhalt ueberdecken.
       const SW = stage.clientWidth, SH = stage.clientHeight, sr = stage.getBoundingClientRect();
-      return { x0: 0, x1: SW, y0: 0, y1: SH, cx: window.innerWidth / 2 - sr.left, cy: window.innerHeight / 2 - sr.top };
+      return { x0: 0, x1: SW, y0: 0, y1: SH, cx: window.innerWidth / 2 - sr.left, cy: window.innerHeight / 2 - sr.top - applyLift() };
     }
     // Tinte nur jenseits des Punkts ('from': x >= v, 'to': x <= v, Canvas-Koordinaten). Maske statt clip-path: clip-path schneidet
     // auch die Trefferflaeche, dann trifft die Maus auf der Stossstelle kein Glied.
@@ -713,6 +739,7 @@
       const A = freeArea(), SW = stage.clientWidth, w = cellW(), ip = singleInt().length;
       const left = A.cx - (ip + 0.5) * w - ORIGIN;
       Object.assign(canvas.style, { position: 'absolute', left: left + 'px', top: '0px', width: (SW - left) + 'px', height: A.y1 + 'px', margin: '0' });
+      canvas.style.top = (A.cy - A.y1 / 2) + 'px';
       // keine Maske: WebKit blendet bei einem Verlauf mit Stopp bei -1e6 px die ganze Zeichenflaeche aus
       canvas.style.maskImage = canvas.style.webkitMaskImage = ''; delete canvas.dataset.inkSide; delete canvas.dataset.inkAt;
       view.resize();
@@ -797,6 +824,7 @@
     // Strich eingeschoben/herausgezogen: Punkt neu zeichnen, sobald sich R aendert (Einzelmodus)
     let lastR = null;
     (function watchR() {
+      watchPanel();
       if (!multi && view) { const st = view.state(), r = st.R + ':' + st.L + ':' + (st.uLeft > 0.5); if (r !== lastR) { lastR = r; centreSingle(); drawDots(single.points.length ? single.points : [{ x: freeArea().cx, y: freeArea().cy }]); } }
       requestAnimationFrame(watchR);
     })();
