@@ -2009,6 +2009,59 @@ pre {
     cursor: default;
 }
 
+/* Symbolspalte (layout: 'column'): Symbole untereinander, Seitenfelder daneben auf Luecke.
+   Jedes Symbol belegt zwei Halbzeilen, ein Seitenfeld sitzt so genau zwischen zwei Symbolen. */
+.ctrl-symbol-row-column {
+    --ctrl-sym-h: 32px;
+    --ctrl-sym-gap: 6px;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-strip,
+.ctrl-symbol-row-column .ctrl-symbol-side {
+    display: grid;
+    grid-auto-rows: calc((var(--ctrl-sym-h) + var(--ctrl-sym-gap)) / 2);
+    row-gap: 0;
+    align-items: center;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-strip {
+    grid-template-columns: 5.5em 3.2em;
+    column-gap: 0.6rem;
+    justify-content: start;
+    overflow: visible;
+}
+
+.ctrl-panel .ctrl-symbol-row-column .ctrl-input.ctrl-symbol-input {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: var(--ctrl-sym-h);
+    min-height: 0;
+    font-size: 15px;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-side {
+    position: relative;
+    align-self: stretch;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-side-centered {
+    display: flex;
+    align-items: center;
+}
+
+.ctrl-symbol-row-column .ctrl-symbol-btns {
+    display: flex;
+    justify-content: center;
+    gap: 0.35rem;
+    align-self: center;
+}
+
+
+html.oe-editing .ctrl-symbol-side:has(> .ctrl-default-pin) {
+    padding-left: 26px;
+}
+
 /* Schalter mit Unter-Einstellungen: [Haken] [Stift], darunter eingerueckt aufklappbar */
 .ctrl-row-has-details .ctrl-checkbox-wrap {
     gap: 0.35rem;
