@@ -710,6 +710,8 @@
         input.autocomplete = 'off';
         input.setAttribute('data-1p-ignore', '');
         input.setAttribute('data-lpignore', 'true');
+        input.setAttribute('data-bwignore', '');
+        input.setAttribute('data-form-type', 'other');
         const place = () => {
             const r = el.getBoundingClientRect();
             const w = Math.min(Math.max(r.width + 24, 140), window.innerWidth - 16);
@@ -3449,7 +3451,7 @@
             row.dataset.key = key;
             row.innerHTML = `
                 <label class="ctrl-label">${label}</label>
-                <textarea class="ctrl-textarea" placeholder="${placeholder}">${value}</textarea>
+                <textarea class="ctrl-textarea" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="${placeholder}">${value}</textarea>
             `;
 
             const textarea = row.querySelector('textarea');
@@ -3631,6 +3633,11 @@
                         m.value = sideValues[0] ?? '';
                         m.disabled = true;
                         m.tabIndex = -1;
+                        ['autocomplete', 'autocapitalize'].forEach(a => m.setAttribute(a, 'off'));
+                        m.setAttribute('data-1p-ignore', '');
+                        m.setAttribute('data-lpignore', 'true');
+                        m.setAttribute('data-bwignore', '');
+                        m.setAttribute('data-form-type', 'other');
                         m.setAttribute('aria-hidden', 'true');
                         place(m, i + 2, 2);
                         mirrors.push(m);
@@ -3698,7 +3705,7 @@
             row.innerHTML = `
                 <label class="ctrl-label">${label}</label>
                 <div class="ctrl-text-styled">
-                    <textarea class="ctrl-textarea" placeholder="${placeholder}">${value}</textarea>
+                    <textarea class="ctrl-textarea" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="${placeholder}">${value}</textarea>
                     <button class="ctrl-text-styled-btn" title="Styling">&#8942;</button>
                     <div class="ctrl-style-popup hidden">
                         <div class="ctrl-style-popup-row">
