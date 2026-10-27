@@ -231,18 +231,61 @@
 
   function candidates() {
     const out = [];
+    const isHost = (c) => TEXT_TAGS.has(c.tagName) && c.textContent.trim() && isTextOnly(c);
+    const blank = (n) => n.nodeType === 3 && !n.data.trim();
+    // Fliesstext zwischen Bloecken (Textknoten, Kommentare, Inline-Elemente) bildet einen Lauf; er wird in
+    // <oe-run> gepackt und ist eine eigene Textstelle. Ein Lauf aus genau einem Element ist dieses Element.
+    const flush = (run) => {
+      while (run.length && blank(run[0])) run.shift();
+      while (run.length && blank(run[run.length - 1])) run.pop();
+      if (!run.some((n) => n.nodeType !== 8 && n.textContent.trim())) return;
+      if (run.length === 1 && run[0].nodeType === 1) { out.push(run[0]); return; }
+      const w = document.createElement('oe-run');
+      run[0].before(w);
+      w.append(...run);
+      out.push(w);
+    };
     const walk = (el) => {
-      for (const child of el.children) {
-        if (child.matches(SKIP)) continue;
-        if (TEXT_TAGS.has(child.tagName) && child.textContent.trim() && isTextOnly(child)) {
-          out.push(child);
-        } else {
-          walk(child);
-        }
+      let run = [];
+      for (const n of [...el.childNodes]) {
+        if (n.nodeType === 3 || n.nodeType === 8) { run.push(n); continue; }
+        if (n.nodeType !== 1 || n.matches(SKIP)) { flush(run); run = []; continue; }
+        if (isHost(n) && !INLINE.has(n.tagName)) { flush(run); run = []; out.push(n); continue; }
+        if (INLINE.has(n.tagName) && isTextOnly(n) && !n.querySelector(SKIP)) { run.push(n); continue; }
+        flush(run);
+        run = [];
+        walk(n);
       }
+      flush(run);
     };
     walk(document.body);
     return out;
+  }
+
+  // Texte, die nicht im Quelltext stehen (von Skripten erzeugt, in Animationen zerlegt), sind nicht bearbeitbar.
+  async function dropUnlocatable(hosts) {
+    let r;
+    try { r = await api('POST', 'check', { path: pagePath, origs: hosts.map((h) => originals.get(h)) }); } catch (e) {
+      // Nur eine Vorabprüfung: ist der Dienst weg, meldet das Speichern es laut; ein altes Backend ohne Route ebenso still.
+      if (/nicht erreichbar/.test(String(e.message))) console.warn('[editor] ' + e.message);
+      else if (!/not_found|404/.test(String(e.message))) say('Prüfung der Textstellen: ' + e.message, 'error');
+      return;
+    }
+    if (!editing) return;
+    const size = new Map();
+    for (const h of hosts) size.set(originals.get(h), (size.get(originals.get(h)) || 0) + 1);
+    hosts.forEach((h, i) => {
+      if (!h.hasAttribute('data-oe') || touched.has(h)) return;
+      const n = r.hits[i];
+      if (n === 1 || (n > 1 && n === size.get(originals.get(h)))) return;
+      release(h);
+      originals.delete(h);
+    });
+    render();
+  }
+
+  function unwrapRuns() {
+    for (const w of document.querySelectorAll('oe-run')) w.replaceWith(...w.childNodes);
   }
 
   function isTextOnly(el) {
@@ -314,7 +357,11 @@
   function undo() { if (editing) step(undoStack, redoStack); }
   function redo() { if (editing) step(redoStack, undoStack); }
 
+  // Menue, Suchfeld und Editor-Oberflaeche liegen im gemeinsamen Editor-Container, gehoeren aber nicht dazu.
+  const OUTSIDE = 'input, textarea, select, #meta-nav, [data-oe-ui]:not(.oe-cmt)';
+
   function onBeforeInput(e) {
+    if (e.target.closest && e.target.closest(OUTSIDE)) return;
     const t = e.inputType || '';
     if (t === 'historyUndo' || t === 'historyRedo') {
       e.preventDefault();
@@ -363,6 +410,7 @@
   // Sprechblasen in einer Bearbeitungsstelle sind Teil von deren Editor: getippt wird dort, der Kommentarknoten
   // zieht nach, und das normale Autosave der Stelle speichert ihn mit.
   function onHostInput(e) {
+    if (e.target.closest && e.target.closest(OUTSIDE)) return;
     if (badgeEvt(e)) return;
     if (stray) {
       stray.node.data = stray.data;
@@ -440,6 +488,7 @@
   }
 
   function plainPaste(e) {
+    if (e.target.closest && e.target.closest(OUTSIDE)) return;
     if (badgeEvt(e)) return;
     e.preventDefault();
     const host = selHost();
@@ -452,6 +501,7 @@
 
   // Tasten bleiben im Text: Seiten-Shortcuts (Leertaste, Pfeile, Controls) sehen sie nicht.
   function keepKeys(e) {
+    if (e.target.closest && e.target.closest(OUTSIDE)) return;
     if (badgeEvt(e)) return;
     const host = selHost();
     if (!host) return;
@@ -636,6 +686,7 @@
       claimRoot(hosts);
       watcher = new MutationObserver(onForeignChange);
       watcher.observe(document.body, { subtree: true, childList: true, characterData: true });
+      dropUnlocatable(hosts);
     }
     if (cmtOn) renderBadges();
     syncPause();
@@ -739,6 +790,7 @@
     watcher = null;
     for (const el of originals.keys()) delete el.dataset.oe;
     releaseRoot();
+    unwrapRuns();
     if (cur) cur.classList.remove('oe-cur');
     cur = null;
     originals = new Map();
@@ -769,6 +821,14 @@
     saveTimer = setTimeout(save, AUTOSAVE_MS);
   }
 
+  // Mehrere Stellen mit gleichem Quelltext (z. B. zwei gleiche Zeilen): Nummer unter den gleichen Stellen in
+  // Dokumentreihenfolge, damit der Server die richtige trifft. Passt die Zahl nicht, lehnt er laut ab.
+  function place(el, orig) {
+    const same = [...originals].filter(([, o]) => o === orig).map(([h]) => h);
+    same.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    return { nth: same.indexOf(el) + 1, of: same.length };
+  }
+
   // Gespeichert wird genau der Stand, der abgeschickt wurde; was waehrenddessen dazukommt, folgt im naechsten Lauf.
   async function save() {
     clearTimeout(saveTimer);
@@ -777,7 +837,7 @@
     if (!pend.length) return true;
     saving = (async () => {
       try {
-        const r = await api('POST', 'save', { path: pagePath, changes: pend.map(([, orig, neu]) => ({ orig, neu })) });
+        const r = await api('POST', 'save', { path: pagePath, changes: pend.map(([el, orig, neu]) => ({ orig, neu, ...place(el, orig) })) });
         for (const [el, , neu] of pend) originals.set(el, neu);
         setLive(r.live_differs);
         saveOk();
@@ -1484,6 +1544,8 @@
   font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;pointer-events:none}
 #oe-bar>*{pointer-events:auto}
 body.menu-open #oe-bar{display:none}
+@media (min-width:720px){body.menu-open #oe-bar{display:flex;right:calc(var(--menu-effective-width) + 12px);max-width:calc(100vw - var(--menu-effective-width) - 24px)}}
+oe-run{display:inline}
 .oe-overlay,#oe-admin{text-align:left}
 .oe-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .oe-head{display:flex;align-items:center;gap:2px}
