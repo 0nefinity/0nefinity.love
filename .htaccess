@@ -128,9 +128,9 @@ IndexIgnore .git .ssh .vscode .htaccess .htpasswd .env .env.* .gitignore .gitatt
   <FilesMatch "\.(js|css|png|jpe?g|gif|svg|webp|ico|mp4|webm)$">
     Header set Cache-Control "public, max-age=300"
   </FilesMatch>
-  # Editor und Live-Reload auf dev: immer nachfragen (ETag), sonst laeuft nach einer
-  # Aenderung bis zu 5 Minuten die alte Version weiter.
-  <FilesMatch "^(editor|live-reload)\.js$">
+  # Dev: HTML/JS/CSS immer nachfragen (ETag). Sonst mischt der Browser bis zu
+  # 5 Minuten alte und neue Dateien. Live behaelt die 5 Minuten oben.
+  <FilesMatch "\.(html|js|css)$">
     <If "%{HTTP_HOST} =~ /^dev\./">
       Header set Cache-Control "no-cache"
     </If>
