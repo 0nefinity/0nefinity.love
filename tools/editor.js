@@ -88,10 +88,12 @@
   // a: entfernter, b: eingefuegter Teil}. Das ueberlebt Neuladen (localStorage je Seite); openGrp ist der noch
   // offene Tippschritt.
   let hostList = [];
+  // Absatzformat (editor-format.js): urspruengliches Element je Textstelle, solange es vom Stand der Datei abweicht.
+  let tagOrig = new Map();
   let openGrp = null;
   let grpTimer = null;
   let hist = null;
-  let btnHist, menuHist;
+  let btnHist, menuHist, btnFmt, menuFmt;
   const GROUP_MS = 1200;
   let commitPoll = null;
   // Text, den ein Skript der Seite laufend umschreibt (Animationen), ist nicht bearbeitbar: sonst
@@ -112,6 +114,7 @@
     bubble: 'M4 5h16v11h-9l-5 4v-4h-2z',
     noteplus: 'M4 5h16v11h-9l-5 4v-4h-2zM12 7.5v6M9 10.5h6',
     diff: 'M12 4v8M8 8h8M8 18h8',
+    fmt: 'M3 19L8 6l5 13M5 15h6M15 19l3-7 3 7M16.5 17h3',
     hist: 'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 8v4l3 2',
     undo: 'M9 15L4 10l5-5M4 10h10a5 5 0 0 1 0 10h-4',
     redo: 'M15 15l5-5-5-5M20 10H10a5 5 0 0 0 0 10h4',
@@ -280,7 +283,7 @@
   let extras = null;
   async function loadExtras() {
     const base = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, '');
-    await Promise.all(['filename', 'newpage', 'marks'].map((n) => new Promise((ok, no) => {
+    await Promise.all(['filename', 'newpage', 'marks', 'format'].map((n) => new Promise((ok, no) => {
       const s = document.createElement('script');
       s.src = base + 'editor-' + n + '.js';
       s.onload = ok;
@@ -296,7 +299,13 @@
       }),
       np: window.OneEditorNewPage.mount({ bar: head, request: api, beforeCreate: wait }),
       marks: window.OneEditorMarks.mount({ bar: head, root: () => root || document.querySelector('main') || document.body }),
+      fmt: window.OneEditorFormat.mount({
+        host: selHost, before: (h) => { touch(h); snap(h, 'force'); }, after: () => { markDirty(); syncSelBar(); },
+        blockOf, setBlock: (t) => setBlock(t), md: isMd, bar: () => bar, fail: (m) => say(m, 'error'),
+      }),
     };
+    extras.fmt.onPanel((on) => { for (const b of [btnFmt, menuFmt]) if (b) b.setAttribute('aria-pressed', String(on)); });
+    if (selBar) fillSelBar();
   }
 
   async function loadSource() {
@@ -508,9 +517,16 @@
   function applyEntry(e, undoing) {
     const el = hostList[e.i];
     if (!el || !el.isConnected || !el.hasAttribute('data-oe') || !originals.has(el)) return false;
-    const cur = cleanHTML(el);
     const from = undoing ? e.b : e.a;
     const to = undoing ? e.a : e.b;
+    if (e.k === 'tag') {
+      if (el.tagName.toLowerCase() !== from) return false;
+      touch(el);
+      swapTag(el, to);
+      markDirty();
+      return true;
+    }
+    const cur = cleanHTML(el);
     if (e.p + e.s > cur.length || cur.slice(e.p, cur.length - e.s) !== from) return false;
     touch(el);
     ownAt = performance.now();
@@ -545,6 +561,7 @@
   function jumpToStep(e, applied) {
     const el = hostList[e.i];
     if (!el || !el.isConnected || !el.hasAttribute('data-oe')) { showToast('Stelle nicht mehr bearbeitbar', '', null, 0, 'error'); return; }
+    if (e.k === 'tag') { focusHost(el); return; }
     const cur = cleanHTML(el);
     placeCaret(el, cur, Math.min(cur.length, e.p + (applied ? e.b : e.a).length));
   }
@@ -565,8 +582,8 @@
     const t = document.createElement('time');
     t.textContent = new Date(e.t).toLocaleTimeString('de-DE');
     const x = document.createElement('span');
-    const a = excerpt(e.a);
-    const c = excerpt(e.b);
+    const a = e.k === 'tag' ? '<' + e.a + '>' : excerpt(e.a);
+    const c = e.k === 'tag' ? '<' + e.b + '>' : excerpt(e.b);
     if (a) { const d = document.createElement('del'); d.textContent = a; x.append(d, ' '); }
     if (c) { const n = document.createElement('ins'); n.textContent = c; x.append(n); }
     b.append(t, x);
@@ -683,6 +700,7 @@
     }
     const host = selHost();
     if (!host) return;
+    if (extras) extras.fmt.tidy(host);
     for (const b of host.querySelectorAll('.oe-cmt')) {
       const info = badgeInfo.get(b);
       if (!info || info.host !== host) continue;
@@ -719,12 +737,12 @@
   }
 
   function shortcut(e) {
+    const f = extras && extras.fmt.key(e);
+    if (f) return f;
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
     const k = e.key.toLowerCase();
     if (k === 'z') return e.shiftKey ? redo : undo;
     if (k === 'y') return redo;
-    if (k === 'b') return () => fmt('bold');
-    if (k === 'i') return () => fmt('italic');
     if (k === 'k') return openLink;
     if (k === 'l' && e.shiftKey) return addComment;
     return null;
@@ -818,12 +836,13 @@
   }
 
   function fillSelBar() {
+    const f = extras ? extras.fmt.parts() : { inline: [], clear: null, block: [] };
+    const row = (...k) => { const d = document.createElement('div'); d.className = 'oe-selrow'; d.append(...k.filter(Boolean)); return d; };
     selBar.replaceChildren(
-      selButton('B', 'fett (Strg+B)', () => fmt('bold'), 'oe-fb'),
-      selButton('I', 'kursiv (Strg+I)', () => fmt('italic'), 'oe-fi'),
-      selButton('link', 'Link (Strg+K)', openLink, 'oe-fl'),
-      selButton('noteplus', 'Kommentar einfügen (Strg+Umschalt+L)', addComment),
-      selButton('clear', 'Formatierung entfernen', () => fmt('removeFormat')));
+      row(...f.inline,
+        selButton('link', 'Link (Strg+K)', openLink, 'oe-fl'),
+        selButton('noteplus', 'Kommentar einfügen (Strg+Umschalt+L)', addComment), f.clear),
+      row(...f.block));
     linkRange = null;
   }
 
@@ -863,13 +882,12 @@
       if (h) h.classList.add('oe-cur');
       cur = h;
     }
+    if (extras) extras.fmt.sync();
     if (!selBar || linkRange) return;
     const host = selectionHost();
     if (!host) { selBar.hidden = true; return; }
     const sel = getSelection();
     selBar.hidden = false;
-    selBar.querySelector('.oe-fb').setAttribute('aria-pressed', String(document.queryCommandState('bold')));
-    selBar.querySelector('.oe-fi').setAttribute('aria-pressed', String(document.queryCommandState('italic')));
     const inLink = !!(linkAt(sel.anchorNode) || linkAt(sel.focusNode));
     const fl = selBar.querySelector('.oe-fl');
     fl.setAttribute('aria-pressed', String(inLink));
@@ -940,6 +958,7 @@
       document.documentElement.classList.add('oe-editing');
       originals = new Map();
       touched = new Set();
+      tagOrig = new Map();
       const hosts = candidates();
       hostList = hosts.slice();
       loadHist();
@@ -1057,6 +1076,7 @@
     cur = null;
     originals = new Map();
     touched = new Set();
+    tagOrig = new Map();
     closeGroup();
     undoStack = [];
     redoStack = [];
@@ -1070,7 +1090,84 @@
   }
 
   function dirty() {
-    return [...originals].filter(([el, orig]) => touched.has(el) && cleanHTML(el) !== orig);
+    return [...originals].filter(([el, orig]) => touched.has(el) && (cleanHTML(el) !== orig || tagChanged(el)));
+  }
+
+  // ---- Absatzformat (Normal/H1-H3): das Element wird durch ein anderes ersetzt, Inhalt und Attribute bleiben.
+  // Gespeichert wird dann das ganze Element (aeusserer Rahmen samt Inhalt), nicht nur der Inhalt.
+  const BLOCK_TAGS = /^(p|h[1-6])$/;
+  const tagNow = (el) => el.tagName.toLowerCase();
+  const tagChanged = (el) => tagOrig.has(el) && tagNow(el) !== tagOrig.get(el).tag;
+
+  function blockOf(el) {
+    const t = el && tagNow(el);
+    return t && BLOCK_TAGS.test(t) && el.hasAttribute('data-oe') ? t : null;
+  }
+
+  function startTag(el) {
+    const a = [];
+    for (const { name, value } of el.attributes) {
+      if (name === 'data-oe') continue;
+      let v = value;
+      if (name === 'class') {
+        v = value.split(/\s+/).filter((c) => c && c !== 'oe-cur').join(' ');
+        if (!v) continue;
+      }
+      a.push(' ' + name + '="' + v.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"');
+    }
+    return '<' + tagNow(el) + a.join('') + '>';
+  }
+
+  function swapTag(el, tag) {
+    ownAt = performance.now();
+    const next = extras.fmt.keep(el, () => {
+      const n = document.createElement(tag);
+      for (const a of el.attributes) n.setAttribute(a.name, a.value);
+      n.append(...el.childNodes);
+      el.replaceWith(n);
+      return n;
+    });
+    const i = hostList.indexOf(el);
+    if (i >= 0) hostList[i] = next;
+    for (const m of [originals, tagOrig]) if (m.has(el)) { m.set(next, m.get(el)); m.delete(el); }
+    if (touched.delete(el)) touched.add(next);
+    if (cur === el) cur = next;
+    if (cmtOn) renderBadges();
+    return next;
+  }
+
+  function setBlock(tag) {
+    const el = selHost();
+    if (!el || !blockOf(el)) return false;
+    const from = tagNow(el);
+    if (from === tag) return true;
+    closeGroup();
+    touch(el);
+    if (!tagOrig.has(el)) tagOrig.set(el, { tag: from, start: startTag(el) });
+    const i = hostList.indexOf(el);
+    swapTag(el, tag);
+    if (i >= 0) { undoStack.push({ i, t: Date.now(), k: 'tag', a: from, b: tag }); redoStack = []; persistHist(); }
+    markDirty();
+    refreshHist();
+    syncSelBar();
+    return true;
+  }
+
+  // Ganzes Element wie im Quelltext: Rahmen + Inhalt. Fuer Stellen ohne Rahmenwechsel gilt der heutige Rahmen.
+  function framed(el, inner, info) {
+    const o = info || { tag: tagNow(el), start: startTag(el) };
+    return o.start + inner + '</' + o.tag + '>';
+  }
+
+  function changeSet(pend) {
+    const full = new Map([...originals].map(([h, o]) => [h, framed(h, o, tagOrig.get(h))]));
+    return pend.map(([el, orig, neu, now]) => {
+      if (!tagOrig.has(el) || now.tag === tagOrig.get(el).tag) return { orig, neu, ...place(el, orig) };
+      const fo = full.get(el);
+      const same = [...full].filter(([, v]) => v === fo).map(([h]) => h);
+      same.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+      return { orig: fo, neu: framed(el, neu, now), nth: same.indexOf(el) + 1, of: same.length };
+    });
   }
 
   function markDirty() {
@@ -1098,7 +1195,7 @@
   async function save() {
     clearTimeout(saveTimer);
     if (saving) { saveAgain = true; return saving; }
-    const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el)]);
+    const pend = dirty().map(([el, orig]) => [el, orig, cleanHTML(el), { tag: tagNow(el), start: startTag(el) }]);
     if (!pend.length) return true;
     let md = null;
     if (isMd()) {
@@ -1106,9 +1203,9 @@
     }
     saving = (async () => {
       try {
-        const r = await api('POST', 'save', md ? { path: pagePath, ...md } : { path: pagePath, changes: pend.map(([el, orig, neu]) => ({ orig, neu, ...place(el, orig) })) });
+        const r = await api('POST', 'save', md ? { path: pagePath, ...md } : { path: pagePath, changes: changeSet(pend) });
         if (md) mdBase = md.text;
-        for (const [el, , neu] of pend) originals.set(el, neu);
+        for (const [el, , neu, now] of pend) { originals.set(el, neu); if (tagOrig.has(el)) tagOrig.set(el, now); }
         setLive(r.live_differs);
         saveOk();
         watchCommit();
@@ -1858,12 +1955,12 @@ oe-run{display:inline}
 .oe-btn.oe-mini:not([aria-pressed=true]){border-color:transparent!important}
 .oe-btn.oe-mini:focus-visible,.oe-btn.oe-mini[aria-pressed=true]{opacity:1}
 .oe-btn.oe-mini:disabled{opacity:.25!important}
-.oe-sel{position:fixed;z-index:2147483002;display:flex;gap:2px;padding:2px;border-radius:6px;
+.oe-sel{position:fixed;z-index:2147483002;display:flex;flex-direction:column;gap:2px;padding:2px;border-radius:6px;max-width:calc(100vw - 16px);box-sizing:border-box;
   border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent);background:var(--bg-color,#000);color:var(--text-color,#fff);
   font:15px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .oe-sel[hidden]{display:none}
-.oe-sel .oe-fb{font-weight:700!important}
-.oe-sel .oe-fi{font-style:italic!important;font-family:Georgia,serif!important}
+.oe-selrow{display:flex;gap:2px;flex-wrap:wrap}
+.oe-selrow:empty{display:none}
 .oe-sel input{width:min(220px,60vw);min-height:32px;font-size:16px;padding:0 8px;border:0;border-radius:4px;box-sizing:border-box;
   color:var(--text-color,#fff);background:color-mix(in srgb,var(--text-color,#fff) 10%,transparent)}
 .oe-btn[hidden]{display:none!important}
@@ -1996,7 +2093,8 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
         btnPub.title = st.draftCount ? 'veröffentlichen (' + st.draftCount + ' unveröffentlicht: ' + st.draftFiles.slice(0, 8).join(', ') + ')' : 'nichts zu veröffentlichen';
       }
     }
-    if (extras) extras.fn.setEditing(editing);
+    if (extras) { extras.fn.setEditing(editing); extras.fmt.setEditing(editing); }
+    for (const b of [btnFmt, menuFmt]) if (b) b.hidden = !editing;
   }
 
   function mini(kind, label, fn) {
@@ -2025,12 +2123,14 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     btnDiff.classList.add('oe-wide');
     btnHist = mini('hist', 'Verlauf', () => toggleHist());
     btnHist.classList.add('oe-wide');
+    btnFmt = mini('fmt', 'Formatierung', () => extras && extras.fmt.togglePanel());
+    btnFmt.classList.add('oe-wide');
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
     const head = document.createElement('div');
     head.className = 'oe-head';
     // Feste Reihenfolge, rechts verankert: das Stift-Symbol bleibt beim Umschalten an seinem Platz.
-    head.append(btnUndo, btnRedo, btnHist, btnEdit, btnSrc, btnCmt, btnDiff);
+    head.append(btnUndo, btnRedo, btnFmt, btnHist, btnEdit, btnSrc, btnCmt, btnDiff);
     if (!CFG.direct) {
       btnPub = mini('upload', 'veröffentlichen', startPublish);
       head.append(btnPub);
@@ -2095,12 +2195,13 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     menuSrc = mini('code', 'Quelltext', openSource);
     menuDiff = mini('diff', 'Änderungen', () => openChanges(false));
     menuHist = mini('hist', 'Verlauf', () => toggleHist());
-    for (const b of [menuSrc, menuDiff, menuHist]) b.classList.add('oe-narrow');
+    menuFmt = mini('fmt', 'Formatierung', () => extras && extras.fmt.togglePanel());
+    for (const b of [menuSrc, menuDiff, menuHist, menuFmt]) b.classList.add('oe-narrow');
     for (const b of [analytics, out]) b.classList.add('oe-small');
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(menuSrc, menuDiff, menuHist, analytics, out);
+    sec.append(menuSrc, menuDiff, menuHist, menuFmt, analytics, out);
     wrap.prepend(sec);
   }
 
