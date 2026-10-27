@@ -480,6 +480,9 @@
     }
     for (const w of c.querySelectorAll('oe-run')) w.replaceWith(...w.childNodes);
     for (const n of c.querySelectorAll('[data-oe],.oe-cur')) scrubClone(n);
+    // Die Hilfsklasse oe-cur wandert mit der Schreibmarke und laesst class="" zurueck. Das Gerippe muss vom Zustand der
+    // Oberflaeche unabhaengig sein, sonst verrutschen die Suffix-Laengen aller aelteren Rueckgaengig-Schritte.
+    for (const n of c.querySelectorAll('[class=""]')) n.removeAttribute('class');
     let h = c.innerHTML;
     if (mode === 'doc') h = h.replace(/<oe-isl n="([^"]+)"><\/oe-isl>/g, (_, id) => SENT + (islandBase.get(id) ?? '') + SENT);
     return h;
@@ -737,17 +740,14 @@
     const from = undoing ? undoStack : redoStack;
     const to = undoing ? redoStack : undoStack;
     let dropped = 0;
-    let e;
-    while (from.length) {
-      if (from[from.length - 1].k === 'rename') {
-        if (!dropped) stepRename(undoing);
-        break;
-      }
-      e = from.pop();
-      if (applyEntry(e, undoing)) { to.push(e); break; }
-      dropped++;
+    if (from.length && from[from.length - 1].k === 'rename') stepRename(undoing);
+    else if (from.length) {
+      // Passt ein Schritt nicht mehr, faellt nur dieser eine weg, laut gemeldet; der Rest des Verlaufs bleibt.
+      const e = from.pop();
+      if (applyEntry(e, undoing)) to.push(e);
+      else dropped = 1;
     }
-    if (dropped) showToast(dropped + (dropped > 1 ? ' Schritte' : ' Schritt') + ' nicht mehr anwendbar (Text hat sich geändert), verworfen', '', null, 0, 'error');
+    if (dropped) showToast('Ein Schritt nicht mehr anwendbar (Text hat sich geändert), verworfen; ' + from.length + ' weitere im Verlauf', '', null, 0, 'error');
     persistHist();
     render();
     refreshHist();
