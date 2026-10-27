@@ -575,7 +575,7 @@
         }
         
         function getPointRadius(cp) {
-            return config.applyToAll ? config.influenceRadius : (cp.radius || config.influenceRadius);
+            return config.applyToAll ? config.influenceRadius : (cp.radius ?? config.influenceRadius);
         }
         
         // Gecacheter State für direkte Berechnung (vermeidet Objekt-Erzeugung pro Aufruf)
