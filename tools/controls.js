@@ -1071,6 +1071,17 @@
                         this._closeConfigPopup();
                     }
                 });
+
+                document.addEventListener('keydown', (e) => {
+                    if (!popup.classList.contains('open') || !popup._ctrlActions) return;
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        popup._ctrlActions.cancel();
+                    } else if (e.key === 'Enter' && !getTargetElement(e.target)?.closest('.ctrl-config-arrow, .ctrl-config-default, .ctrl-config-cancel')) {
+                        e.preventDefault();
+                        popup._ctrlActions.save();
+                    }
+                });
             }
             return popup;
         }
@@ -1088,6 +1099,7 @@
             });
 
             this._activeConfigKey = null;
+            if (popup) popup._ctrlActions = null;
         }
 
         // Config-Popup Ã¶ffnen fÃ¼r einen bestimmten Slider
@@ -1132,13 +1144,29 @@
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
-                <button class="ctrl-config-reset">Reset</button>
+                <div class="ctrl-config-actions">
+                    <button type="button" class="ctrl-config-cancel">Cancel</button>
+                    <button type="button" class="ctrl-config-save">Save</button>
+                </div>
+                <button type="button" class="ctrl-config-default">Default range</button>
             `;
+
+            const snapshot = {
+                min: cfg.min, max: cfg.max, step: cfg.step, decimals: cfg.decimals
+            };
 
             const syncConfigInputs = () => {
                 popup.querySelectorAll('.ctrl-config-input').forEach((inputEl) => {
                     inputEl.value = formatConfigFieldValue(cfg, inputEl.dataset.config);
                 });
+            };
+
+            // Changes preview live; Cancel restores the state from when the menu opened.
+            const saveConfig = () => this._closeConfigPopup();
+            const cancelConfig = () => {
+                Object.assign(cfg, snapshot);
+                this._updateSliderFromConfig(key);
+                this._closeConfigPopup();
             };
 
             const applyConfigValue = (configType, nextValue) => {
@@ -1185,11 +1213,13 @@
                         input.select();
                     } else if (e.key === 'Enter') {
                         e.preventDefault();
-                        input.blur();
+                        e.stopPropagation();
+                        commitInputValue();
+                        saveConfig();
                     } else if (e.key === 'Escape') {
                         e.preventDefault();
-                        input.value = formatConfigFieldValue(cfg, input.dataset.config);
-                        input.blur();
+                        e.stopPropagation();
+                        cancelConfig();
                     }
                 });
             });
@@ -1258,8 +1288,7 @@
                 });
             });
 
-            // Reset-Button
-            popup.querySelector('.ctrl-config-reset').addEventListener('click', () => {
+            popup.querySelector('.ctrl-config-default').addEventListener('click', () => {
                 cfg.min = cfg.defaultMin;
                 cfg.max = cfg.defaultMax;
                 cfg.step = cfg.defaultStep;
@@ -1267,6 +1296,9 @@
                 syncConfigInputs();
                 this._updateSliderFromConfig(key);
             });
+            popup.querySelector('.ctrl-config-save').addEventListener('click', () => saveConfig());
+            popup.querySelector('.ctrl-config-cancel').addEventListener('click', () => cancelConfig());
+            popup._ctrlActions = { save: saveConfig, cancel: cancelConfig };
 
             // Positionieren
             const triggerRect = triggerEl.getBoundingClientRect();

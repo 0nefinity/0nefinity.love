@@ -2910,6 +2910,54 @@ html.oe-editing .ctrl-row:has(> .ctrl-default-pin) {
     color: var(--text-color, #fff);
 }
 
+.ctrl-config-actions {
+    display: flex;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+}
+
+.ctrl-config-save,
+.ctrl-config-cancel {
+    flex: 1;
+    padding: 0.25rem 0.4rem;
+    background: transparent;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    color: var(--ui-text-70);
+    cursor: pointer;
+    font-size: 11px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.ctrl-config-save {
+    background: var(--ui-fill-10);
+    color: var(--text-color, #fff);
+}
+
+.ctrl-config-save:hover,
+.ctrl-config-cancel:hover {
+    background: var(--ui-fill-10);
+    color: var(--text-color, #fff);
+}
+
+.ctrl-config-default {
+    align-self: center;
+    margin-top: 0.15rem;
+    padding: 0.1rem;
+    background: none;
+    border: none;
+    color: var(--ui-text-70);
+    cursor: pointer;
+    font-size: 10px;
+    opacity: 0.7;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.ctrl-config-default:hover {
+    opacity: 1;
+}
+
 @media (max-width: 768px) {
     .ctrl-panel,
     .ctrl-panel.position-left,
