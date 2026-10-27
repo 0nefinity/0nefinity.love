@@ -45,8 +45,10 @@
     const s = document.createElement('style');
     s.id = 'oef-style';
     s.textContent = `
-.oef{position:fixed;top:calc(var(--visible-viewport-top,0px) + 8px);left:12px;z-index:2147483000;max-width:calc(100vw - 150px);
+.oef{--oef-btn:4.375rem;position:fixed;top:calc(var(--visible-viewport-top,0px) + (var(--oef-btn) - 30px) / 2);left:calc(var(--oef-btn) + 4px);
+  z-index:999;max-width:calc(100vw - 2 * var(--oef-btn) - 8px);
   color:var(--text-color,#fff);font:13px/1.25 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
+@media (max-width:768px) and (min-resolution:2dppx){.oef{--oef-btn:5.5rem}}
 .oef.oef-hosted{position:static;max-width:none}
 .oef[hidden]{display:none}
 .oef-row{display:flex;align-items:center;min-height:28px;padding:0 6px;border-radius:4px;
@@ -61,8 +63,7 @@
 .oef-msg:empty{display:none}
 .oef-msg[data-kind=error]{background:var(--text-color,#fff);color:var(--bg-color,#000);font-weight:600}
 .oef-msg[data-kind=info]{opacity:.7}
-.oef-msg button{all:unset;cursor:pointer;text-decoration:underline;font:inherit}
-@media (max-width:480px){.oef{top:calc(var(--visible-viewport-top,0px) + 62px);left:8px}}`;
+.oef-msg button{all:unset;cursor:pointer;text-decoration:underline;font:inherit}`;
     document.head.appendChild(s);
   }
 
