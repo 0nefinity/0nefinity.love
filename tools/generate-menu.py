@@ -50,6 +50,9 @@ PRIORITY_ITEMS = [
 EXCLUDE_FROM_LIST = {'impressum-und-datenschutz.html', 'README.html'}
 # Gehoert zu 0nefinity.com (Cookie-Shop); auf .love gibt es keine Cookies.
 COM_ONLY = ('cookies.html', 'assets/cookies/')
+# Feste Eintraege ohne Datei: den Login liefert auf live der Editor-Dienst, auf dev enternity.php.
+FIXED_PAGES = [{'name': 'enternity', 'path': 'enternity', 'display': 'enternity', 'fixed': True}]
+FIXED_PATHS = {'enternity.php'}
 
 
 def should_include(name):
@@ -64,7 +67,7 @@ def should_include(name):
 
 def is_page(rel_path):
     """True, wenn der getrackte Pfad ins Menue gehoert."""
-    if rel_path.startswith(COM_ONLY):
+    if rel_path.startswith(COM_ONLY) or rel_path in FIXED_PATHS:
         return False
     parts = rel_path.split('/')
     if any(not should_include(p) for p in parts):
@@ -102,6 +105,7 @@ def collect_structure():
         display = filename[:dot] if dot > 0 else filename
         current['files'].append({'name': filename, 'path': rel_path, 'display': display})
 
+    structure['files'].extend(dict(f) for f in FIXED_PAGES)
     return structure
 
 
@@ -152,6 +156,8 @@ def build_search_index(structure):
 
     def walk(node):
         for f in node['files']:
+            if f.get('fixed'):
+                continue  # keine Datei, nichts zu indizieren
             text = visible_text(f['path'])
             if text is not None:
                 index['/' + f['path']] = text
