@@ -1311,6 +1311,21 @@ canvas {
       applyPanelVisibility();
       const num = (v, fallback = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : fallback; };
 
+      // Oberste Zeile: alle Symbole nebeneinander, + / - aendert die Anzahl
+      const setSymbolCount = (n) => {
+        cfg.symbolCount = Math.max(0, Math.floor(n));
+        panel.set('symbolCount', cfg.symbolCount);
+        rebuildSymbolRows();
+      };
+      panel.addSymbolRow('labels', {
+        values: cfg.labels.slice(0, cfg.symbolCount),
+        onChange: (i, v) => { cfg.labels[i] = v; },
+        onAdd: () => setSymbolCount(cfg.symbolCount + 1),
+        onRemove: () => setSymbolCount(cfg.symbolCount - 1),
+        min: 0,
+      });
+      panel.addDivider();
+
       panel.beginSection('speed')
         .addToggle('speedDisplay', { label: 'Speed display', value: cfg.speedDisplay, onChange: v => { cfg.speedDisplay = !!v; } })
         .addSlider('speedOffset', {
@@ -1417,13 +1432,13 @@ canvas {
         if (n > 0 && cfg.sync) {
           panel.addInput('equiv0', { label: 'Separator', value: cfg.equivs[0], onChange: v => { cfg.equivs[0] = v; } });
         }
-        for (let i = 0; i < n; i++) {
-          panel.addInput('label' + i, { label: 'Symbol ' + (i + 1), value: cfg.labels[i], onChange: v => { cfg.labels[i] = v; } });
-          if (!cfg.sync) {
+        if (!cfg.sync) {
+          for (let i = 0; i < n; i++) {
             panel.addInput('equiv' + i, { label: 'Separator ' + (i + 1), value: cfg.equivs[i], onChange: v => { cfg.equivs[i] = v; } });
           }
         }
         panel.endSection();
+        panel.set('labels', cfg.labels.slice(0, n));
       }
       rebuildSymbolRows();
 

@@ -1905,6 +1905,42 @@ pre {
     background: var(--ui-fill-15);
 }
 
+/* Symbol row: text fields side by side, scrolls sideways instead of wrapping */
+.ctrl-panel .ctrl-row.ctrl-symbol-row {
+    display: block;
+}
+
+.ctrl-symbol-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+}
+
+.ctrl-panel .ctrl-symbol-strip .ctrl-input.ctrl-symbol-input {
+    grid-column: auto;
+    flex: 1 0 3.2em;
+    width: 3.2em;
+    min-width: 3.2em;
+    max-width: 6em;
+    text-align: center;
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
+}
+
+.ctrl-symbol-btn {
+    flex: 0 0 auto;
+}
+
+.ctrl-symbol-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
 .ctrl-textarea {
     background: var(--ui-fill-05);
     border: 1px solid var(--ui-border);
