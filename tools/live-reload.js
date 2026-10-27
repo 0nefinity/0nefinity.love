@@ -33,6 +33,9 @@
         failing = false;
         console.warn('[live-reload] wieder erreichbar');
       }
+      // Erneut pruefen: waehrend des fetch kann das Bearbeiten begonnen haben. Eingeloggte (__oneEditor)
+      // laden nie automatisch neu, sie sehen fremde Aenderungen beim naechsten eigenen Laden.
+      if (window.__oneEditing || window.__oneEditor) { lastStamp = stamp; return; }
       if (initialized && lastStamp !== null && stamp !== lastStamp) {
         console.log('[live-reload] dev file changed → reload');
         location.reload();

@@ -280,7 +280,7 @@
   }
 
   function caretToEnd(el) {
-    el.focus({ preventScroll: true });
+    focusHost(el);
     const r = document.createRange();
     r.selectNodeContents(el);
     r.collapse(false);
@@ -314,9 +314,27 @@
       if (t === 'historyUndo') undo(); else redo();
       return;
     }
+    if (badgeEvt(e)) return;
+    const host = selHost();
+    if (!host) {
+      // Ausserhalb einer Textstelle (Luecke zwischen Bloecken, Auswahl ueber mehrere Stellen) wuerde nichts
+      // gespeichert. Abbrechen; Handy-Tastaturen melden Eingaben teils nicht abbrechbar, dann nimmt input sie zurueck.
+      if (e.cancelable) e.preventDefault();
+      else stray = strayAt();
+      showToast('hier nicht bearbeitbar', '', null, 2500);
+      return;
+    }
     ownAt = lastTypeAt = performance.now();
-    touch(e.currentTarget);
-    snap(e.currentTarget, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force');
+    touch(host);
+    snap(host, t.startsWith('delete') ? 'delete' : t === 'insertText' ? 'type' : 'force');
+  }
+
+  let stray = null;
+
+  function strayAt() {
+    const sel = getSelection();
+    const n = sel.rangeCount && sel.anchorNode;
+    return n && n.nodeType === 3 ? { node: n, data: n.data } : null;
   }
 
   function inBadge() {
@@ -338,7 +356,14 @@
   // Sprechblasen in einer Bearbeitungsstelle sind Teil von deren Editor: getippt wird dort, der Kommentarknoten
   // zieht nach, und das normale Autosave der Stelle speichert ihn mit.
   function onHostInput(e) {
-    const host = e.currentTarget;
+    if (badgeEvt(e)) return;
+    if (stray) {
+      stray.node.data = stray.data;
+      stray = null;
+      return;
+    }
+    const host = selHost();
+    if (!host) return;
     for (const b of host.querySelectorAll('.oe-cmt')) {
       const info = badgeInfo.get(b);
       if (!info || info.host !== host) continue;
@@ -408,16 +433,22 @@
   }
 
   function plainPaste(e) {
+    if (badgeEvt(e)) return;
     e.preventDefault();
-    touch(e.currentTarget);
-    snap(e.currentTarget, 'force');
+    const host = selHost();
+    if (!host) return;
+    touch(host);
+    snap(host, 'force');
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     document.execCommand('insertText', false, text);
   }
 
   // Tasten bleiben im Text: Seiten-Shortcuts (Leertaste, Pfeile, Controls) sehen sie nicht.
   function keepKeys(e) {
-    if (e.type === 'keydown' && !e.isComposing && e.currentTarget.dataset.oe !== undefined) {
+    if (badgeEvt(e)) return;
+    const host = selHost();
+    if (!host) return;
+    if (e.type === 'keydown' && !e.isComposing) {
       const act = shortcut(e);
       if (act) {
         e.preventDefault();
@@ -427,8 +458,8 @@
         caretAfter(inBadge());
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        touch(e.currentTarget);
-        snap(e.currentTarget, 'force');
+        touch(host);
+        snap(host, 'force');
         document.execCommand('insertLineBreak');
       }
     }
@@ -501,7 +532,16 @@
     selBar.style.left = Math.round(left) + 'px';
   }
 
+  let cur = null;
+
   function syncSelBar() {
+    if (badgeAt && inBadge() !== badgeAt) leaveBadge(badgeAt);
+    const h = editing ? selHost() : null;
+    if (h !== cur) {
+      if (cur) cur.classList.remove('oe-cur');
+      if (h) h.classList.add('oe-cur');
+      cur = h;
+    }
     if (!selBar || linkRange) return;
     const host = selectionHost();
     if (!host) { selBar.hidden = true; return; }
@@ -545,7 +585,7 @@
       if (/^javascript:/i.test(url)) return;
       const r = linkRange;
       closeLink(false);
-      host.focus({ preventScroll: true });
+      focusHost(host);
       const sel2 = getSelection();
       sel2.removeAllRanges();
       sel2.addRange(r);
@@ -562,7 +602,7 @@
     fillSelBar();
     if (restore && r) {
       const host = editHost(r.startContainer);
-      if (host) host.focus({ preventScroll: true });
+      if (host) focusHost(host);
       const sel = getSelection();
       sel.removeAllRanges();
       sel.addRange(r);
@@ -581,15 +621,12 @@
       touched = new Set();
       undoStack = [];
       redoStack = [];
-      for (const el of candidates()) {
+      const hosts = candidates();
+      for (const el of hosts) {
         originals.set(el, cleanHTML(el));
         el.dataset.oe = '';
-        el.setAttribute('contenteditable', 'true');
-        el.addEventListener('paste', plainPaste);
-        el.addEventListener('beforeinput', onBeforeInput);
-        el.addEventListener('input', onHostInput);
-        for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, keepKeys);
       }
+      claimRoot(hosts);
       watcher = new MutationObserver(onForeignChange);
       watcher.observe(document.body, { subtree: true, childList: true, characterData: true });
     }
@@ -598,13 +635,70 @@
     render();
   }
 
+  // Ein einziges contenteditable auf dem gemeinsamen Vorfahren aller Textstellen: ein Tap von einer Stelle
+  // zur naechsten bleibt im selben Editor, die Handy-Tastatur geht nicht zu und wieder auf. Was keine
+  // Textstelle ist (Menue, Leiste, Canvas, gemischte Container), wird contenteditable=false.
+  let root = null;
+  let islands = [];
+
+  function claimRoot(hosts) {
+    let r = hosts.length ? hosts[0].parentElement : document.body;
+    while (r !== document.body && !hosts.every((h) => r.contains(h))) r = r.parentElement;
+    root = r;
+    islands = [];
+    const keep = new Set();
+    for (const h of hosts) for (let a = h.parentElement; a && a !== root; a = a.parentElement) keep.add(a);
+    const walk = (el) => {
+      for (const c of el.children) {
+        if (c.hasAttribute('data-oe')) continue;
+        if (keep.has(c)) { walk(c); continue; }
+        island(c);
+      }
+    };
+    walk(root);
+    root.dataset.oeRoot = '';
+    root.setAttribute('contenteditable', 'true');
+    root.addEventListener('paste', plainPaste);
+    root.addEventListener('beforeinput', onBeforeInput);
+    root.addEventListener('input', onHostInput);
+    for (const t of ['keydown', 'keyup', 'keypress']) root.addEventListener(t, keepKeys);
+  }
+
+  function island(el) {
+    islands.push([el, el.getAttribute('contenteditable')]);
+    el.setAttribute('contenteditable', 'false');
+  }
+
+  function releaseRoot() {
+    if (!root) return;
+    root.removeAttribute('contenteditable');
+    delete root.dataset.oeRoot;
+    root.removeEventListener('paste', plainPaste);
+    root.removeEventListener('beforeinput', onBeforeInput);
+    root.removeEventListener('input', onHostInput);
+    for (const t of ['keydown', 'keyup', 'keypress']) root.removeEventListener(t, keepKeys);
+    for (const [el, was] of islands) {
+      if (was === null) el.removeAttribute('contenteditable'); else el.setAttribute('contenteditable', was);
+    }
+    islands = [];
+    root = null;
+  }
+
   function release(el) {
-    el.removeAttribute('contenteditable');
     delete el.dataset.oe;
-    el.removeEventListener('paste', plainPaste);
-    el.removeEventListener('beforeinput', onBeforeInput);
-    el.removeEventListener('input', onHostInput);
-    for (const t of ['keydown', 'keyup', 'keypress']) el.removeEventListener(t, keepKeys);
+    island(el);
+  }
+
+  // Die Textstelle, in der die Schreibmarke steht (es gibt nur noch einen fokussierten Editor, die Wurzel).
+  function selHost() {
+    const sel = getSelection();
+    if (!sel.rangeCount) return null;
+    const a = editHost(sel.anchorNode);
+    return a && a === editHost(sel.focusNode) ? a : null;
+  }
+
+  function focusHost(el) {
+    (root && root.contains(el) ? root : el).focus({ preventScroll: true });
   }
 
   function onForeignChange(muts) {
@@ -619,14 +713,13 @@
       const host = editHost(m.target);
       if (!host || host.closest('[data-oe-ui]')) continue;
       // Wer gerade tippt, wird nie ausgesperrt (Handy: Tippen in Text mit Animation).
-      if (host === document.activeElement && now - lastTypeAt < 2000) continue;
+      if (host === selHost() && now - lastTypeAt < 2000) continue;
       gone.add(host);
     }
     for (const el of gone) {
       release(el);
       originals.delete(el);
       touched.delete(el);
-      el.blur();
     }
     if (!gone.size) return;
     undoStack = undoStack.filter((e) => !gone.has(e.el));
@@ -637,7 +730,10 @@
   function stopEditing() {
     if (watcher) watcher.disconnect();
     watcher = null;
-    for (const el of originals.keys()) release(el);
+    for (const el of originals.keys()) delete el.dataset.oe;
+    releaseRoot();
+    if (cur) cur.classList.remove('oe-cur');
+    cur = null;
     originals = new Map();
     touched = new Set();
     undoStack = [];
@@ -896,12 +992,41 @@
   }
 
   // Tippen im Kommentar. Bearbeitungsstellen kennen ihn ueber den Kommentarknoten, der Rest speichert selbst.
+  // Sprechblase ausserhalb einer Textstelle: unter der einen bearbeitbaren Wurzel ist sie kein eigener Editor
+  // mehr und bekommt weder Fokus noch eigene Ereignisse. Die Wurzel reicht sie hier an onBadge weiter.
+  let badgeAt = null;
+
+  function badgeEvt(e) {
+    const b = inBadge();
+    if (!b || editHost(b) || b.contentEditable === 'false') return false;
+    badgeAt = b;
+    onBadge({ type: e.type, key: e.key, inputType: e.inputType, currentTarget: b,
+      preventDefault: () => e.preventDefault(), stopPropagation: () => e.stopPropagation() });
+    return true;
+  }
+
+  function leaveBadge(b) {
+    if (document.activeElement === b) { b.blur(); return; }
+    if (badgeAt === b) badgeAt = null;
+    const info = badgeInfo.get(b);
+    if (info && b.isConnected) settle(info);
+  }
+
   function onBadge(e) {
     e.stopPropagation();
     const b = e.currentTarget;
     const info = badgeInfo.get(b);
     if (e.type === 'keydown') {
-      if (e.key === 'Enter') { e.preventDefault(); b.blur(); }
+      if (e.key === 'Enter') { e.preventDefault(); leaveBadge(b); }
+      // Unter der Wurzel springt Pos1/Ende sonst ans Zeilenende ausserhalb der Sprechblase.
+      if ((e.key === 'End' || e.key === 'Home') && badgeAt === b) {
+        e.preventDefault();
+        const r = document.createRange();
+        r.selectNodeContents(b);
+        r.collapse(e.key === 'Home');
+        getSelection().removeAllRanges();
+        getSelection().addRange(r);
+      }
       return;
     }
     if (e.type === 'beforeinput') {
@@ -993,7 +1118,7 @@
 
   function focusBadge(b) {
     b.focus({ preventScroll: false });
-    if (b.closest('[data-oe]')) b.closest('[data-oe]').focus({ preventScroll: true });
+    if (b.closest('[data-oe]')) focusHost(b.closest('[data-oe]'));
     const r = document.createRange();
     r.selectNodeContents(b);
     r.collapse(false);
@@ -1404,7 +1529,9 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 .oe-toast[data-kind=error]{background:var(--text-color,#fff);color:var(--bg-color,#000);font-weight:600}
 .oe-toast[data-kind=error] .oe-btn{color:var(--bg-color,#000)!important;border-color:var(--bg-color,#000)!important}
 .oe-editing [data-oe]{outline:1px dashed color-mix(in srgb,var(--text-color,#fff) 40%,transparent);outline-offset:2px;cursor:text}
-.oe-editing [data-oe]:focus{outline:1px solid var(--text-color,#fff)}
+.oe-editing [data-oe].oe-cur{outline:1px solid var(--text-color,#fff)}
+[data-oe-root]{outline:none}
+.oe-editing,.oe-editing body{overscroll-behavior-y:contain}
 .oe-overlay{position:fixed;inset:0;z-index:2147483001;display:flex;flex-direction:column;background:var(--bg-color,#000);
   color:var(--text-color,#fff);font:14px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .oe-ov-head{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px;border-bottom:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent)}
@@ -1613,6 +1740,9 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     if (!me.ok) { console.error('[editor] ' + CFG.me + ' HTTP ' + me.status); return; }
     const info = await me.json();
     csrf = info.csrf || '';
+    // Eingeloggt: Live-Reload laedt nie von selbst neu. Autosave und andere Sitzungen aendern laufend
+    // Dateien, ein Reload zwischen zwei Eingaben riss Tim aus dem Text.
+    window.__oneEditor = true;
 
     css();
     buildBar();
