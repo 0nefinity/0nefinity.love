@@ -2308,12 +2308,18 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 .oe-hrow del{opacity:.7;text-decoration:line-through}
 .oe-hrow ins{text-decoration:none;padding:0 2px;background:var(--text-color,#fff);color:var(--bg-color,#000)}
 .oe-hnow{padding:4px 8px;opacity:.5;font-size:12px;border-top:1px dashed currentColor;border-bottom:1px dashed currentColor}
-/* Handy: eine Reihe zwischen Zurueck- und Menueknopf (bei 320 px 166 px frei), Verlaufsliste, Text und Seite
-   wandern dafuer in die Admin-Zeile im Menue. */
-@media (max-width:480px){#oe-bar{right:79px;top:calc(var(--visible-viewport-top,0px) + 22px);max-width:calc(100vw - 87px)}
-  #oe-bar .oe-btn.oe-mini{width:30px;min-width:30px!important}
+/* Touch: jedes Ziel mindestens 44x44 px (Apple/WCAG), auch die kleinen Leistenknoepfe. */
+@media (pointer:coarse){.oe-btn.oe-mini{width:44px;height:44px;min-width:44px!important;min-height:44px!important}
+  .oe-btn.oe-small{min-height:44px!important}}
+/* Handy: eine Reihe zwischen Zurueck- (bis 77 px) und Menueknopf (ab 77 px von rechts), je 44 px breit. Rangfolge, wenn der Platz
+   nicht reicht: Stift, rueckgaengig, mehr, veroeffentlichen, wiederholen. Was wegfaellt, steht im mehr-Menue
+   (moreItems fragt ab, was CSS verbirgt). Verlauf, Text und Seite liegen am Handy immer dort. */
+@media (max-width:480px){#oe-bar{right:79px;top:calc(var(--visible-viewport-top,0px) + 14px);max-width:calc(100vw - 158px)}
+  #oe-bar .oe-head,#oe-bar .oe-more-in{gap:0}
   #oe-bar .oe-nar,#oe-bar .oe-sep{display:none!important}
   #oe-admin{gap:0;padding:4px 8px}}
+@media (max-width:379px){#oe-bar.oe-haspub:not(.oe-solo) .oe-xs{display:none!important}}
+@media (max-width:339px){#oe-bar:not(.oe-solo) .oe-xs,#oe-bar:not(.oe-solo) .oe-xp{display:none!important}}
 /* Seite ohne 0nefinity-Menue: die Leiste steht unten rechts (oben liegt dort meist die eigene
    Navigation der Seite) und traegt alles selbst, auch das Ausloggen. */
 #oe-bar.oe-solo{top:auto;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));flex-direction:column-reverse;
@@ -2570,6 +2576,9 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
   }
   function moreItems() {
     const out = [];
+    const cut = (b) => !b.hidden && getComputedStyle(b).display === 'none';
+    if (cut(btnRedo)) out.push({ icon: 'redo', label: 'Wiederholen', btn: btnRedo });
+    if (btnPub && cut(btnPub)) out.push({ icon: 'upload', label: 'Veröffentlichen', btn: btnPub });
     if (narrow()) {
       out.push({ icon: 'hist', label: 'Verlauf', btn: btnHist }, { icon: 'fmt', label: 'Formatierung', btn: btnFmt });
       if (extras) out.push({ icon: 'fmt', label: 'Formatierungszeichen', btn: extras.marks.btn });
@@ -2673,6 +2682,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     btnFmt.classList.add('oe-nar');
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
+    btnRedo.classList.add('oe-xs');
     for (const b of [btnUndo, btnRedo]) b.addEventListener('mousedown', (ev) => ev.preventDefault());
     const head = document.createElement('div');
     head.className = 'oe-head';
@@ -2691,6 +2701,8 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     moreIn.append(btnUndo, btnRedo, btnHist, sep(), btnFmt, sep(), btnPage, btnSrc, btnDiff, btnCmt, btnDel, btnStats, btnMore);
     if (!CFG.direct) {
       btnPub = mini('upload', 'veröffentlichen', startPublish);
+      btnPub.classList.add('oe-xp');
+      bar.classList.add('oe-haspub');
       moreIn.append(sep(), btnPub);
     }
     if (!menuWrap()) {
