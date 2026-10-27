@@ -38,6 +38,10 @@
     comment_lost: 'im Quelltext steht ein versteckter Kommentar an dieser Stelle, bitte über quelltext ändern',
     mixed_eol: 'Datei mischt Zeilenenden, bitte über quelltext ändern',
     page_not_found: 'keine bearbeitbare Datei zu dieser Adresse',
+    name_taken: 'Name ist schon vergeben',
+    bad_name: 'Name nicht erlaubt',
+    protected_page: 'Diese Seite kann nicht umbenannt werden',
+    not_supported: 'auf dieser Seite nicht verfügbar',
   };
   const ANALYTICS = 'https://analytics.timbreitmar.de';
   // Ysabeau-Outlines '0' und '1', dieselben wie in der Menue-Lupe (generate-menu.py).
@@ -241,6 +245,30 @@
       });
     }
     mdBase = window._018EditorMd.serialize();
+  }
+
+  // Dateiname oben (editor-filename.js), Plus fuer neue Seiten (editor-newpage.js), Formatierungszeichen
+  // (editor-marks.js): eigene Module, hier nur geladen und eingehaengt.
+  let extras = null;
+  async function loadExtras() {
+    const base = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, '');
+    await Promise.all(['filename', 'newpage', 'marks'].map((n) => new Promise((ok, no) => {
+      const s = document.createElement('script');
+      s.src = base + 'editor-' + n + '.js';
+      s.onload = ok;
+      s.onerror = () => no(new Error('editor-' + n + '.js nicht ladbar'));
+      document.head.append(s);
+    })));
+    const head = bar.querySelector('.oe-head');
+    const wait = async () => (await flushed()) !== false;
+    extras = {
+      fn: window.OneEditorFilename.mount({
+        file: source.file, request: api, path: () => pagePath, beforeRename: wait,
+        onRenamed: (r) => { pagePath = r.url; source.file = r.file; },
+      }),
+      np: window.OneEditorNewPage.mount({ bar: head, request: api, beforeCreate: wait }),
+      marks: window.OneEditorMarks.mount({ bar: head, root: () => root || document.querySelector('main') || document.body }),
+    };
   }
 
   async function loadSource() {
@@ -686,7 +714,7 @@
       save();
       return;
     }
-    if (e.target.closest('[data-oe], input, textarea, .oe-sel, .oe-cmt')) return;
+    if (e.target.closest('[data-oe], [data-oe-ui], input, textarea, .oe-sel, .oe-cmt')) return;
     const k = mod && e.key.toLowerCase();
     if (k === 'z' || k === 'y') {
       e.preventDefault();
@@ -1928,6 +1956,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       set(menuDiff, off || !!overlay);
     }
     if (btnPub) set(btnPub, off || !st.live || !!pubTimer);
+    if (extras) extras.fn.setEditing(editing);
   }
 
   function mini(kind, label, fn) {
@@ -2077,6 +2106,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       st.ready = true;
       st.inline = !!source.inline;
       if (isMd()) await loadMd();
+      await loadExtras().catch((e) => say(e.message, 'error'));
       render();
       checkPublishError();
       if (st.inline && stored('oe-edit') === '1') toggleEdit();
