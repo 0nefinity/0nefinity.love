@@ -1,6 +1,8 @@
-// Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: oben im Menue
-// die Admin-Zeile (veroeffentlichen, Analytics, Ausloggen), oben links neben dem Menue eine Reihe kleiner
-// Symbole: rueckgaengig, wiederholen, bearbeiten ein/aus, Quelltext, Kommentare ein/aus, Aenderungen.
+// Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: im Menue nur noch Ausloggen;
+// alle Editor-Funktionen sitzen in der Leiste oben links neben dem Menue, nach Zusammengehoerigem gruppiert:
+// Verlauf (rueckgaengig, wiederholen, Verlaufsliste) | Text (Formatierung, Steuerzeichen) | Seite (Untermenue:
+// neu, umbenennen, loeschen) | mehr (Quelltext, Aenderungen, Kommentare, Analytics) | veroeffentlichen (nur dev) | Stift.
+// Auf dem Handy wandern Verlaufsliste, Text und Seite ins mehr-Menue.
 // Grundsatz: die Oberflaeche reagiert sofort, alles Laengere laeuft im Hintergrund. Texte sind eingeloggt
 // direkt editierbar und gehen ~0,4 s nach dem letzten Tippen auf dev (kein Speichern-Knopf, keine Statusanzeige;
 // nur ein Fehler bleibt sichtbar, bis das Speichern wieder klappt). Der Server committet und pusht gebuendelt im
@@ -43,6 +45,9 @@
     mixed_eol: 'Datei mischt Zeilenenden, bitte über quelltext ändern',
     page_not_found: 'keine bearbeitbare Datei zu dieser Adresse',
     name_taken: 'Name ist schon vergeben',
+    protected_page: 'diese Seite kann nicht gelöscht oder umbenannt werden',
+    page_dirty: 'Seite hat ungespeicherte Änderungen, bitte kurz warten',
+    not_deletable: 'diese Datei kann hier nicht gelöscht werden',
     bad_name: 'Name nicht erlaubt',
     protected_page: 'Diese Seite kann nicht umbenannt werden',
     not_supported: 'auf dieser Seite nicht verfügbar',
@@ -83,7 +88,7 @@
   let saving = null;
   let saveAgain = false;
   let leaving = false;
-  let bar, more, moreIn, status, btnCmt, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, menuSrc, menuDiff;
+  let bar, more, moreIn, status, btnCmt, btnDiff, btnPub, btnEdit, btnSrc, btnUndo, btnRedo, selBar, btnPage, btnMore, btnDel, btnStats;
   // ready: Quelltext geladen; inline: Seite ist inline bearbeitbar; live: dev weicht von live ab.
   const st = { ready: false, inline: false, live: false, draftCount: 0, draftFiles: [] };
   // Eigener Verlauf statt Browser-Undo: der kennt keine Autosave-Grenzen und vergisst alles, sobald
@@ -95,7 +100,7 @@
   let openGrp = null;
   let grpTimer = null;
   let hist = null;
-  let btnHist, menuHist, btnFmt, menuFmt;
+  let btnHist, btnFmt;
   const GROUP_MS = 1200;
   let commitPoll = null;
   // Text, den ein Skript der Seite laufend umschreibt (Animationen), ist nicht bearbeitbar: sonst
@@ -123,6 +128,10 @@
     link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
     clear: 'M6 5h12M12 5v14M5 19L19 5',
     upload: 'M12 16V5M7 10l5-5 5 5M5 20h14',
+    trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
+    page: 'M6 3h8l4 4v14H6zM14 3v4h4',
+    dots: 'M5 12h.5M12 12h.5M19 12h.5',
+    chart: 'M5 20v-9M12 20V4M19 20v-6',
   };
 
   function icon(kind) {
@@ -324,7 +333,10 @@
         blockOf, setBlock: (t) => setBlock(t), md: isMd, bar: () => bar, fail: (m) => say(m, 'error'),
       }),
     };
-    extras.fmt.onPanel((on) => { for (const b of [btnFmt, menuFmt]) if (b) b.setAttribute('aria-pressed', String(on)); });
+    extras.marks.btn.classList.add('oe-nar');
+    btnFmt.after(extras.marks.btn);
+    extras.np.btn.classList.add('oe-ghost');
+    extras.fmt.onPanel((on) => { if (btnFmt) btnFmt.setAttribute('aria-pressed', String(on)); });
     if (selBar) fillSelBar();
   }
 
@@ -873,7 +885,7 @@
     const open = typeof force === 'boolean' ? force : hist.hidden;
     if (open) closeGroup();
     hist.hidden = !open;
-    for (const b of [btnHist, menuHist]) if (b) b.setAttribute('aria-pressed', String(open));
+    if (btnHist) btnHist.setAttribute('aria-pressed', String(open));
     if (open) { placeHist(); refreshHist(); }
   }
 
@@ -2279,7 +2291,6 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 #oe-admin .oe-login{border-color:transparent!important;opacity:.6}
 @media (hover:hover){#oe-admin .oe-login:hover{opacity:1}}
 .oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
-#oe-admin .oe-narrow{display:none!important}
 #oe-hist{position:fixed;z-index:2147483001;width:min(320px,calc(100vw - 16px));max-height:50vh;overflow:auto;box-sizing:border-box;padding:4px;
   border-radius:6px;border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);
   color:var(--text-color,#fff);font:13px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:contain}
@@ -2292,20 +2303,27 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 .oe-hrow del{opacity:.7;text-decoration:line-through}
 .oe-hrow ins{text-decoration:none;padding:0 2px;background:var(--text-color,#fff);color:var(--bg-color,#000)}
 .oe-hnow{padding:4px 8px;opacity:.5;font-size:12px;border-top:1px dashed currentColor;border-bottom:1px dashed currentColor}
-/* Handy: eine Reihe zwischen Zurueck- und Menueknopf (bei 320 px 166 px frei), Quelltext und Aenderungen
+/* Handy: eine Reihe zwischen Zurueck- und Menueknopf (bei 320 px 166 px frei), Verlaufsliste, Text und Seite
    wandern dafuer in die Admin-Zeile im Menue. */
 @media (max-width:480px){#oe-bar{right:79px;top:calc(var(--visible-viewport-top,0px) + 22px);max-width:calc(100vw - 87px)}
   #oe-bar .oe-btn.oe-mini{width:30px;min-width:30px!important}
-  #oe-bar .oe-wide{display:none!important}
-  #oe-admin .oe-narrow{display:inline-flex!important}
+  #oe-bar .oe-nar,#oe-bar .oe-sep{display:none!important}
   #oe-admin{gap:0;padding:4px 8px}}
 /* Seite ohne 0nefinity-Menue: die Leiste steht unten rechts (oben liegt dort meist die eigene
    Navigation der Seite) und traegt alles selbst, auch das Ausloggen. */
 #oe-bar.oe-solo{top:auto;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));flex-direction:column-reverse;
   max-width:calc(100vw - 16px);padding:4px;border-radius:6px;background:var(--bg-color,#000);
   border:1px solid color-mix(in srgb,var(--text-color,#fff) 30%,transparent)}
-@media (max-width:480px){#oe-bar.oe-solo{top:auto;right:8px;max-width:calc(100vw - 16px)}
-  #oe-bar.oe-solo .oe-wide{display:inline-flex!important}}`;
+@media (max-width:480px){#oe-bar.oe-solo{top:auto;right:8px;max-width:calc(100vw - 16px)}}
+#oe-bar .oe-ghost{display:none!important}
+.oe-sep{flex:none;width:1px;height:16px;margin:0 3px;background:color-mix(in srgb,var(--text-color,#fff) 25%,transparent)}
+#oe-pop{position:fixed;z-index:2147483004;min-width:190px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:4px;border-radius:6px;
+  border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);color:var(--text-color,#fff);
+  font:13px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+#oe-pop .oe-hrow{align-items:center;min-height:40px}
+#oe-pop .oe-hrow[aria-pressed=true]{background:color-mix(in srgb,var(--text-color,#fff) 18%,transparent)}
+#oe-pop .oe-hrow:disabled{opacity:.35;cursor:default}
+#oe-pop .oe-ic{flex:none}`;
     document.head.appendChild(s);
   }
 
@@ -2338,16 +2356,14 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     set(btnUndo, !editing || !(undoStack.length || openGrp));
     set(btnHist, !editing);
     btnHist.hidden = !editing;
-    if (menuHist) menuHist.hidden = !editing;
     set(btnRedo, !editing || !(redoStack.length));
     btnUndo.hidden = btnRedo.hidden = !editing;
     set(btnSrc, off || !!overlay);
     set(btnCmt, off, cmtOn);
     set(btnDiff, off || !!overlay);
-    if (menuSrc) {
-      set(menuSrc, off || !!overlay);
-      set(menuDiff, off || !!overlay);
-    }
+    set(btnDel, off || !deletable());
+    set(btnPage, off);
+    set(btnMore, false);
     if (btnPub) {
       set(btnPub, off || !(CFG.draft ? st.draftCount : st.live) || !!pubTimer || Date.now() < pubOffUntil);
       if (CFG.draft) {
@@ -2356,7 +2372,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       }
     }
     if (extras) { extras.fn.setEditing(editing); extras.fmt.setEditing(editing); extras.marks.setActive(editing); }
-    for (const b of [btnFmt, menuFmt]) if (b) b.hidden = !editing;
+    btnFmt.hidden = !editing;
     more.toggleAttribute('data-open', !!editing);
     more.inert = !editing;
     // Unveroeffentlichtes bleibt auch zugeklappt sichtbar: Punkt am Stift.
@@ -2477,6 +2493,151 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     return b;
   }
 
+
+  // ------------------------------------------------------------ untermenues der leiste
+
+  let pop = null;
+  function closePop() {
+    if (pop) pop.remove();
+    pop = null;
+  }
+
+  // Eintrag = {label, btn} (loest den vorhandenen, unsichtbaren Knopf aus und uebernimmt dessen Zustand) oder {label, fn}.
+  function popMenu(anchor, items) {
+    if (pop) { const same = pop.dataset.anchor === anchor.getAttribute('aria-label'); closePop(); if (same) return; }
+    const list = items().filter((i) => !(i.btn && i.btn.hidden));
+    pop = document.createElement('div');
+    pop.id = 'oe-pop';
+    pop.dataset.oeUi = '';
+    pop.dataset.anchor = anchor.getAttribute('aria-label');
+    pop.setAttribute('role', 'menu');
+    for (const it of list) {
+      const r = document.createElement('button');
+      r.type = 'button';
+      r.className = 'oe-hrow';
+      r.setAttribute('role', 'menuitem');
+      r.innerHTML = icon(it.icon);
+      r.append(it.label);
+      if (it.btn) {
+        r.disabled = it.btn.disabled;
+        if (it.btn.hasAttribute('aria-pressed')) r.setAttribute('aria-pressed', it.btn.getAttribute('aria-pressed'));
+      } else if (it.disabled) r.disabled = true;
+      r.addEventListener('click', () => { closePop(); (it.btn ? () => it.btn.click() : it.fn)(); });
+      pop.append(r);
+    }
+    document.body.append(pop);
+    const a = anchor.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    pop.style.left = Math.max(8, Math.min(a.right - w, window.innerWidth - w - 8)) + 'px';
+    pop.style.top = a.bottom + 6 + 'px';
+    const first = pop.querySelector('button:not(:disabled)');
+    if (first) first.focus();
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (pop && !pop.contains(e.target) && !(e.target.closest && e.target.closest('#oe-bar'))) closePop();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (!pop || !pop.contains(document.activeElement) && e.key !== 'Escape') return;
+    if (e.key === 'Escape') { closePop(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const rows = [...pop.querySelectorAll('button:not(:disabled)')];
+    const i = rows.indexOf(document.activeElement);
+    e.preventDefault();
+    rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length].focus();
+  }, true);
+
+  const narrow = () => matchMedia('(max-width:480px)').matches;
+  function pageItems() {
+    return [
+      { icon: 'page', label: 'Neue Seite', fn: () => extras && extras.np.create(), disabled: !extras },
+      { icon: 'pencil', label: 'Umbenennen', disabled: !extras, fn: () => {
+        const n = extras && extras.fn.el.querySelector('.oef-name');
+        if (!n) return;
+        n.focus();
+        const r = document.createRange();
+        r.selectNodeContents(n);
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(r);
+      } },
+      { icon: 'trash', label: 'Seite löschen', btn: btnDel },
+    ];
+  }
+  function moreItems() {
+    const out = [];
+    if (narrow()) {
+      out.push({ icon: 'hist', label: 'Verlauf', btn: btnHist }, { icon: 'fmt', label: 'Formatierung', btn: btnFmt });
+      if (extras) out.push({ icon: 'fmt', label: 'Formatierungszeichen', btn: extras.marks.btn });
+      out.push(...pageItems());
+    }
+    out.push({ icon: 'code', label: 'Quelltext', btn: btnSrc }, { icon: 'diff', label: 'Änderungen', btn: btnDiff },
+      { icon: 'bubble', label: 'Kommentare', btn: btnCmt }, { icon: 'chart', label: 'Analytics', btn: btnStats });
+    return out;
+  }
+
+  // ------------------------------------------------------------ seite loeschen
+
+  // Gmail-Muster: sofort zur Nachbarseite, Toast mit "rueckgaengig"; erst nach Ablauf geht das Loeschen an den
+  // Server (git rm, ein Commit, im Verlauf wiederherstellbar). Der Auftrag steht in sessionStorage, damit er die
+  // Navigation ueberlebt; wer den Tab vorher schliesst, loescht nichts.
+  const DEL_KEY = 'oe-del';
+  const DEL_MS = 8000;
+  const NOT_DELETABLE = new Set(['index', 'readme', '404', '403', '500', 'enternity', 'impressum-und-datenschutz']);
+  function deletable() {
+    const f = (source && source.file) || '';
+    return /\.(html|md)$/.test(f) && !NOT_DELETABLE.has(f.replace(/^.*\//, '').replace(/\.(html|md)$/, '').toLowerCase());
+  }
+
+  async function deletePage() {
+    if (!st.ready || !deletable()) return;
+    closeGroup();
+    if ((await flushed()) === false) { say('Speichern läuft noch, bitte gleich nochmal', 'error'); return; }
+    let go = '/';
+    try {
+      const u = new URL(document.referrer);
+      if (u.origin === location.origin && u.pathname !== location.pathname && u.pathname !== pagePath) go = u.pathname + u.search;
+    } catch (e) { /* kein Referrer: Startseite */ }
+    try {
+      sessionStorage.setItem(DEL_KEY, JSON.stringify({ path: pagePath, file: source.file, due: Date.now() + DEL_MS, back: location.pathname + location.search }));
+    } catch (e) { say('Löschen nicht möglich: ' + e.message, 'error'); return; }
+    location.assign(go);
+  }
+
+  let finishing = false;
+  async function finishDelete(d) {
+    if (finishing) return;
+    finishing = true;
+    const name = d.file.replace(/\.(html|md)$/, '');
+    try {
+      sessionStorage.removeItem(DEL_KEY);
+      const r = await request('POST', 'delete', { path: d.path });
+      hideToast();
+      const from = r.linked_from || [];
+      if (from.length) {
+        showToast('„' + name + '“ gelöscht. Diese Dateien verlinken noch darauf: ' + from.slice(0, 8).join(', ') + (from.length > 8 ? ' und ' + (from.length - 8) + ' weitere' : ''), '', null, 0, 'error');
+      } else showToast('„' + name + '“ gelöscht', '', null, 4000);
+      refreshDraft();
+    } catch (e) {
+      showToast('Löschen von „' + name + '“ fehlgeschlagen: ' + e.message, 'nochmal', () => finishDelete(d), 0, 'error');
+    } finally { finishing = false; }
+  }
+
+  function resumeDelete() {
+    let d = null;
+    try { d = JSON.parse(sessionStorage.getItem(DEL_KEY) || 'null'); } catch (e) { d = null; }
+    if (!d || !d.path || !d.file) return;
+    const left = d.due - Date.now();
+    if (left <= 0) { finishDelete(d); return; }
+    const name = d.file.replace(/\.(html|md)$/, '');
+    let timer = null;
+    showToast('„' + name + '“ gelöscht', 'rückgängig', () => {
+      clearTimeout(timer);
+      try { sessionStorage.removeItem(DEL_KEY); } catch (e) { /* nichts zu entfernen */ }
+      location.assign(d.back);
+    }, 0);
+    timer = setTimeout(() => finishDelete(d), left);
+  }
+
   function buildBar() {
     bar = document.createElement('div');
     bar.id = 'oe-bar';
@@ -2489,14 +2650,22 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     status.setAttribute('role', 'status');
     btnEdit = mini('pencil', 'bearbeiten ein/aus', () => { stored('oe-edit', editing ? '0' : '1'); toggleEdit(); });
     btnSrc = mini('code', 'Quelltext', openSource);
-    btnSrc.classList.add('oe-wide');
+    btnSrc.classList.add('oe-ghost');
     btnCmt = mini('bubble', 'Kommentare ein/aus', toggleComments);
     btnDiff = mini('diff', 'Änderungen', () => openChanges(false));
-    btnDiff.classList.add('oe-wide');
+    btnDiff.classList.add('oe-ghost');
+    btnCmt.classList.add('oe-ghost');
+    btnDel = mini('trash', 'Seite löschen', deletePage);
+    btnDel.classList.add('oe-ghost');
+    btnStats = mini('chart', 'Analytics', () => window.open(ANALYTICS, '_blank', 'noopener'));
+    btnStats.classList.add('oe-ghost');
+    btnPage = mini('page', 'Seite', () => popMenu(btnPage, pageItems));
+    btnMore = mini('dots', 'mehr', () => popMenu(btnMore, moreItems));
     btnHist = mini('hist', 'Verlauf', () => toggleHist());
-    btnHist.classList.add('oe-wide');
+    btnHist.classList.add('oe-nar');
+    btnPage.classList.add('oe-nar');
     btnFmt = mini('fmt', 'Formatierung', () => extras && extras.fmt.togglePanel());
-    btnFmt.classList.add('oe-wide');
+    btnFmt.classList.add('oe-nar');
     btnUndo = mini('undo', 'rückgängig (Strg+Z)', undo);
     btnRedo = mini('redo', 'wiederholen (Strg+Umschalt+Z)', redo);
     const head = document.createElement('div');
@@ -2509,10 +2678,14 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     moreIn = document.createElement('div');
     moreIn.className = 'oe-more-in';
     moreIn.setAttribute('role', 'group');
-    moreIn.append(btnUndo, btnRedo, btnFmt, btnHist, btnSrc, btnCmt, btnDiff);
+    // Gruppen mit feinem Trenner: Verlauf | Text | Seite und mehr | Veroeffentlichen. Was selten gebraucht wird
+    // (Quelltext, Aenderungen, Kommentare, Analytics, Loeschen) liegt in den Untermenues, die Knoepfe selbst
+    // bleiben unsichtbar in der Leiste, damit Tooltip, Zustand und Klick dieselben sind.
+    const sep = () => { const e = document.createElement('span'); e.className = 'oe-sep'; e.setAttribute('aria-hidden', 'true'); return e; };
+    moreIn.append(btnUndo, btnRedo, btnHist, sep(), btnFmt, sep(), btnPage, btnSrc, btnDiff, btnCmt, btnDel, btnStats, btnMore);
     if (!CFG.direct) {
       btnPub = mini('upload', 'veröffentlichen', startPublish);
-      moreIn.append(btnPub);
+      moreIn.append(sep(), btnPub);
     }
     if (!menuWrap()) {
       bar.classList.add('oe-solo');
@@ -2566,23 +2739,12 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     const sec = document.createElement('div');
     sec.id = 'oe-admin';
     sec.dataset.oeUi = '';
-    const analytics = document.createElement('a');
-    analytics.className = 'oe-btn';
-    analytics.href = ANALYTICS;
-    analytics.target = '_blank';
-    analytics.rel = 'noopener';
-    analytics.textContent = 'analytics';
     const out = button('', logout);
-    menuSrc = mini('code', 'Quelltext', openSource);
-    menuDiff = mini('diff', 'Änderungen', () => openChanges(false));
-    menuHist = mini('hist', 'Verlauf', () => toggleHist());
-    menuFmt = mini('fmt', 'Formatierung', () => extras && extras.fmt.togglePanel());
-    for (const b of [menuSrc, menuDiff, menuHist, menuFmt]) b.classList.add('oe-narrow');
-    for (const b of [analytics, out]) b.classList.add('oe-small');
+    out.classList.add('oe-small');
     out.innerHTML = icon('power');
     out.setAttribute('aria-label', 'ausloggen');
     out.title = 'ausloggen';
-    sec.append(menuSrc, menuDiff, menuHist, menuFmt, analytics, out);
+    sec.append(out);
     wrap.prepend(sec);
   }
 
@@ -2614,6 +2776,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     buildSelBar();
     buildAdminMenu();
     render();
+    resumeDelete();
     document.addEventListener('click', guardClick, true);
     document.addEventListener('keydown', globalKeys, true);
     document.addEventListener('visibilitychange', () => {
