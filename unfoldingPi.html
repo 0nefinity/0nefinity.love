@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <!--#include virtual="/includes/something-in-the-head.html" -->
   <script src="/tools/math-notation.js" defer></script>
@@ -9,7 +9,7 @@
   <title>(un)foldingPi</title>
   <style>
     html, body { height: 100%; overflow: hidden; touch-action: none; }
-    /* Sausen zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
+    /* speed zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
     .ctrl-row[data-key="drift"] .ctrl-value-input { width: 4.6em; }
     /* Touch-Ziel: mindestens 44 x 44 px */
     .ctrl-row[data-key="notation"] .ctrl-button { min-height: 44px; min-width: 44px; }
@@ -34,6 +34,37 @@
     .ctrl-row[data-key="form"] .ctrl-button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--text-color); }
     /* Stellenanzeige: feste Stelle unter der Zeile, nur der Text wechselt */
     .stellen { position: absolute; left: 0; right: 0; top: 68%; text-align: center; font-size: 1.25rem; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--text-color); pointer-events: none; white-space: nowrap; }
+
+    /* ─── Steuer-Panel: ruhig, dunkel, ein Raster ─── */
+    #pi-compression { --pi-h: 36px; --pi-gap: 6px; --ctrl-label-width: 7rem; font-size: 15px; }
+    @media (pointer: coarse), (max-width: 640px) { #pi-compression { --pi-h: 44px; } }
+    #pi-compression.position-left .ctrl-panel-body { max-height: 82vh; }
+    #pi-compression .ctrl-drag-indicator { opacity: 0.3; box-shadow: none; }
+    #pi-compression .ctrl-label { justify-content: flex-start; text-align: left; font-size: 14px; opacity: 0.72; hyphens: none; }
+    #pi-compression .ctrl-value-input { font-size: 15px; }
+    #pi-compression .ctrl-button { font-size: 15px; }
+    #pi-compression .ctrl-row { margin-bottom: 0.7rem; }
+    .pi-consts { display: block; padding-bottom: 0.9rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--ui-fill-15); }
+    .pi-consts button, .pi-consts select { font: inherit; font-size: 15px; color: var(--text-color); }
+    .pi-head { display: flex; align-items: center; justify-content: space-between; min-height: var(--pi-h); margin-bottom: var(--pi-gap); }
+    .pi-title { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ui-text-70); }
+    .pi-form { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; background: var(--ui-fill-05); border-radius: 8px; width: 12rem; }
+    .pi-form[data-off] { visibility: hidden; }
+    .pi-form button { height: calc(var(--pi-h) - 4px); border: 0; border-radius: 6px; background: transparent; cursor: pointer; opacity: 0.6; }
+    .pi-form button[aria-pressed="true"] { background: var(--ui-fill-15); opacity: 1; }
+    .pi-list { display: flex; flex-direction: column; gap: var(--pi-gap); height: calc(3 * var(--pi-h) + 2 * var(--pi-gap)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }
+    .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem var(--pi-h); gap: var(--pi-gap); height: var(--pi-h); }
+    .pi-sel { position: relative; display: block; min-width: 0; }
+    .pi-sel::after { content: ''; position: absolute; right: 0.95rem; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--ui-text-70); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
+    .pi-select { appearance: none; -webkit-appearance: none; width: 100%; height: var(--pi-h); padding: 0 2rem 0 0.8rem; border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; font-size: 16px; }
+    .pi-select option { background: var(--bg-color, #000); color: var(--text-color, #fff); }
+    .pi-mirror, .pi-del, .pi-add { height: var(--pi-h); border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; padding: 0; }
+    .pi-mirror[aria-pressed="true"] { background: var(--ui-fill-20); box-shadow: inset 0 0 0 1px var(--ui-border-strong); }
+    .pi-del { font-size: 20px; line-height: 1; }
+    .pi-mirror:disabled, .pi-del:disabled { opacity: 0.3; cursor: default; }
+    .pi-add { width: 100%; margin-top: var(--pi-gap); background: transparent; box-shadow: inset 0 0 0 1px var(--ui-border-soft); opacity: 0.85; }
+    @media (hover: hover) { .pi-select:hover, .pi-mirror:not(:disabled):hover, .pi-del:not(:disabled):hover, .pi-add:hover { background: var(--ui-fill-12); } }
+    .pi-consts :focus-visible { outline: 2px solid var(--ui-border-stronger); outline-offset: 1px; }
   </style>
 </head>
 <body>
@@ -273,7 +304,8 @@
     function setConstant(id) {
       if (id === cid) return;
       cid = id;
-      glieder = [{ c: id, dir: 'r' }];
+      glieder = [{ uid: glieder[0].uid, c: id, dir: 'r' }];
+      syncRows();
       const u = new URL(location.href);
       u.searchParams.set('c', id);
       history.replaceState(null, '', u);
@@ -290,7 +322,7 @@
     // r beginnt am linken Rand seines Platzes, l (gespiegelt) am rechten; l gefolgt von r teilt sich ein centrum. Stern: alle
     // Strahlen aus der Buehnenmitte, Winkel 360/n; ein Strahl ueber 90..270 Grad laeuft gespiegelt (Ziffern nie kopfueber).
     // Gleiche Konstanten teilen einen Rechner. Keine Pi-Datei: die Geraetegrenze gilt wie bei e.
-    let glieder = [{ c: cid, dir: 'r' }], form = 'kette', multi = null, pointerItem = null;
+    let uidSeq = 0, glieder = [{ uid: ++uidSeq, c: cid, dir: 'r' }], form = 'kette', multi = null, pointerItem = null;
     let factorValue = view.state().factor;
     const MARGIN = UnfoldingView.MARGIN;
     const nameOf = (id) => (id === 'pi' ? 'pi' : symbolOf(id));
@@ -574,50 +606,105 @@
       if (single.punkt) single.punkt.style.display = '';
       cid = glieder[0].c;
       document.title = cid === 'pi' ? '(un)foldingPi' : '(un)folding ' + symbolOf(cid);
-      panel.set('const', cid);
       startWorker();
       view.rewind();
       view.resize();
       centreSingle();
     }
+    // Struktur sofort (Reset, Rueckgaengig) oder aus dem Panel: dort zeigt die Zeile die Aenderung sofort (changed), der Aufbau folgt im naechsten Takt.
     function structure() {
       saveUrl();
-      buildGliederPanel();
+      syncRows();
+      applyStructure();
+    }
+    function applyStructure() {
       if (glieder.length === 1) toSingle();
       else buildMulti();
     }
-    function addGlied() {
-      if (glieder.length === 1) glieder = [{ c: glieder[0].c, dir: 'l' }, { c: glieder[0].c, dir: 'r' }];
-      else glieder.push({ c: 'pi', dir: 'r' });
-      structure();
+    let structurePending = false;
+    function changed() {
+      saveUrl();
+      syncRows();
+      if (structurePending) return;
+      structurePending = true;
+      requestAnimationFrame(() => setTimeout(() => { structurePending = false; applyStructure(); }, 0));
     }
-    function buildGliederPanel() {
-      panel.removeSection('glieder');
-      panel.beginSection('glieder', { title: 'Glieder' });
-      const many = glieder.length > 1;
-      if (many) {
-        panel.addButtonGroup('form', {
-          buttons: [
-            { key: 'kette', label: 'Kette', title: 'hintereinander: ein Verdichtungspunkt je Glied', onClick: () => { if (form !== 'kette') { form = 'kette'; structure(); } } },
-            { key: 'stern', label: 'Stern', title: 'alle Strahlen laufen auf ein centrum zu', onClick: () => { if (form !== 'stern') { form = 'stern'; structure(); } } }
-          ]
-        });
-        for (const b of panel.bodyEl.querySelectorAll('.ctrl-row[data-key="form"] .ctrl-button')) b.setAttribute('aria-pressed', String(b.dataset.buttonKey === form));
-        glieder.forEach((g, i) => {
-          panel.addSelect('glied' + i, {
-            label: 'Glied ' + (i + 1), value: g.c,
-            options: CONSTS.map((k) => ({ value: k.id, label: k.symbol })),
-            onChange: (v) => { if (v !== g.c) { g.c = v; structure(); } }
-          });
-          const buttons = [];
-          if (form === 'kette') buttons.push({ key: 'dir', label: g.dir === 'r' ? '→' : '←', title: 'Richtung umkehren', onClick: () => { g.dir = g.dir === 'r' ? 'l' : 'r'; structure(); } });
-          buttons.push({ key: 'del', label: 'entfernen', title: 'Glied entfernen', onClick: () => { glieder.splice(i, 1); structure(); } });
-          panel.addButtonGroup('glied' + i + '-actions', { buttons });
-        });
+    const nextUid = () => ++uidSeq;
+    function addGlied() {
+      if (glieder.length === 1) { glieder[0].dir = 'l'; glieder.push({ uid: nextUid(), c: glieder[0].c, dir: 'r' }); form = 'kette'; }
+      else glieder.push({ uid: nextUid(), c: 'pi', dir: 'r' });
+      changed();
+    }
+    function toggleMirror(g) {
+      if (glieder.length === 1) { g.dir = 'l'; glieder.push({ uid: nextUid(), c: g.c, dir: 'r' }); form = 'kette'; }
+      else g.dir = g.dir === 'r' ? 'l' : 'r';
+      changed();
+    }
+    function removeGlied(g) {
+      if (glieder.length < 2) return;
+      glieder.splice(glieder.indexOf(g), 1);
+      changed();
+    }
+    // Panel: eine Zeile je Konstante [Auswahl][mirror][x]. Die Zeilen werden gezielt ergaenzt, entfernt und umgeschrieben,
+    // nie neu aufgebaut; die Liste hat feste Hoehe (drei Zeilen), so bewegt sich beim Klick nichts.
+    const ui = { rows: new Map(), list: null, form: null };
+    const mk = (tag, cls, attrs) => { const e = document.createElement(tag); if (cls) e.className = cls; if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+    function buildConstPanel() {
+      panel.beginSection('consts', { className: 'pi-consts' });
+      const sec = panel.bodyEl.lastElementChild;
+      const head = mk('div', 'pi-head');
+      const title = mk('div', 'pi-title'); title.textContent = 'constants';
+      ui.form = mk('div', 'pi-form', { role: 'group', 'aria-label': 'arrangement' });
+      for (const [key, label, tip] of [['kette', 'chain', 'one after another: a compression point per constant'], ['stern', 'star', 'all rays run towards one centre']]) {
+        const b = mk('button', '', { type: 'button', title: tip, 'data-button-key': key });
+        b.textContent = label;
+        b.addEventListener('click', () => { if (form !== key) { form = key; changed(); } });
+        ui.form.appendChild(b);
       }
-      panel.addButton('add', { label: '+ Glied', onClick: addGlied });
+      head.append(title, ui.form);
+      ui.list = mk('div', 'pi-list');
+      const add = mk('button', 'pi-add', { type: 'button', 'data-button-key': 'add' });
+      add.textContent = '+ constant';
+      add.addEventListener('click', addGlied);
+      sec.append(head, ui.list, add);
       panel.endSection();
-      panel.setRowVisibility('const', !many);
+    }
+    function makeRow() {
+      const row = mk('div', 'pi-row');
+      const wrap = mk('label', 'pi-sel');
+      const sel = mk('select', 'pi-select', { 'aria-label': 'constant' });
+      for (const k of CONSTS) sel.add(new Option(k.symbol, k.id));
+      wrap.appendChild(sel);
+      const mir = mk('button', 'pi-mirror', { type: 'button', 'data-button-key': 'dir', title: 'mirror: 3.141... becomes ...141.141...' });
+      mir.textContent = 'mirror';
+      const del = mk('button', 'pi-del', { type: 'button', 'data-button-key': 'del', 'aria-label': 'remove constant', title: 'remove constant' });
+      del.textContent = '×';
+      sel.addEventListener('change', () => { const g = row._g; if (sel.value === g.c) return; if (glieder.length === 1) setConstant(sel.value); else { g.c = sel.value; changed(); } });
+      mir.addEventListener('click', () => toggleMirror(row._g));
+      del.addEventListener('click', () => removeGlied(row._g));
+      row.append(wrap, mir, del);
+      row._sel = sel; row._mir = mir; row._del = del;
+      return row;
+    }
+    function syncRows() {
+      const many = glieder.length > 1, want = new Set();
+      for (const g of glieder) { if (!g.uid) g.uid = nextUid(); want.add(g.uid); }
+      for (const [uid, r] of ui.rows) if (!want.has(uid)) { r.remove(); ui.rows.delete(uid); }
+      let prev = null;
+      for (const g of glieder) {
+        let r = ui.rows.get(g.uid);
+        if (!r) { r = makeRow(); ui.rows.set(g.uid, r); }
+        r._g = g;
+        const ref = prev ? prev.nextSibling : ui.list.firstChild;
+        if (r !== ref) ui.list.insertBefore(r, ref);
+        prev = r;
+        if (r._sel.value !== g.c) r._sel.value = g.c;
+        r._mir.setAttribute('aria-pressed', String(many && g.dir === 'l'));
+        r._mir.disabled = many && form === 'stern';
+        r._del.disabled = !many;
+      }
+      if (many) ui.form.removeAttribute('data-off'); else ui.form.setAttribute('data-off', '');
+      for (const b of ui.form.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.buttonKey === form)); b.tabIndex = many ? 0 : -1; }
     }
     // Einzelnes pi/e/...: die Canvas liegt wie ein Glied (Anfang = Zelle der Ganzzahl), die Ganzzahl steht buendig links vom Punkt,
     // der Punkt in der Mitte der freien Flaeche; beides zeichnet das Overlay, der Strom ist rechts vom Punkt sichtbar.
@@ -698,6 +785,7 @@
     })();
     panel.addToggle('debug', { label: 'debug', value: debug.on, onChange: (v) => debug.set(v) });
     debug.syncRow();
+    buildConstPanel();
     // Stern: die Arme ueberlappen am Zentrum, oben liegt der kuerzeste Arm (ganz eingeschoben bleibt sein Griff erreichbar)
     (function starZ() {
       if (multi && form === 'stern') {
@@ -718,12 +806,12 @@
       requestAnimationFrame(watchR);
     })();
     panel.addSlider('drift', {
-      label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
+      label: 'speed', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
       onChange: (v) => { driftValue = +v || 0; }
     });
     driftEl = panel.bodyEl.querySelector('.ctrl-row[data-key="drift"] .ctrl-range');
     driftEl.id = 'drift';
-    driftEl.setAttribute('aria-label', 'Sausen');
+    driftEl.setAttribute('aria-label', 'speed');
     // Verdichtung je Abstand der Enden, Faktor 0..1 (siehe tools/unfolding-view.js). Reglerweg s: bis 0,5 linear, darueber
     // kubisch auf 1 zu (f = 1 - 0,5 (2 (1 - s))^3), damit nahe 1 jeder Schritt feiner wird.
     const factorTransform = {
@@ -735,17 +823,12 @@
       parseConfigValue(text) { return parseDE(text); }
     };
     panel.addSlider('f', {
-      label: 'Verdichtungsfaktor', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
+      label: 'compression', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
       onChange: (v) => {
         factorValue = +v || 0;
         view.setFactor(factorValue);
         if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
       }
-    });
-    panel.addSelect('const', {
-      label: 'Konstante', value: cid,
-      options: CONSTS.map((k) => ({ value: k.id, label: k.symbol })),
-      onChange: setConstant
     });
     panel.addButton('notation', { label: 'change notation', onClick: () => setNotation(notation === 'zero' ? 'int' : 'zero') });
     // Zuruecksetzen stellt den Startzustand her: ein Glied pi (nur die 3, der Punkt und der Strich), URL ohne Zustandsparameter;
@@ -754,7 +837,7 @@
       onClick: () => {
         const prev = { list: glieder.map((g) => Object.assign({}, g)), form };
         if (glieder.length > 1 || glieder[0].c !== 'pi') {
-          glieder = [{ c: 'pi', dir: 'r' }];
+          glieder = [{ uid: glieder[0].uid, c: 'pi', dir: 'r' }];
           form = 'kette';
           structure();
         }
@@ -762,7 +845,7 @@
       },
       afterReset: () => {
         // die Regler-Voreinstellung der Konstante kann die aus der URL sein (?c=e): Startzustand ist immer pi
-        if (glieder.length === 1 && cid !== 'pi') { glieder[0].c = 'pi'; panel.set('const', 'pi'); setConstant('pi'); }
+        if (glieder.length === 1 && cid !== 'pi') setConstant('pi');
         const u = new URL(location.href);
         for (const k of ['c', 'kette', 'stern']) u.searchParams.delete(k);
         history.replaceState(history.state, '', u.pathname + (u.search || '') + u.hash);
@@ -771,10 +854,9 @@
     // Zustand aus der URL: ?kette=pi-l.pi-r oder ?stern=pi.pi.e (sonst ?c=<id>, ein Glied)
     const parsed = parseGlieder();
     if (parsed) { form = parsed.form; if (parsed.list.length) glieder = parsed.list; cid = glieder[0].c; }
-    buildGliederPanel();
+    syncRows();
     if (glieder.length > 1) buildMulti();
     else {
-      panel.set('const', cid);
       startChain();
       if (!constOf(cid)) fail('Unbekannte Konstante: ' + cid);
       else if (cid !== 'pi') document.title = '(un)folding ' + symbolOf(cid);
