@@ -6,8 +6,8 @@
 // Prueft nur die Attribute; ob Chrome auf dem Handy wirklich nichts anbietet, laesst sich headless nicht pruefen.
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require(process.env.PLAYWRIGHT_PATH || '/home/timbr/winkelapp/web/node_modules/playwright');
-const CHROME = process.env.CHROME_PATH || '/home/timbr/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell';
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+const CHROME = process.env.CHROME_PATH || undefined;
 
 const args = process.argv.slice(2);
 const base = args.find(a => a.startsWith('http')) || 'https://dev.0nefinity.love';

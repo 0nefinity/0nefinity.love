@@ -1,3 +1,23 @@
-# Arbeitsdateien von Agenten gehoeren nach /home/timbr/werkstatt/0nefinity/
+# Das Repo ist oeffentlich: nur Seiten und der Code, der sie traegt.
+# Arbeitsdateien, Editor- und Agenten-Konfiguration bleiben ausserhalb (siehe AGENTS.md).
 _scratch/
 .superpowers/
+.claude/
+.kilocode/
+.gitnexus/
+.impeccable/
+.vscode/
+.idea/
+CLAUDE.local.md
+.php_tmp/
+test-results/
+node_modules/
+__pycache__/
+
+# Laufzeitdaten und Caches
+.sitemap-cache
+.auth/auth.sqlite*
+.auth/setup-token
+*.log
+.env
+.env.*
