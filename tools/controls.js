@@ -980,7 +980,7 @@
                     <span class="ctrl-config-label">Min</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="down" aria-label="Min verringern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="min" value="${formatConfigFieldValue(cfg, 'min')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                        <input type="text" class="ctrl-config-input" data-config="min" value="${formatConfigFieldValue(cfg, 'min')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="up" aria-label="Min erhöhen">&#9652;</button>
                     </div>
                 </div>
@@ -988,7 +988,7 @@
                     <span class="ctrl-config-label">Max</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="down" aria-label="Max verringern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                        <input type="text" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="up" aria-label="Max erhöhen">&#9652;</button>
                     </div>
                 </div>
@@ -996,7 +996,7 @@
                     <span class="ctrl-config-label">Step</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="down" aria-label="Step verkleinern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="step" value="${formatConfigFieldValue(cfg, 'step')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                        <input type="text" class="ctrl-config-input" data-config="step" value="${formatConfigFieldValue(cfg, 'step')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
@@ -2290,7 +2290,7 @@
                     <button class="ctrl-stepper-btn" data-action="dec">&#8722;</button>
                     <input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
-                    <input type="text" class="ctrl-value-input" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
+                    <input type="text" class="ctrl-value-input" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
                     <button class="ctrl-config-trigger" title="Einstellungen">&#8942;</button>
                 </div>
             `;
@@ -2669,7 +2669,7 @@
             row.dataset.key = key;
             row.innerHTML = `
                 <label class="ctrl-label">${label}</label>
-                <input class="ctrl-input" type="${type}" placeholder="${placeholder}" ${inputmode ? `inputmode="${inputmode}"` : ''} value="${String(value ?? '').replace(/"/g, '&quot;')}">
+                <input class="ctrl-input" type="${type}" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="${placeholder}" ${inputmode ? `inputmode="${inputmode}"` : ''} value="${String(value ?? '').replace(/"/g, '&quot;')}">
             `;
 
             const input = row.querySelector('.ctrl-input');
