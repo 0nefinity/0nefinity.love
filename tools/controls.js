@@ -2706,6 +2706,20 @@
             };
 
             this._applyMobileSheetPosition = setPosition;
+            // Wird das Panel von aussen eingeblendet (Tap aufs Symbol), liegt es sonst nur als Streifen unten: die Start-Hoehe
+            // wurde gemessen, solange das Panel noch display:none war (Hoehe ~0), und ist deshalb winzig. Hier neu messen.
+            // Hat der Nutzer die Hoehe selbst gezogen, gilt seine; ein offenes Panel aendert sich nie (springt nicht unter dem Finger).
+            this.openSheetIfClosed = () => {
+                if (!this.el || !isMobile()) return;
+                if (!this._mobileUserSized) {
+                    const want = getInitialOpenVisibleHeight();
+                    this._mobileDefaultOpenVisibleHeight = want;
+                    this._mobileLastOpenVisibleHeight = want;
+                    setPosition(getYForVisibleHeight(want), true, { rememberOpen: false, signalLayout: true });
+                    return;
+                }
+                if (isMostlyClosed()) setPosition(getPreferredOpenY(), true, { rememberOpen: false, signalLayout: true });
+            };
             // Tastatur: Oeffnet sich die Bildschirmtastatur, schrumpft das Viewport und die Sheet-Hoehe wird neu aus der
             // sichtbaren Hoehe berechnet. Das Panel sprang dabei hoch und das angetippte Feld wanderte unter dem Finger weg.
             // Solange ein Textfeld im Panel den Fokus hat, bleibt deshalb die Oberkante des Sheets auf dem Bildschirm stehen.
@@ -2859,6 +2873,7 @@
                     const endY = e.changedTouches[0].clientY;
                     const deltaY = endY - touchStartY;
 	                    suppressHeaderClickUntil = Date.now() + 400;
+                    this._mobileUserSized = true;
 	                    setPosition(touchPanelStartY + deltaY, false, { rememberOpen: true, signalLayout: true });
                 }
                 isTouchDragging = false;
@@ -2892,6 +2907,7 @@
 	                if (isMobile() && isMouseDragging) {
 	                    const deltaY = e.clientY - mouseStartY;
 	                    suppressHeaderClickUntil = Date.now() + 400;
+                    this._mobileUserSized = true;
 	                    setPosition(mousePanelStartY + deltaY, false, { rememberOpen: true, signalLayout: true });
 	                }
 	                isMousePressed = false;
