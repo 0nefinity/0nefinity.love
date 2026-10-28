@@ -50,9 +50,8 @@ PRIORITY_ITEMS = [
 EXCLUDE_FROM_LIST = {'impressum-und-datenschutz.html', 'README.html'}
 # Gehoert zu 0nefinity.com (Cookie-Shop); auf .love gibt es keine Cookies.
 COM_ONLY = ('cookies.html', 'assets/cookies/')
-# Feste Eintraege ohne Datei. /enternity (Login: live der Editor-Dienst, dev enternity.php) steht bewusst
-# nicht im Menue und nicht in der Suche, nur die direkte URL fuehrt hin.
-FIXED_PAGES = []
+# Feste Eintraege ohne Datei: den Login liefert auf live der Editor-Dienst, auf dev enternity.php.
+FIXED_PAGES = [{'name': 'enternity', 'path': 'enternity', 'display': 'enternity', 'fixed': True}]
 FIXED_PATHS = {'enternity.php'}
 
 
