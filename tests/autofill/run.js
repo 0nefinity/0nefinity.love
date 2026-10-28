@@ -1,5 +1,6 @@
 // Autofill test (Playwright). Aufruf:
-//   node run.js [baseUrl] [--local /pfad/zum/repo] [--no-guard]
+//   node run.js [baseUrl] [--local /pfad/zum/repo] [--no-guard] [--all]
+// --all prueft statt der festen Liste alle Seiten, die Panel und meta.js einbinden (Liste per Suche im Repo).
 // --local liefert meta.js, meta.css und tools/controls.js aus dem Checkout (Test vor dem Deploy).
 // --no-guard ersetzt meta.js durch eine leere Datei (Gegenprobe: der Test muss rot werden).
 // Playwright/Chromium per Umgebung: PLAYWRIGHT_PATH, CHROME_PATH.
@@ -15,7 +16,9 @@ const li = args.indexOf('--local');
 const localDir = li >= 0 ? args[li + 1] : null;
 const noGuard = args.includes('--no-guard');
 
-const PAGES = ['/', '/018', '/shadows', '/co0rdinates', '/fourieous', '/unfoldingPi', '/enternity'];
+const PAGES = args.includes('--all') ? require('../lib/pages.js').panelPages(path.resolve(__dirname, '../..')) : ['/', '/018', '/shadows', '/co0rdinates', '/fourieous', '/unfoldingPi', '/enternity'];
+// Bekannter Fehler der Seite selbst (createCircle ruft sich endlos auf), unabhaengig vom Panel
+const KNOWN_PAGEERRORS = { '/fun-with-circles/cssKreise': /Maximum call stack/ };
 const NON_TEXT = new Set(['checkbox', 'radio', 'range', 'color', 'button', 'submit', 'reset', 'hidden', 'file', 'image']);
 const LOGIN_AC = /(^|\s)(username|current-password|new-password|one-time-code|webauthn)(\s|$)/;
 
@@ -99,7 +102,8 @@ return [...document.querySelectorAll('input,textarea')].filter(e => !NON_TEXT_.h
             if (!login.length) failures.push('/enternity: no login field found, check the test');
             console.log('  login fields: ' + login.map(r => r.desc + ' ac=' + r.ac).join(', '));
         }
-        if (errs.length) failures.push(`${p}: ${errs.length} pageerror(s): ${errs[0]}`);
+        const realErrs = errs.filter(m => !(KNOWN_PAGEERRORS[p] && KNOWN_PAGEERRORS[p].test(m)));
+        if (realErrs.length) failures.push(`${p}: ${realErrs.length} pageerror(s): ${realErrs[0]}`);
         console.log(`${p}: ${rows.length} fields, ${errs.length} pageerrors`);
         await page.close();
     }
