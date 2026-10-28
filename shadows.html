@@ -311,7 +311,7 @@
       urlParams.delete('lights');  // Default: alle an
     }
 
-    const newURL = `${window.location.pathname}?${urlParams.toString()}`;
+    const newURL = `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`;
     window.history.replaceState({}, '', newURL);
   }
 
