@@ -899,6 +899,10 @@ if (document.fonts && typeof document.fonts.ready?.then === 'function') {
         if (el.type !== undefined && SKIP_TYPES.has(el.type)) return;
         if (isLogin(el)) return;
         if (el.getAttribute('autocomplete') !== 'off') el.setAttribute('autocomplete', 'off');
+        // Chrome/Android zeigt an type=search keine Schluessel/Karte/Ort-Leiste (am Handy getestet).
+        // Das blaue X blendet meta.css aus. type=number bleibt: alte Seiten lesen valueAsNumber.
+        if (el.tagName === 'INPUT' && el.type === 'text') el.setAttribute('type', 'search');
+        if (el.tagName === 'INPUT' && el.type === 'search' && !el.hasAttribute('enterkeyhint')) el.setAttribute('enterkeyhint', 'done');
         if (el.tagName === 'TEXTAREA' || el.type === 'text' || el.type === 'search' || el.type === 'number') {
             el.setAttribute('autocorrect', 'off');
             el.setAttribute('autocapitalize', 'off');

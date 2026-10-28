@@ -702,7 +702,7 @@
         if (labelEdit && labelEdit.el === el) return;
         commitLabelEdit();
         const input = document.createElement('input');
-        input.type = 'text';
+        input.type = 'search';
         input.className = 'ctrl-label-edit';
         input.dataset.oeUi = '';
         input.value = el.textContent.trim();
@@ -1573,7 +1573,7 @@
                     <span class="ctrl-config-label">Min</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="down" aria-label="Min verringern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="min" value="${formatConfigFieldValue(cfg, 'min')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
+                        <input type="search" class="ctrl-config-input" data-config="min" value="${formatConfigFieldValue(cfg, 'min')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="up" aria-label="Min erhöhen">&#9652;</button>
                     </div>
                 </div>
@@ -1581,7 +1581,7 @@
                     <span class="ctrl-config-label">Max</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="down" aria-label="Max verringern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
+                        <input type="search" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="up" aria-label="Max erhöhen">&#9652;</button>
                     </div>
                 </div>
@@ -1589,7 +1589,7 @@
                     <span class="ctrl-config-label">Step</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="down" aria-label="Step verkleinern">&#9662;</button>
-                        <input type="text" class="ctrl-config-input" data-config="step" value="${formatConfigFieldValue(cfg, 'step')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
+                        <input type="search" class="ctrl-config-input" data-config="step" value="${formatConfigFieldValue(cfg, 'step')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
@@ -2985,7 +2985,7 @@
                     <button class="ctrl-stepper-btn" data-action="dec">&#8722;</button>
                     ${wrap ? '<span class="ctrl-range-wrap">' : ''}<input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">${wrap ? '</span>' : ''}
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
-                    <input type="text" class="ctrl-value-input" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
+                    <input type="search" class="ctrl-value-input" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
                     <button class="ctrl-config-trigger" title="Einstellungen">&#8942;</button>
                 </div>
             `;
@@ -3473,7 +3473,7 @@
                 label,
                 value = '',
                 placeholder = '',
-                type = 'text',
+                type = 'search',
                 inputmode = '',
                 onChange
             } = config;
@@ -3486,7 +3486,7 @@
             row.dataset.key = key;
             row.innerHTML = `
                 <label class="ctrl-label">${label}</label>
-                <input class="ctrl-input" type="${type}" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="${placeholder}" ${inputmode ? `inputmode="${inputmode}"` : ''} value="${String(value ?? '').replace(/"/g, '&quot;')}">
+                <input class="ctrl-input" type="${type === 'text' || type === 'number' ? 'search' : type}" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="${placeholder}" ${inputmode ? `inputmode="${inputmode}"` : ''} value="${String(value ?? '').replace(/"/g, '&quot;')}">
             `;
 
             const input = row.querySelector('.ctrl-input');
@@ -3563,7 +3563,7 @@
             st.strip.textContent = '';
             const makeInput = (k, i, v, aria, onChange) => {
                 const input = document.createElement('input');
-                input.type = 'text';
+                input.type = 'search';
                 input.className = 'ctrl-input ctrl-symbol-input';
                 input.value = v ?? '';
                 input.setAttribute('aria-label', aria);
@@ -3628,7 +3628,7 @@
                     // Synchron: ein Feld, die uebrigen Zeilen zeigen es gedimmt und gesperrt
                     for (let i = 1; i < values.length; i++) {
                         const m = document.createElement('input');
-                        m.type = 'text';
+                        m.type = 'search';
                         m.className = 'ctrl-input ctrl-symbol-input ctrl-symbol-side-input ctrl-symbol-mirror';
                         m.value = sideValues[0] ?? '';
                         m.disabled = true;
