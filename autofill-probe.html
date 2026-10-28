@@ -12,7 +12,7 @@
   h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .6rem; }
   .how { border: 1px solid var(--ui-border); border-radius: 10px; padding: .8rem 1rem; margin-bottom: 1.2rem; background: var(--ui-fill-05); }
   .how b { color: var(--text-color); }
-  .v { display: flex; align-items: center; gap: 1rem; padding: .7rem 0; border-top: 1px solid var(--ui-border-soft); }
+  .v { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: .7rem 0; border-top: 1px solid var(--ui-border-soft); }
   .nr { font-size: 2.4rem; font-weight: 700; width: 3.4rem; text-align: center; flex: none; }
   .txt { flex: 1; min-width: 0; font-size: .95rem; }
   .txt small { display: block; opacity: .6; font-size: .72rem; word-break: break-all; margin-top: .2rem; }
@@ -31,55 +31,55 @@
   Tastatur zwischen den Feldern ruhig offen lassen, direkt das naechste Feld antippen. Wenn die Leiste erst nach einem Moment auftaucht: kurz warten. Nummer 1 ist der heutige Stand und muss die Leiste zeigen (Gegenprobe).
 </div>
 
-<div class="v"><div class="nr">1</div>
+<div class="v" data-probe-item="1"><div class="nr">1</div>
   <div class="txt">heutiger Stand<small>type=text, autocomplete=off, data-1p/lp/bw-ignore</small></div>
   <input class="f" type="text" maxlength="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" data-protonpass-ignore="true" value="1"></div>
 
-<div class="v"><div class="nr">2</div>
+<div class="v" data-probe-item="2"><div class="nr">2</div>
   <div class="txt">one-time-code<small>autocomplete="one-time-code"</small></div>
   <input class="f" type="text" maxlength="1" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" value="1"></div>
 
-<div class="v"><div class="nr">3</div>
+<div class="v" data-probe-item="3"><div class="nr">3</div>
   <div class="txt">Unsinns-Wert<small>autocomplete="nope-018-x"</small></div>
   <input class="f" type="text" maxlength="1" autocomplete="nope-018-x" autocapitalize="off" spellcheck="false" value="1"></div>
 
-<div class="v"><div class="nr">4</div>
+<div class="v" data-probe-item="4"><div class="nr">4</div>
   <div class="txt">type=search<small>type=search, autocomplete=off</small></div>
   <input class="f" type="search" maxlength="1" autocomplete="off" autocapitalize="off" spellcheck="false" value="1"></div>
 
-<div class="v"><div class="nr">5</div>
+<div class="v" data-probe-item="5"><div class="nr">5</div>
   <div class="txt">contenteditable-div<small>div contenteditable=true, role=textbox, kein input</small></div>
   <div class="f" contenteditable="true" role="textbox" aria-label="Symbol" autocapitalize="off" spellcheck="false">1</div></div>
 
-<div class="v"><div class="nr">6</div>
+<div class="v" data-probe-item="6"><div class="nr">6</div>
   <div class="txt">readonly bis Fokus<small>readonly, wird bei focus/touchstart entfernt</small></div>
   <input class="f" id="v6" type="text" maxlength="1" readonly autocomplete="off" autocapitalize="off" spellcheck="false" value="1"></div>
 
-<div class="v"><div class="nr">7</div>
+<div class="v" data-probe-item="7"><div class="nr">7</div>
   <div class="txt">textarea rows=1<small>textarea rows=1, autocomplete=off</small></div>
   <textarea class="f" rows="1" maxlength="1" autocomplete="off" autocapitalize="off" spellcheck="false">1</textarea></div>
 
-<div class="v"><div class="nr">8</div>
+<div class="v" data-probe-item="8"><div class="nr">8</div>
   <div class="txt">form + Zufallsname<small>form autocomplete=off, name/id zufaellig (per Skript)</small></div>
   <form id="v8form" autocomplete="off" onsubmit="return false"><input class="f" id="v8" type="text" maxlength="1" autocomplete="off" autocapitalize="off" spellcheck="false" value="1"></form></div>
 
-<div class="v"><div class="nr">9</div>
+<div class="v" data-probe-item="9"><div class="nr">9</div>
   <div class="txt">inputmode + enterkeyhint<small>inputmode=text, enterkeyhint=done</small></div>
   <input class="f" type="text" maxlength="1" inputmode="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" spellcheck="false" value="1"></div>
 
-<div class="v"><div class="nr">10</div>
+<div class="v" data-probe-item="10"><div class="nr">10</div>
   <div class="txt">Shadow DOM<small>input in einem open shadow root</small></div>
   <div id="v10host" style="flex:none"></div></div>
 
-<div class="v"><div class="nr">11</div>
+<div class="v" data-probe-item="11"><div class="nr">11</div>
   <div class="txt">contenteditable plaintext-only<small>div contenteditable=plaintext-only</small></div>
   <div class="f" contenteditable="plaintext-only" role="textbox" aria-label="Symbol" autocapitalize="off" spellcheck="false">1</div></div>
 
-<div class="v"><div class="nr">12</div>
+<div class="v" data-probe-item="12"><div class="nr">12</div>
   <div class="txt">inputmode=numeric + pattern<small>type=text, inputmode=numeric, pattern=[0-9]*, autocomplete=off</small></div>
   <input class="f" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" spellcheck="false" value="1"></div>
 
-<div class="v"><div class="nr">13</div>
+<div class="v" data-probe-item="13"><div class="nr">13</div>
   <div class="txt">new-password<small>autocomplete="new-password" (Chrome-Gegenmittel gegen Passwort-Befuellung, unbelegt auf Android)</small></div>
   <input class="f" type="text" maxlength="1" autocomplete="new-password" autocapitalize="off" spellcheck="false" value="1"></div>
 
@@ -107,5 +107,6 @@
   root.append(st, inp);
 })();
 </script>
+<script src="/tools/probe-feedback.js" data-probe="autofill" defer></script>
 </body>
 </html>
