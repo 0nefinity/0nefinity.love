@@ -224,8 +224,8 @@ canvas {
     const canvas = document.createElement('canvas');
     canvas.id = 'canvas';
     const initialDpr = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * initialDpr;
-    canvas.height = window.innerHeight * initialDpr;
+    canvas.width = Math.round(window.innerWidth * initialDpr);
+    canvas.height = Math.round(window.innerHeight * initialDpr);
     canvas.style.width = window.innerWidth + 'px';
     canvas.style.height = window.innerHeight + 'px';
     canvas.style.position = 'fixed';
@@ -1708,8 +1708,8 @@ canvas {
       // Canvas und InteractionLayer sind fixed und Vollbild
       // DPR-aware: Pixel-Buffer = CSS × dpr, Transform = dpr-scale → scharf auf Mobile
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      canvas.width = Math.round(window.innerWidth * dpr);
+      canvas.height = Math.round(window.innerHeight * dpr);
       canvas.style.width = window.innerWidth + 'px';
       canvas.style.height = window.innerHeight + 'px';
       canvas.style.position = 'fixed';
@@ -1775,9 +1775,9 @@ canvas {
 
       // Echtzeit-Prüfung der Viewport-Größe (mit DPR-aware Pixel-Buffer)
       const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== window.innerWidth * dpr || canvas.height !== window.innerHeight * dpr) {
-        canvas.width = window.innerWidth * dpr;
-        canvas.height = window.innerHeight * dpr;
+      if (canvas.width !== Math.round(window.innerWidth * dpr) || canvas.height !== Math.round(window.innerHeight * dpr)) {
+        canvas.width = Math.round(window.innerWidth * dpr);
+        canvas.height = Math.round(window.innerHeight * dpr);
         canvas.style.width = window.innerWidth + 'px';
         canvas.style.height = window.innerHeight + 'px';
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
