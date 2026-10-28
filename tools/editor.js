@@ -1,4 +1,4 @@
-// Dev-only Editor. Ohne Login: im Menue ein Eingang zu /enternity. Eingeloggt: im Menue nur noch Ausloggen;
+// Dev-only Editor. Ohne Login: nichts im Menue, der Login liegt nur unter /enternity. Eingeloggt: im Menue nur noch Ausloggen;
 // alle Editor-Funktionen sitzen in der Leiste oben links neben dem Menue, nach Zusammengehoerigem gruppiert:
 // Verlauf (rueckgaengig, wiederholen, Verlaufsliste) | Text (Formatierung, Steuerzeichen) | Seite (Untermenue:
 // neu, umbenennen, loeschen) | mehr (Quelltext, Aenderungen, Kommentare, Analytics) | veroeffentlichen (nur dev) | Stift.
@@ -2293,8 +2293,6 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 #oe-admin .oe-btn:focus-visible{opacity:1}
 #oe-admin .oe-btn:disabled{opacity:.3!important}
 #oe-admin .oe-pwr{width:20px;height:20px}
-#oe-admin .oe-login{border-color:transparent!important;opacity:.6}
-@media (hover:hover){#oe-admin .oe-login:hover{opacity:1}}
 .oe-btn.oe-small{min-height:32px!important;min-width:0!important;padding:0 8px!important;font-size:13px!important}
 #oe-hist{position:fixed;z-index:2147483001;width:min(320px,calc(100vw - 16px));max-height:50vh;overflow:auto;box-sizing:border-box;padding:4px;
   border-radius:6px;border:1px solid color-mix(in srgb,var(--text-color,#fff) 40%,transparent);background:var(--bg-color,#000);
@@ -2721,22 +2719,6 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     return document.querySelector('#meta-nav .menu-content-wrapper');
   }
 
-  function buildLoginEntry() {
-    const wrap = menuWrap();
-    if (!wrap) return;
-    css();
-    const sec = document.createElement('div');
-    sec.id = 'oe-admin';
-    sec.dataset.oeUi = '';
-    const a = document.createElement('a');
-    a.className = 'oe-btn oe-login';
-    a.href = '/enternity?next=' + encodeURIComponent(location.pathname);
-    a.innerHTML = icon('admin') + '<span>enter</span>';
-    a.setAttribute('aria-label', 'einloggen');
-    sec.appendChild(a);
-    wrap.prepend(sec);
-  }
-
   async function logout() {
     if (!(await flushed())) return;
     try {
@@ -2780,7 +2762,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     try {
       me = await fetch(CFG.me, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     } catch (e) { return; }
-    if (me.status === 401) { buildLoginEntry(); return; }
+    if (me.status === 401) return; // logged out: no entry in the menu, login only via /enternity
     if (!me.ok) { console.error('[editor] ' + CFG.me + ' HTTP ' + me.status); return; }
     const info = await me.json();
     csrf = info.csrf || '';
