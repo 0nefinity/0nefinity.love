@@ -1235,33 +1235,13 @@ canvas {
     };
 
     const AUTO_SPEED_DEFAULT = JSON.parse(JSON.stringify(AUTO_SPEED_CONFIG));
-    const CHOREO_KEY = '0nefinity-symbol-choreography';
     function restoreChoreo(src) {
       Object.assign(AUTO_SPEED_CONFIG.START_PHASE, src.START_PHASE);
       AUTO_SPEED_CONFIG.SPEED_STEPS.length = 0;
       src.SPEED_STEPS.forEach(st => AUTO_SPEED_CONFIG.SPEED_STEPS.push({ ...st }));
     }
-    function saveChoreo() {
-      try { localStorage.setItem(CHOREO_KEY, JSON.stringify(AUTO_SPEED_CONFIG)); } catch (e) { }
-    }
-    const finiteFields = (o, keys) => !!o && typeof o === 'object' && keys.every(k => typeof o[k] === 'number' && Number.isFinite(o[k]));
-    function choreoValid(c) {
-      return finiteFields(c.START_PHASE, ['startSpeed', 'rampTo', 'rampDuration', 'holdDuration'])
-        && Array.isArray(c.SPEED_STEPS) && c.SPEED_STEPS.length > 0
-        && c.SPEED_STEPS.every(st => finiteFields(st, ['increment', 'rampDuration', 'holdDuration']));
-    }
-    // Ungueltiger gespeicherter Zustand wird verworfen und laut gemeldet; die Seite startet mit den Voreinstellungen.
-    try {
-      const raw = localStorage.getItem(CHOREO_KEY);
-      if (raw !== null) {
-        const stored = JSON.parse(raw);
-        if (stored && choreoValid(stored)) restoreChoreo(stored);
-        else throw new Error('stored choreography has missing or non-finite values');
-      }
-    } catch (e) {
-      try { localStorage.removeItem(CHOREO_KEY); } catch (e2) { }
-      showSymbolError('Saved choreography was invalid and has been reset to defaults', e);
-    }
+    // Die Choreografie lebt nur im Speicher der Seite: Neuladen und Reset fuehren zur Voreinstellung.
+    const copyChoreo = () => JSON.parse(JSON.stringify(AUTO_SPEED_CONFIG));
 
     // Animationsparameter initialisieren
     // degPerCircle: nur Display-Konvention. Intern bleibt rotationSpeed in echten 360°-Grad/Frame.
@@ -1287,13 +1267,6 @@ canvas {
     function updateFpsHint() {
       const label = settingsPanel && settingsPanel.bodyEl.querySelector('[data-key="fps"] .ctrl-label');
       if (label) label.textContent = (detectionDone && fps > detectedHz) ? FPS_LABEL + ' (simulated)' : FPS_LABEL;
-    }
-
-    // Speed-Display Vertikal-Offset, persistiert via localStorage
-    const SPEED_OFFSET_KEY = '0nefinity-symbol-speedOffset';
-    const storedOffset = localStorage.getItem(SPEED_OFFSET_KEY);
-    if (storedOffset !== null && !isNaN(parseFloat(storedOffset))) {
-      cfg.speedOffset = parseFloat(storedOffset);
     }
 
     function showInfoText(icon, text) {
@@ -1398,9 +1371,11 @@ canvas {
       const codeFps = cfg.fps;
       panel.addResetButton({
         onClick: () => {
-          const prev = { autoOffset, autoPausedAt, userChangedFps, snapshot: { ...snapshot } };
+          const prev = { autoOffset, autoPausedAt, userChangedFps, snapshot: { ...snapshot }, choreo: copyChoreo() };
           return () => {
             ({ autoOffset, autoPausedAt, userChangedFps } = prev);
+            restoreChoreo(prev.choreo);
+            renderChoreo();
             snapshot = prev.snapshot;
             saveSnapshot();
             if (autoSpeedEnabled) rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
@@ -1415,6 +1390,8 @@ canvas {
             userChangedFps = false;
             updateFpsHint();
           }
+          restoreChoreo(AUTO_SPEED_DEFAULT);
+          renderChoreo();
           autoOffset = 0;
           autoPausedAt = null;
           resetSnapshot();
@@ -1447,7 +1424,6 @@ canvas {
       // Choreografie: Start (von, nach, Rampe, Halten) und Stufen (+Tempo, Rampe, Halten), Schleife ueber die Stufen
       function editChoreo(apply) {
         apply();
-        saveChoreo();
         if (autoSpeedEnabled) {
           rotationSpeed = computeAutoSpeed(getWarpedElapsed()) + autoOffset;
           panel.set('speed', Number(toUser(rotationSpeed).toFixed(1)));
@@ -1563,10 +1539,7 @@ canvas {
           label: 'Speed monitor', value: cfg.speedDisplay, onChange: v => { cfg.speedDisplay = !!v; },
           details: p => p.addSlider('speedOffset', {
             label: 'Speed monitor offset', min: -100, max: 200, step: 1, decimals: 0, value: cfg.speedOffset,
-            onChange: v => {
-              cfg.speedOffset = num(v);
-              try { localStorage.setItem(SPEED_OFFSET_KEY, String(cfg.speedOffset)); } catch (e) { }
-            }
+            onChange: v => { cfg.speedOffset = num(v); }
           })
         })
         .endSection();
@@ -1577,10 +1550,10 @@ canvas {
     // warped elapsed = warpedSeconds + (Date.now() - realTimestamp)/1000 * factor
     // factor = fps / 60 (fixe Referenz). Bei fps-Wechsel: snapshot updated für Continuity (kein Sprung).
     // Persistiert in localStorage → übersteht Mobile-Browser Tab-Kill, kontinuiert echte Zeit.
-    // User-Reload (F5/Ctrl+R) → Reset. Browser-Auto-Restore → continue.
+    // Neuladen und frisches Oeffnen (reload, navigate) → Reset. Nur Zurueck/Vor und Tab-Wiederherstellung (back_forward) → continue.
     const SNAPSHOT_KEY = '0nefinity-symbol-snapshot';
     const navEntry = performance.getEntriesByType('navigation')[0];
-    const isUserReload = navEntry && navEntry.type === 'reload';
+    const isUserReload = !!navEntry && (navEntry.type === 'reload' || navEntry.type === 'navigate');
     let snapshot;
 
     function loadSnapshot() {
