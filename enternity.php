@@ -84,7 +84,7 @@ $csrf = csrf_token();
         <button type="submit" class="submit-btn">Setup</button>
       <?php else: ?>
         <h1>Enter 0nefinity</h1>
-        <p class="sub">Enter username and pw and press enter to enter 0nefinity.</p>
+        <p class="sub">Enter username and password and press enter to enter 0nefinity.</p>
         <?= csrf_field() ?>
         <input type="hidden" name="next" value="<?= htmlspecialchars($next) ?>">
         <label>Username
