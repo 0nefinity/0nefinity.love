@@ -34,7 +34,7 @@ EXCLUDE_DIRS = {
     'api',          # Endpunkte, keine Seiten
     'errorpages',   # Fehlerseiten-Vorlagen
 }
-EXCLUDE_FILES = {'meta.json', 'robots.txt', 'AGENTS.md', 'CLAUDE.md', 'autofill-probe.html'}
+EXCLUDE_FILES = {'meta.json', 'robots.txt', 'AGENTS.md', 'CLAUDE.md', 'autofill-probe.html', 'icon-entwuerfe.html'}
 EXCLUDE_EXTS = {
     '.js', '.css', '.py', '.sh', '.json', '.xml', '.sql', '.pdn', '.ico',
     '.hmtl', '.idea', '.before-gitnexus', '.woff2', '.map', '.config',
