@@ -71,7 +71,7 @@
       } catch (e) {
         if (mein !== lauf) return;
         quelle = null;
-        fehler(String(e && e.message ? e.message : e) + ' ' + pfad, e);
+        fehler(String(e && e.message ? e.message : e), e);
       }
     }
 
