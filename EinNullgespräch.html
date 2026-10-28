@@ -35,7 +35,6 @@
     const DEG = Math.PI / 180;
     const READABLE = { winkel: 0, verschiebung: 1 };
     const NULL = { winkel: 0, verschiebung: 0 };
-    const MAX_ZEICHNEN = 90;
 
     const stage = document.getElementById('stage');
     const canvas = document.getElementById('gespraech');
@@ -43,11 +42,11 @@
 
     const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0 };
     let messages = null;
-    let lines = [];            // { text, wer, msg, img, sw } oder null fuer die Leerzeile zwischen zwei Nachrichten
-    let W = 0, H = 0, dpr = 1, sd = 1, fontPx = 16, lh = 24, colW = 300;
+    let lines = [];            // { text, wer, msg, img, sw, w (CSS-px) } oder null fuer die Leerzeile zwischen zwei Nachrichten
+    let W = 0, H = 0, dpr = 1, fontPx = 16, lh = 24, colW = 300;
     let fontFamily = 'sans-serif';
     let color = '', dirty = true, error = null, drawn = 0, panelDirty = false;
-    let panel = null, anim = null, building = 0;
+    let panel = null, anim = null, building = 0, lastKs = [];
 
     function fail(message) {
       if (error) return;
@@ -80,29 +79,38 @@
       }
       return out;
     }
-    function layout() {
+    let layoutKey = '';
+    function layout(force) {
       const r = canvas.getBoundingClientRect();
-      W = r.width; H = r.height; dpr = window.devicePixelRatio || 1;
-      sd = Math.min(dpr, 2);
-      const cw = Math.max(1, Math.round(W * dpr)), ch = Math.max(1, Math.round(H * dpr));
+      const ndpr = window.devicePixelRatio || 1;
+      W = r.width; H = r.height;
+      const cw = Math.max(1, Math.round(W * ndpr)), ch = Math.max(1, Math.round(H * ndpr));
       if (canvas.width !== cw) canvas.width = cw;
       if (canvas.height !== ch) canvas.height = ch;
-      fontFamily = getComputedStyle(stage).fontFamily || 'sans-serif';
-      fontPx = W < 600 ? 15 : 16;
+      const nfont = getComputedStyle(stage).fontFamily || 'sans-serif';
+      const nfpx = W < 600 ? 15 : 16;
+      const ncolW = Math.min(W - 2 * Math.max(16, W * 0.05), nfpx * 34);
+      // Nur die Groesse des Zeichenflaechenpuffers aendert sich (z. B. Adressleiste am Handy): Zeilen, Bitmaps und Stelle bleiben unberuehrt.
+      const key = [nfont, nfpx, ncolW, ndpr].join('|');
+      if (!force && key === layoutKey && lines.length) { dirty = true; return; }
+      layoutKey = key;
+      fontFamily = nfont; fontPx = nfpx; colW = ncolW; dpr = ndpr;
       lh = Math.round(fontPx * 1.55);
-      colW = Math.min(W - 2 * Math.max(16, W * 0.05), fontPx * 34);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.font = fontPx + 'px ' + fontFamily;
       const anchor = lines.length ? lineAt(st.stelle) : null;
+      const anchorK = anchor ? lines.indexOf(anchor) : -1;
+      const anchorOff = anchor ? st.stelle - anchorK : 0;
+      const anchorIn = anchor ? anchorK - lines.findIndex((l) => l && l.msg === anchor.msg) : 0;
       lines = [];
       if (messages) {
         messages.forEach((m, i) => {
           if (i > 0) lines.push(null);
-          for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i, img: null, sw: 0 } : null);
+          for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i, img: null, sw: 0, w: ctx.measureText(t).width } : null);
         });
       }
-      if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg);
-      if (st.stelle < 0) st.stelle = 0;
+      if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg) + anchorIn + anchorOff;
+      st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), st.stelle));
       scheduleBuild();
       if (panel) syncPanel();
       dirty = true;
@@ -114,18 +122,20 @@
 
     // ─── Zeilen-Bitmaps ───
     // Jede Zeile wird einmal als kleines Bitmap gesetzt (Textsatz, Antialiasing); im Frame bleibt nur drawImage mit Transform.
+    // Alles in Geraetepixeln: Bitmap-Hoehe gerade, Textstart ganzzahlig, Skalierung genau dpr (nie hoch- oder runterskaliert),
+    // dann steht jede Zeile bei Drehung 0 pixelgenau dort, wo fillText sie hinsetzen wuerde.
+    const padPx = () => Math.ceil(2 * dpr);
+    const heightPx = () => 2 * Math.ceil(lh * dpr / 2);
     function makeSprite(l) {
-      const w = ctx.measureText(l.text).width;
-      const sw = Math.ceil(w) + 4;
+      const pad = padPx();
       const c = document.createElement('canvas');
-      c.width = Math.ceil(sw * sd); c.height = Math.ceil(lh * sd);
+      c.width = Math.ceil(l.w * dpr) + 2 * pad + 2; c.height = heightPx();
       const g = c.getContext('2d');
-      g.scale(sd, sd);
-      g.font = fontPx + 'px ' + fontFamily;
+      g.font = fontPx * dpr + 'px ' + fontFamily;
       g.textBaseline = 'middle';
       g.fillStyle = color;
-      g.fillText(l.text, 2, lh / 2);
-      l.img = c; l.sw = sw;
+      g.fillText(l.text, pad, c.height / 2);
+      l.img = c; l.sw = c.width;
     }
     function dropSprites() { for (const l of lines) if (l) l.img = null; scheduleBuild(); }
     // Vorab in kleinen Haeppchen bauen, damit das erste Uebereinanderschieben nicht stockt.
@@ -136,7 +146,6 @@
     function buildChunk() {
       building = 0;
       if (!lines.length || !color) return;
-      ctx.font = fontPx + 'px ' + fontFamily;
       const t0 = performance.now();
       let left = false;
       for (const l of lines) {
@@ -173,40 +182,63 @@
     function draw() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const reach = Math.hypot(W, H) / 2 + colW + lh;
-      const c = dpr;
-      const t0 = performance.now();
-      let n = 0, missing = false;
-      // Liegen sehr viele Zeilen im Bild (Nullgebilde), sehen sie gleich aus: nur jede stride-te zeichnen
-      // (stabil nach k) und die Deckkraft so anheben, als lagen stride Ebenen uebereinander.
-      let vis = 0;
-      for (let k = 0; k < lines.length; k++) {
-        if (lines[k] && Math.abs(fold(k - st.stelle) * st.verschiebung * lh) <= reach) vis++;
-      }
-      const stride = Math.max(1, Math.ceil(vis / MAX_ZEICHNEN));
+      const c = dpr, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
+      const ox = Math.round(W / 2 * c), oy = Math.round(H / 2 * c), x0 = Math.round(-colW / 2 * c) - pad;
+      let missing = false;
+      lastKs = [];
       for (let k = 0; k < lines.length; k++) {
         const l = lines[k];
-        if (!l || (stride > 1 && k % stride)) continue;
+        if (!l) continue;
         const j = fold(k - st.stelle);
-        const off = j * st.verschiebung * lh;
-        if (Math.abs(off) > reach) continue;
-        if (!l.img) {
-          if (performance.now() - t0 > 12) { missing = true; continue; }
-          ctx.font = fontPx + 'px ' + fontFamily;
-          makeSprite(l);
-        }
         const a = j * st.winkel * DEG;
-        const cos = Math.cos(a) * c, sin = Math.sin(a) * c;
-        // Ursprung Bildmitte, Achsen um a gedreht, dann lokal (-colW/2, off).
-        ctx.setTransform(cos, sin, -sin, cos, W / 2 * c, H / 2 * c);
-        ctx.globalAlpha = 1 - (1 - (l.wer === 'claude' ? 0.58 : 0.94)) ** stride;
-        ctx.drawImage(l.img, -colW / 2 - 2, off - lh / 2, l.sw, lh);
-        n++;
+        const cos = Math.cos(a), sin = Math.sin(a);
+        const y0 = Math.round(j * st.verschiebung * lh * c) - hp / 2;
+        const wp = Math.ceil(l.w * c) + 2 * pad + 2;
+        // Nur Zeilen weglassen, deren gedrehtes Rechteck ganz ausserhalb des Bildes liegt (exakt, nichts "duenn").
+        const xs = [x0, x0 + wp], ys = [y0, y0 + hp];
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const x of xs) for (const y of ys) {
+          const px = ox + x * cos - y * sin, py = oy + x * sin + y * cos;
+          if (px < minX) minX = px; if (px > maxX) maxX = px;
+          if (py < minY) minY = py; if (py > maxY) maxY = py;
+        }
+        if (maxX < 0 || minX > cw || maxY < 0 || minY > ch) continue;
+        ctx.setTransform(cos, sin, -sin, cos, ox, oy);
+        ctx.globalAlpha = l.wer === 'claude' ? 0.58 : 0.94;
+        if (l.img) ctx.drawImage(l.img, x0, y0);
+        else {
+          // Bitmap noch nicht gebaut: direkt setzen statt auszulassen (nie fehlender Text, kein Flackern).
+          ctx.font = fontPx * c + 'px ' + fontFamily;
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = color;
+          ctx.fillText(l.text, x0 + pad, y0 + hp / 2);
+          missing = true;
+        }
+        lastKs.push(k);
       }
       ctx.globalAlpha = 1;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      drawn = n;
-      if (missing) dirty = true;
+      drawn = lastKs.length;
+      if (missing) scheduleBuild();
+    }
+    // Grundwahrheit fuer Tests: jede Zeile (oder nur only) per fillText, ohne Bitmaps, ohne Auslassen; Ursprung und Zeilenversatz auf ganze Geraetepixel gesetzt, wie bei den Bitmaps.
+    function drawReference(g, c, only) {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      if (only === null) g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+      g.font = fontPx * c + 'px ' + fontFamily;
+      g.textBaseline = 'middle';
+      g.fillStyle = color;
+      for (let k = 0; k < lines.length; k++) {
+        const l = lines[k];
+        if (!l || (only !== null && only !== k)) continue;
+        const j = fold(k - st.stelle);
+        const a = j * st.winkel * DEG;
+        g.setTransform(Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), Math.round(W / 2 * c), Math.round(H / 2 * c));
+        g.globalAlpha = l.wer === 'claude' ? 0.58 : 0.94;
+        g.fillText(l.text, Math.round(-colW / 2 * c), Math.round(j * st.verschiebung * lh * c));
+      }
+      g.globalAlpha = 1;
+      g.setTransform(1, 0, 0, 1, 0, 0);
     }
     function frame(t) {
       if (anim) stepAnim(t);
@@ -357,6 +389,22 @@
     window.einNullgespraech = {
       state() { return Object.assign({}, st, { lines: lines.length, messages: messages ? messages.length : 0, drawn, lineHeight: lh, error, readable: isReadable(), width: W, height: H }); },
       set(patch) { anim = null; setState(patch); draw(); dirty = false; },
+      // Testhaken: Referenz per direktem fillText (Grundwahrheit, ohne Bitmaps, ohne Auslassen), gezeichnete und geometrisch sichtbare Zeilen.
+      render() { draw(); dirty = false; },
+      reference() { drawReference(ctx, dpr, null); },
+      drawnKs() { return lastKs.slice(); },
+      visibleKs() {
+        const c = document.createElement('canvas'); c.width = Math.ceil(W); c.height = Math.ceil(H);
+        const g = c.getContext('2d', { willReadFrequently: true }), out = [];
+        for (let k = 0; k < lines.length; k++) {
+          if (!lines[k]) continue;
+          g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+          drawReference(g, 1, k);
+          const d = g.getImageData(0, 0, c.width, c.height).data;
+          for (let i = 3; i < d.length; i += 4) if (d[i]) { out.push(k); break; }
+        }
+        return out;
+      },
       // Lage der k-ten Textzeile (Zaehlung ohne Leerzeilen) auf dem Bildschirm.
       textLine(n) {
         let seen = -1;
@@ -383,7 +431,7 @@
     for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
     window.addEventListener('resize', () => { if (messages) layout(); });
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages) layout(); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages) layout(true); });
     requestAnimationFrame(frame);
   })();
   </script>
