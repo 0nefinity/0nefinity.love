@@ -59,28 +59,30 @@ function render_include(string $file, string $uri): string {
     .enter-card input[type=text], .enter-card input[type=password] {
       width:100%; margin-top:.5rem; padding:12px 14px; font-size:18px; min-height:56px;
       background:transparent; color:var(--text-color);
-      border:1px solid var(--text-color); border-radius:2px;
-      box-sizing:border-box;
+      border:1.5px solid var(--text-color); border-radius:9999px;
+      box-sizing:border-box; padding-left:1.4rem;
     }
-    .pw-row { display:flex; gap:.25rem; align-items:stretch; margin-top:.5rem; }
-    .pw-row input { flex:1; margin-top:0; }
+    .pw-row { position:relative; margin-top:.5rem; }
+    .enter-card .pw-row input { margin-top:0; padding-right:56px; }
     .eye-btn {
-      min-width:56px; min-height:56px; padding:0;
-      background:transparent; color:var(--text-color);
-      border:1px solid var(--text-color); border-radius:2px;
-      cursor:pointer; font-size:1rem;
+      position:absolute; right:6px; top:50%; transform:translateY(-50%);
+      width:44px; height:44px; padding:0; display:flex; align-items:center; justify-content:center;
+      background:transparent; color:var(--text-color); border:0; border-radius:9999px;
+      cursor:pointer; -webkit-tap-highlight-color:transparent;
     }
-    .eye-btn:focus-visible { outline:2px solid var(--text-color); outline-offset:2px; }
+    .eye-btn svg { width:24px; height:24px; display:block; }
+    .eye-btn:focus { outline:none; }
+    .eye-btn:focus-visible { outline:2px solid var(--text-color); outline-offset:-2px; }
     .submit-btn {
       width:100%; margin-top:.25rem; min-height:56px;
       background:var(--text-color); color:var(--bg-color);
-      border:0; border-radius:2px; cursor:pointer; font-size:1rem;
+      border:0; border-radius:9999px; cursor:pointer; font-size:1rem;
     }
     .submit-btn:disabled { opacity:.5; cursor:wait; }
     .error-slot { font-size:.875rem; opacity:.8; }
     .error-slot:empty { display:none; }
     code { font-size:.8rem; word-break:break-all; }
-    @media (max-height:640px) { .enter-card { gap:.5rem; } .enter-card input[type=text], .enter-card input[type=password], .submit-btn, .eye-btn { min-height:46px; } .enter-card .sentence { font-size:1.25rem; margin-bottom:.25rem; } }
+    @media (max-height:640px) { .enter-card { gap:.5rem; } .enter-card input[type=text], .enter-card input[type=password], .submit-btn { min-height:46px; } .enter-card .sentence { font-size:1.25rem; margin-bottom:.25rem; } }
   </style>
 </head>
 <body>
@@ -102,7 +104,7 @@ function render_include(string $file, string $uri): string {
         <label>New password (min <?= PW_MIN_LEN ?> chars)
           <div class="pw-row">
             <input type="password" name="password" id="pw" autocomplete="new-password" required minlength="<?= PW_MIN_LEN ?>">
-            <button type="button" class="eye-btn" id="eye" aria-label="show password">eye</button>
+            <button type="button" class="eye-btn" id="eye" aria-label="show password"></button>
           </div>
         </label>
         <label>Confirm password
@@ -119,7 +121,7 @@ function render_include(string $file, string $uri): string {
         <label>Password
           <div class="pw-row">
             <input type="password" name="password" id="pw" autocomplete="current-password" required>
-            <button type="button" class="eye-btn" id="eye" aria-label="show password">eye</button>
+            <button type="button" class="eye-btn" id="eye" aria-label="show password"></button>
           </div>
         </label>
         <button type="submit" class="submit-btn">Enter</button>
@@ -131,10 +133,15 @@ function render_include(string $file, string $uri): string {
 <script>
   const eye = document.getElementById('eye');
   const pw  = document.getElementById('pw');
-  eye?.addEventListener('click', () => {
-    pw.type = pw.type === 'password' ? 'text' : 'password';
-    eye.textContent = pw.type === 'password' ? 'eye' : 'hide';
-  });
+  // Swap the icon later by replacing these two constants.
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>';
+  const paintEye = () => {
+    const shown = pw.type === 'text';
+    eye.innerHTML = shown ? EYE_OFF : EYE_OPEN;
+    eye.setAttribute('aria-label', shown ? 'hide password' : 'show password');
+  };
+  if (eye) { eye.addEventListener('click', () => { pw.type = pw.type === 'password' ? 'text' : 'password'; paintEye(); }); paintEye(); }
 
   const form = document.getElementById('enter-form');
   const err  = document.getElementById('err');
