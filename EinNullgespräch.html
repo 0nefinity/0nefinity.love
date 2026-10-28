@@ -15,12 +15,14 @@
       touch-action: none;
     }
     .stage.fehler { box-shadow: inset 0 0 0 3px #c33; }
+    #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
     #gespraech { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
     #gespraech.zieht { cursor: grabbing; }
   </style>
 </head>
 <body>
   <div class="stage _018" id="stage">
+    <canvas id="gl"></canvas>
     <canvas id="gespraech"></canvas>
   </div>
 
@@ -39,6 +41,10 @@
     const stage = document.getElementById('stage');
     const canvas = document.getElementById('gespraech');
     const ctx = canvas.getContext('2d');
+    const glCanvas = document.getElementById('gl');
+    // Renderer: 'gl' (Zeilen in Textur-Atlanten, instanced Quads) oder '2d' (Zeilen-Bitmaps per drawImage, Rueckfall).
+    // Im GL-Modus liegt #gespraech als durchsichtige Deckschicht darueber und zeigt nur Zeilen, deren Atlasreihe noch nicht gebaut ist (fillText, nie fehlender Text).
+    let mode = '2d', gl = null, glName = '';
 
     const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0 };
     let messages = null;
@@ -56,19 +62,29 @@
     }
 
     // ─── Layout ───
+    // Zerlegung in Zeichen, die nie getrennt werden duerfen (Graphem-Cluster, sonst Codepoints), damit lange Woerter nicht mitten in Emoji/Akzent-Folgen brechen.
+    const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+    const chars = (word) => (segmenter ? Array.from(segmenter.segment(word), (x) => x.segment) : Array.from(word));
     function wrap(text) {
       const out = [];
+      let guard = 0;
+      const limit = 4 * text.length + 1000;
       for (const para of text.split('\n')) {
         if (!para.trim()) { out.push(''); continue; }
         let cur = '';
         for (let word of para.split(/ +/)) {
-          // Woerter breiter als die Spalte (lange Ziffernfolgen) zeichenweise brechen.
-          while (ctx.measureText(word).width > colW) {
-            let n = 1;
-            while (n < word.length && ctx.measureText(word.slice(0, n + 1)).width <= colW) n++;
-            if (cur) { out.push(cur); cur = ''; }
-            out.push(word.slice(0, n));
-            word = word.slice(n);
+          // Woerter breiter als die Spalte (lange Ziffernfolgen) zeichenweise brechen; mindestens ein Zeichen je Zeile.
+          if (ctx.measureText(word).width > colW) {
+            const cs = chars(word);
+            while (cs.length) {
+              if (++guard > limit) { fail('Umbruch bricht nicht ab (Spalte ' + colW + ' px)'); out.push(cs.join('')); cs.length = 0; break; }
+              if (ctx.measureText(cs.join('')).width <= colW) break;
+              let n = 1;
+              while (n < cs.length && ctx.measureText(cs.slice(0, n + 1).join('')).width <= colW) n++;
+              if (cur) { out.push(cur); cur = ''; }
+              out.push(cs.splice(0, n).join(''));
+            }
+            word = cs.join('');
           }
           if (!word) continue;
           const next = cur ? cur + ' ' + word : word;
@@ -87,11 +103,15 @@
       const cw = Math.max(1, Math.round(W * ndpr)), ch = Math.max(1, Math.round(H * ndpr));
       if (canvas.width !== cw) canvas.width = cw;
       if (canvas.height !== ch) canvas.height = ch;
+      if (glCanvas.width !== cw) glCanvas.width = cw;
+      if (glCanvas.height !== ch) glCanvas.height = ch;
       const nfont = getComputedStyle(stage).fontFamily || 'sans-serif';
       const nfpx = W < 600 ? 15 : 16;
-      const ncolW = Math.min(W - 2 * Math.max(16, W * 0.05), nfpx * 34);
+      // Mindestens ein Zeichen breit (sonst negative Spalte: Endlosschleife im Umbruch).
+      const ncolW = Math.max(nfpx, Math.min(W - 2 * Math.max(16, W * 0.05), nfpx * 34));
       // Nur die Groesse des Zeichenflaechenpuffers aendert sich (z. B. Adressleiste am Handy): Zeilen, Bitmaps und Stelle bleiben unberuehrt.
       const key = [nfont, nfpx, ncolW, ndpr].join('|');
+      if (ndpr !== dprWatched) watchDpr(ndpr);
       if (!force && key === layoutKey && lines.length) { dirty = true; return; }
       layoutKey = key;
       fontFamily = nfont; fontPx = nfpx; colW = ncolW; dpr = ndpr;
@@ -106,22 +126,34 @@
       if (messages) {
         messages.forEach((m, i) => {
           if (i > 0) lines.push(null);
-          for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i, img: null, sw: 0, w: ctx.measureText(t).width } : null);
+          for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i, img: null, sw: 0, w: ctx.measureText(t).width, wp: 0, row: -1, sx: 0 } : null);
         });
       }
+      for (const l of lines) if (l) l.wp = Math.ceil(l.w * dpr) + 2 * padPx() + 2;
       if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg) + anchorIn + anchorOff;
       st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), st.stelle));
+      if (mode === 'gl') planAtlas();
       scheduleBuild();
       if (panel) syncPanel();
       dirty = true;
     }
+    // Aenderung der Pixeldichte ohne resize (Fenster auf anderen Monitor, Browser-Zoom per Tastatur): Media-Query auf die aktuelle Dichte.
+    let dprMq = null, dprWatched = 0;
+    function watchDpr(d) {
+      dprWatched = d;
+      if (!window.matchMedia) return;
+      if (dprMq) dprMq.removeEventListener('change', onDprChange);
+      dprMq = window.matchMedia('(resolution: ' + d + 'dppx)');
+      dprMq.addEventListener('change', onDprChange);
+    }
+    function onDprChange() { watchDpr(window.devicePixelRatio || 1); if (messages) layout(); }
     function lineAt(s) {
       for (let k = Math.round(s); k < lines.length; k++) if (lines[k]) return lines[k];
       return null;
     }
 
     // ─── Zeilen-Bitmaps ───
-    // Jede Zeile wird einmal als kleines Bitmap gesetzt (Textsatz, Antialiasing); im Frame bleibt nur drawImage mit Transform.
+    // Jede Zeile wird einmal als kleines Bitmap gesetzt (Textsatz, Antialiasing); im Frame bleibt nur das Aufbringen mit Transform.
     // Alles in Geraetepixeln: Bitmap-Hoehe gerade, Textstart ganzzahlig, Skalierung genau dpr (nie hoch- oder runterskaliert),
     // dann steht jede Zeile bei Drehung 0 pixelgenau dort, wo fillText sie hinsetzen wuerde.
     const padPx = () => Math.ceil(2 * dpr);
@@ -137,7 +169,12 @@
       g.fillText(l.text, pad, c.height / 2);
       l.img = c; l.sw = c.width;
     }
-    function dropSprites() { for (const l of lines) if (l) l.img = null; scheduleBuild(); }
+    function dropSprites() {
+      for (const l of lines) if (l) l.img = null;
+      for (const r of rows) r.done = false;
+      nextRow = 0;
+      scheduleBuild();
+    }
     // Vorab in kleinen Haeppchen bauen, damit das erste Uebereinanderschieben nicht stockt.
     function scheduleBuild() {
       if (building) return;
@@ -148,13 +185,155 @@
       if (!lines.length || !color) return;
       const t0 = performance.now();
       let left = false;
-      for (const l of lines) {
-        if (!l || l.img) continue;
-        if (performance.now() - t0 > 6) { left = true; break; }
-        makeSprite(l);
+      if (mode === 'gl') {
+        // Zuerst die Reihen, die das letzte Bild sichtbar gebraucht hat, dann der Reihe nach.
+        while (wanted.length && performance.now() - t0 <= 6) { const r = rows[wanted.pop()]; r.wanted = false; if (!r.done && !buildRow(r)) return; }
+        while (nextRow < rows.length && performance.now() - t0 <= 6) { const r = rows[nextRow++]; if (!r.done && !buildRow(r)) return; }
+        left = nextRow < rows.length || wanted.length > 0;
+      } else {
+        for (const l of lines) {
+          if (!l || l.img) continue;
+          if (performance.now() - t0 > 6) { left = true; break; }
+          makeSprite(l);
+        }
       }
       dirty = true;
       if (left) building = setTimeout(buildChunk, 8);
+    }
+
+    // ─── WebGL: Atlanten ───
+    // Alle Zeilen-Bitmaps liegen als Alpha-Masken (nur Deckkraft, die Farbe kommt aus dem Shader) in quadratischen Texturen.
+    // Plaetze werden beim Layout vergeben (Reihen gleicher Hoehe, Zeile fuer Zeile), gefuellt wird reihenweise im Hintergrund.
+    // Je Atlas-Seite ein Draw-Call; die Zeilen einer Seite stehen im Instanzpuffer hintereinander.
+    let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, instBuf = null, instArr = null;
+    let prog = null, U = null, A = null, cornerBuf = null, inst = null, colorRGB = [0, 0, 0], overlayUsed = false;
+
+    function setMode(m, why) {
+      const was = mode;
+      mode = m;
+      if (m === '2d') {
+        glCanvas.style.display = 'none';
+        if (gl) { const e = gl.getExtension('WEBGL_lose_context'); freePages(); if (e) e.loseContext(); }
+        gl = null;
+        console.warn('[EinNullgespraech] Renderer: Canvas2D (Rueckfall' + (why ? ': ' + why : '') + ')');
+        if (was === 'gl' && lines.length) { for (const l of lines) if (l) l.img = null; rows = []; scheduleBuild(); }
+        dirty = true;
+      }
+    }
+    function freePages() { if (gl) for (const p of pages) if (p.tex) gl.deleteTexture(p.tex); pages = []; rows = []; nextRow = 0; wanted = []; }
+    function compile(type, src) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src); gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error('Shader: ' + gl.getShaderInfoLog(sh));
+      return sh;
+    }
+    function initGL() {
+      if (/[?&]renderer=2d\b/.test(location.search)) return setMode('2d', 'per URL erzwungen');
+      try {
+        const opts = { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' };
+        gl = glCanvas.getContext('webgl2', opts); glName = 'WebGL2';
+        if (!gl) { gl = glCanvas.getContext('webgl', opts); glName = 'WebGL1'; }
+        if (!gl) return setMode('2d', 'kein WebGL');
+        if (glName === 'WebGL2') inst = { div: (loc, d) => gl.vertexAttribDivisor(loc, d), draw: (n) => gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n) };
+        else {
+          const ext = gl.getExtension('ANGLE_instanced_arrays');
+          if (!ext) return setMode('2d', 'WebGL1 ohne ANGLE_instanced_arrays');
+          inst = { div: (loc, d) => ext.vertexAttribDivisorANGLE(loc, d), draw: (n) => ext.drawArraysInstancedANGLE(gl.TRIANGLE_STRIP, 0, 4, n) };
+        }
+        const hp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+        if (!hp || hp.precision < 16) return setMode('2d', 'Fragment-Shader ohne highp');
+        atlasS = Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+        const vs = compile(gl.VERTEX_SHADER, [
+          'attribute vec2 a_corner; attribute vec4 a_geo; attribute vec4 a_src;',
+          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_x0; uniform float u_hp; uniform float u_atlas;',
+          'varying vec2 v_uv; varying float v_a;',
+          'void main() {',
+          '  vec2 loc = vec2(u_x0 + a_corner.x * a_src.z, a_geo.z + a_corner.y * u_hp);',
+          '  vec2 p = u_origin + vec2(loc.x * a_geo.x - loc.y * a_geo.y, loc.x * a_geo.y + loc.y * a_geo.x);',
+          '  gl_Position = vec4(p.x / u_res.x * 2.0 - 1.0, 1.0 - p.y / u_res.y * 2.0, 0.0, 1.0);',
+          '  v_uv = (a_src.xy + a_corner * vec2(a_src.z, u_hp)) / u_atlas;',
+          '  v_a = a_src.w;',
+          '}'].join('\n'));
+        const fs = compile(gl.FRAGMENT_SHADER, [
+          'precision highp float;',
+          'uniform sampler2D u_tex; uniform vec3 u_color;',
+          'varying vec2 v_uv; varying float v_a;',
+          'void main() { float a = texture2D(u_tex, v_uv).a * v_a; gl_FragColor = vec4(u_color * a, a); }'].join('\n'));
+        prog = gl.createProgram();
+        gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Shader-Link: ' + gl.getProgramInfoLog(prog));
+        U = {}; for (const n of ['u_origin', 'u_res', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color']) U[n] = gl.getUniformLocation(prog, n);
+        A = { corner: gl.getAttribLocation(prog, 'a_corner'), geo: gl.getAttribLocation(prog, 'a_geo'), src: gl.getAttribLocation(prog, 'a_src') };
+        cornerBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+        instBuf = gl.createBuffer();
+        gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        glCanvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); pages = []; rows = []; setMode('2d', 'WebGL-Kontext verloren'); });
+        mode = 'gl';
+        console.info('[EinNullgespraech] Renderer: ' + glName + ', Atlas ' + atlasS + ' px');
+      } catch (e) {
+        setMode('2d', e.message);
+      }
+    }
+    // Plaetze im Atlas vergeben: Reihen der Hoehe hp, Zeilen nacheinander, neue Seite wenn die letzte voll ist.
+    function planAtlas() {
+      freePages();
+      const hp = heightPx(), S = atlasS;
+      if (hp > S) return setMode('2d', 'Zeile hoeher als der Atlas');
+      let x = 0, y = 0, row = null;
+      for (const l of lines) {
+        if (!l) continue;
+        if (l.wp > S) return setMode('2d', 'Zeile breiter als der Atlas (' + l.wp + ' px)');
+        if (!row || x + l.wp > S) {
+          if (row) y += hp;
+          if (!pages.length || y + hp > S) { pages.push({ tex: null }); y = 0; }
+          row = { page: pages.length - 1, y, lines: [], done: false, wanted: false };
+          rows.push(row); x = 0;
+        }
+        l.row = rows.length - 1; l.sx = x; row.lines.push(l);
+        x += l.wp;
+      }
+      nextRow = 0;
+    }
+    function glError(what) {
+      const e = gl.getError();
+      if (e !== gl.NO_ERROR) throw new Error('WebGL-Fehler ' + e + ' bei ' + what);
+    }
+    // Eine Reihe setzen und hochladen. Gibt false zurueck, wenn der Renderer dabei auf Canvas2D zurueckfiel.
+    function buildRow(r) {
+      try {
+        const hp = heightPx(), pad = padPx(), S = atlasS;
+        if (!scratch) scratch = document.createElement('canvas');
+        if (scratch.width !== S || scratch.height !== hp) { scratch.width = S; scratch.height = hp; }
+        const g = scratch.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, S, hp);
+        g.font = fontPx * dpr + 'px ' + fontFamily;
+        g.textBaseline = 'middle';
+        g.fillStyle = color;
+        for (const l of r.lines) g.fillText(l.text, l.sx + pad, hp / 2);
+        const pg = pages[r.page];
+        if (!pg.tex) {
+          pg.tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, pg.tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, S, S, 0, gl.ALPHA, gl.UNSIGNED_BYTE, null);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          glError('Atlas anlegen');
+        } else gl.bindTexture(gl.TEXTURE_2D, pg.tex);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, r.y, gl.ALPHA, gl.UNSIGNED_BYTE, scratch);
+        glError('Reihe hochladen');
+        r.done = true;
+        return true;
+      } catch (e) {
+        console.error('[EinNullgespraech] ' + e.message);
+        setMode('2d', e.message);
+        return false;
+      }
     }
 
     // ─── Geometrie ───
@@ -175,11 +354,37 @@
     }
 
     // ─── Zeichnen ───
+    const probe = document.createElement('canvas');
+    probe.width = probe.height = 1;
     function refreshColor() {
       const cs = getComputedStyle(stage).color;
-      if (cs !== color) { color = cs; dropSprites(); dirty = true; }
+      if (cs !== color) {
+        color = cs;
+        const g = probe.getContext('2d', { willReadFrequently: true });
+        g.clearRect(0, 0, 1, 1); g.fillStyle = cs; g.fillRect(0, 0, 1, 1);
+        const d = g.getImageData(0, 0, 1, 1).data;
+        colorRGB = [d[0] / 255, d[1] / 255, d[2] / 255];
+        dropSprites(); dirty = true;
+      }
     }
-    function draw() {
+    // Liegt das gedrehte Rechteck (Zeilenanfang bei x0, y0, Breite wp, Hoehe hp; Drehung um den Ursprung) ganz ausserhalb des Bildes?
+    // Nur dann darf eine Zeile entfallen (exakt, nichts "duenn"); 2 px Rand gegen Rundung.
+    function outside(cos, sin, x0, y0, wp, hp, ox, oy, cw, ch) {
+      const x1 = x0 + wp, y1 = y0 + hp;
+      const ax = x0 * cos - y0 * sin, bx = x1 * cos - y0 * sin, cx = x0 * cos - y1 * sin, dx = x1 * cos - y1 * sin;
+      const ay = x0 * sin + y0 * cos, by = x1 * sin + y0 * cos, cy = x0 * sin + y1 * cos, dy = x1 * sin + y1 * cos;
+      const minX = ox + Math.min(ax, bx, cx, dx), maxX = ox + Math.max(ax, bx, cx, dx);
+      const minY = oy + Math.min(ay, by, cy, dy), maxY = oy + Math.max(ay, by, cy, dy);
+      return maxX < -2 || minX > cw + 2 || maxY < -2 || minY > ch + 2;
+    }
+    function drawText(l, x, y) {
+      ctx.font = fontPx * dpr + 'px ' + fontFamily;
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = color;
+      ctx.fillText(l.text, x, y);
+    }
+    function draw() { if (mode === 'gl') drawGL(); else draw2d(); }
+    function draw2d() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const c = dpr, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
@@ -193,25 +398,13 @@
         const a = j * st.winkel * DEG;
         const cos = Math.cos(a), sin = Math.sin(a);
         const y0 = Math.round(j * st.verschiebung * lh * c) - hp / 2;
-        const wp = Math.ceil(l.w * c) + 2 * pad + 2;
-        // Nur Zeilen weglassen, deren gedrehtes Rechteck ganz ausserhalb des Bildes liegt (exakt, nichts "duenn").
-        const xs = [x0, x0 + wp], ys = [y0, y0 + hp];
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const x of xs) for (const y of ys) {
-          const px = ox + x * cos - y * sin, py = oy + x * sin + y * cos;
-          if (px < minX) minX = px; if (px > maxX) maxX = px;
-          if (py < minY) minY = py; if (py > maxY) maxY = py;
-        }
-        if (maxX < 0 || minX > cw || maxY < 0 || minY > ch) continue;
+        if (outside(cos, sin, x0, y0, l.wp, hp, ox, oy, cw, ch)) continue;
         ctx.setTransform(cos, sin, -sin, cos, ox, oy);
         ctx.globalAlpha = l.wer === 'claude' ? 0.58 : 0.94;
         if (l.img) ctx.drawImage(l.img, x0, y0);
         else {
           // Bitmap noch nicht gebaut: direkt setzen statt auszulassen (nie fehlender Text, kein Flackern).
-          ctx.font = fontPx * c + 'px ' + fontFamily;
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = color;
-          ctx.fillText(l.text, x0 + pad, y0 + hp / 2);
+          drawText(l, x0 + pad, y0 + hp / 2);
           missing = true;
         }
         lastKs.push(k);
@@ -220,6 +413,73 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       drawn = lastKs.length;
       if (missing) scheduleBuild();
+    }
+    function drawGL() {
+      const c = dpr, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
+      const ox = Math.round(W / 2 * c), oy = Math.round(H / 2 * c), x0 = Math.round(-colW / 2 * c) - pad;
+      if (overlayUsed) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch); overlayUsed = false; }
+      if (!instArr || instArr.length < lines.length * 8) instArr = new Float32Array(Math.max(8, lines.length * 8));
+      let n = 0, segPage = -1, segStart = 0;
+      const segs = [];
+      lastKs = [];
+      for (let k = 0; k < lines.length; k++) {
+        const l = lines[k];
+        if (!l) continue;
+        const j = fold(k - st.stelle);
+        const a = j * st.winkel * DEG;
+        const cos = Math.cos(a), sin = Math.sin(a);
+        const y0 = Math.round(j * st.verschiebung * lh * c) - hp / 2;
+        if (outside(cos, sin, x0, y0, l.wp, hp, ox, oy, cw, ch)) continue;
+        lastKs.push(k);
+        const alpha = l.wer === 'claude' ? 0.58 : 0.94;
+        const r = rows[l.row];
+        if (!r || !r.done) {
+          // Reihe noch nicht im Atlas: direkt setzen (Deckschicht), nie fehlender Text.
+          ctx.setTransform(cos, sin, -sin, cos, ox, oy);
+          ctx.globalAlpha = alpha;
+          drawText(l, x0 + pad, y0 + hp / 2);
+          overlayUsed = true;
+          if (r && !r.wanted) { r.wanted = true; wanted.push(l.row); }
+          continue;
+        }
+        if (r.page !== segPage) {
+          if (segPage >= 0) segs.push([segPage, segStart, n - segStart]);
+          segPage = r.page; segStart = n;
+        }
+        const o = n * 8;
+        instArr[o] = cos; instArr[o + 1] = sin; instArr[o + 2] = y0; instArr[o + 3] = 0;
+        instArr[o + 4] = l.sx; instArr[o + 5] = r.y; instArr[o + 6] = l.wp; instArr[o + 7] = alpha;
+        n++;
+      }
+      if (segPage >= 0) segs.push([segPage, segStart, n - segStart]);
+      if (overlayUsed) { ctx.globalAlpha = 1; ctx.setTransform(1, 0, 0, 1, 0, 0); }
+      drawn = lastKs.length;
+      gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      if (n) {
+        gl.useProgram(prog);
+        gl.uniform2f(U.u_origin, ox, oy); gl.uniform2f(U.u_res, cw, ch);
+        gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp); gl.uniform1f(U.u_atlas, atlasS);
+        gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
+        gl.uniform1i(U.u_tex, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+        gl.enableVertexAttribArray(A.corner); gl.vertexAttribPointer(A.corner, 2, gl.FLOAT, false, 0, 0); inst.div(A.corner, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, instArr.subarray(0, n * 8), gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(A.geo); gl.enableVertexAttribArray(A.src);
+        inst.div(A.geo, 1); inst.div(A.src, 1);
+        gl.activeTexture(gl.TEXTURE0);
+        for (const [pg, start, count] of segs) {
+          gl.bindTexture(gl.TEXTURE_2D, pages[pg].tex);
+          gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, start * 32);
+          gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, start * 32 + 16);
+          inst.draw(count);
+        }
+        const e = gl.getError();
+        if (e !== gl.NO_ERROR) { console.error('[EinNullgespraech] WebGL-Fehler ' + e + ' beim Zeichnen'); setMode('2d', 'WebGL-Fehler ' + e); dirty = true; return; }
+      }
+      if (wanted.length || overlayUsed) scheduleBuild();
     }
     // Grundwahrheit fuer Tests: jede Zeile (oder nur only) per fillText, ohne Bitmaps, ohne Auslassen; Ursprung und Zeilenversatz auf ganze Geraetepixel gesetzt, wie bei den Bitmaps.
     function drawReference(g, c, only) {
@@ -392,6 +652,24 @@
       // Testhaken: Referenz per direktem fillText (Grundwahrheit, ohne Bitmaps, ohne Auslassen), gezeichnete und geometrisch sichtbare Zeilen.
       render() { draw(); dirty = false; },
       reference() { drawReference(ctx, dpr, null); },
+      renderer() { return mode === 'gl' ? glName : 'Canvas2D'; },
+      layoutInfo() { return { font: fontPx + 'px ' + fontFamily, colW, fontPx, lh, dpr, W, H, atlas: atlasS, pages: pages.length, rows: rows.length, rowsDone: rows.filter((r) => r.done).length }; },
+      // Alles, was gerade auf dem Schirm steht (GL-Schicht plus Deckschicht), als ImageData; und die Grundwahrheit daneben.
+      snapshot() {
+        const c = document.createElement('canvas'); c.width = canvas.width; c.height = canvas.height;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        if (mode === 'gl') g.drawImage(glCanvas, 0, 0);
+        g.drawImage(canvas, 0, 0);
+        return g.getImageData(0, 0, c.width, c.height);
+      },
+      referenceData() {
+        const c = document.createElement('canvas'); c.width = canvas.width; c.height = canvas.height;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        drawReference(g, dpr, null);
+        return g.getImageData(0, 0, c.width, c.height);
+      },
+      lineTexts() { return lines.map((l) => (l ? { text: l.text, msg: l.msg } : null)); },
+      allBuilt() { return mode === 'gl' ? rows.every((r) => r.done) : lines.every((l) => !l || l.img); },
       drawnKs() { return lastKs.slice(); },
       visibleKs() {
         const c = document.createElement('canvas'); c.width = Math.ceil(W); c.height = Math.ceil(H);
@@ -420,12 +698,14 @@
           throw new Error('Gespraechsdaten ungueltig');
         }
         messages = data;
+        initGL();
         layout();
         buildPanel();
         setState(loadUrl());
       })
       .catch((e) => fail(e.message));
 
+    watchDpr(window.devicePixelRatio || 1);
     refreshColor();
     const themeObs = new MutationObserver(refreshColor);
     for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
