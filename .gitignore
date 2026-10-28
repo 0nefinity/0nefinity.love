@@ -21,3 +21,7 @@ __pycache__/
 *.log
 .env
 .env.*
+
+# Testseiten-Ergebnisse (Volume)
+.auth/probe-*.json
+.auth/probe-*.tmp
