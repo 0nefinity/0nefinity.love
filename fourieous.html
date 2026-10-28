@@ -1366,7 +1366,7 @@ function init() {
         })
         .addSlider('speed', {
             label: 'Speed',
-            min: 0, max: 9999, step: 0.1, value: app.speed, decimals: 1,
+            min: 0, max: 9999, step: 0.1, value: app.speed, decimals: 1, grow: true,
             onChange: (val) => { app.speed = val; }
         })
         .addDivider()
