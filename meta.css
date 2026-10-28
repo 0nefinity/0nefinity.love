@@ -611,6 +611,22 @@ button:focus {
     -webkit-appearance: none;
 }
 
+/* Alle Textfelder ausser Login sind type=search (meta.js, tools/controls.js): Chrome/Android
+   zeigt dort keine Autofill-Leiste. Das native X und die Lupe weg, Rahmen und Radius bleiben. */
+input[type="search"] {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+}
+
 /* SVG-Lupe (Such-Menü + where-is-01-Cursor): aus den Ysabeau-Outlines
    '0' (Linse) + '1' (Stiel) als SVG-Pfade gebaut — font-unabhängig, ohne JS
    kugelsicher. Kein @font-face, kein Webfont-Download, kein Fallback möglich,
