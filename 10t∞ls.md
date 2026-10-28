@@ -1,4 +1,4 @@
-# Bausteine
+# 10t∞ls
 
 Was auf einzelnen Seiten schon gelöst ist, steht hier. Vor jedem Neubau nachsehen und Vorhandenes wiederverwenden. Ausgereiftes, das öfter gebraucht wird, wird bei Bedarf zu gemeinsamen Bausteinen unter `tools/` herausgelöst.
 
