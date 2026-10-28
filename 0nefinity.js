@@ -295,10 +295,14 @@ canvas {
     // Klick aufs Symbol togglet Sichtbarkeit der Controls-Leiste (Drag/Zoom > 5px = kein Toggle)
     let panelHiddenByTap = window.innerWidth <= 768; // Mobil startet das Panel versteckt
     let panelHiddenByScroll = false;
+    let panelOpenOnShow = false;
     let settingsPanel = null;
     function applyPanelVisibility() {
       if (!settingsPanel) return;
-      settingsPanel.el.style.display = (panelHiddenByTap || panelHiddenByScroll) ? 'none' : '';
+      const hidden = panelHiddenByTap || panelHiddenByScroll;
+      settingsPanel.el.style.display = hidden ? 'none' : '';
+      // Mobil: erst im naechsten Frame, wenn das Panel wieder gemessen werden kann
+      if (!hidden && panelOpenOnShow) { panelOpenOnShow = false; requestAnimationFrame(() => settingsPanel.openSheetIfClosed?.()); }
     }
     // Desktop: Panel beim Scrollen ausblenden
     window.addEventListener('scroll', () => {
@@ -320,6 +324,7 @@ canvas {
       if (dx * dx + dy * dy > 25) return;
       if (isPointInsideSymbolHitArea(e.clientX, e.clientY)) {
         panelHiddenByTap = !panelHiddenByTap;
+        panelOpenOnShow = !panelHiddenByTap;
         applyPanelVisibility();
       } else {
         // Tap außerhalb Symbol: fullscreen-Layer schluckt sonst Klicks auf Seiteninhalt
