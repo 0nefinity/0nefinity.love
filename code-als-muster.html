@@ -6,60 +6,128 @@
   <title>code als muster</title>
   <style>
     body { align-items: stretch; overflow: auto; }
-    #muster {
+    #muster, #mass {
       white-space: pre;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-kerning: none;
       font-variant-ligatures: none;
       line-height: normal;
       tab-size: 4;
-      width: auto;
-      max-width: none;
-      min-width: 100%;
-      box-sizing: border-box;
       text-align: left;
       text-shadow: none;
-      padding: 1rem;
+      margin: 0;
+      padding: 0;
     }
+    #muster { align-self: center; width: max-content; }
+    #mass { position: absolute; left: -99999px; top: 0; visibility: hidden; font-size: 100px; }
     #meldung { padding: 1rem; text-align: left; }
   </style>
 </head>
 <body>
   <div id="meldung" role="alert" hidden></div>
   <div id="muster"></div>
+  <div id="mass" aria-hidden="true"></div>
 
   <script>
   (function () {
     'use strict';
-    const pre = document.getElementById('muster');
+    const ziel = document.getElementById('muster');
+    const mass = document.getElementById('mass');
     const meldung = document.getElementById('meldung');
-    const cfg = { symbole: '01', pfad: location.pathname, groesse: 8 };
-    let quelle = null;
-    let quellePfad = null;
+    const cfg = { form: '01', pfad: location.pathname, groesse: 1 };
+    const MASKE_B = 1200;
+    const aspekt = innerWidth / innerHeight;
+    let zeichen = null;
     let lauf = 0;
+    let raster = null;
 
     function fehler(text, err) {
       console.error('[code-als-muster] ' + text, err || '');
       meldung.textContent = text;
       meldung.hidden = false;
-      pre.textContent = '';
+      ziel.textContent = '';
+      raster = null;
     }
 
-    function muster(text, symbole) {
-      const zeichen = Array.from(symbole);
-      const aus = [];
-      let i = 0;
-      for (const c of text) {
-        if (/\s/.test(c)) { aus.push(c); continue; }
-        aus.push(zeichen.length ? zeichen[i++ % zeichen.length] : ' ');
-      }
-      return aus.join('');
+    function zellmass() {
+      mass.textContent = ('0'.repeat(10) + '\n').repeat(10).slice(0, -1);
+      const r = mass.getBoundingClientRect();
+      return { b: r.width / 10 / 100, h: r.height / 10 / 100 };
     }
 
-    function zeichnen() {
-      if (quelle === null) return;
+    function maske(form) {
+      const b = MASKE_B;
+      const h = Math.max(1, Math.round(b / aspekt));
+      const cv = document.createElement('canvas');
+      cv.width = b; cv.height = h;
+      const g = cv.getContext('2d');
+      const fam = getComputedStyle(document.body).fontFamily;
+      g.font = `bold 100px ${fam}`;
+      g.textBaseline = 'alphabetic';
+      const m = g.measureText(form);
+      const tb = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+      const th = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+      if (!(tb > 0 && th > 0)) throw new Error('Form leer');
+      const s = Math.min(b * 0.92 / tb, h * 0.92 / th);
+      g.font = `bold ${100 * s}px ${fam}`;
+      g.fillStyle = '#000';
+      const x = (b - tb * s) / 2 + m.actualBoundingBoxLeft * s;
+      const y = (h - th * s) / 2 + m.actualBoundingBoxAscent * s;
+      g.fillText(form, x, y);
+      return cv;
+    }
+
+    function zellen(cv, spalten, zeilen) {
+      const k = document.createElement('canvas');
+      k.width = spalten; k.height = zeilen;
+      const g = k.getContext('2d', { willReadFrequently: true });
+      g.imageSmoothingEnabled = true;
+      g.drawImage(cv, 0, 0, spalten, zeilen);
+      const d = g.getImageData(0, 0, spalten, zeilen).data;
+      const an = new Uint8Array(spalten * zeilen);
+      let n = 0;
+      for (let i = 0; i < an.length; i++) if (d[i * 4 + 3] >= 128) { an[i] = 1; n++; }
+      return { an, n, spalten, zeilen };
+    }
+
+    function aufbauen() {
+      if (zeichen === null) return;
       meldung.hidden = true;
-      pre.textContent = muster(quelle, cfg.symbole);
+      try {
+        const N = zeichen.length;
+        if (!N) throw new Error('Quelltext leer');
+        const cv = maske(cfg.form);
+        const zm = zellmass();
+        const zeilenZu = c => Math.max(1, Math.round(c * (cv.height / cv.width) * zm.b / zm.h));
+        const probe = c => zellen(cv, c, zeilenZu(c));
+        let lo = 1, hi = MASKE_B;
+        if (probe(hi).n < N) throw new Error('Form zu klein für ' + N + ' Zeichen');
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (probe(mid).n >= N) hi = mid; else lo = mid + 1;
+        }
+        const r = probe(lo);
+        const zeilen = [];
+        let i = 0;
+        for (let y = 0; y < r.zeilen; y++) {
+          let z = '';
+          for (let x = 0; x < r.spalten; x++) z += r.an[y * r.spalten + x] ? zeichen[i++ % N] : ' ';
+          zeilen.push(z.replace(/ +$/, ''));
+        }
+        while (zeilen.length && !zeilen[0]) zeilen.shift();
+        while (zeilen.length && !zeilen[zeilen.length - 1]) zeilen.pop();
+        raster = { spalten: r.spalten, zeilen: zeilen.length, zm };
+        ziel.textContent = zeilen.join('\n');
+        groesseSetzen();
+      } catch (e) {
+        fehler(String(e && e.message ? e.message : e), e);
+      }
+    }
+
+    function groesseSetzen() {
+      if (!raster) return;
+      const fit = Math.min(innerWidth / (raster.spalten * raster.zm.b), innerHeight / (raster.zeilen * raster.zm.h));
+      ziel.style.fontSize = (fit * cfg.groesse) + 'px';
     }
 
     async function laden() {
@@ -69,34 +137,28 @@
         const res = await fetch(pfad, { cache: 'no-store' });
         if (mein !== lauf) return;
         if (!res.ok) throw new Error(res.status + ' ' + pfad);
-        const text = (await res.text()).replace(/\r/g, '');
+        const text = await res.text();
         if (mein !== lauf) return;
-        quelle = text;
-        quellePfad = pfad;
-        zeichnen();
+        zeichen = Array.from(text.replace(/\s/g, ''));
+        aufbauen();
       } catch (e) {
         if (mein !== lauf) return;
-        quelle = null;
+        zeichen = null;
         fehler(String(e && e.message ? e.message : e), e);
       }
     }
 
-    function groesseSetzen() {
-      pre.style.setProperty('font-size', cfg.groesse + 'px', 'important');
-    }
-
     const panel = Controls.createPanel({ position: 'left' });
     panel
-      .addInput('symbole', { label: 'Symbole', value: cfg.symbole, onChange: v => { cfg.symbole = v; zeichnen(); } })
+      .addInput('form', { label: 'Form', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
       .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => { cfg.pfad = v; laden(); } })
-      .addSlider('groesse', { label: 'Größe', min: 0, max: 40, step: 0.5, value: cfg.groesse, decimals: 1, grow: true,
+      .addSlider('groesse', { label: 'Größe', min: 0, max: 4, step: 0.05, value: cfg.groesse, decimals: 2, grow: true,
         onChange: v => { cfg.groesse = v; groesseSetzen(); } });
 
-    cfg.symbole = panel.params.symbole;
+    cfg.form = panel.params.form;
     cfg.pfad = panel.params.pfad;
     cfg.groesse = panel.params.groesse;
-    groesseSetzen();
-    laden();
+    (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(laden);
   })();
   </script>
 <!--#include virtual="/includes/something-in-the-body.html" -->
