@@ -34,16 +34,21 @@
     const ziel = document.getElementById('muster');
     const mass = document.getElementById('mass');
     const meldung = document.getElementById('meldung');
-    const cfg = { form: '01', pfad: location.pathname, groesse: 1 };
+    const cfg = { modus: 'text', form: '01', pfad: location.pathname, groesse: 1 };
     const MASKE_B = 1200;
+    const SYMBOL_B = 360;
+    const SYMBOL_MS = 40;
     const VB = innerWidth, VH = innerHeight;
     const aspekt = VB / VH;
     let zeichen = null;
     let lauf = 0;
     let raster = null;
+    let anim = null;
+    const kleine = {};
 
     function fehler(text, err) {
       console.error('[code-als-muster] ' + text, err || '');
+      stopp();
       meldung.textContent = text;
       meldung.hidden = false;
       ziel.textContent = '';
@@ -79,50 +84,125 @@
     }
 
     function zellen(cv, spalten, zeilen) {
-      const k = document.createElement('canvas');
-      k.width = spalten; k.height = zeilen;
-      const g = k.getContext('2d', { willReadFrequently: true });
-      g.imageSmoothingEnabled = true;
-      g.drawImage(cv, 0, 0, spalten, zeilen);
-      const d = g.getImageData(0, 0, spalten, zeilen).data;
+      const key = spalten + 'x' + zeilen;
+      let k = kleine[key];
+      if (!k) {
+        const c = document.createElement('canvas');
+        c.width = spalten; c.height = zeilen;
+        k = kleine[key] = { c, g: c.getContext('2d', { willReadFrequently: true }) };
+        const ks = Object.keys(kleine);
+        if (ks.length > 40) delete kleine[ks[0]];
+      }
+      k.g.clearRect(0, 0, spalten, zeilen);
+      k.g.imageSmoothingEnabled = true;
+      k.g.drawImage(cv, 0, 0, spalten, zeilen);
+      const d = k.g.getImageData(0, 0, spalten, zeilen).data;
       const an = new Uint8Array(spalten * zeilen);
       let n = 0;
       for (let i = 0; i < an.length; i++) if (d[i * 4 + 3] >= 128) { an[i] = 1; n++; }
       return { an, n, spalten, zeilen };
     }
 
+    function text(r, kuerzen) {
+      const N = zeichen.length;
+      const zeilen = [];
+      let i = 0;
+      for (let y = 0; y < r.zeilen; y++) {
+        let z = '';
+        for (let x = 0; x < r.spalten; x++) z += r.an[y * r.spalten + x] ? zeichen[i++ % N] : ' ';
+        zeilen.push(z.replace(/ +$/, ''));
+      }
+      if (kuerzen) {
+        while (zeilen.length && !zeilen[0]) zeilen.shift();
+        while (zeilen.length && !zeilen[zeilen.length - 1]) zeilen.pop();
+      }
+      return zeilen;
+    }
+
+    // kleinste Spaltenzahl, bei der jede Maske aus masken (Canvas-Liste) mindestens N Zellen hat
+    function spaltenFinden(masken, zeilenZu, N) {
+      const min = c => Math.min(...masken.map(cv => zellen(cv, c, zeilenZu(c)).n));
+      let lo = 1, hi = MASKE_B;
+      if (min(hi) < N) throw new Error('Form zu klein für ' + N + ' Zeichen');
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (min(mid) >= N) hi = mid; else lo = mid + 1;
+      }
+      return lo;
+    }
+
+    function stopp() {
+      if (anim) { cancelAnimationFrame(anim.id); anim = null; }
+    }
+
     function aufbauen() {
+      stopp();
       if (zeichen === null) return;
       meldung.hidden = true;
       try {
         const N = zeichen.length;
         if (!N) throw new Error('Quelltext leer');
-        const cv = maske(cfg.form);
         const zm = zellmass();
+        if (cfg.modus === '018') return symbol(N, zm);
+        const cv = maske(cfg.form);
         const zeilenZu = c => Math.max(1, Math.round(c * (cv.height / cv.width) * zm.b / zm.h));
-        const probe = c => zellen(cv, c, zeilenZu(c));
-        let lo = 1, hi = MASKE_B;
-        if (probe(hi).n < N) throw new Error('Form zu klein für ' + N + ' Zeichen');
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1;
-          if (probe(mid).n >= N) hi = mid; else lo = mid + 1;
-        }
-        const r = probe(lo);
-        const zeilen = [];
-        let i = 0;
-        for (let y = 0; y < r.zeilen; y++) {
-          let z = '';
-          for (let x = 0; x < r.spalten; x++) z += r.an[y * r.spalten + x] ? zeichen[i++ % N] : ' ';
-          zeilen.push(z.replace(/ +$/, ''));
-        }
-        while (zeilen.length && !zeilen[0]) zeilen.shift();
-        while (zeilen.length && !zeilen[zeilen.length - 1]) zeilen.pop();
-        raster = { spalten: r.spalten, zeilen: zeilen.length, zm };
+        const c = spaltenFinden([cv], zeilenZu, N);
+        const zeilen = text(zellen(cv, c, zeilenZu(c)), true);
+        raster = { spalten: c, zeilen: zeilen.length, zm };
         ziel.textContent = zeilen.join('\n');
         groesseSetzen();
       } catch (e) {
         fehler(String(e && e.message ? e.message : e), e);
       }
+    }
+
+    // Rotierendes 0 1 ∞ der Startseite: Zeichenfunktion und Tempo aus meta.js (drawFaviconFrame, faviconAutoSpeed)
+    function symbol(N, zm) {
+      if (typeof drawFaviconFrame !== 'function' || typeof faviconAutoSpeed !== 'function') throw new Error('drawFaviconFrame fehlt');
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = SYMBOL_B;
+      const g = cv.getContext('2d');
+      const zeichneWinkel = grad => {
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, SYMBOL_B, SYMBOL_B);
+        g.scale(SYMBOL_B / FAVICON_SIZE, SYMBOL_B / FAVICON_SIZE);
+        drawFaviconFrame(g, grad * Math.PI / 180);
+      };
+      const zeilenZu = c => Math.max(1, Math.round(c * zm.b / zm.h));
+      const proben = [];
+      for (let a = 0; a < 360; a += 30) {
+        const pc = document.createElement('canvas');
+        pc.width = pc.height = SYMBOL_B;
+        const pg = pc.getContext('2d');
+        pg.scale(SYMBOL_B / FAVICON_SIZE, SYMBOL_B / FAVICON_SIZE);
+        drawFaviconFrame(pg, a * Math.PI / 180);
+        proben.push(pc);
+      }
+      const c = Math.min(MASKE_B, Math.ceil(spaltenFinden(proben, zeilenZu, N) * 1.05));
+      const z = zeilenZu(c);
+      raster = { spalten: c, zeilen: z, zm };
+      groesseSetzen();
+      const reduziert = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const frame = grad => {
+        zeichneWinkel(grad);
+        ziel.textContent = text(zellen(cv, c, z), false).join('\n');
+      };
+      if (reduziert) { frame(0); return; }
+      const st = { id: 0, start: null, letzter: -Infinity, virtuell: 0, winkel: 0 };
+      anim = st;
+      const tick = now => {
+        st.id = requestAnimationFrame(tick);
+        if (document.hidden || now - st.letzter < SYMBOL_MS - 1) return;
+        st.letzter = now;
+        if (st.start === null) st.start = now;
+        const elapsed = (now - st.start) / 1000;
+        const due = Math.floor(elapsed * 60);
+        if (due - st.virtuell > 10) st.virtuell = due - 10;
+        const speed = faviconAutoSpeed(elapsed);
+        while (st.virtuell < due) { st.winkel = (st.winkel + speed) % 360; st.virtuell++; }
+        frame(st.winkel);
+      };
+      st.id = requestAnimationFrame(tick);
     }
 
     function groesseSetzen() {
@@ -131,16 +211,28 @@
       ziel.style.fontSize = (fit * cfg.groesse) + 'px';
     }
 
+    async function quelleLesen(pfad) {
+      const res = await fetch(pfad, { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status + ' ' + pfad);
+      return res.text();
+    }
+
     async function laden() {
       const mein = ++lauf;
-      const pfad = cfg.pfad;
+      stopp();
       try {
-        const res = await fetch(pfad, { cache: 'no-store' });
+        let t;
+        if (cfg.modus === '018') {
+          const roh = await quelleLesen('/meta.js');
+          const a = roh.indexOf('// ─── Favicon: das rotierende');
+          const e = roh.indexOf('// DOM-Manipulation erst wenn Body existiert');
+          if (a < 0 || e <= a) throw new Error('Symbol-Code in /meta.js nicht gefunden');
+          t = roh.slice(a, e);
+        } else {
+          t = await quelleLesen(cfg.pfad);
+        }
         if (mein !== lauf) return;
-        if (!res.ok) throw new Error(res.status + ' ' + pfad);
-        const text = await res.text();
-        if (mein !== lauf) return;
-        zeichen = Array.from(text.replace(/\s/g, ''));
+        zeichen = Array.from(t.replace(/\s/g, ''));
         aufbauen();
       } catch (e) {
         if (mein !== lauf) return;
@@ -149,16 +241,26 @@
       }
     }
 
+    function sichtbar() {
+      panel.setRowVisibility('form', cfg.modus === 'text');
+      panel.setRowVisibility('pfad', cfg.modus === 'text');
+    }
+
     const panel = Controls.createPanel({ position: 'left' });
     panel
-      .addInput('form', { label: 'Form', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
+      .addSelect('modus', { label: 'Form', value: cfg.modus,
+        options: [{ value: 'text', label: 'Text' }, { value: '018', label: '018' }],
+        onChange: v => { cfg.modus = v; sichtbar(); laden(); } })
+      .addInput('form', { label: 'Text', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
       .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => { cfg.pfad = v; laden(); } })
       .addSlider('groesse', { label: 'Größe', min: 0, max: 4, step: 0.05, value: cfg.groesse, decimals: 2, grow: true,
         onChange: v => { cfg.groesse = v; groesseSetzen(); } });
 
+    cfg.modus = panel.params.modus;
     cfg.form = panel.params.form;
     cfg.pfad = panel.params.pfad;
     cfg.groesse = panel.params.groesse;
+    sichtbar();
     (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(laden);
   })();
   </script>
