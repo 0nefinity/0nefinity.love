@@ -17,6 +17,26 @@ if (!empty($_SESSION['uid'])) {
 $setup = setup_mode_active();
 
 $csrf = csrf_token();
+
+// The include files carry Apache SSI; readfile() from PHP would send the directives raw and break the head
+// (stylesheet link cut off, menu unstyled). Render the subset the includes use.
+function render_include(string $file, string $uri): string {
+  $t = file_get_contents($file);
+  $host = $_SERVER['HTTP_HOST'] ?? '';
+  $t = preg_replace_callback('~<!--#if expr="%\{(\w+)\} (=~|!~) /(.*?)/" -->(.*?)<!--#endif -->~s',
+    function ($m) use ($uri, $host) {
+      $v = $m[1] === 'REQUEST_URI' ? $uri : $host;
+      $hit = preg_match('~' . str_replace('~', '\\~', $m[3]) . '~', $v) === 1;
+      return $hit === ($m[2] === '=~') ? $m[4] : '';
+    }, $t);
+  $t = preg_replace('~<!--#config [^>]*-->~', '', $t);
+  $t = preg_replace_callback('~<!--#flastmod virtual="([^"]+)" -->~',
+    fn($m) => (string) @filemtime(__DIR__ . '/' . ltrim($m[1], '/')), $t);
+  if (str_contains($t, '<!--#')) {
+    throw new RuntimeException('unsupported SSI directive in ' . basename($file));
+  }
+  return $t;
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -24,15 +44,16 @@ $csrf = csrf_token();
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= $setup ? 'Setup' : 'Enter' ?> 0nefinity</title>
-<?php readfile(__DIR__ . '/includes/something-in-the-head.html'); ?>
+<?= render_include(__DIR__ . '/includes/something-in-the-head.html', '/enternity') ?>
   <style>
-    .enter-wrap { display:flex; min-height:100svh; align-items:center; justify-content:center; padding:4vw; }
-    .enter-card { max-width:360px; width:100%; padding:2rem; border:1px solid var(--text-color); border-radius:4px; }
-    .enter-card h1 { margin:0 0 .5rem; }
-    .enter-card .sub { opacity:.7; font-size:.875rem; margin-bottom:1.5rem; }
-    .enter-card label { display:block; margin-top:1rem; font-size:.875rem; }
+    .enter-wrap { display:flex; min-height:100svh; min-height:100dvh; align-items:center; justify-content:center; padding:max(12px,min(4vw,24px)); box-sizing:border-box; }
+    .enter-card, .enter-card * { white-space:normal; }
+    .enter-card { max-width:360px; width:100%; padding:1.25rem; border:1px solid var(--text-color); border-radius:4px; box-sizing:border-box; }
+    .enter-card h1 { margin:0 0 .25rem; font-size:2rem; line-height:1.2; }
+    .enter-card .sub { opacity:.7; font-size:.875rem; margin:0 0 .75rem; }
+    .enter-card label { display:block; margin-top:.625rem; font-size:.875rem; }
     .enter-card input[type=text], .enter-card input[type=password] {
-      width:100%; padding:12px; font-size:16px; min-height:44px;
+      width:100%; padding:10px 12px; font-size:16px; min-height:44px;
       background:transparent; color:var(--text-color);
       border:1px solid var(--text-color); border-radius:2px;
       box-sizing:border-box;
@@ -47,17 +68,18 @@ $csrf = csrf_token();
     }
     .eye-btn:focus-visible { outline:2px solid var(--text-color); outline-offset:2px; }
     .submit-btn {
-      width:100%; margin-top:1.25rem; min-height:44px;
+      width:100%; margin-top:.75rem; min-height:44px;
       background:var(--text-color); color:var(--bg-color);
       border:0; border-radius:2px; cursor:pointer; font-size:1rem;
     }
     .submit-btn:disabled { opacity:.5; cursor:wait; }
-    .error-slot { min-height:1.5rem; margin-top:1rem; font-size:.875rem; color:#ff4040; }
+    .error-slot { min-height:1.25rem; margin-top:.5rem; font-size:.875rem; color:#ff4040; }
     code { font-size:.8rem; word-break:break-all; }
+    @media (max-height:640px) { .enter-card h1 { font-size:1.5rem; } .enter-card .sub { margin-bottom:.5rem; } }
   </style>
 </head>
 <body>
-<?php readfile(__DIR__ . '/includes/something-in-the-body.html'); ?>
+<?= render_include(__DIR__ . '/includes/something-in-the-body.html', '/enternity') ?>
   <div class="enter-wrap">
     <form class="enter-card" id="enter-form"
           method="post"
