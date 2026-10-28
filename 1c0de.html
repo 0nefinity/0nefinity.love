@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <title>1c0de</title>
+  <style>
+    body, body.menu-open { overflow: hidden; }
+    #muster, #mass {
+      white-space: pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-weight: 700;
+      font-kerning: none;
+      font-variant-ligatures: none;
+      font-synthesis: none;
+      letter-spacing: 0;
+      line-height: 1;
+      tab-size: 4;
+      text-align: left;
+      text-shadow: none;
+      margin: 0;
+      padding: 0;
+    }
+    #muster { position: fixed; inset: 0; margin: auto; width: max-content; height: max-content; contain: layout paint; }
+    #fern { position: fixed; inset: 0; margin: auto; pointer-events: none; image-rendering: auto; }
+    #mass { position: absolute; left: -99999px; top: 0; visibility: hidden; font-size: 100px; }
+    #meldung { position: fixed; left: 0; right: 0; top: 0; padding: 1rem; text-align: left; }
+  </style>
+</head>
+<body>
+  <div id="meldung" role="alert" hidden></div>
+  <canvas id="fern" aria-hidden="true"></canvas>
+  <div id="muster"></div>
+  <div id="mass" aria-hidden="true"></div>
+
+  <script>
+  (function () {
+    'use strict';
+    const ziel = document.getElementById('muster');
+    const mass = document.getElementById('mass');
+    const meldung = document.getElementById('meldung');
+    const fern = document.getElementById('fern');
+    const fg = fern.getContext('2d');
+    const cfg = { modus: 'text', form: '01', pfad: location.pathname, groesse: 1 };
+    const MASKE_B = 1600;
+    const SYMBOL_MS = 33;
+    const SYMBOL_PROBEN = 12;
+    const FERN_START = 1.5;
+    const FERN_ENDE = 4;
+    const SYMBOL_DECKUNG = 16;
+    const knoten = document.createTextNode('');
+    ziel.appendChild(knoten);
+    let zeichen = null;
+    let quelle = '';
+    let astral = false;
+    let lauf = 0;
+    let raster = null;
+    let anim = null;
+    let zeit = null;
+    const kleine = new Map();
+    let textAktuell = false;
+    let neuText = null;
+    let farbe = '';
+    const weich = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+    // Fernansicht wie bibelaufdenpunkt: Textur der Form, weich ueberblendet mit dem echten Text (Zeichengroesse in Geraetepixeln)
+    function fernFarbe() { fg.globalCompositeOperation = 'source-in'; fg.fillStyle = farbe; fg.fillRect(0, 0, fern.width, fern.height); fg.globalCompositeOperation = 'source-over'; }
+
+    function fehler(text, err) {
+      console.error('[1c0de] ' + text, err || '');
+      stopp();
+      meldung.textContent = text;
+      meldung.hidden = false;
+      knoten.data = '';
+      fg.clearRect(0, 0, fern.width, fern.height);
+      raster = null;
+    }
+
+    function zellmass() {
+      mass.textContent = ('0'.repeat(10) + '\n').repeat(10).slice(0, -1);
+      const r = mass.getBoundingClientRect();
+      return { b: r.width / 10 / 100, h: r.height / 10 / 100 };
+    }
+
+    function maske(form) {
+      const aspekt = innerWidth / innerHeight;
+      const b = MASKE_B;
+      const h = Math.max(1, Math.round(b / aspekt));
+      const cv = document.createElement('canvas');
+      cv.width = b; cv.height = h;
+      const g = cv.getContext('2d');
+      const fam = getComputedStyle(document.body).fontFamily;
+      g.font = `bold 100px ${fam}`;
+      g.textBaseline = 'alphabetic';
+      const m = g.measureText(form);
+      const tb = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+      const th = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+      if (!(tb > 0 && th > 0)) throw new Error('Form leer');
+      const s = Math.min(b / tb, h / th);
+      g.font = `bold ${100 * s}px ${fam}`;
+      g.fillStyle = '#000';
+      g.fillText(form, (b - tb * s) / 2 + m.actualBoundingBoxLeft * s, (h - th * s) / 2 + m.actualBoundingBoxAscent * s);
+      return cv;
+    }
+
+    // Zellen je Zielraster: Abwärtsskalierung mit hoher Filterqualität, Deckung >= 50 % zählt als Zelle
+    function zellen(cv, spalten, zeilen, schwelle = 128) {
+      const key = spalten + 'x' + zeilen;
+      let k = kleine.get(key);
+      if (!k) {
+        const c = document.createElement('canvas');
+        c.width = spalten; c.height = zeilen;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.imageSmoothingEnabled = true;
+        g.imageSmoothingQuality = 'high';
+        k = { g };
+        kleine.set(key, k);
+        if (kleine.size > 12) kleine.delete(kleine.keys().next().value);
+      }
+      k.g.clearRect(0, 0, spalten, zeilen);
+      k.g.drawImage(cv, 0, 0, spalten, zeilen);
+      const d = k.g.getImageData(0, 0, spalten, zeilen).data;
+      const an = new Uint8Array(spalten * zeilen);
+      let n = 0;
+      for (let i = 0; i < an.length; i++) if (d[i * 4 + 3] >= schwelle) { an[i] = 1; n++; }
+      return { an, n, spalten, zeilen };
+    }
+
+    function stueck(rep, i, len) {
+      return astral ? rep.slice(i, i + len).join('') : rep.substr(i, len);
+    }
+
+    function repetition(zellenAnzahl) {
+      const N = zeichen.length;
+      const mal = Math.ceil(zellenAnzahl / N) + 1;
+      return astral ? Array.from({ length: N * mal }, (_, i) => zeichen[i % N]) : quelle.repeat(mal);
+    }
+
+    // x0..x1: Spaltenausschnitt; Zeilen y0..y1 (einschließlich); trailing Leerzeichen entfallen
+    function zeilenBauen(r, rep, x0, x1, y0, y1) {
+      const an = r.an, sp = r.spalten;
+      const out = [];
+      let i = 0;
+      for (let y = 0; y < r.zeilen; y++) {
+        const o = y * sp;
+        for (let x = 0; x < x0; x++) if (an[o + x]) i++;
+        if (y < y0 || y > y1) { for (let x = x0; x <= x1; x++) if (an[o + x]) i++; for (let x = x1 + 1; x < sp; x++) if (an[o + x]) i++; continue; }
+        let z = '';
+        let x = x0;
+        while (x <= x1) {
+          if (!an[o + x]) { let l = x; while (x <= x1 && !an[o + x]) x++; if (x <= x1) z += ' '.repeat(x - l); continue; }
+          let l = x; while (x <= x1 && an[o + x]) x++;
+          z += stueck(rep, i, x - l); i += x - l;
+        }
+        for (let xx = x1 + 1; xx < sp; xx++) if (an[o + xx]) i++;
+        out.push(z);
+      }
+      return out;
+    }
+
+    function spaltenFinden(masken, zeilenZu, N, schwelle = 128) {
+      const min = c => Math.min(...masken.map(cv => zellen(cv, c, zeilenZu(c), schwelle).n));
+      let lo = 1, hi = MASKE_B;
+      if (min(hi) < N) throw new Error('Form zu klein für ' + N + ' Zeichen');
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (min(mid) >= N) hi = mid; else lo = mid + 1;
+      }
+      return lo;
+    }
+
+    function stopp() {
+      if (anim) { cancelAnimationFrame(anim.id); anim = null; }
+    }
+
+    function aufbauen() {
+      stopp();
+      neuText = null;
+      textAktuell = false;
+      farbe = getComputedStyle(ziel).color;
+      if (zeichen === null) return;
+      meldung.hidden = true;
+      try {
+        const N = zeichen.length;
+        if (!N) throw new Error('Quelltext leer');
+        const zm = zellmass();
+        if (cfg.modus === '018') return symbol(N, zm);
+        const cv = maske(cfg.form);
+        const zeilenZu = c => Math.max(1, Math.round(c * (cv.height / cv.width) * zm.b / zm.h));
+        const c = spaltenFinden([cv], zeilenZu, N);
+        const r = zellen(cv, c, zeilenZu(c));
+        let x0 = c, x1 = -1, y0 = r.zeilen, y1 = -1;
+        for (let y = 0; y < r.zeilen; y++) for (let x = 0; x < c; x++) if (r.an[y * c + x]) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; y1 = y;
+        }
+        const rep = repetition(r.n);
+        const zeilen = zeilenBauen(r, rep, x0, x1, y0, y1);
+        raster = { spalten: x1 - x0 + 1, zeilen: y1 - y0 + 1, zm };
+        knoten.data = zeilen.join('\n');
+        const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+        fern.width = bw; fern.height = bh;
+        const bild = fg.createImageData(bw, bh);
+        for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (r.an[(y + y0) * c + x + x0]) bild.data[(y * bw + x) * 4 + 3] = 255;
+        fg.putImageData(bild, 0, 0);
+        fernFarbe();
+        groesseSetzen();
+      } catch (e) {
+        fehler(String(e && e.message ? e.message : e), e);
+      }
+    }
+
+    // Rotierendes 0 1 ∞ der Startseite: Zeichenfunktion und Tempo aus meta.js (drawFaviconFrame, faviconAutoSpeed)
+    function symbol(N, zm) {
+      if (typeof drawFaviconFrame !== 'function' || typeof faviconAutoSpeed !== 'function') throw new Error('drawFaviconFrame fehlt');
+      const zeichneAuf = (g, S, grad) => {
+        g.setTransform(S / FAVICON_SIZE, 0, 0, S / FAVICON_SIZE, 0, 0);
+        drawFaviconFrame(g, grad * Math.PI / 180);
+      };
+      const neu = S => { const c = document.createElement('canvas'); c.width = c.height = S; return c; };
+      const zeilenZu = c => Math.max(1, Math.round(c * zm.b / zm.h));
+      const SP = 360;
+      const proben = [];
+      for (let a = 0; a < 360; a += 360 / SYMBOL_PROBEN) { const pc = neu(SP); zeichneAuf(pc.getContext('2d'), SP, a); proben.push(pc); }
+      const c = Math.min(MASKE_B, Math.ceil(spaltenFinden(proben, zeilenZu, N, SYMBOL_DECKUNG) * 1.15));
+      const z = zeilenZu(c);
+      const cv = document.createElement('canvas');
+      cv.width = c; cv.height = z;
+      const g = cv.getContext('2d', { willReadFrequently: true });
+      const rep = repetition(c * z);
+      const r = { an: new Uint8Array(c * z), spalten: c, zeilen: z };
+      fern.width = c; fern.height = z;
+      neuText = () => { knoten.data = zeilenBauen(r, rep, 0, c - 1, 0, z - 1).join('\n'); };
+      raster = { spalten: c, zeilen: z, zm };
+      groesseSetzen();
+      const frame = grad => {
+        g.setTransform(c / FAVICON_SIZE, 0, 0, z / FAVICON_SIZE, 0, 0);
+        drawFaviconFrame(g, grad * Math.PI / 180);
+        const d = g.getImageData(0, 0, c, z).data;
+        const an = r.an;
+        for (let i = 0; i < an.length; i++) an[i] = d[i * 4 + 3] >= SYMBOL_DECKUNG ? 1 : 0;
+        if (textAktuell) neuText();
+        fg.clearRect(0, 0, c, z);
+        fg.drawImage(cv, 0, 0);
+        fernFarbe();
+      };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { frame(0); return; }
+      if (!zeit || zeit.modus !== '018') zeit = { modus: '018', start: null, virtuell: 0, winkel: 0 };
+      const st = { id: 0, letzter: -Infinity };
+      anim = st;
+      const tick = now => {
+        st.id = requestAnimationFrame(tick);
+        if (document.hidden || now - st.letzter < SYMBOL_MS - 1) return;
+        st.letzter = now;
+        if (zeit.start === null) zeit.start = now;
+        const elapsed = (now - zeit.start) / 1000;
+        const due = Math.floor(elapsed * 60);
+        if (due - zeit.virtuell > 10) zeit.virtuell = due - 10;
+        const speed = faviconAutoSpeed(elapsed);
+        while (zeit.virtuell < due) { zeit.winkel = (zeit.winkel + speed) % 360; zeit.virtuell++; }
+        frame(zeit.winkel);
+      };
+      st.id = requestAnimationFrame(tick);
+    }
+
+    function groesseSetzen() {
+      if (!raster) return;
+      const dpr = window.devicePixelRatio || 1;
+      const fit = Math.min(innerWidth / (raster.spalten * raster.zm.b), innerHeight / (raster.zeilen * raster.zm.h));
+      const fs = Math.floor(fit * cfg.groesse * dpr * 8) / (8 * dpr);
+      ziel.style.fontSize = fs + 'px';
+      fern.style.width = raster.spalten * raster.zm.b * fs + 'px';
+      fern.style.height = raster.zeilen * raster.zm.h * fs + 'px';
+      const t = weich(FERN_START, FERN_ENDE, fs * dpr);
+      ziel.style.opacity = t;
+      ziel.style.visibility = t > 0 ? 'visible' : 'hidden';
+      fern.style.opacity = 1 - t;
+      fern.style.visibility = t < 1 ? 'visible' : 'hidden';
+      if (t > 0 && !textAktuell) { textAktuell = true; if (neuText) neuText(); }
+      else if (t === 0) textAktuell = false;
+    }
+
+    let entprellt = 0;
+    function neuLayouten() {
+      clearTimeout(entprellt);
+      entprellt = setTimeout(() => { if (cfg.modus === 'text') aufbauen(); else groesseSetzen(); }, 150);
+    }
+    addEventListener('resize', neuLayouten);
+    addEventListener('orientationchange', neuLayouten);
+
+    async function quelleLesen(pfad) {
+      const res = await fetch(pfad, { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status + ' ' + pfad);
+      return res.text();
+    }
+
+    async function laden() {
+      const mein = ++lauf;
+      stopp();
+      zeit = null;
+      try {
+        let t;
+        if (cfg.modus === '018') {
+          const roh = await quelleLesen('/0nefinity.js');
+          const a = roh.indexOf('function drawFrameWithAngle(');
+          const e = roh.indexOf('// Funktion zum Zuschneiden transparenter');
+          if (a < 0 || e <= a) throw new Error('Symbol-Code in /0nefinity.js nicht gefunden');
+          t = roh.slice(a, e);
+        } else {
+          t = await quelleLesen(cfg.pfad);
+        }
+        if (mein !== lauf) return;
+        quelle = t.replace(/\s/g, '');
+        zeichen = Array.from(quelle);
+        astral = zeichen.length !== quelle.length;
+        aufbauen();
+      } catch (e) {
+        if (mein !== lauf) return;
+        zeichen = null;
+        fehler(String(e && e.message ? e.message : e), e);
+      }
+    }
+
+    function sichtbar() {
+      panel.setRowVisibility('form', cfg.modus === 'text');
+      panel.setRowVisibility('pfad', cfg.modus === 'text');
+    }
+
+    let zoomInnen = false;
+    let zoom = null;
+    let panel = null;
+    panel = Controls.createPanel({ position: 'left' });
+    panel
+      .addSelect('modus', { label: 'Form', value: cfg.modus,
+        options: [{ value: 'text', label: 'Text' }, { value: '018', label: '018' }],
+        onChange: v => { cfg.modus = v; sichtbar(); laden(); } })
+      .addInput('form', { label: 'Text', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
+      .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => { cfg.pfad = v; laden(); } })
+      .addSlider('groesse', { label: 'Größe', min: 0, max: 4, step: 0.05, value: cfg.groesse, decimals: 2, grow: true,
+        onChange: v => { if (zoomInnen) return; cfg.groesse = v; groesseSetzen(); zoom.setView({ scale: v, offsetX: 0, offsetY: 0 }, false); } });
+
+    // Rad und Pinch ueber tools/zoom.js, zentriert, ohne Verschiebung; das Panel bleibt aussen vor
+    zoom = Zoom2D.createZoom2D({
+      container: document.body,
+      minScale: 0,
+      shouldIgnoreWheel: e => !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
+      initialScale: panel.params.groesse,
+      shouldIgnoreDrag: () => true,
+      shouldIgnoreTouchDrag: () => true,
+      onTransform: st => {
+        if (st.offsetX !== 0 || st.offsetY !== 0) { zoom.setView({ scale: st.scale, offsetX: 0, offsetY: 0 }, false); return; }
+        if (st.scale === cfg.groesse) return;
+        cfg.groesse = st.scale;
+        zoomInnen = true;
+        try { panel.set('groesse', Number(st.scale.toFixed(2))); } finally { zoomInnen = false; }
+        groesseSetzen();
+      }
+    });
+    for (const ev of ['wheel', 'touchstart', 'touchmove']) panel.el.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+
+    cfg.modus = panel.params.modus;
+    cfg.form = panel.params.form;
+    cfg.pfad = panel.params.pfad;
+    cfg.groesse = panel.params.groesse;
+    sichtbar();
+    (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(laden);
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
