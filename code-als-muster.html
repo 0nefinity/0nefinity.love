@@ -7,6 +7,12 @@
   <style>
     body { align-items: stretch; overflow: auto; }
     #muster {
+      white-space: pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-kerning: none;
+      font-variant-ligatures: none;
+      line-height: normal;
+      tab-size: 4;
       width: auto;
       max-width: none;
       min-width: 100%;
@@ -20,7 +26,7 @@
 </head>
 <body>
   <div id="meldung" role="alert" hidden></div>
-  <pre id="muster"></pre>
+  <div id="muster"></div>
 
   <script>
   (function () {
