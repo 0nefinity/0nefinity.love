@@ -2653,12 +2653,34 @@
             };
 
             this._applyMobileSheetPosition = setPosition;
+            // Tastatur: Oeffnet sich die Bildschirmtastatur, schrumpft das Viewport und die Sheet-Hoehe wird neu aus der
+            // sichtbaren Hoehe berechnet. Das Panel sprang dabei hoch und das angetippte Feld wanderte unter dem Finger weg.
+            // Solange ein Textfeld im Panel den Fokus hat, bleibt deshalb die Oberkante des Sheets auf dem Bildschirm stehen.
+            const placeOpen = (animate) => {
+                if (this._kbHold) {
+                    const vp = getViewportMetrics();
+                    // nur wenn die Tastatur das Feld sonst verdeckt, rueckt das Sheet gerade so weit hoch, dass es frei liegt
+                    const top = Math.min(this._kbHold.top, vp.height - 8 - this._kbHold.rel);
+                    const y = clampY(top - (vp.height - this._getMobileExpandedPanelHeight()));
+                    setPosition(y, animate, { rememberOpen: false, signalLayout: false });
+                    this._revealFocusedField?.();
+                    return;
+                }
+                setPosition(getPreferredOpenY(), animate, { rememberOpen: false, signalLayout: false });
+            };
+            this._revealFocusedField = () => {
+                const f = document.activeElement;
+                if (!f || !this.bodyEl || !this.bodyEl.contains(f)) return;
+                const vp = getViewportMetrics();
+                const over = f.getBoundingClientRect().bottom - (vp.height - 8);
+                if (over > 0) this.bodyEl.scrollTop += over;
+            };
             this._refreshMobileSheetLayout = ({ animate = false } = {}) => {
 	                if (isMostlyClosed()) {
 	                    setPosition(getMaxY(), animate, { rememberOpen: false, signalLayout: false });
 	                    return;
 	                }
-	                setPosition(getPreferredOpenY(), animate, { rememberOpen: false, signalLayout: false });
+	                placeOpen(animate);
             };
 
             const initPosition = () => {
@@ -2688,7 +2710,7 @@
                     return;
                 }
 
-	                setPosition(getPreferredOpenY(), false, { rememberOpen: false, signalLayout: false });
+	                placeOpen(false);
             };
 
 	            this._mobileInitialLayoutFrame = requestAnimationFrame(() => {
@@ -2698,6 +2720,26 @@
 	            });
             this._handleMobileSheetResize = syncPositionOnResize;
             window.addEventListener('resize', this._handleMobileSheetResize);
+
+            const isTextField = t => t instanceof Element && t.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file]), textarea');
+            this._handleKbFocusIn = (e) => {
+                if (!isMobile() || !isTextField(e.target)) return;
+                clearTimeout(this._kbHoldTimer);
+                if (!this._kbHold && !isMostlyClosed()) {
+                    const top = this.el.getBoundingClientRect().top;
+                    this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - top };
+                }
+            };
+            this._handleKbFocusOut = () => {
+                clearTimeout(this._kbHoldTimer);
+                this._kbHoldTimer = setTimeout(() => {
+                    if (!this.el || isTextField(document.activeElement) && this.el.contains(document.activeElement)) return;
+                    this._kbHold = null;
+                    this._refreshMobileSheetLayout?.();
+                }, 350);
+            };
+            this.el.addEventListener('focusin', this._handleKbFocusIn);
+            this.el.addEventListener('focusout', this._handleKbFocusOut);
 
             if (window.visualViewport) {
                 this._handleMobileViewportChange = () => {
@@ -4701,6 +4743,7 @@
                 this._keyHandler = null;
             }
 
+            clearTimeout(this._kbHoldTimer);
             if (this._handleMobileSheetResize) {
                 window.removeEventListener('resize', this._handleMobileSheetResize);
                 this._handleMobileSheetResize = null;

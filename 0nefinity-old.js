@@ -270,10 +270,10 @@ canvas {
       <label>≡G(%): <input type="number" id="equivSize" value="23" step="1" min="0"></label>
       <label>≡L(%): <input type="number" id="equivLength" value="100" step="1" min="0"></label>
 
-      <label>Symbol 0: <input type="text" id="label0Input" value="0"></label>
-      <label>Symbol 1: <input type="text" id="label1Input" value="1"></label>
-      <label>Symbol ∞: <input type="text" id="labelInfInput" value="∞"></label>
-      <label>Identisch: <input type="text" id="equivSymbolInput" value="≡"></label>
+      <label>Symbol 0: <input type="search" id="label0Input" value="0"></label>
+      <label>Symbol 1: <input type="search" id="label1Input" value="1"></label>
+      <label>Symbol ∞: <input type="search" id="labelInfInput" value="∞"></label>
+      <label>Identisch: <input type="search" id="equivSymbolInput" value="≡"></label>
       <label>Dupl. Identisch: <input type="checkbox" id="duplicateIdentisch"></label>
       <button id="takePhotoButton">Foto machen</button>
       <div class="info-popup">
