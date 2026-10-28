@@ -75,6 +75,7 @@ async function run(p, cdp, url) {
     const kbOff = () => p.evaluate(() => window.__kb(0));
     const tapAt = async (sel, idx) => { const [x, y] = await center(sel, idx); await p.touchscreen.tap(x, y); };
 
+    await p.waitForTimeout(800);
     // Eingabefelder im Panel: antippen, Tastatur auf, Tastatur zu
     for (const [name, sel] of [['Symbolfeld', '.ctrl-symbol-input'], ['Suchfeld', '.ctrl-panel-body input[type=search]:not(.ctrl-symbol-input)']]) {
         // Nur ein Feld, das sichtbar ist und die Tastatur nicht verdeckt: sonst muss das Panel legitim nachruecken
