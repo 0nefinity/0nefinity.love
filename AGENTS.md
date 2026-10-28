@@ -63,6 +63,17 @@ Das Repo ist öffentlich, wie ein Buch. Hinein kommt nur, was auf der Seite zu s
 Nicht hinein: Arbeitsdateien (Specs, Pläne, Reviews, Entwürfe, Mockups, Sicherungskopien), Editor- und Agenten-Konfiguration,
 Logs, Zugangsdaten, Server-Adressen und -Pfade. Solche Dateien liegen außerhalb des Repos; `.gitignore` schließt die üblichen aus.
 
+## Form ist Inhalt
+
+Ganz im Sinne von Douglas Hofstadter (Gödel, Escher, Bach): Inhalt und Form sind nicht trennbar. Texte, Namen, Symbole, Dateinamen, Funktionen und wie die Oberfläche funktioniert: fast alles hier ist mehrdeutig und Teil des Kunstwerks. Gelebte Mehrdeutigkeit. 0nefinity ist ein Webprojekt, das sich humorvoll mit dem auseinandersetzt, woraus es besteht: Nullen und Einsen in unendlicher Vielfalt. Die Vereinigung von 0, 1 und ∞ (018) wird erst dadurch deutlich, dass sie auf allen Ebenen verwoben ist.
+
+Für die Arbeit daran heißt das:
+
+- **Bestehendes schützen.** Bevor ein sichtbarer Text, Name, Dateiname, ein Symbol oder ein Bedienverhalten geändert wird, erst fragen: Welche Doppelbedeutung trägt es? Ein technisch "sauberer" Eingriff (Hilfetext, Umbenennung, Standard-Icon, generische Fehlermeldung) zerstört leicht eine Ebene, die man nicht gesehen hat. Beispiele: `/enternity` mit dem exakten Satz "enter username and password and press enter to enter 0nefinity" (dreimal enter), Dateinamen wie `game0f1ife`, `0sp1wns`, `n0thingsp1s`.
+- **Keine eigenen Witze einbauen.** Einfälle werden vorgeschlagen und erst nach Absprache gebaut. Das gilt auch für Mehrdeutigkeit im Code selbst (Namen, Kommentare, Struktur).
+- **Texte nur im Wortlaut des Projektinhabers.** Keine Hilfe-, Hinweis- oder Fehlertexte ergänzen; Rückmeldungen lieber wortlos (Wackeln, Dimmen).
+- **Schwarz und Weiß.** Keine farbigen Icons, keine Emoji. Symbole werden aus 0 und 1 zusammengesetzt, wie Lupe und Logout.
+
 ## Philosophische Konventionen
 
 Deutsch-Englisch-Mix, unkonventionelle Interpunktion und metaphorische Variablennamen sind Absicht, keine Fehler. Die "Unvollkommenheiten" gehören zur Ästhetik des Projekts.
