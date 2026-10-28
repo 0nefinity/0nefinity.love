@@ -41,7 +41,7 @@ Ausnahmen: `why-coordinatesystem-is-chicken.html` behält ihr Huhn-Icon (`profil
 **Einstiegspunkte:** `index.html` (Manifest + Navigation), `README.html` (Doku)
 **Archiv:** `00_Archiv/`, nur zum Nachschlagen, nicht anfassen
 
-**Bausteine:** Was auf einzelnen Seiten schon gelöst ist (Schrift auf Raster, Rendering, Geometrie, Performance …), steht in `BAUSTEINE.md`. Vor jedem Neubau dort nachsehen und Vorhandenes wiederverwenden. Wenn eine Seite neu Technik bringt, Katalog mitpflegen: als Halbsatz anhängen.
+**10t∞ls:** Was auf einzelnen Seiten schon gelöst ist (Schrift auf Raster, Rendering, Geometrie, Performance …), steht in `10t∞ls.md`. Vor jedem Neubau dort nachsehen und Vorhandenes wiederverwenden. Wenn eine Seite neu Technik bringt, Katalog mitpflegen: als Halbsatz anhängen.
 
 ## Git-Workflow
 
