@@ -49,8 +49,8 @@ function render_include(string $file, string $uri): string {
     .enter-wrap { display:flex; min-height:100svh; min-height:100dvh; align-items:center; justify-content:center; padding:max(12px,min(4vw,24px)); box-sizing:border-box; }
     .enter-card, .enter-card * { white-space:normal; }
     .enter-card { max-width:420px; width:100%; padding:0 .5rem; box-sizing:border-box; display:flex; flex-direction:column; gap:clamp(.75rem,3.2svh,1.75rem); }
-    .enter-card h1 { margin:0 0 .25rem; font-size:2rem; line-height:1.2; }
-    .enter-card .sentence { margin:0 0 clamp(.5rem,3svh,2rem); font-size:clamp(1.375rem,6vw,1.875rem); line-height:1.3; }
+    .enter-card h1 { margin:0 0 .25rem; font-size:clamp(2rem,10vw,2.75rem); line-height:1.15; text-align:center; }
+    .enter-card .sentence { margin:0 0 clamp(.5rem,3svh,2rem); font-size:clamp(1.25rem,5vw,1.5rem); line-height:1.3; }
     @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
     .shake { animation:shake .35s ease-in-out; }
     @media (prefers-reduced-motion:reduce) { .shake { animation:none; opacity:.5; } }
@@ -83,7 +83,7 @@ function render_include(string $file, string $uri): string {
     .error-slot { font-size:.875rem; opacity:.8; }
     .error-slot:empty { display:none; }
     code { font-size:.8rem; word-break:break-all; }
-    @media (max-height:640px) { .enter-card { gap:.5rem; } .enter-card input[type=text], .enter-card input[type=password], .submit-btn { min-height:46px; } .enter-card .sentence { font-size:1.25rem; margin-bottom:.25rem; } }
+    @media (max-height:640px) { .enter-card { gap:.5rem; } .enter-card input[type=text], .enter-card input[type=password], .submit-btn { min-height:46px; } .enter-card h1 { font-size:1.75rem; } .enter-card .sentence { font-size:1rem; margin-bottom:.25rem; } }
   </style>
 </head>
 <body>
@@ -113,6 +113,7 @@ function render_include(string $file, string $uri): string {
         </label>
         <button type="submit" class="submit-btn">Setup</button>
       <?php else: ?>
+        <h1>Enter 0nefinity</h1>
         <p class="sentence">enter username and password and press enter to enter 0nefinity</p>
         <?= csrf_field() ?>
         <input type="hidden" name="next" value="<?= htmlspecialchars($next) ?>">
