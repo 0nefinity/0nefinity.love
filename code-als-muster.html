@@ -36,7 +36,8 @@
     const meldung = document.getElementById('meldung');
     const cfg = { form: '01', pfad: location.pathname, groesse: 1 };
     const MASKE_B = 1200;
-    const aspekt = innerWidth / innerHeight;
+    const VB = innerWidth, VH = innerHeight;
+    const aspekt = VB / VH;
     let zeichen = null;
     let lauf = 0;
     let raster = null;
@@ -126,7 +127,7 @@
 
     function groesseSetzen() {
       if (!raster) return;
-      const fit = Math.min(innerWidth / (raster.spalten * raster.zm.b), innerHeight / (raster.zeilen * raster.zm.h));
+      const fit = Math.min(VB / (raster.spalten * raster.zm.b), VH / (raster.zeilen * raster.zm.h));
       ziel.style.fontSize = (fit * cfg.groesse) + 'px';
     }
 
