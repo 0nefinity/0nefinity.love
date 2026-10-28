@@ -50,6 +50,10 @@ function render_include(string $file, string $uri): string {
     .enter-card, .enter-card * { white-space:normal; }
     .enter-card { max-width:360px; width:100%; padding:1.25rem; border:1px solid var(--text-color); border-radius:4px; box-sizing:border-box; }
     .enter-card h1 { margin:0 0 .25rem; font-size:2rem; line-height:1.2; }
+    .enter-card .sentence { margin:0 0 .5rem; font-size:1.125rem; line-height:1.35; }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+    .shake { animation:shake .35s ease-in-out; }
+    @media (prefers-reduced-motion:reduce) { .shake { animation:none; opacity:.5; } }
     .enter-card .sub { opacity:.7; font-size:.875rem; margin:0 0 .75rem; }
     .enter-card label { display:block; margin-top:.625rem; font-size:.875rem; }
     .enter-card input[type=text], .enter-card input[type=password] {
@@ -105,8 +109,7 @@ function render_include(string $file, string $uri): string {
         </label>
         <button type="submit" class="submit-btn">Setup</button>
       <?php else: ?>
-        <h1>Enter 0nefinity</h1>
-        <p class="sub">Enter username and password and press enter to enter 0nefinity.</p>
+        <p class="sentence">enter username and password and press enter to enter 0nefinity</p>
         <?= csrf_field() ?>
         <input type="hidden" name="next" value="<?= htmlspecialchars($next) ?>">
         <label>Username
@@ -134,6 +137,11 @@ function render_include(string $file, string $uri): string {
 
   const form = document.getElementById('enter-form');
   const err  = document.getElementById('err');
+  // Gag page: failures get no text, only a shake and console.error.
+  function fail(msg) {
+    console.error(msg);
+    form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
+  }
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     err.textContent = '';
@@ -152,9 +160,9 @@ function render_include(string $file, string $uri): string {
         window.location.href = j.redirect || '/';
         return;
       }
-      err.textContent = j.error || 'Falsche Logindaten';
+      fail(j.error || 'Falsche Logindaten');
     } catch (ex) {
-      err.textContent = 'Netzwerk-Fehler';
+      fail('Netzwerk-Fehler');
     } finally {
       btn.disabled = false;
     }
