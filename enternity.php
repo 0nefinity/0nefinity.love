@@ -48,38 +48,39 @@ function render_include(string $file, string $uri): string {
   <style>
     .enter-wrap { display:flex; min-height:100svh; min-height:100dvh; align-items:center; justify-content:center; padding:max(12px,min(4vw,24px)); box-sizing:border-box; }
     .enter-card, .enter-card * { white-space:normal; }
-    .enter-card { max-width:360px; width:100%; padding:1.25rem; border:1px solid var(--text-color); border-radius:4px; box-sizing:border-box; }
+    .enter-card { max-width:420px; width:100%; padding:0 .5rem; box-sizing:border-box; display:flex; flex-direction:column; gap:clamp(.75rem,3.2svh,1.75rem); }
     .enter-card h1 { margin:0 0 .25rem; font-size:2rem; line-height:1.2; }
-    .enter-card .sentence { margin:0 0 .5rem; font-size:1.125rem; line-height:1.35; }
+    .enter-card .sentence { margin:0 0 clamp(.5rem,3svh,2rem); font-size:clamp(1.375rem,6vw,1.875rem); line-height:1.3; }
     @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
     .shake { animation:shake .35s ease-in-out; }
     @media (prefers-reduced-motion:reduce) { .shake { animation:none; opacity:.5; } }
     .enter-card .sub { opacity:.7; font-size:.875rem; margin:0 0 .75rem; }
-    .enter-card label { display:block; margin-top:.625rem; font-size:.875rem; }
+    .enter-card label { display:block; margin:0; font-size:1rem; }
     .enter-card input[type=text], .enter-card input[type=password] {
-      width:100%; padding:10px 12px; font-size:16px; min-height:44px;
+      width:100%; margin-top:.5rem; padding:12px 14px; font-size:18px; min-height:56px;
       background:transparent; color:var(--text-color);
       border:1px solid var(--text-color); border-radius:2px;
       box-sizing:border-box;
     }
-    .pw-row { display:flex; gap:.25rem; align-items:stretch; }
-    .pw-row input { flex:1; }
+    .pw-row { display:flex; gap:.25rem; align-items:stretch; margin-top:.5rem; }
+    .pw-row input { flex:1; margin-top:0; }
     .eye-btn {
-      min-width:44px; min-height:44px; padding:0;
+      min-width:56px; min-height:56px; padding:0;
       background:transparent; color:var(--text-color);
       border:1px solid var(--text-color); border-radius:2px;
       cursor:pointer; font-size:1rem;
     }
     .eye-btn:focus-visible { outline:2px solid var(--text-color); outline-offset:2px; }
     .submit-btn {
-      width:100%; margin-top:.75rem; min-height:44px;
+      width:100%; margin-top:.25rem; min-height:56px;
       background:var(--text-color); color:var(--bg-color);
       border:0; border-radius:2px; cursor:pointer; font-size:1rem;
     }
     .submit-btn:disabled { opacity:.5; cursor:wait; }
-    .error-slot { min-height:1.25rem; margin-top:.5rem; font-size:.875rem; color:#ff4040; }
+    .error-slot { font-size:.875rem; opacity:.8; }
+    .error-slot:empty { display:none; }
     code { font-size:.8rem; word-break:break-all; }
-    @media (max-height:640px) { .enter-card h1 { font-size:1.5rem; } .enter-card .sub { margin-bottom:.5rem; } }
+    @media (max-height:640px) { .enter-card { gap:.5rem; } .enter-card input[type=text], .enter-card input[type=password], .submit-btn, .eye-btn { min-height:46px; } .enter-card .sentence { font-size:1.25rem; margin-bottom:.25rem; } }
   </style>
 </head>
 <body>
@@ -142,7 +143,7 @@ function render_include(string $file, string $uri): string {
     console.error(msg);
     form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
   }
-  form.addEventListener('submit', async (e) => {
+  async function enter(e) {
     e.preventDefault();
     err.textContent = '';
     const btn = form.querySelector('.submit-btn');
@@ -166,7 +167,8 @@ function render_include(string $file, string $uri): string {
     } finally {
       btn.disabled = false;
     }
-  });
+  }
+  form.addEventListener('submit', enter);
 </script>
 </body>
 </html>
