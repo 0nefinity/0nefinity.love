@@ -801,7 +801,7 @@
             .addDivider()
             .addSlider('speed', {
                 label: 'Speed',
-                min: 1, max: 9999, step: 1,
+                min: 1, max: 9999, step: 1, grow: true,
                 value: config.speed,
                 decimals: 0,
                 onChange: (v) => { config.speed = v; }

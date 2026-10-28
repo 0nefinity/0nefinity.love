@@ -1425,7 +1425,7 @@ canvas {
 
       panel.beginSection('speed')
         .addSlider('speed', {
-          label: 'Speed', min: 0, max: 1440, step: 0.1, decimals: 1, value: cfg.speed,
+          label: 'Speed', min: 0, max: 1440, step: 0.1, decimals: 1, value: cfg.speed, grow: true,
           onChange: v => {
             cfg.speed = num(v);
             manualSpeed = toReal(cfg.speed);
