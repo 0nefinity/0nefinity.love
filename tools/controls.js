@@ -204,6 +204,26 @@
         return sign * preciseNormalize(scaled, nextDecimals);
     }
 
+    // Hoechster erreichter Wert eines wachsenden Reglers, je Seite und Regler fuer die Browser-Sitzung.
+    // Ohne nutzbaren sessionStorage bleibt er im Speicher der Seite.
+    const sliderPeaks = {};
+    function sliderPeakKey(key) { return '018.sliderpeak:' + location.pathname + ':' + key; }
+    function loadSliderPeak(key) {
+        let v = sliderPeaks[key];
+        try {
+            const raw = sessionStorage.getItem(sliderPeakKey(key));
+            if (raw !== null) {
+                const n = Number(raw);
+                if (Number.isFinite(n) && !(n <= (v ?? -Infinity))) v = n;
+            }
+        } catch (_) { /* Speicher gesperrt: Wert bleibt im Speicher */ }
+        return v ?? -Infinity;
+    }
+    function saveSliderPeak(key, value) {
+        sliderPeaks[key] = value;
+        try { sessionStorage.setItem(sliderPeakKey(key), String(value)); } catch (_) { /* Speicher gesperrt */ }
+    }
+
     function getProjectedSliderBounds(config, fallbackValue = 0) {
         const safeFallback = Number.isFinite(fallbackValue) ? fallbackValue : 0;
         let min = Number.isFinite(config?.min) ? config.min : safeFallback;
@@ -1793,6 +1813,7 @@
             const display = row.querySelector('.ctrl-value-display');
             const currentValue = Number.isFinite(this.params[key]) ? this.params[key] : 0;
             const decs = getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? 0);
+            this._growSlider(key, currentValue);
             const { min, max } = getProjectedSliderBounds(cfg, currentValue);
 
             cfg.decimals = decs;
@@ -3021,6 +3042,32 @@
         // === ROW CREATION METHODS ===
 
         /**
+         * Wachsende Skala (config.grow): hoechster erreichter Wert je Seite und Regler bleibt in sessionStorage,
+         * die Obergrenze liegt bei Spitze x Puffer und sinkt in der Sitzung nie. Beim Ziehen wird die Skala nur
+         * erweitert, wenn der Daumen am Ende ankommt; den Rest erledigt das Loslassen. Liefert true, wenn max stieg.
+         */
+        _growSlider(key, value) {
+            const cfg = this._sliderConfigs[key];
+            const st = cfg && cfg.grow;
+            if (!st) return false;
+            if (Number.isFinite(value) && value > st.peak) {
+                st.peak = value;
+                saveSliderPeak(key, value);
+            }
+            let target = st.peak * st.buffer;
+            if (st.dragging) {
+                const now = Date.now();
+                const atEnd = Number.isFinite(value) && value >= cfg.max - Math.max(cfg.step || 0, (cfg.max - cfg.min) * 0.002);
+                if (!atEnd || now - st.lastExt < 300) return false;
+                st.lastExt = now;
+                target = Math.max(target, value * 1.25);
+            }
+            if (!(target > cfg.max)) return false;
+            cfg.max = Math.ceil(target * 100) / 100;
+            return true;
+        }
+
+        /**
          * Add a unified Slider + Stepper row (Slider + [-] [input] [+])
          */
         addSlider(key, config) {
@@ -3044,6 +3091,13 @@
                 defaultStep: step,
                 defaultDecimals: decimals
             };
+            if (config.grow) {
+                const buffer = Number.isFinite(config.grow.buffer) && config.grow.buffer > 1 ? config.grow.buffer : 2;
+                const st = { buffer, peak: loadSliderPeak(key), dragging: false, lastExt: 0 };
+                if (Number.isFinite(value) && value > st.peak) st.peak = value;
+                this._sliderConfigs[key].grow = st;
+                this._growSlider(key, value);
+            }
 
             const sliderCfg = this._sliderConfigs[key];
             const initialValue = Number.isFinite(value) ? value : 0;
@@ -3074,12 +3128,14 @@
                 const cfg = this._sliderConfigs[key];
                 const currentValue = Number.isFinite(rawValue) ? rawValue : 0;
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
+                const grew = this._growSlider(key, currentValue);
                 const bounds = getProjectedSliderBounds(cfg, currentValue);
 
                 if (cfg) cfg.decimals = decs;
 
                 range.min = bounds.min;
-                range.max = bounds.max;
+                // Waehrend des Ziehens bleibt die Skala stehen (Daumen unter dem Finger), ausser der Rand wird erreicht.
+                if (!(cfg && cfg.grow && cfg.grow.dragging) || grew) range.max = bounds.max;
                 range.step = getProjectedSliderStep(cfg ? cfg.step : step);
                 range.value = clamp(toSliderRangeValue(currentValue, cfg), bounds.min, bounds.max);
 
@@ -3111,6 +3167,19 @@
             });
 
             if (wrap) this._bindWrapDrag(key, range, updateValue);
+
+            if (this._sliderConfigs[key].grow) {
+                const st = this._sliderConfigs[key].grow;
+                range.addEventListener('pointerdown', () => { st.dragging = true; });
+                const release = () => {
+                    if (!st.dragging) return;
+                    st.dragging = false;
+                    syncSliderUI(this.params[key], false);
+                };
+                range.addEventListener('pointerup', release);
+                range.addEventListener('pointercancel', release);
+                range.addEventListener('lostpointercapture', release);
+            }
 
             // Input Events
             input.addEventListener('input', () => {
@@ -3144,14 +3213,14 @@
                 const newVal = preciseAdd(this.params[key], delta, decs);
                 const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
                 const wraps = !!(cfg && cfg.wrap);
-                if (!wraps && (newVal < currentMin || newVal > currentMax)) return;
+                if (!wraps && (newVal < currentMin || (newVal > currentMax && !(cfg && cfg.grow)))) return;
 
                 isHolding = true;
                 // Sofort ein erster Schritt
                 updateValue(newVal);
                 holdInterval = setInterval(() => {
                     const nextVal = preciseAdd(this.params[key], delta, decs);
-                    if (!wraps && (nextVal < currentMin || nextVal > currentMax)) {
+                    if (!wraps && (nextVal < currentMin || (nextVal > currentMax && !(cfg && cfg.grow)))) {
                         stopHold();
                         return;
                     }
@@ -3184,7 +3253,7 @@
                     const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                     const newVal = preciseAdd(this.params[key], delta, decs);
                     const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                    if (!(cfg && cfg.wrap) && (newVal < currentMin || newVal > currentMax)) return;
+                    if (!(cfg && cfg.wrap) && (newVal < currentMin || (newVal > currentMax && !(cfg && cfg.grow)))) return;
 
                     // Manuelles Click Handling (anstelle von on('click')) sorgt fÃ¼r sofortige Reaktion
                     holdTimeout = setTimeout(() => { startHold(delta); }, 400);
@@ -3198,7 +3267,7 @@
                         const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
                         const newVal = preciseAdd(this.params[key], delta, decs);
                         const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
-                        if ((cfg && cfg.wrap) || (newVal >= currentMin && newVal <= currentMax)) {
+                        if ((cfg && cfg.wrap) || (newVal >= currentMin && (newVal <= currentMax || cfg.grow))) {
                             updateValue(newVal);
                         }
                     }
@@ -4608,12 +4677,13 @@
                 const cfg = this._sliderConfigs[key];
                 const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0;
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? 0) : 0;
+                const grew = this._growSlider(key, numericValue);
                 const bounds = getProjectedSliderBounds(cfg, numericValue);
 
                 if (cfg) cfg.decimals = decs;
                 if (range) {
                     range.min = bounds.min;
-                    range.max = bounds.max;
+                    if (!(cfg && cfg.grow && cfg.grow.dragging) || grew) range.max = bounds.max;
                     range.step = getProjectedSliderStep(cfg ? cfg.step : undefined);
                     range.value = clamp(toSliderRangeValue(numericValue, cfg), bounds.min, bounds.max);
                 }
