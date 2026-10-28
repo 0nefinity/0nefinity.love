@@ -3,7 +3,7 @@
 <head>
   <!--#include virtual="/includes/something-in-the-head.html" -->
   <meta charset="UTF-8">
-  <title>code als muster</title>
+  <title>01t∞ls</title>
   <style>
     body { align-items: stretch; overflow: auto; }
     #muster, #mass {
@@ -18,7 +18,7 @@
       margin: 0;
       padding: 0;
     }
-    #muster { align-self: center; width: max-content; }
+    #muster { align-self: center; width: max-content; margin-block: auto; }
     #mass { position: absolute; left: -99999px; top: 0; visibility: hidden; font-size: 100px; }
     #meldung { padding: 1rem; text-align: left; }
   </style>
@@ -47,7 +47,7 @@
     const kleine = {};
 
     function fehler(text, err) {
-      console.error('[code-als-muster] ' + text, err || '');
+      console.error('[01t∞ls] ' + text, err || '');
       stopp();
       meldung.textContent = text;
       meldung.hidden = false;
