@@ -70,6 +70,7 @@ function render_include(string $file, string $uri): string {
       background:transparent; color:var(--text-color); border:0; border-radius:9999px;
       cursor:pointer; -webkit-tap-highlight-color:transparent;
     }
+    .eye-btn, .eye-btn:hover, .eye-btn:active, .eye-btn:focus { background:transparent !important; box-shadow:none !important; -webkit-tap-highlight-color:transparent; }
     .eye-btn svg { width:24px; height:24px; display:block; }
     .eye-btn:focus { outline:none; }
     .eye-btn:focus-visible { outline:2px solid var(--text-color); outline-offset:-2px; }
