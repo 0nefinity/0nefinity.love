@@ -41,6 +41,13 @@ for f in scope:
             if 'autocomplete' not in ctx and not NON_TEXT.search(ctx[:400]):
                 problems.append(f'{f}:{i + 1}: createElement(input/textarea) without autocomplete within 15 lines')
 
+# 4. Shared infrastructure must create text fields as type=search (no Chrome Android autofill bar), never type=text.
+TEXT_TYPE = re.compile(r'<input\b[^>]*type\s*=\s*["\']text["\']|\.type\s*=\s*["\']text["\']|setAttribute\(\s*["\']type["\']\s*,\s*["\']text["\']|type\s*=\s*["\']text["\']\s*,', re.I)
+for f in scope:
+    for i, line in enumerate((root / f).read_text(errors='replace').splitlines()):
+        if TEXT_TYPE.search(line) and 'type === \'text\'' not in line:
+            problems.append(f'{f}:{i + 1}: type=text (use type=search)')
+
 if 'Autofill-Waechter' not in (root / 'meta.js').read_text():
     problems.append('meta.js: runtime guard "Autofill-Waechter" missing')
 
