@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <meta charset="UTF-8">
+  <title>code als muster</title>
+  <style>
+    body { align-items: stretch; overflow: auto; }
+    #muster {
+      width: auto;
+      max-width: none;
+      min-width: 100%;
+      box-sizing: border-box;
+      text-align: left;
+      text-shadow: none;
+      padding: 1rem;
+    }
+    #meldung { padding: 1rem; text-align: left; }
+  </style>
+</head>
+<body>
+  <div id="meldung" role="alert" hidden></div>
+  <pre id="muster"></pre>
+
+  <script>
+  (function () {
+    'use strict';
+    const pre = document.getElementById('muster');
+    const meldung = document.getElementById('meldung');
+    const cfg = { symbole: '01', pfad: location.pathname, groesse: 8 };
+    let quelle = null;
+    let quellePfad = null;
+    let lauf = 0;
+
+    function fehler(text, err) {
+      console.error('[code-als-muster] ' + text, err || '');
+      meldung.textContent = text;
+      meldung.hidden = false;
+      pre.textContent = '';
+    }
+
+    function muster(text, symbole) {
+      const zeichen = Array.from(symbole);
+      const aus = [];
+      let i = 0;
+      for (const c of text) {
+        if (/\s/.test(c)) { aus.push(c); continue; }
+        aus.push(zeichen.length ? zeichen[i++ % zeichen.length] : ' ');
+      }
+      return aus.join('');
+    }
+
+    function zeichnen() {
+      if (quelle === null) return;
+      meldung.hidden = true;
+      pre.textContent = muster(quelle, cfg.symbole);
+    }
+
+    async function laden() {
+      const mein = ++lauf;
+      const pfad = cfg.pfad;
+      try {
+        const res = await fetch(pfad, { cache: 'no-store' });
+        if (mein !== lauf) return;
+        if (!res.ok) throw new Error(res.status + ' ' + pfad);
+        const text = (await res.text()).replace(/\r/g, '');
+        if (mein !== lauf) return;
+        quelle = text;
+        quellePfad = pfad;
+        zeichnen();
+      } catch (e) {
+        if (mein !== lauf) return;
+        quelle = null;
+        fehler(String(e && e.message ? e.message : e) + ' ' + pfad, e);
+      }
+    }
+
+    function groesseSetzen() {
+      pre.style.setProperty('font-size', cfg.groesse + 'px', 'important');
+    }
+
+    const panel = Controls.createPanel({ position: 'left' });
+    panel
+      .addInput('symbole', { label: 'Symbole', value: cfg.symbole, onChange: v => { cfg.symbole = v; zeichnen(); } })
+      .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => { cfg.pfad = v; laden(); } })
+      .addSlider('groesse', { label: 'Größe', min: 0, max: 40, step: 0.5, value: cfg.groesse, decimals: 1, grow: true,
+        onChange: v => { cfg.groesse = v; groesseSetzen(); } });
+
+    cfg.symbole = panel.params.symbole;
+    cfg.pfad = panel.params.pfad;
+    cfg.groesse = panel.params.groesse;
+    groesseSetzen();
+    laden();
+  })();
+  </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
