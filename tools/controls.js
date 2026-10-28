@@ -1855,6 +1855,7 @@
             this.bodyEl.addEventListener('scroll', this._handleSelectViewportChange, { passive: true });
             window.addEventListener('resize', this._handleSelectViewportChange);
             this._installClickAnchor();
+            this._installSliderTouchLock();
 
             if (typeof MutationObserver === 'function') {
                 this._bodyMutationObserver = new MutationObserver(() => this._scheduleLayoutUpdate());
@@ -2026,6 +2027,37 @@
                 this._updateBodyHeight();
                 this._updateBarWidth();
             });
+        }
+
+        /**
+         * Touch: ein Regler uebernimmt erst bei klar waagerechter Bewegung (>= 9 px, |dx| > |dy|).
+         * Senkrechte Bewegung scrollt das Panel (touch-action: pan-y in meta.css), Antippen der Bahn aendert den Wert nicht.
+         * Maus und Tastatur laufen unveraendert ueber das native Verhalten.
+         */
+        _installSliderTouchLock() {
+            const SLOP = 9;
+            let gate = null;
+            const isRange = t => t instanceof HTMLInputElement && t.type === 'range';
+            const end = e => { if (gate && e.pointerId === gate.id) gate = null; };
+            this.el.addEventListener('pointerdown', e => {
+                if (e.pointerType !== 'touch' || !isRange(e.target)) return;
+                gate = { id: e.pointerId, x: e.clientX, y: e.clientY, range: e.target, value: e.target.value, armed: false };
+            }, true);
+            this.el.addEventListener('pointermove', e => {
+                if (!gate || e.pointerId !== gate.id || gate.armed) return;
+                const dx = Math.abs(e.clientX - gate.x), dy = Math.abs(e.clientY - gate.y);
+                if (dx >= SLOP && dx > dy) gate.armed = true;
+            }, true);
+            this.el.addEventListener('pointerup', end, true);
+            this.el.addEventListener('pointercancel', end, true);
+            // Vor den Reglern des Panels: solange nicht klar waagerecht gezogen wird, bleibt der Wert wie er war
+            const block = e => {
+                if (!gate || gate.armed || e.target !== gate.range) return;
+                e.stopImmediatePropagation();
+                if (gate.range.value !== gate.value) gate.range.value = gate.value;
+            };
+            this.el.addEventListener('input', block, true);
+            this.el.addEventListener('change', block, true);
         }
 
         // Bedienung im Panel: das angefasste Element bleibt auf dem Bildschirm, wo es ist. Aendert sich darueber oder
@@ -3209,29 +3241,44 @@
             };
             let drag = null;
 
-            host.addEventListener('pointerdown', (e) => {
-                if (e.button !== 0) return;
+            // Touch: erst bei klar waagerechter Bewegung (>= 9 px, |dx| > |dy|) zieht der Regler, sonst scrollt das Panel.
+            // Antippen aendert nichts. Maus und Stift greifen sofort wie bisher.
+            let pending = null;
+            const begin = (e, x) => {
                 const g = geometry();
                 if (!(g.period > 0)) return;
-                e.preventDefault();
                 host.setPointerCapture(e.pointerId);
                 const current = Number.isFinite(this.params[key]) ? this.params[key] : g.min;
                 const thumbX = g.left + (current - g.min) / g.period * g.span;
                 let start = current;
-                if (Math.abs(e.clientX - thumbX) > g.thumb / 2 + 4) {
-                    start = g.min + clamp((e.clientX - g.left) / g.span, 0, 1) * g.period;
+                if (e.pointerType !== 'touch' && Math.abs(x - thumbX) > g.thumb / 2 + 4) {
+                    start = g.min + clamp((x - g.left) / g.span, 0, 1) * g.period;
                     updateValue(snap(start));
                 }
-                drag = { id: e.pointerId, x: e.clientX, start, g };
+                drag = { id: e.pointerId, x, start, g };
                 range.focus({ preventScroll: true });
                 host.classList.add('dragging');
+            };
+            host.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return;
+                if (e.pointerType === 'touch') { pending = { id: e.pointerId, x: e.clientX, y: e.clientY }; return; }
+                e.preventDefault();
+                begin(e, e.clientX);
             });
             host.addEventListener('pointermove', (e) => {
+                if (pending && e.pointerId === pending.id) {
+                    const dx = Math.abs(e.clientX - pending.x), dy = Math.abs(e.clientY - pending.y);
+                    if (dx < 9 || dx <= dy) return;
+                    const x0 = pending.x;
+                    pending = null;
+                    begin(e, x0);
+                }
                 if (!drag || e.pointerId !== drag.id) return;
                 const raw = drag.start + (e.clientX - drag.x) / drag.g.span * drag.g.period;
                 updateValue(snap(raw));
             });
             const end = (e) => {
+                if (pending && e.pointerId === pending.id) pending = null;
                 if (!drag || e.pointerId !== drag.id) return;
                 drag = null;
                 host.classList.remove('dragging');
