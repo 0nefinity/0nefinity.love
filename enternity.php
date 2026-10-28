@@ -23,7 +23,7 @@ $csrf = csrf_token();
 function render_include(string $file, string $uri): string {
   $t = file_get_contents($file);
   $host = $_SERVER['HTTP_HOST'] ?? '';
-  $t = preg_replace_callback('~<!--#if expr="%\{(\w+)\} (=~|!~) /(.*?)/" -->(.*?)<!--#endif -->~s',
+  $t = preg_replace_callback('@<!--#if expr="%\{(\w+)\} (=~|!~) /(.*?)/" -->(.*?)<!--#endif -->@s',
     function ($m) use ($uri, $host) {
       $v = $m[1] === 'REQUEST_URI' ? $uri : $host;
       $hit = preg_match('~' . str_replace('~', '\\~', $m[3]) . '~', $v) === 1;
