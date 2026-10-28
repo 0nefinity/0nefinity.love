@@ -1905,6 +1905,11 @@ pre {
     pointer-events: none;
 }
 
+/* Touch: senkrechtes Wischen scrollt das Panel; waagerechtes Ziehen gehoert dem Regler (controls.js, _installSliderTouchLock) */
+.ctrl-panel input[type="range"] {
+    touch-action: pan-y;
+}
+
 .ctrl-range-wrap:hover .ctrl-range::-webkit-slider-thumb {
     transform: scale(1.15);
 }
