@@ -9,6 +9,9 @@
   var probe = tag && tag.getAttribute('data-probe');
   if (!probe) { console.error('probe-feedback: data-probe fehlt'); return; }
   var API = '/api/probe-result.php';
+  // Optional: data-choices="gut:Gefaellt;nein:Gefaellt nicht" statt der Autofill-Knoepfe.
+  var choices = (tag.getAttribute('data-choices') || 'leiste:Leiste kommt;keine:keine Leiste')
+    .split(';').map(function (c) { var i = c.indexOf(':'); return [c.slice(0, i), c.slice(i + 1)]; });
 
   var css = document.createElement('style');
   css.textContent =
@@ -54,7 +57,8 @@
 
   function paint() {
     Object.keys(buttons).forEach(function (n) {
-      ['leiste', 'keine'].forEach(function (v) {
+      choices.forEach(function (d) {
+        var v = d[0];
         buttons[n][v].setAttribute('aria-pressed', results[n] === v ? 'true' : 'false');
       });
     });
@@ -110,7 +114,7 @@
     var n = row.getAttribute('data-probe-item');
     var wrap = el('div', 'pf-btns');
     buttons[n] = {};
-    [['leiste', 'Leiste kommt'], ['keine', 'keine Leiste']].forEach(function (d) {
+    choices.forEach(function (d) {
       var b = el('button', 'pf-btn', d[1]);
       b.type = 'button';
       b.setAttribute('aria-pressed', 'false');

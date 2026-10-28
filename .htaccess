@@ -24,6 +24,8 @@ RewriteRule "^tools/(generate-structure|auth-cli)\.php$" - [R=404,L]
 # Autofill-Probe: nur auf dev.* erreichbar (Testseite fuer Tims Handy, nicht im Menue/Sitemap)
 RewriteCond %{HTTP_HOST} !^dev\.
 RewriteRule "^autofill-probe(\.html)?$" - [R=404,L]
+RewriteCond %{HTTP_HOST} !^dev\.
+RewriteRule "^icon-entwuerfe(\.html)?$" - [R=404,L]
 
 # Ein Favicon fuer alles: /favicon.ico im Wurzelverzeichnis. Alte Icon-Pfade zeigen darauf.
 RewriteRule ^(favicon\.(png|svg)|apple-touch-icon(-precomposed)?\.png|profilbilder/favicon/index/.+)$ /favicon.ico [L]

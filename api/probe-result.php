@@ -4,11 +4,11 @@ declare(strict_types=1);
 // Ergebnisse von Testseiten (Tims Handy-Tests). Nur auf dev.*; je probe ein Stand in
 // .auth/probe-<name>.json (Volume, nicht im Repo, nicht ausgeliefert). Jeder POST ersetzt den Stand.
 
-const PROBES = ['autofill'];
+const PROBES = ['autofill', 'icons'];
 const MAX_BODY = 4096;
 const MAX_NOTE = 2000;
 const MAX_UA = 256;
-const VALUES = ['leiste', 'keine'];
+const VALUES = ['leiste', 'keine', 'gut', 'nein'];
 
 function fail(int $code, string $msg): never {
   http_response_code($code);
