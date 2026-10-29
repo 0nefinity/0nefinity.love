@@ -12,5 +12,12 @@ if echo "$staged" | grep -vE '^includes/(something-in-the-body\.html|search-inde
   git add includes/something-in-the-body.html includes/search-index.json
 fi
 
+# Code bundle for 1c0de.html ("whole project"): own code as one text file.
+# Generated files under includes/ do not trigger it (no self-trigger); the generator is idempotent.
+if echo "$staged" | grep -vE '^includes/' | grep -qE '\.(html|js|css|php|json|md)$'; then
+  python3 tools/generate-code-bundle.py
+  git add includes/code-bundle.txt
+fi
+
 # Autofill: no password/login heuristics on non-login fields (tests/autofill/)
 python3 tests/autofill/static-check.py
