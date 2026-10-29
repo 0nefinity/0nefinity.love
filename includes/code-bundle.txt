@@ -90945,7 +90945,7 @@ unfoldingPi.html
     .pi-form button { height: calc(var(--pi-h) - 4px); padding: 0; line-height: 1; border: 0; border-radius: 6px; background: transparent; cursor: pointer; opacity: 0.6; }
     .pi-form button[aria-pressed="true"] { background: var(--ui-fill-15); opacity: 1; }
     .pi-list { display: flex; flex-direction: column; gap: var(--pi-gap); height: calc(3 * var(--pi-h) + 2 * var(--pi-gap)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }
-    .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) var(--pi-h) 6rem; gap: var(--pi-gap); height: var(--pi-h); }
+    .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 5rem 6rem; gap: var(--pi-gap); height: var(--pi-h); }
     .pi-sel { position: relative; display: block; min-width: 0; }
     .pi-sel::after { content: ''; position: absolute; right: 0.95rem; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--ui-text-70); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
     .pi-select { appearance: none; -webkit-appearance: none; width: 100%; height: var(--pi-h); padding: 0 2rem 0 0.8rem; border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; font-size: 16px; }
@@ -91605,18 +91605,18 @@ unfoldingPi.html
     const ui = { rows: new Map(), list: null, form: null };
     const mk = (tag, cls, attrs) => { const e = document.createElement(tag); if (cls) e.className = cls; if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
     function buildConstPanel() {
-      panel.beginSection('consts', { title: 'Glieder', className: 'pi-consts' });
+      panel.beginSection('consts', { className: 'pi-consts' });
       const sec = panel.bodyEl.lastElementChild;
       const head = mk('div', 'pi-head');
       ui.form = mk('div', 'pi-form', { role: 'group' });
-      for (const [key, label, tip] of [['kette', 'Kette', 'hintereinander: ein Verdichtungspunkt je Glied'], ['stern', 'Stern', 'alle Strahlen laufen auf ein centrum zu']]) {
+      for (const [key, label, tip] of [['kette', 'Kette', 'one after another: a compression point per constant'], ['stern', 'Stern', 'alle Strahlen laufen auf ein centrum zu']]) {
         const b = mk('button', '', { type: 'button', title: tip, 'data-button-key': key });
         b.textContent = label;
         b.addEventListener('click', () => { if (form !== key) { form = key; changed(); } });
         ui.form.appendChild(b);
       }
       const add = mk('button', 'pi-add', { type: 'button', 'data-button-key': 'add' });
-      add.textContent = '+ Glied';
+      add.textContent = '+ constant';
       add.addEventListener('click', addGlied);
       head.append(add, ui.form);
       ui.list = mk('div', 'pi-list');
@@ -91629,9 +91629,9 @@ unfoldingPi.html
       const sel = mk('select', 'pi-select', { 'aria-label': 'Konstante' });
       for (const k of CONSTS) sel.add(new Option(k.symbol, k.id));
       wrap.appendChild(sel);
-      const mir = mk('button', 'pi-mirror', { type: 'button', 'data-button-key': 'dir', title: 'Richtung umkehren' });
-      mir.textContent = '\u2192';
-      const del = mk('button', 'pi-del', { type: 'button', 'data-button-key': 'del', 'aria-label': 'Glied entfernen', title: 'Glied entfernen' });
+      const mir = mk('button', 'pi-mirror', { type: 'button', 'data-button-key': 'dir', title: 'mirror: 3.141... becomes ...141.141...' });
+      mir.textContent = 'mirror';
+      const del = mk('button', 'pi-del', { type: 'button', 'data-button-key': 'del', 'aria-label': 'entfernen', title: 'entfernen' });
       del.textContent = 'entfernen';
       sel.addEventListener('change', () => { const g = row._g; if (sel.value === g.c) return; if (glieder.length === 1) setConstant(sel.value); else { g.c = sel.value; changed(); } });
       mir.addEventListener('click', () => toggleMirror(row._g));
@@ -91654,8 +91654,7 @@ unfoldingPi.html
         prev = r;
         if (r._sel.value !== g.c) r._sel.value = g.c;
         r._mir.setAttribute('aria-pressed', String(many && g.dir === 'l'));
-        r._mir.textContent = many && g.dir === 'l' ? '\u2190' : '\u2192';
-        r._sel.setAttribute('aria-label', many ? 'Glied ' + (glieder.indexOf(g) + 1) : 'Konstante');
+        r._sel.setAttribute('aria-label', many ? 'Konstante ' + (glieder.indexOf(g) + 1) : 'Konstante');
         r._mir.disabled = many && form === 'stern';
         r._del.disabled = !many;
       }
