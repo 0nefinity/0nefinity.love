@@ -154,10 +154,10 @@
     // h = u - dd (1 - e^(-u/dd)): die linke Zone ist dann dL = u - h breit und die 3 liegt genau auf L.
     let uKey = '', uVal = 0;
     function leftU(dd) {
-      const h = Lg() - Xg();
+      const h = Lp() - Xg();
       if (!(h > 0)) return 0;
       if (!(dd > 0)) return h;
-      const key = Lg() + '|' + Xg() + '|' + dd;
+      const key = Lp() + '|' + Xg() + '|' + dd;
       if (key === uKey) return uVal;
       let lo = h, hi = h + dd;
       for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (m - dd * (1 - Math.exp(-m / dd)) < h) lo = m; else hi = m; }
@@ -177,6 +177,7 @@
     // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (Punktglyphe steht auf der Mitte, nicht unter dem Fuss der Ziffer); schrumpft mit dem Abstand R - Punkt auf 0
     const gapX = () => (fold ? Math.min(halfDot(), Math.max(0, R - foldX())) : 0);
     const Lg = () => (fold ? foldX() + gapX() : L);      // linker Anker der Stellen
+    const Lp = () => (fold ? foldX() : L);               // Anker der hineingeschobenen Stellen: fold = der Punkt selbst, nicht die erste Stelle dahinter
     const Xg = () => X0 + bs() * w + exW();                      // lineare Lage der ersten Stelle (fold: eine halbe Zelle hinter dem Punkt)
     const x0Cap = () => (fold ? +opts.origin : L);   // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (die Punktzelle bleibt frei, wie im Schriftsatz)
 
@@ -220,7 +221,7 @@
     // Rechts: unendlich viele Stellen in der Zone d vor R. Links: nur die hineingeschobenen, ihre Zone endet bei
     // lzB = X0 + u; dieselbe Exponentialkurve, so verschoben, dass Zeichen 0 genau auf L liegt.
     function warp(p, dd) {
-      if (dd <= 0) { const l = Lg(); return p < l ? l : (p > R ? R : p); }
+      if (dd <= 0) { const l = Lp(); return p < l ? l : (p > R ? R : p); }
       if (p > R - dd) return R - dd * Math.exp(-(p - (R - dd)) / dd);
       const lzB = Xg() + leftU(dd);
       if (p < lzB) return lzB - dd + dd * Math.exp((p - lzB) / dd);
@@ -764,7 +765,7 @@
         if (!Number.isFinite(X0)) throw new TypeError('UnfoldingView: origin muss eine Zahl sein, war ' + opts.origin);
         if (opts.unrolled) R = W - MARGIN;
       } else {
-        X0 = fold ? (oldIdx > bs() ? Lg() - hOf((oldIdx - bs()) * w, deff()) - bs() * w - exW() : X0) : L - hOf(oldIdx * w, deff());
+        X0 = fold ? (oldIdx > bs() ? Lp() - hOf((oldIdx - bs()) * w, deff()) - bs() * w - exW() : X0) : L - hOf(oldIdx * w, deff());
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
