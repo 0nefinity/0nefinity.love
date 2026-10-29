@@ -226,15 +226,14 @@
         const g = (k) => fmtDE(k + off, 0) + '.';
         if (info.kind === 'digit') return info.index === 0 ? 'centrum of ' + gname + ' (a little circle)' : g(info.index) + ' digit of ' + gname;
         if (info.kind === 'left') return g(0) + '-' + g(info.hi) + ' digits of ' + gname;
-        if (info.kind === 'right') return g(info.lo) + '-every digit of ' + gname;
+        if (info.kind === 'right') return g(info.lo) + ' digit and the rest of ' + gname;
         return g(0) + '-every digit of ' + gname;
       }
       const name = cid === 'pi' ? 'pi' : symbolOf(cid);
       const n = (i) => fmtDE(placeNumber(i), 0) + '.';
       if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
       if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
-      if (info.kind === 'end') return fmtDE(info.count, 0) + ' digits of ' + name;
-      if (info.kind === 'right') return n(info.lo) + '-every digit of ' + name;
+      if (info.kind === 'right') return n(info.lo) + ' digit and the rest of ' + name;
       return n(0) + '-every digit of ' + name;
     }
     function showPlace() { placeEl.textContent = placeText(pointerInfo); }

@@ -8240,8 +8240,8 @@ canvas {
     const canvas = document.createElement('canvas');
     canvas.id = 'canvas';
     const initialDpr = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * initialDpr;
-    canvas.height = window.innerHeight * initialDpr;
+    canvas.width = Math.round(window.innerWidth * initialDpr);
+    canvas.height = Math.round(window.innerHeight * initialDpr);
     canvas.style.width = window.innerWidth + 'px';
     canvas.style.height = window.innerHeight + 'px';
     canvas.style.position = 'fixed';
@@ -9724,8 +9724,8 @@ canvas {
       // Canvas und InteractionLayer sind fixed und Vollbild
       // DPR-aware: Pixel-Buffer = CSS × dpr, Transform = dpr-scale → scharf auf Mobile
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      canvas.width = Math.round(window.innerWidth * dpr);
+      canvas.height = Math.round(window.innerHeight * dpr);
       canvas.style.width = window.innerWidth + 'px';
       canvas.style.height = window.innerHeight + 'px';
       canvas.style.position = 'fixed';
@@ -9791,9 +9791,9 @@ canvas {
 
       // Echtzeit-Prüfung der Viewport-Größe (mit DPR-aware Pixel-Buffer)
       const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== window.innerWidth * dpr || canvas.height !== window.innerHeight * dpr) {
-        canvas.width = window.innerWidth * dpr;
-        canvas.height = window.innerHeight * dpr;
+      if (canvas.width !== Math.round(window.innerWidth * dpr) || canvas.height !== Math.round(window.innerHeight * dpr)) {
+        canvas.width = Math.round(window.innerWidth * dpr);
+        canvas.height = Math.round(window.innerHeight * dpr);
         canvas.style.width = window.innerWidth + 'px';
         canvas.style.height = window.innerHeight + 'px';
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -50091,7 +50091,14 @@ kreisausdingen.html
         }
 
         // URL aktualisieren
+        // Debounced: Mausrad/Tippen feuert viele Ereignisse; Safari begrenzt replaceState-Aufrufe
+        let urlUpdateTimer = null;
         function updateURL() {
+            clearTimeout(urlUpdateTimer);
+            urlUpdateTimer = setTimeout(writeURL, 160);
+        }
+
+        function writeURL() {
             const anzahl = countNumber.value;
             const radius = radiusPercent;
             const zoom = zoomFactor.toFixed(2); // 2 Dezimalstellen für Zoom
@@ -50110,7 +50117,12 @@ kreisausdingen.html
             // infinite(8) bleibt wie es ist (wird direkt in URL übernommen)
 
             // Reihenfolge: anzahl → radius → zoom → panX → panY → zeichen (zeichen als letztes)
-            const newURL = `${window.location.pathname}?anzahl=${encodeURIComponent(anzahl)}&radius=${encodeURIComponent(radius)}&zoom=${encodeURIComponent(zoom)}&panX=${encodeURIComponent(px)}&panY=${encodeURIComponent(py)}&zeichen=${encodeURIComponent(zeichen)}`;
+            // Fremde Parameter (z. B. von=) roh erhalten, Hash bleibt
+            const OWN_KEYS = ['anzahl', 'radius', 'zoom', 'panX', 'panY', 'zeichen'];
+            const foreign = window.location.search.slice(1).split('&')
+                .filter(pair => pair && !OWN_KEYS.includes(pair.split('=')[0]));
+            const own = `anzahl=${encodeURIComponent(anzahl)}&radius=${encodeURIComponent(radius)}&zoom=${encodeURIComponent(zoom)}&panX=${encodeURIComponent(px)}&panY=${encodeURIComponent(py)}&zeichen=${encodeURIComponent(zeichen)}`;
+            const newURL = `${window.location.pathname}?${[...foreign, own].join('&')}${window.location.hash}`;
             window.history.replaceState({}, '', newURL);
         }
 
@@ -61722,7 +61734,7 @@ shadows.html
       urlParams.delete('lights');  // Default: alle an
     }
 
-    const newURL = `${window.location.pathname}?${urlParams.toString()}`;
+    const newURL = `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`;
     window.history.replaceState({}, '', newURL);
   }
 
@@ -73097,18 +73109,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -79016,7 +79017,9 @@ tools/controls.js
             if (!this.el) return 0;
             const viewport = getViewportMetrics();
             const rect = this.el.getBoundingClientRect();
-            return Math.max(0, Math.min(rect.bottom, viewport.height) - Math.max(rect.top, 0));
+            // rect liegt im Layout-Viewport, viewport.height misst das sichtbare Viewport: bei verschobenem Viewport
+            // (Tastatur offen, Seite gezogen) erst in dessen Koordinaten umrechnen, sonst fehlt unten offsetTop und der Koerper wird zu kurz.
+            return Math.max(0, Math.min(rect.bottom - viewport.offsetTop, viewport.height) - Math.max(rect.top - viewport.offsetTop, 0));
         }
 
         _updateMobileViewportOffset() {
@@ -79513,7 +79516,7 @@ tools/controls.js
                 const f = document.activeElement;
                 if (!f || !this.bodyEl || !this.bodyEl.contains(f)) return;
                 const vp = getViewportMetrics();
-                const over = f.getBoundingClientRect().bottom - (vp.height - 8);
+                const over = f.getBoundingClientRect().bottom - vp.offsetTop - (vp.height - 8);
                 if (over > 0) this.bodyEl.scrollTop += over;
             };
             this._refreshMobileSheetLayout = ({ animate = false } = {}) => {
@@ -79567,8 +79570,8 @@ tools/controls.js
                 if (!isMobile() || !isTextField(e.target)) return;
                 clearTimeout(this._kbHoldTimer);
                 if (!this._kbHold && !isMostlyClosed()) {
-                    const top = this.el.getBoundingClientRect().top;
-                    this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - top };
+                    const top = this.el.getBoundingClientRect().top - getViewportMetrics().offsetTop;
+                    this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - getViewportMetrics().offsetTop - top };
                 }
             };
             this._handleKbFocusOut = () => {
@@ -88060,7 +88063,13 @@ tools/unfolding-view.js
         }
         return line('left', fx, { hi: h - 1 });
       }
-      const end = () => line('end', R, { count: Math.max(0, N - h) });
+      // Im Strich liegt der ganze Rest: ab der ersten nicht mehr sichtbaren Stelle jede Stelle bis unendlich, nie eine Anzahl
+      // (die Datei endet bei N, pi nicht). Beide Enden eingefaltet: jede Stelle ueberhaupt.
+      const end = () => {
+        const shut = N <= h || R - Lg() < 1.5 || nearPoint;
+        if (shut && L >= fx - 1) return line('all', fx);
+        return line('right', R, { lo: shut ? h : Math.max(h, Math.floor(inv(R - 0.5, h, N)) + 1) });
+      };
       if (N <= h || R - Lg() < 1.5 || x >= R - 0.5 || nearPoint) return end();
       if (x < posOf(h)) {
         // Luecke zwischen Punkt und erster Stelle: das Komma (halbe Zelle rechts vom Punkt), sonst der Punktstrich
@@ -90495,15 +90504,14 @@ unfoldingPi.html
         const g = (k) => fmtDE(k + off, 0) + '.';
         if (info.kind === 'digit') return info.index === 0 ? 'centrum of ' + gname + ' (a little circle)' : g(info.index) + ' digit of ' + gname;
         if (info.kind === 'left') return g(0) + '-' + g(info.hi) + ' digits of ' + gname;
-        if (info.kind === 'right') return g(info.lo) + '-every digit of ' + gname;
+        if (info.kind === 'right') return g(info.lo) + ' digit and the rest of ' + gname;
         return g(0) + '-every digit of ' + gname;
       }
       const name = cid === 'pi' ? 'pi' : symbolOf(cid);
       const n = (i) => fmtDE(placeNumber(i), 0) + '.';
       if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
       if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
-      if (info.kind === 'end') return fmtDE(info.count, 0) + ' digits of ' + name;
-      if (info.kind === 'right') return n(info.lo) + '-every digit of ' + name;
+      if (info.kind === 'right') return n(info.lo) + ' digit and the rest of ' + name;
       return n(0) + '-every digit of ' + name;
     }
     function showPlace() { placeEl.textContent = placeText(pointerInfo); }
