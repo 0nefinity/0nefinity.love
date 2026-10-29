@@ -73682,18 +73682,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -88660,6 +88649,8 @@ tools/unfolding-view.js
 
     // ─── Stellenanzeige: Ziffer oder Zone unter dem Zeiger ───
     let hoverX = null, info = null, infoKey = 'null';
+    // Touch-Tap: die getippte Stelle bleibt stehen, auch wenn Sausen die Ziffern weiterschiebt (pinOn/pinned); jedes setHover loest sie.
+    let pinOn = false, pinned = null;
     // fold: der naechste Treffer nach gezeichneter Lage und Breite. Jede Stelle gilt, auch die schmalste vor dem Strich (kein Sammelbereich);
     // der Strich (linker Punkt, rechtes Ende) nur, wenn er naeher liegt als jede Stelle: auf ihm selbst oder ausserhalb der letzten Stelle.
     function foldInfo(x, tol) {
@@ -88686,7 +88677,13 @@ tools/unfolding-view.js
         if (pHs > 0.5) return { kind: 'digit', index: h - 1, x0: posOf(h - 1), x1: posOf(h) };
         return line('left', fx, { hi: h - 1 });
       }
-      const k = Math.min(N - 1, Math.max(h, Math.floor(inv(x, h, N))));
+      const rs = span(0.5 * w);
+      if (!rs) return { kind: 'right', lo: h, x0: posOf(h), x1: R };
+      const ra = rs[0], rb = rs[1];
+      // Sammelanzeige genau in der Ziehzone (ab dem Verdichtungspunkt nach aussen), Einzelanzeige sonst: keine Luecke, keine Ueberlappung
+      if (ra > h && x < posOf(ra)) return { kind: 'left', lo: h, hi: ra - 1, x0: posOf(h), x1: posOf(ra) };
+      if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1, x0: posOf(rb + 1), x1: R };
+      const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
       return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
     }
     function pointerInfo() {
@@ -88830,8 +88827,9 @@ tools/unfolding-view.js
       infinity();
       flush(zoneL, y0, hd);
       flush(zoneR, y0, hd);
-      const ni = pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') + '|' + (ni.count ?? '') : 'null';
-      info = ni;
+      const ni = pinOn ? (pinned || (pinned = pointerInfo())) : pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') + '|' + (ni.count ?? '') : 'null';
+      // Unterstrich/Aufleuchten nur, solange die festgehaltene Ziffer noch dort liegt, wo sie getippt wurde
+      info = pinOn && ni && ni.kind === 'digit' && Math.abs(posOf(ni.index) - ni.x0) > 0.5 ? null : ni;
       underline(y0);
       drawFlash(y0, hd);
       ctx.restore();
@@ -88989,9 +88987,10 @@ tools/unfolding-view.js
     function setHover(x) {
       const v = x === null || x === undefined ? null : +x;
       if (v !== null && !Number.isFinite(v)) throw new TypeError('setHover: x muss eine Zahl oder null sein, war ' + x);
+      pinOn = false; pinned = null;
       if (v !== hoverX) { hoverX = v; dirty = true; }
     }
-    function tapAt(x) { setHover(x); flashReq = true; dirty = true; }
+    function tapAt(x, touch) { setHover(x); if (touch) pinOn = true; flashReq = true; dirty = true; }
     function onDown(e) {
       const x = local(e);
       if (e.pointerType !== 'mouse') tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
@@ -89001,14 +89000,14 @@ tools/unfolding-view.js
       if (!mode) return;
       drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse', lastEv: e };
       unroll = false;
-      setHover(x);   // Greifen zeigt die Stelle unter dem Finger, auch auf dem Handy
+      if (e.pointerType === 'mouse') setHover(x);   // Maus: Greifen zeigt die Stelle unter dem Zeiger; Touch zeigt nur beim Tap
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     }
     function onMove(e) {
       const x = local(e);
       if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
-      if (e.pointerType === 'mouse' || (drag && drag.id === e.pointerId)) setHover(x);
+      if (e.pointerType === 'mouse') setHover(x);
       // Resize-Cursor genau in der Ziehzone eines freien Endes (ab dem Verdichtungspunkt nach aussen), sonst der normale Pfeil; nie eine Greifhand
       const endCur = () => { const c = typeof opts.endCursor === 'function' ? opts.endCursor() : (opts.endCursor || 'ew-resize'); return c; };
       if (!drag || drag.id !== e.pointerId) {
@@ -89018,6 +89017,7 @@ tools/unfolding-view.js
       }
       canvas.style.cursor = drag.mode === 'R' || drag.mode === 'L' ? endCur() : 'default';
       if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; }
+      if (e.pointerType !== 'mouse') setHover(null);   // ein Touch-Wisch loescht die Stellenanzeige; sie erscheint nur bei einem Tap
       // x0 aus dem letzten Zeigerereignis in den neuen Leinwand-Koordinaten: die Bewegung seit dem letzten Move geht beim Neusetzen nicht verloren
       if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = local(drag.lastEv); }
       drag.lastEv = e;
@@ -89051,10 +89051,8 @@ tools/unfolding-view.js
         const ok = performance.now() - tap.t < TAP_MS;
         const x = tap.x;
         tap = null;
-        if (ok) tapAt(x);
+        if (ok) tapAt(x, e.pointerType !== 'mouse');
       }
-      // Ein Wisch in der Lesezone (Touch) hinterlaesst keine Stellenanzeige; an einem freien Ende bleibt sie (zeigt die Stelle am Finger)
-      if (drag && drag.id === e.pointerId && e.pointerType !== 'mouse' && !drag.slop && drag.mode !== 'R' && drag.mode !== 'L') setHover(null);
       endDrag(e);
     }
     function onLeave(e) { if (e.pointerType === 'mouse') setHover(null); }
@@ -90894,7 +90892,7 @@ Die ganzen Zahlen dazwischne sind angeblich mehr, aber am ende doch die gleichen
 
 unfoldingPi.html
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <!--#include virtual="/includes/something-in-the-head.html" -->
   <script src="/tools/math-notation.js" defer></script>
@@ -90904,7 +90902,7 @@ unfoldingPi.html
   <title>(un)foldingPi</title>
   <style>
     html, body { height: 100%; overflow: hidden; touch-action: none; }
-    /* speed zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
+    /* Sausen zeigt bis -10000 (und mehr): Platz fuer sieben Zeichen */
     .ctrl-row[data-key="drift"] .ctrl-value-input { width: 4.6em; }
     /* Touch-Ziel: mindestens 44 x 44 px */
     .ctrl-row[data-key="notation"] .ctrl-button { min-height: 44px; min-width: 44px; white-space: nowrap; padding: 0 1rem; width: max-content; min-width: max-content; max-width: none; flex: none; }
@@ -90947,14 +90945,14 @@ unfoldingPi.html
     .pi-form button { height: calc(var(--pi-h) - 4px); padding: 0; line-height: 1; border: 0; border-radius: 6px; background: transparent; cursor: pointer; opacity: 0.6; }
     .pi-form button[aria-pressed="true"] { background: var(--ui-fill-15); opacity: 1; }
     .pi-list { display: flex; flex-direction: column; gap: var(--pi-gap); height: calc(3 * var(--pi-h) + 2 * var(--pi-gap)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }
-    .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem var(--pi-h); gap: var(--pi-gap); height: var(--pi-h); }
+    .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) var(--pi-h) 6rem; gap: var(--pi-gap); height: var(--pi-h); }
     .pi-sel { position: relative; display: block; min-width: 0; }
     .pi-sel::after { content: ''; position: absolute; right: 0.95rem; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--ui-text-70); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
     .pi-select { appearance: none; -webkit-appearance: none; width: 100%; height: var(--pi-h); padding: 0 2rem 0 0.8rem; border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; font-size: 16px; }
     .pi-select option { background: var(--bg-color, #000); color: var(--text-color, #fff); }
     .pi-mirror, .pi-del, .pi-add { height: var(--pi-h); border: 0; border-radius: 8px; background: var(--ui-fill-08); cursor: pointer; padding: 0; }
     .pi-mirror[aria-pressed="true"] { background: var(--ui-fill-20); box-shadow: inset 0 0 0 1px var(--ui-border-strong); }
-    .pi-del { font-size: 20px; line-height: 1; }
+    .pi-del { font-size: 15px; line-height: 1; }
     .pi-mirror:disabled, .pi-del:disabled { opacity: 0.3; cursor: default; }
     .pi-add { width: 8.5rem; background: transparent; box-shadow: inset 0 0 0 1px var(--ui-border-soft); opacity: 0.85; }
     @media (hover: hover) { .pi-select:hover, .pi-mirror:not(:disabled):hover, .pi-del:not(:disabled):hover, .pi-add:hover { background: var(--ui-fill-12); } }
@@ -91120,16 +91118,16 @@ unfoldingPi.html
         const gname = nameOf(info.c), off = notation === 'int' ? (Number(constOf(info.c).intPart) || 0) : 0;
         const g = (k) => fmtDE(k + off, 0) + '.';
         if (info.kind === 'digit') return info.index === 0 ? 'centrum of ' + gname + ' (a little circle)' : g(info.index) + ' digit of ' + gname;
-        if (info.kind === 'left') return g(0) + '-' + g(info.hi) + ' digits of ' + gname;
+        if (info.kind === 'left') return g(info.lo ?? 0) + '-' + g(info.hi) + ' digits of ' + gname;
         if (info.kind === 'right') return g(info.lo) + ' digit and the rest of ' + gname;
-        return g(0) + '-every digit of ' + gname;
+        return 'every digit of ' + gname;
       }
       const name = cid === 'pi' ? 'pi' : symbolOf(cid);
       const n = (i) => fmtDE(placeNumber(i), 0) + '.';
       if (info.kind === 'digit') return info.index === 1 ? 'centrum of ' + name + ' (a little circle)' : n(info.index) + ' digit of ' + name;
-      if (info.kind === 'left') return n(0) + '-' + n(info.hi) + ' digits of ' + name;
+      if (info.kind === 'left') return n(info.lo ?? 0) + '-' + n(info.hi) + ' digits of ' + name;
       if (info.kind === 'right') return n(info.lo) + ' digit and the rest of ' + name;
-      return n(0) + '-every digit of ' + name;
+      return 'every digit of ' + name;
     }
     function showPlace() { placeEl.textContent = placeText(pointerInfo); }
     function setNotation(v) {
@@ -91607,18 +91605,18 @@ unfoldingPi.html
     const ui = { rows: new Map(), list: null, form: null };
     const mk = (tag, cls, attrs) => { const e = document.createElement(tag); if (cls) e.className = cls; if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
     function buildConstPanel() {
-      panel.beginSection('consts', { className: 'pi-consts' });
+      panel.beginSection('consts', { title: 'Glieder', className: 'pi-consts' });
       const sec = panel.bodyEl.lastElementChild;
       const head = mk('div', 'pi-head');
-      ui.form = mk('div', 'pi-form', { role: 'group', 'aria-label': 'arrangement' });
-      for (const [key, label, tip] of [['kette', 'chain', 'one after another: a compression point per constant'], ['stern', 'star', 'all rays run towards one centre']]) {
+      ui.form = mk('div', 'pi-form', { role: 'group' });
+      for (const [key, label, tip] of [['kette', 'Kette', 'hintereinander: ein Verdichtungspunkt je Glied'], ['stern', 'Stern', 'alle Strahlen laufen auf ein centrum zu']]) {
         const b = mk('button', '', { type: 'button', title: tip, 'data-button-key': key });
         b.textContent = label;
         b.addEventListener('click', () => { if (form !== key) { form = key; changed(); } });
         ui.form.appendChild(b);
       }
       const add = mk('button', 'pi-add', { type: 'button', 'data-button-key': 'add' });
-      add.textContent = '+ constant';
+      add.textContent = '+ Glied';
       add.addEventListener('click', addGlied);
       head.append(add, ui.form);
       ui.list = mk('div', 'pi-list');
@@ -91628,13 +91626,13 @@ unfoldingPi.html
     function makeRow() {
       const row = mk('div', 'pi-row');
       const wrap = mk('label', 'pi-sel');
-      const sel = mk('select', 'pi-select', { 'aria-label': 'constant' });
+      const sel = mk('select', 'pi-select', { 'aria-label': 'Konstante' });
       for (const k of CONSTS) sel.add(new Option(k.symbol, k.id));
       wrap.appendChild(sel);
-      const mir = mk('button', 'pi-mirror', { type: 'button', 'data-button-key': 'dir', title: 'mirror: 3.141... becomes ...141.141...' });
-      mir.textContent = 'mirror';
-      const del = mk('button', 'pi-del', { type: 'button', 'data-button-key': 'del', 'aria-label': 'remove constant', title: 'remove constant' });
-      del.textContent = '×';
+      const mir = mk('button', 'pi-mirror', { type: 'button', 'data-button-key': 'dir', title: 'Richtung umkehren' });
+      mir.textContent = '\u2192';
+      const del = mk('button', 'pi-del', { type: 'button', 'data-button-key': 'del', 'aria-label': 'Glied entfernen', title: 'Glied entfernen' });
+      del.textContent = 'entfernen';
       sel.addEventListener('change', () => { const g = row._g; if (sel.value === g.c) return; if (glieder.length === 1) setConstant(sel.value); else { g.c = sel.value; changed(); } });
       mir.addEventListener('click', () => toggleMirror(row._g));
       del.addEventListener('click', () => removeGlied(row._g));
@@ -91656,6 +91654,8 @@ unfoldingPi.html
         prev = r;
         if (r._sel.value !== g.c) r._sel.value = g.c;
         r._mir.setAttribute('aria-pressed', String(many && g.dir === 'l'));
+        r._mir.textContent = many && g.dir === 'l' ? '\u2190' : '\u2192';
+        r._sel.setAttribute('aria-label', many ? 'Glied ' + (glieder.indexOf(g) + 1) : 'Konstante');
         r._mir.disabled = many && form === 'stern';
         r._del.disabled = !many;
       }
@@ -91759,12 +91759,12 @@ unfoldingPi.html
       requestAnimationFrame(watchR);
     })();
     panel.addSlider('drift', {
-      label: 'speed', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
+      label: 'Sausen', min: -DRIFT_MAX, max: DRIFT_MAX, step: 1, value: 0, decimals: 0, transform: driftTransform,
       onChange: (v) => { driftValue = +v || 0; }
     });
     driftEl = panel.bodyEl.querySelector('.ctrl-row[data-key="drift"] .ctrl-range');
     driftEl.id = 'drift';
-    driftEl.setAttribute('aria-label', 'speed');
+    driftEl.setAttribute('aria-label', 'Sausen');
     // Verdichtung je Abstand der Enden, Faktor 0..1 (siehe tools/unfolding-view.js). Reglerweg s: bis 0,5 linear, darueber
     // kubisch auf 1 zu (f = 1 - 0,5 (2 (1 - s))^3), damit nahe 1 jeder Schritt feiner wird.
     const factorTransform = {
@@ -91776,7 +91776,7 @@ unfoldingPi.html
       parseConfigValue(text) { return parseDE(text); }
     };
     panel.addSlider('f', {
-      label: 'compression', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
+      label: 'Verdichtungsfaktor', min: 0, max: 1, step: 0.001, value: view.state().factor, decimals: 12, transform: factorTransform,
       onChange: (v) => {
         factorValue = +v || 0;
         view.setFactor(factorValue);
