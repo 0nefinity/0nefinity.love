@@ -170,11 +170,14 @@
     const avail = () => Math.max(0, total() - 2) * w;   // Länge aller Nachkommastellen
     // fold: Kopf = Ganzzahl und Komma (Index < headLen), Rest = Nachkommastellen mit Anfang am Punkt F
     const bs = () => (fold ? headLen : 0);
-    const foldX = () => +opts.origin + (headLen - 0.5) * w;
+    // fold: halbe Breite des Punktfeldes = halbe Strichbreite, mindestens eine halbe Zelle; die 3 und die Stellen rücken um den Kreis herum
+    const halfDot = () => (fold ? Math.max(0.5 * w, fw / 2) : 0.5 * w);
+    const exW = () => (fold ? Math.max(0, fw - w) : 0);   // Mehrbreite des Punktfeldes gegen eine Zelle
+    const foldX = () => +opts.origin + (headLen - 1) * w + halfDot();
     // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (Punktglyphe steht auf der Mitte, nicht unter dem Fuss der Ziffer); schrumpft mit dem Abstand R - Punkt auf 0
-    const gapX = () => (fold ? Math.min(0.5 * w, Math.max(0, R - foldX())) : 0);
+    const gapX = () => (fold ? Math.min(halfDot(), Math.max(0, R - foldX())) : 0);
     const Lg = () => (fold ? foldX() + gapX() : L);      // linker Anker der Stellen
-    const Xg = () => X0 + bs() * w;                      // lineare Lage der ersten Stelle (fold: eine halbe Zelle hinter dem Punkt)
+    const Xg = () => X0 + bs() * w + exW();                      // lineare Lage der ersten Stelle (fold: eine halbe Zelle hinter dem Punkt)
     const x0Cap = () => (fold ? +opts.origin : L);   // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (die Punktzelle bleibt frei, wie im Schriftsatz)
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
@@ -241,7 +244,7 @@
       else if (X0 > cap) { if (opts.fixedStart) X0 = cap; else L = X0; }   // fixedStart: Ziffern nie vom Anfang wegschiebbar
       autoD();
       const dd = deff();
-      R = Math.min(R, X0 + Math.max(w, avail()) + dd, W - MARGIN);   // die Ganzzahl bleibt sichtbar; sonst X0 >= R - dd - avail()
+      R = Math.min(R, X0 + Math.max(w, avail()) + exW() + dd, W - MARGIN);   // die Ganzzahl bleibt sichtbar; sonst X0 >= R - dd - avail()
       if (mode === 'three') {
         X0 = Math.min(X0, R - dd);
         L = Math.max(MARGIN, X0);
@@ -258,7 +261,7 @@
 
     // Kleinste Lage von R: L + rMinCells Zellen (Standard 0 = ganz auf L); das Ende laesst sich bis auf den Dezimalpunkt einschieben
     const rFloor = () => fold ? foldX() : ((opts.leftGrip ? +opts.origin : L) + (opts.rMinCells !== undefined ? +opts.rMinCells : 0) * w);   // leftGrip: der Punkt liegt fest, R folgt L nicht
-    function clampX0() { X0 = Math.max(X0, R - deff() - avail()); }
+    function clampX0() { X0 = Math.max(X0, R - deff() - avail() - exW()); }
 
     function rolledLeft() { return X0 < L - 0.5; }
 
@@ -346,7 +349,7 @@
     }
     function posOf(i) {
       if (fold && i < headLen) return L + pHs * i * w;
-      const m = warp(X0 + i * w, pDd);
+      const m = warp(X0 + i * w + exW(), pDd);
       if (!pLam) return m;
       const b = bs(), l = Lg();
       const u = l + (R - l) * (Math.min(Math.max(i, b), pN) - b) / Math.max(1, pN - b);
@@ -555,7 +558,7 @@
       const dd = pDd, N = total();
       const B = bs();
       const iLinLo = B + Math.ceil(leftU(dd) / w - 1e-9);
-      const iLinHi = Math.floor((R - dd - X0) / w + 1e-9) - 1;
+      const iLinHi = Math.floor((R - dd - X0 - exW()) / w + 1e-9) - 1;
       const K = stackCount(dd);
       const iLo = Math.max(B, iLinLo - 1 - K);
       const iHi = Math.min(N - 1, iLinHi + 1 + K);
@@ -761,7 +764,7 @@
         if (!Number.isFinite(X0)) throw new TypeError('UnfoldingView: origin muss eine Zahl sein, war ' + opts.origin);
         if (opts.unrolled) R = W - MARGIN;
       } else {
-        X0 = fold ? (oldIdx > bs() ? Lg() - hOf((oldIdx - bs()) * w, deff()) - bs() * w : X0) : L - hOf(oldIdx * w, deff());
+        X0 = fold ? (oldIdx > bs() ? Lg() - hOf((oldIdx - bs()) * w, deff()) - bs() * w - exW() : X0) : L - hOf(oldIdx * w, deff());
         L = Math.min(L, W - MARGIN); R = Math.min(R, W - MARGIN);
       }
       settle(rolledLeft() ? 'x' : 'three');
@@ -972,8 +975,13 @@
     function setFoldWidth(px) {
       if (!fold) throw new Error('UnfoldingView.setFoldWidth: nur im fold-Modus');
       if (!(+px >= 0) || !Number.isFinite(+px)) throw new TypeError('UnfoldingView.setFoldWidth: Zahl >= 0 erwartet, war ' + px);
+      const was = foldX(), wasL = L >= was - 0.5, wasR = R > was + 0.5;
       fw = +px;
-      dirty = true;
+      // Der Punkt wandert mit der Strichbreite: ein eingefaltetes Ende bleibt auf ihm, ein freies behaelt seinen Abstand zu ihm
+      const dx = foldX() - was;
+      if (wasL) L = foldX();
+      if (wasR) R += dx;
+      settle('x');
     }
     function setFactor(f) {
       factor = clampFactor(f);

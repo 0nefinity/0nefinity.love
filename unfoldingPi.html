@@ -775,7 +775,8 @@
     function centreSingle() {
       if (multi) return;
       const A = freeArea(), SW = stage.clientWidth, w = cellW(), ip = singleInt().length;
-      const left = A.cx - (ip + 0.5) * w - ORIGIN;
+      syncFoldWidth();   // der Kreis rueckt die 3 und die Stellen von sich weg (halbe Strichbreite, mindestens eine halbe Zelle): der Punkt bleibt auf der Fenstermitte
+      const left = A.cx - ip * w - Math.max(0.5 * w, dotHalf()) - ORIGIN;
       Object.assign(canvas.style, { position: 'absolute', left: left + 'px', top: '0px', width: (SW - left) + 'px', height: A.y1 + 'px', margin: '0' });
       canvas.style.top = (A.cy - A.y1 / 2) + 'px';
       // keine Maske: WebKit blendet bei einem Verlauf mit Stopp bei -1e6 px die ganze Zeichenflaeche aus
