@@ -360,6 +360,19 @@
         return window.innerWidth <= 768;
     }
 
+    // Vergleich (?panel=css): das Handy-Blatt sitzt nur per CSS (position:fixed, bottom:0, Hoehe als Anteil von 100dvh).
+    // JS schreibt dann eine einzige Zahl, und nur, wenn ein Finger das Blatt zieht. Die Tastatur verkleinert dafuer das
+    // Layout-Viewport (interactive-widget=resizes-content), so dass bottom:0 von selbst ueber ihr liegt.
+    const CSS_SHEET = new URLSearchParams(location.search).get('panel') === 'css';
+    if (CSS_SHEET) {
+        document.documentElement.classList.add('ctrl-css-sheet');
+        const widget = () => document.querySelectorAll('meta[name="viewport"]').forEach(m => {
+            if (!/interactive-widget/.test(m.content)) m.content = m.content + ', interactive-widget=resizes-content';
+        });
+        widget();
+        document.addEventListener('DOMContentLoaded', widget);
+    }
+
     function getTargetElement(target) {
         if (target instanceof Element) return target;
         if (target && 'parentElement' in target) return target.parentElement || null;
@@ -458,6 +471,7 @@
         urlCarriesState(search) {
             const p = new URLSearchParams(search || '');
             p.delete('von');
+            p.delete('panel');
             return [...p.keys()].length > 0;
         },
         upsertScript(html, values) {
@@ -2188,7 +2202,7 @@
 
         // Update body max-height for mobile based on panel Y position
         _updateMobileBodyHeight() {
-            if (!this.bodyEl || !isMobile()) return;
+            if (!this.bodyEl || !isMobile() || CSS_SHEET) return;
             const headerHeight = this._getMobileHeaderHeight();
             const expandedHeight = this._getMobileExpandedPanelHeight();
             this.el.style.setProperty('--ctrl-mobile-header-height', `${Math.round(headerHeight)}px`);
@@ -2579,7 +2593,80 @@
 	            }
         }
 
+        // Variante ?panel=css: kein Messen, kein visualViewport, kein ResizeObserver. Lage und Hoehe rechnet der Browser
+        // aus meta.css (html.ctrl-css-sheet); hier wird nur --ctrl-sheet gesetzt, der Anteil von 100dvh, den das Blatt
+        // hoechstens einnimmt. Zwischen 0 und 1 liegt alles, was das Blatt sein kann.
+        _initCssSheet() {
+            const el = this.el;
+            const vh = () => Math.max(1, window.innerHeight);
+            const peek = () => this._getMobileHeaderHeight();
+            const isClosed = () => el.getBoundingClientRect().height <= peek() + 10;
+            const initial = () => {
+                const mode = this.options.mobileInitialOpenMode || 'content-capped';
+                if (mode === 'peek') return 0;
+                if (mode === 'full') return 1;
+                const raw = Number(this.options.mobileInitialOpenMaxViewportFraction);
+                return Number.isFinite(raw) ? clamp(raw, 0, 1) : (1 / 3);
+            };
+            let lastOpen = initial();
+            const set = (f, animate) => {
+                const next = clamp(f, 0, 1);
+                el.classList.toggle('ctrl-sheet-animate', !!animate);
+                el.style.setProperty('--ctrl-mobile-header-height', `${Math.round(peek())}px`);
+                el.style.setProperty('--ctrl-sheet', next.toFixed(4));
+                if (!isMobile()) return;
+                this._scheduleMobileLayoutChange({ afterTransition: !!animate });
+                if (this.options.mobileCanvasOcclusion) {
+                    const settle = () => this._updateMobileCanvasOcclusion();
+                    if (animate) setTimeout(settle, 280); else requestAnimationFrame(settle);
+                }
+            };
+            this._mobileY = 0;
+            this._applyMobileSheetPosition = () => {};
+            this._refreshMobileSheetLayout = null;
+            this.openSheetIfClosed = () => {
+                if (!isMobile()) return;
+                if (!this._mobileUserSized) lastOpen = initial();
+                if (isClosed()) set(lastOpen, true);
+            };
+            requestAnimationFrame(() => set(lastOpen, false));
+
+            let drag = null;
+            const startDrag = (e) => {
+                if (!isMobile() || !e.isPrimary) return;
+                if (this._isHeaderButtonTarget(e.target) || !this._isDragHandleTarget(e.target)) return;
+                drag = { id: e.pointerId, y: e.clientY, h: el.getBoundingClientRect().height, moved: false };
+            };
+            const moveDrag = (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const dy = e.clientY - drag.y;
+                if (!drag.moved && Math.abs(dy) < 8) return;
+                if (!drag.moved) { drag.moved = true; this.headerEl.setPointerCapture?.(e.pointerId); }
+                set((drag.h - dy) / vh(), false);
+            };
+            const endDrag = (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const d = drag;
+                drag = null;
+                if (!d.moved) {
+                    const open = isClosed();
+                    set(open ? lastOpen : 0, true);
+                    return;
+                }
+                this._mobileUserSized = true;
+                const h = el.getBoundingClientRect().height;
+                if (h > peek() + 10) lastOpen = h / vh();
+                // Ueber den Inhalt hinaus gezogen: auf das zurueck, was man sieht, sonst wirkt der naechste Zug tot
+                set(h / vh(), false);
+            };
+            this.headerEl.addEventListener('pointerdown', startDrag);
+            this.headerEl.addEventListener('pointermove', moveDrag);
+            this.headerEl.addEventListener('pointerup', endDrag);
+            this.headerEl.addEventListener('pointercancel', () => { drag = null; });
+        }
+
         _initMobileSheet() {
+            if (CSS_SHEET) return this._initCssSheet();
             // Mobile Bottom-Sheet (wie in 0neSlider.html)
             this._mobileY = 0;
             let isTouchDragging = false;
