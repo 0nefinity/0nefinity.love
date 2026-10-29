@@ -12217,7 +12217,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Text-Layout und Textdarstellung
 
 ### Gedrehte Textzeilen aus Bitmaps
-`EinNullgespräch.html` (`wrap()`, `layout(force)`, `makeSprite()`, `buildChunk()`, `fold(j)`, `place(k)`, `draw()`, `drawReference()`). Wortumbruch per `measureText` (überlange Wörter zeichenweise), Ankerzeile bleibt beim Umbruch, Zeilen-Bitmaps in 6-ms-Häppchen per `setTimeout`, pixelgenaue Geräte-Ausrichtung, Zeilen gedreht und versetzt mit periodischem Falten, exaktes Culling gedrehter Rechtecke, `fillText`-Fallback. `drawReference()` ist die Testgrundwahrheit, Testhaken in `window.einNullgespraech`, Fehler brechen sichtbar ab (`fail()`). Ausgefeilt, herauslösen.
+`EinNullgespräch.html` (`wrap()`, `layout(force)`, `makeSprite()`, `buildChunk()`, `fold(j)`, `place(k)`, `draw()`, `drawReference()`). Wortumbruch per `measureText` (überlange Wörter zeichenweise), Ankerzeile bleibt beim Umbruch, Zeilen-Bitmaps in 6-ms-Häppchen per `setTimeout`, pixelgenaue Geräte-Ausrichtung, Zeilen gedreht und versetzt mit periodischem Falten, exaktes Culling gedrehter Rechtecke, `fillText`-Fallback, Vorbau beim Laden (Schrift abwarten, Shader und Probezeichnung früh, alle Atlanten vorab in nötiger Höhe, Zeilen auf CPU-Leinwand gesetzt und als Alpha-Bytes hochgeladen statt Canvas-Upload, Neuzeichnen im Aufbau gedrosselt, Zähler `counters()` belegen: beim Bewegen kein Bau). `drawReference()` ist die Testgrundwahrheit, Testhaken in `window.einNullgespraech`, Fehler brechen sichtbar ab (`fail()`). Ausgefeilt, herauslösen.
 
 ### Text in Kreisform setzen
 `bibelaufdenpunkt.html` (`solveCircleRadius()` findet per Bisektion den kleinsten Radius für N Zeichen, `allocateCircleRowCharCounts()` verteilt nach Größte-Reste-Verfahren, `buildCircleLayout()`, `buildLineLayout()`, `getVirtualLineRowAt()` für Millionen Zeichen): ausgefeilt, die beiden Rechenfunktionen direkt kopierbar, Layout hängt am globalen `state`. Einfachere Variante: `Kuriositäten/bibleegg.html` (`generateLines()`, Sehnenlänge `sqrt(r²-y²)`, automatische Schriftverkleinerung, Kürzung nach Zoomstufe). Ähnlich auch in: `kreisausdingen.html` (`draw()`, n Zeichen gleichmäßig auf Kreis, je Zeichen `translate/rotate`, Radius relativ zur kürzeren Seite; `startHold()`), `Kuriositäten/kreisausdingen-goes-spiral.html` (Zeichen auf Spirale, Radius = base + progress*spiralFactor, URL-Parameter `anzahl`/`zeichen`; Variante `-anotherone.html`).
@@ -13636,6 +13636,9 @@ EinNullgespräch.html
     let fontFamily = 'sans-serif';
     let color = '', dirty = true, error = null, drawn = 0, panelDirty = false;
     let panel = null, anim = null, building = 0, lastKs = [];
+    // Zaehler fuer Tests: nach dem Vorbau (ready) darf beim Bewegen keiner davon mehr steigen.
+    const cnt = { rowBuilds: 0, uploads: 0, sprites: 0, texAllocs: 0, fallbackLines: 0, builds: 0 };
+    let ready = false, lastRedraw = 0;
 
     function fail(message) {
       if (error) return;
@@ -13716,6 +13719,7 @@ EinNullgespräch.html
       if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg) + anchorIn + anchorOff;
       st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), st.stelle));
       if (mode === 'gl') planAtlas();
+      ready = false;
       scheduleBuild();
       if (panel) syncPanel();
       dirty = true;
@@ -13750,15 +13754,17 @@ EinNullgespräch.html
       g.textBaseline = 'middle';
       g.fillStyle = color;
       g.fillText(l.text, pad, c.height / 2);
-      l.img = c; l.sw = c.width;
+      l.img = c; l.sw = c.width; cnt.sprites++;
     }
     function dropSprites() {
+      ready = false;
       for (const l of lines) if (l) l.img = null;
       for (const r of rows) r.done = false;
       nextRow = 0;
       scheduleBuild();
     }
-    // Vorab in kleinen Haeppchen bauen, damit das erste Uebereinanderschieben nicht stockt.
+    // Vorbau: gleich nach Laden und Layout wird alles fuer die aktuelle Breite und Pixeldichte gebaut (Haeppchen von ~10 ms mit Luft dazwischen,
+    // die Seite friert nicht ein; sichtbare Reihen zuerst). Danach baut und laedt beim Bewegen nichts mehr; nur Resize/dpr-Wechsel baut einmal neu.
     function scheduleBuild() {
       if (building) return;
       building = setTimeout(buildChunk, 0);
@@ -13767,34 +13773,40 @@ EinNullgespräch.html
       building = 0;
       if (!lines.length || !color) return;
       const t0 = performance.now();
-      let left = false;
+      let left = false, redraw = true;
       if (mode === 'gl') {
+        redraw = false;
         // Zuerst die Reihen, die das letzte Bild sichtbar gebraucht hat, dann der Reihe nach.
-        while (wanted.length && performance.now() - t0 <= 6) { const r = rows[wanted.pop()]; r.wanted = false; if (!r.done && !buildRow(r)) return; }
-        while (nextRow < rows.length && performance.now() - t0 <= 6) { const r = rows[nextRow++]; if (!r.done && !buildRow(r)) return; }
+        while (wanted.length && performance.now() - t0 <= 10) { const r = rows[wanted.pop()]; r.wanted = false; if (!r.done && !buildRow(r)) return; }
+        while (nextRow < rows.length && performance.now() - t0 <= 10) { const r = rows[nextRow++]; if (!r.done && !buildRow(r)) return; }
         left = nextRow < rows.length || wanted.length > 0;
+        // Zwischendurch hoechstens alle 300 ms neu zeichnen (das stehende Bild bleibt richtig: fehlende Reihen stehen in der Deckschicht), zum Schluss einmal.
+        if (!left || t0 - lastRedraw > 300) { redraw = true; lastRedraw = t0; }
+        if (!left) { try { glError('Vorbau'); } catch (e) { console.error('[EinNullgespraech] ' + e.message); setMode('2d', e.message); return; } }
       } else {
         for (const l of lines) {
           if (!l || l.img) continue;
-          if (performance.now() - t0 > 6) { left = true; break; }
+          if (performance.now() - t0 > 10) { left = true; break; }
           makeSprite(l);
         }
       }
-      dirty = true;
-      if (left) building = setTimeout(buildChunk, 8);
+      if (redraw) dirty = true;
+      if (left) building = setTimeout(buildChunk, 2);
+      else { ready = true; cnt.builds++; }
     }
 
     // ─── WebGL: Atlanten ───
     // Alle Zeilen-Bitmaps liegen als Alpha-Masken (nur Deckkraft, die Farbe kommt aus dem Shader) in quadratischen Texturen.
     // Plaetze werden beim Layout vergeben (Reihen gleicher Hoehe, Zeile fuer Zeile), gefuellt wird reihenweise im Hintergrund.
     // Je Atlas-Seite ein Draw-Call; die Zeilen einer Seite stehen im Instanzpuffer hintereinander.
-    let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, instBuf = null, instArr = null;
+    let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, scratchG = null, instBuf = null, instArr = null;
     let prog = null, U = null, A = null, cornerBuf = null, inst = null, colorRGB = [0, 0, 0], overlayUsed = false;
 
     function setMode(m, why) {
       const was = mode;
       mode = m;
       if (m === '2d') {
+        ready = false;
         glCanvas.style.display = 'none';
         if (gl) { const e = gl.getExtension('WEBGL_lose_context'); freePages(); if (e) e.loseContext(); }
         gl = null;
@@ -13803,7 +13815,7 @@ EinNullgespräch.html
         dirty = true;
       }
     }
-    function freePages() { if (gl) for (const p of pages) if (p.tex) gl.deleteTexture(p.tex); pages = []; rows = []; nextRow = 0; wanted = []; }
+    function freePages() { ready = false; if (gl) for (const p of pages) if (p.tex) gl.deleteTexture(p.tex); pages = []; rows = []; nextRow = 0; wanted = []; }
     function compile(type, src) {
       const sh = gl.createShader(type);
       gl.shaderSource(sh, src); gl.compileShader(sh);
@@ -13828,7 +13840,7 @@ EinNullgespräch.html
         atlasS = Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE));
         const vs = compile(gl.VERTEX_SHADER, [
           'attribute vec2 a_corner; attribute vec4 a_geo; attribute vec4 a_src;',
-          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_x0; uniform float u_hp; uniform float u_atlas;',
+          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_x0; uniform float u_hp; uniform vec2 u_atlas;',
           'varying vec2 v_uv; varying float v_a;',
           'void main() {',
           '  vec2 loc = vec2(u_x0 + a_corner.x * a_src.z, a_geo.z + a_corner.y * u_hp);',
@@ -13853,12 +13865,39 @@ EinNullgespräch.html
         instBuf = gl.createBuffer();
         gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
         gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        warmUp();
         glCanvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); pages = []; rows = []; setMode('2d', 'WebGL-Kontext verloren'); });
         mode = 'gl';
         console.info('[EinNullgespraech] Renderer: ' + glName + ', Atlas ' + atlasS + ' px');
       } catch (e) {
         setMode('2d', e.message);
       }
+    }
+    // Probezeichnung mit einer unsichtbaren Instanz: zwingt den Treiber, das Programm jetzt fertig zu uebersetzen und die Puffer anzulegen,
+    // nicht erst beim ersten sichtbaren Bild.
+    function warmUp() {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 1, 1, 0, gl.ALPHA, gl.UNSIGNED_BYTE, new Uint8Array(1));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.useProgram(prog);
+      gl.uniform2f(U.u_origin, 0, 0); gl.uniform2f(U.u_res, 1, 1); gl.uniform1f(U.u_x0, 0); gl.uniform1f(U.u_hp, 1);
+      gl.uniform2f(U.u_atlas, 1, 1); gl.uniform3f(U.u_color, 0, 0, 0); gl.uniform1i(U.u_tex, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+      gl.enableVertexAttribArray(A.corner); gl.vertexAttribPointer(A.corner, 2, gl.FLOAT, false, 0, 0); inst.div(A.corner, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([1, 0, 0, 0, 0, 0, 1, 0]), gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(A.geo); gl.enableVertexAttribArray(A.src);
+      inst.div(A.geo, 1); inst.div(A.src, 1);
+      gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, 16);
+      inst.draw(1);
+      gl.finish();
+      glError('Probezeichnung');
+      gl.deleteTexture(tex);
     }
     // Plaetze im Atlas vergeben: Reihen der Hoehe hp, Zeilen nacheinander, neue Seite wenn die letzte voll ist.
     function planAtlas() {
@@ -13871,45 +13910,61 @@ EinNullgespräch.html
         if (l.wp > S) return setMode('2d', 'Zeile breiter als der Atlas (' + l.wp + ' px)');
         if (!row || x + l.wp > S) {
           if (row) y += hp;
-          if (!pages.length || y + hp > S) { pages.push({ tex: null }); y = 0; }
-          row = { page: pages.length - 1, y, lines: [], done: false, wanted: false };
+          if (!pages.length || y + hp > S) { pages.push({ tex: null, h: hp }); y = 0; }
+          row = { page: pages.length - 1, y, w: 0, lines: [], done: false, wanted: false };
           rows.push(row); x = 0;
         }
         l.row = rows.length - 1; l.sx = x; row.lines.push(l);
         x += l.wp;
+        row.w = x;
+        pages[row.page].h = row.y + hp;
       }
       nextRow = 0;
+      // Alle Texturen sofort in genau der noetigen Hoehe anlegen (nicht erst beim ersten Sichtbarwerden einer Reihe).
+      try {
+        for (const pg of pages) {
+          pg.tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, pg.tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, S, pg.h, 0, gl.ALPHA, gl.UNSIGNED_BYTE, null);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          glError('Atlas anlegen');
+          cnt.texAllocs++;
+        }
+      } catch (e) {
+        console.error('[EinNullgespraech] ' + e.message);
+        setMode('2d', e.message);
+      }
     }
     function glError(what) {
       const e = gl.getError();
       if (e !== gl.NO_ERROR) throw new Error('WebGL-Fehler ' + e + ' bei ' + what);
     }
     // Eine Reihe setzen und hochladen. Gibt false zurueck, wenn der Renderer dabei auf Canvas2D zurueckfiel.
+    // Der Satz laeuft auf einer CPU-Leinwand (willReadFrequently), die Alpha-Bytes gehen direkt in die Textur: kein GPU-Rueckleseweg
+    // (Canvas als Texturquelle kostete je Reihe einen Stillstand von GPU-Prozess und Hauptstrang).
     function buildRow(r) {
       try {
         const hp = heightPx(), pad = padPx(), S = atlasS;
         if (!scratch) scratch = document.createElement('canvas');
-        if (scratch.width !== S || scratch.height !== hp) { scratch.width = S; scratch.height = hp; }
-        const g = scratch.getContext('2d');
+        if (scratch.width !== S || scratch.height !== hp) { scratch.width = S; scratch.height = hp; scratchG = null; }
+        const g = scratchG || (scratchG = scratch.getContext('2d', { willReadFrequently: true }));
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, S, hp);
         g.font = fontPx * dpr + 'px ' + fontFamily;
         g.textBaseline = 'middle';
         g.fillStyle = color;
         for (const l of r.lines) g.fillText(l.text, l.sx + pad, hp / 2);
+        const w = Math.min(S, Math.ceil(r.w)), rgba = g.getImageData(0, 0, w, hp).data;
+        const a = new Uint8Array(w * hp);
+        for (let i = 0, n = a.length; i < n; i++) a[i] = rgba[4 * i + 3];
         const pg = pages[r.page];
-        if (!pg.tex) {
-          pg.tex = gl.createTexture();
-          gl.bindTexture(gl.TEXTURE_2D, pg.tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, S, S, 0, gl.ALPHA, gl.UNSIGNED_BYTE, null);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-          glError('Atlas anlegen');
-        } else gl.bindTexture(gl.TEXTURE_2D, pg.tex);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, r.y, gl.ALPHA, gl.UNSIGNED_BYTE, scratch);
-        glError('Reihe hochladen');
+        gl.bindTexture(gl.TEXTURE_2D, pg.tex);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, r.y, w, hp, gl.ALPHA, gl.UNSIGNED_BYTE, a);
+        cnt.rowBuilds++; cnt.uploads++;
         r.done = true;
         return true;
       } catch (e) {
@@ -13988,6 +14043,7 @@ EinNullgespräch.html
         else {
           // Bitmap noch nicht gebaut: direkt setzen statt auszulassen (nie fehlender Text, kein Flackern).
           drawText(l, x0 + pad, y0 + hp / 2);
+          cnt.fallbackLines++;
           missing = true;
         }
         lastKs.push(k);
@@ -14021,6 +14077,7 @@ EinNullgespräch.html
           ctx.setTransform(cos, sin, -sin, cos, ox, oy);
           ctx.globalAlpha = alpha;
           drawText(l, x0 + pad, y0 + hp / 2);
+          cnt.fallbackLines++;
           overlayUsed = true;
           if (r && !r.wanted) { r.wanted = true; wanted.push(l.row); }
           continue;
@@ -14043,7 +14100,7 @@ EinNullgespräch.html
       if (n) {
         gl.useProgram(prog);
         gl.uniform2f(U.u_origin, ox, oy); gl.uniform2f(U.u_res, cw, ch);
-        gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp); gl.uniform1f(U.u_atlas, atlasS);
+        gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp);
         gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
         gl.uniform1i(U.u_tex, 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
@@ -14055,6 +14112,7 @@ EinNullgespräch.html
         gl.activeTexture(gl.TEXTURE0);
         for (const [pg, start, count] of segs) {
           gl.bindTexture(gl.TEXTURE_2D, pages[pg].tex);
+          gl.uniform2f(U.u_atlas, atlasS, pages[pg].h);
           gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, start * 32);
           gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, start * 32 + 16);
           inst.draw(count);
@@ -14252,6 +14310,8 @@ EinNullgespräch.html
         return g.getImageData(0, 0, c.width, c.height);
       },
       lineTexts() { return lines.map((l) => (l ? { text: l.text, msg: l.msg } : null)); },
+      ready() { return ready; },
+      counters() { return Object.assign({}, cnt); },
       allBuilt() { return mode === 'gl' ? rows.every((r) => r.done) : lines.every((l) => !l || l.img); },
       drawnKs() { return lastKs.slice(); },
       visibleKs() {
@@ -14274,14 +14334,24 @@ EinNullgespräch.html
       }
     };
 
-    fetch(DATA_URL, { cache: 'no-cache' })
-      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status + ' fuer ' + DATA_URL); return r.json(); })
-      .then((data) => {
+    // Schrift zuerst: erst wenn sie geladen ist, wird gesetzt und gebaut (sonst gaebe es einen zweiten, vollen Neuaufbau).
+    let fontsReady = false;
+    const fontsWait = () => {
+      if (!document.fonts || !document.fonts.ready) { fontsReady = true; return Promise.resolve(); }
+      const probe = (W < 600 ? 15 : 16) + 'px ' + (getComputedStyle(stage).fontFamily || 'sans-serif');
+      return Promise.race([
+        Promise.all([document.fonts.load(probe, 'Ag\u00e4\u00f6\u00fc\u00df'), document.fonts.ready]).then(() => { fontsReady = true; }, () => {}),
+        new Promise((res) => setTimeout(res, 4000))
+      ]);
+    };
+    initGL();
+    Promise.all([fetch(DATA_URL, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status + ' fuer ' + DATA_URL); return r.json(); }), fontsWait()])
+      .then(([data]) => {
         if (!Array.isArray(data) || !data.length || !data.every((m) => (m.wer === 'tim' || m.wer === 'claude') && typeof m.text === 'string')) {
           throw new Error('Gespraechsdaten ungueltig');
         }
         messages = data;
-        initGL();
         layout();
         buildPanel();
         setState(loadUrl());
@@ -14294,7 +14364,7 @@ EinNullgespräch.html
     for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
     window.addEventListener('resize', () => { if (messages) layout(); });
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages) layout(true); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages && !fontsReady) layout(true); });
     requestAnimationFrame(frame);
   })();
   </script>
@@ -54924,8 +54994,7 @@ html.oe-editing .ctrl-panel .ctrl-button {
         --ctrl-mobile-effective-bottom-offset: max(
             var(--ctrl-mobile-bottom-offset, 0px),
             var(--visible-viewport-bottom, 0px),
-            env(safe-area-inset-bottom, 0px),
-            env(keyboard-inset-height, 0px)
+            env(safe-area-inset-bottom, 0px)
         );
         top: auto;
         bottom: var(--ctrl-mobile-effective-bottom-offset);
@@ -55009,6 +55078,32 @@ html.oe-editing .ctrl-panel .ctrl-button {
         width: 100%;
         min-width: 0;
         box-sizing: border-box;
+    }
+
+    /* Vergleich ?panel=css: Blatt nur aus CSS, siehe CSS_SHEET in tools/controls.js */
+    html.ctrl-css-sheet .ctrl-panel,
+    html.ctrl-css-sheet .ctrl-panel.position-left,
+    html.ctrl-css-sheet .ctrl-panel.position-right {
+        top: auto !important;
+        bottom: env(safe-area-inset-bottom, 0px) !important;
+        transform: none !important;
+        height: auto !important;
+        max-height: max(var(--ctrl-mobile-header-height, 42px), calc(var(--ctrl-sheet, 0.3333) * 100dvh)) !important;
+    }
+
+    html.ctrl-css-sheet .ctrl-panel.ctrl-sheet-animate {
+        transition: max-height 0.25s ease-out;
+    }
+
+    html.ctrl-css-sheet .ctrl-panel-body,
+    html.ctrl-css-sheet .ctrl-panel.position-left .ctrl-panel-body,
+    html.ctrl-css-sheet .ctrl-panel.position-right .ctrl-panel-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
     }
 
     .ctrl-section {
@@ -73702,7 +73797,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -77728,6 +77834,19 @@ tools/controls.js
         return window.innerWidth <= 768;
     }
 
+    // Vergleich (?panel=css): das Handy-Blatt sitzt nur per CSS (position:fixed, bottom:0, Hoehe als Anteil von 100dvh).
+    // JS schreibt dann eine einzige Zahl, und nur, wenn ein Finger das Blatt zieht. Die Tastatur verkleinert dafuer das
+    // Layout-Viewport (interactive-widget=resizes-content), so dass bottom:0 von selbst ueber ihr liegt.
+    const CSS_SHEET = new URLSearchParams(location.search).get('panel') === 'css';
+    if (CSS_SHEET) {
+        document.documentElement.classList.add('ctrl-css-sheet');
+        const widget = () => document.querySelectorAll('meta[name="viewport"]').forEach(m => {
+            if (!/interactive-widget/.test(m.content)) m.content = m.content + ', interactive-widget=resizes-content';
+        });
+        widget();
+        document.addEventListener('DOMContentLoaded', widget);
+    }
+
     function getTargetElement(target) {
         if (target instanceof Element) return target;
         if (target && 'parentElement' in target) return target.parentElement || null;
@@ -77790,15 +77909,10 @@ tools/controls.js
         const layoutWidth = Math.max(document.documentElement?.clientWidth || 0, window.innerWidth || 0, 1);
         const layoutHeight = Math.max(document.documentElement?.clientHeight || 0, window.innerHeight || 0, 1);
         const width = Math.max(1, visualViewport?.width || window.innerWidth || layoutWidth);
-        const fullHeight = Math.max(1, visualViewport?.height || window.innerHeight || layoutHeight);
-        // VirtualKeyboard-Modus (nur solange ein Panel-Textfeld Fokus hat): die Tastatur verkleinert nichts, die Seite zieht
-        // das Viewport also nicht mehr; die verdeckte Hoehe kommt aus boundingRect, nicht aus visualViewport.
-        const vk = navigator.virtualKeyboard;
-        const kbHeight = vk && vk.overlaysContent ? Math.max(0, vk.boundingRect?.height ?? 0) : 0;
-        const height = Math.max(1, fullHeight - kbHeight);
+        const height = Math.max(1, visualViewport?.height || window.innerHeight || layoutHeight);
         const offsetLeft = Math.max(0, visualViewport?.offsetLeft || 0);
         const offsetTop = Math.max(0, visualViewport?.offsetTop || 0);
-        const bottomInset = Math.max(0, layoutHeight - (offsetTop + fullHeight));
+        const bottomInset = Math.max(0, layoutHeight - (offsetTop + height));
         const rightInset = Math.max(0, layoutWidth - (offsetLeft + width));
 
         return {
@@ -77809,8 +77923,7 @@ tools/controls.js
             offsetLeft,
             offsetTop,
             bottomInset,
-            rightInset,
-            keyboardHeight: kbHeight
+            rightInset
         };
     }
 
@@ -77832,6 +77945,7 @@ tools/controls.js
         urlCarriesState(search) {
             const p = new URLSearchParams(search || '');
             p.delete('von');
+            p.delete('panel');
             return [...p.keys()].length > 0;
         },
         upsertScript(html, values) {
@@ -79562,7 +79676,7 @@ tools/controls.js
 
         // Update body max-height for mobile based on panel Y position
         _updateMobileBodyHeight() {
-            if (!this.bodyEl || !isMobile()) return;
+            if (!this.bodyEl || !isMobile() || CSS_SHEET) return;
             const headerHeight = this._getMobileHeaderHeight();
             const expandedHeight = this._getMobileExpandedPanelHeight();
             this.el.style.setProperty('--ctrl-mobile-header-height', `${Math.round(headerHeight)}px`);
@@ -79629,7 +79743,7 @@ tools/controls.js
             }
             const viewport = getViewportMetrics();
             const rootBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--visible-viewport-bottom')) || 0;
-            this.el.style.setProperty('--ctrl-mobile-bottom-offset', `${Math.round(Math.max(viewport.bottomInset, rootBottom, viewport.keyboardHeight))}px`);
+            this.el.style.setProperty('--ctrl-mobile-bottom-offset', `${Math.round(Math.max(viewport.bottomInset, rootBottom))}px`);
         }
 
         _updateMobileCanvasOcclusion() {
@@ -79953,7 +80067,80 @@ tools/controls.js
 	            }
         }
 
+        // Variante ?panel=css: kein Messen, kein visualViewport, kein ResizeObserver. Lage und Hoehe rechnet der Browser
+        // aus meta.css (html.ctrl-css-sheet); hier wird nur --ctrl-sheet gesetzt, der Anteil von 100dvh, den das Blatt
+        // hoechstens einnimmt. Zwischen 0 und 1 liegt alles, was das Blatt sein kann.
+        _initCssSheet() {
+            const el = this.el;
+            const vh = () => Math.max(1, window.innerHeight);
+            const peek = () => this._getMobileHeaderHeight();
+            const isClosed = () => el.getBoundingClientRect().height <= peek() + 10;
+            const initial = () => {
+                const mode = this.options.mobileInitialOpenMode || 'content-capped';
+                if (mode === 'peek') return 0;
+                if (mode === 'full') return 1;
+                const raw = Number(this.options.mobileInitialOpenMaxViewportFraction);
+                return Number.isFinite(raw) ? clamp(raw, 0, 1) : (1 / 3);
+            };
+            let lastOpen = initial();
+            const set = (f, animate) => {
+                const next = clamp(f, 0, 1);
+                el.classList.toggle('ctrl-sheet-animate', !!animate);
+                el.style.setProperty('--ctrl-mobile-header-height', `${Math.round(peek())}px`);
+                el.style.setProperty('--ctrl-sheet', next.toFixed(4));
+                if (!isMobile()) return;
+                this._scheduleMobileLayoutChange({ afterTransition: !!animate });
+                if (this.options.mobileCanvasOcclusion) {
+                    const settle = () => this._updateMobileCanvasOcclusion();
+                    if (animate) setTimeout(settle, 280); else requestAnimationFrame(settle);
+                }
+            };
+            this._mobileY = 0;
+            this._applyMobileSheetPosition = () => {};
+            this._refreshMobileSheetLayout = null;
+            this.openSheetIfClosed = () => {
+                if (!isMobile()) return;
+                if (!this._mobileUserSized) lastOpen = initial();
+                if (isClosed()) set(lastOpen, true);
+            };
+            requestAnimationFrame(() => set(lastOpen, false));
+
+            let drag = null;
+            const startDrag = (e) => {
+                if (!isMobile() || !e.isPrimary) return;
+                if (this._isHeaderButtonTarget(e.target) || !this._isDragHandleTarget(e.target)) return;
+                drag = { id: e.pointerId, y: e.clientY, h: el.getBoundingClientRect().height, moved: false };
+            };
+            const moveDrag = (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const dy = e.clientY - drag.y;
+                if (!drag.moved && Math.abs(dy) < 8) return;
+                if (!drag.moved) { drag.moved = true; this.headerEl.setPointerCapture?.(e.pointerId); }
+                set((drag.h - dy) / vh(), false);
+            };
+            const endDrag = (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const d = drag;
+                drag = null;
+                if (!d.moved) {
+                    const open = isClosed();
+                    set(open ? lastOpen : 0, true);
+                    return;
+                }
+                this._mobileUserSized = true;
+                const h = el.getBoundingClientRect().height;
+                if (h > peek() + 10) lastOpen = h / vh();
+                // Ueber den Inhalt hinaus gezogen: auf das zurueck, was man sieht, sonst wirkt der naechste Zug tot
+                set(h / vh(), false);
+            };
+            this.headerEl.addEventListener('pointerdown', startDrag);
+            this.headerEl.addEventListener('pointermove', moveDrag);
+            this.headerEl.addEventListener('pointerup', endDrag);
+            this.headerEl.addEventListener('pointercancel', () => { drag = null; });
+        }
+
         _initMobileSheet() {
+            if (CSS_SHEET) return this._initCssSheet();
             // Mobile Bottom-Sheet (wie in 0neSlider.html)
             this._mobileY = 0;
             let isTouchDragging = false;
@@ -80165,22 +80352,9 @@ tools/controls.js
             window.addEventListener('resize', this._handleMobileSheetResize);
 
             const isTextField = t => t instanceof Element && t.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file]), textarea');
-            // Chrome Android verschiebt bei offener Tastatur das Viewport (Seite ziehen) auf dem Compositor; ein per JS
-            // nachgefuehrtes Panel haengt dann ein Frame hinterher und wackelt. Im VirtualKeyboard-Modus bleibt das Viewport
-            // stehen und das Panel sitzt per CSS (env(keyboard-inset-height), meta.css) ohne JS am Tastaturrand.
-            const setKeyboardOverlay = (on) => {
-                const vk = navigator.virtualKeyboard;
-                if (!vk || vk.overlaysContent === on) return;
-                try { vk.overlaysContent = on; } catch (err) { console.error('controls.js: VirtualKeyboard-Modus nicht setzbar', err); }
-            };
-            if (navigator.virtualKeyboard) {
-                this._handleKbGeometry = () => { if (this.el && isMobile()) this._refreshMobileSheetLayout?.(); };
-                navigator.virtualKeyboard.addEventListener('geometrychange', this._handleKbGeometry);
-            }
             this._handleKbFocusIn = (e) => {
                 if (!isMobile() || !isTextField(e.target)) return;
                 clearTimeout(this._kbHoldTimer);
-                setKeyboardOverlay(true);
                 if (!this._kbHold && !isMostlyClosed()) {
                     const top = this.el.getBoundingClientRect().top - getViewportMetrics().offsetTop;
                     this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - getViewportMetrics().offsetTop - top };
@@ -80191,7 +80365,6 @@ tools/controls.js
                 this._kbHoldTimer = setTimeout(() => {
                     if (!this.el || isTextField(document.activeElement) && this.el.contains(document.activeElement)) return;
                     this._kbHold = null;
-                    setKeyboardOverlay(false);
                     this._refreshMobileSheetLayout?.();
                 }, 350);
             };
@@ -82270,12 +82443,6 @@ tools/controls.js
             if (this._handleMobileSheetResize) {
                 window.removeEventListener('resize', this._handleMobileSheetResize);
                 this._handleMobileSheetResize = null;
-            }
-
-            if (this._handleKbGeometry && navigator.virtualKeyboard) {
-                navigator.virtualKeyboard.removeEventListener('geometrychange', this._handleKbGeometry);
-                this._handleKbGeometry = null;
-                navigator.virtualKeyboard.overlaysContent = false;
             }
 
             if (this._handleMobileViewportChange && window.visualViewport) {

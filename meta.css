@@ -3285,6 +3285,32 @@ html.oe-editing .ctrl-panel .ctrl-button {
         box-sizing: border-box;
     }
 
+    /* Vergleich ?panel=css: Blatt nur aus CSS, siehe CSS_SHEET in tools/controls.js */
+    html.ctrl-css-sheet .ctrl-panel,
+    html.ctrl-css-sheet .ctrl-panel.position-left,
+    html.ctrl-css-sheet .ctrl-panel.position-right {
+        top: auto !important;
+        bottom: env(safe-area-inset-bottom, 0px) !important;
+        transform: none !important;
+        height: auto !important;
+        max-height: max(var(--ctrl-mobile-header-height, 42px), calc(var(--ctrl-sheet, 0.3333) * 100dvh)) !important;
+    }
+
+    html.ctrl-css-sheet .ctrl-panel.ctrl-sheet-animate {
+        transition: max-height 0.25s ease-out;
+    }
+
+    html.ctrl-css-sheet .ctrl-panel-body,
+    html.ctrl-css-sheet .ctrl-panel.position-left .ctrl-panel-body,
+    html.ctrl-css-sheet .ctrl-panel.position-right .ctrl-panel-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
+    }
+
     .ctrl-section {
         width: 100%;
         min-width: 0;
