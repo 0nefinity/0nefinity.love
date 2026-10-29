@@ -71,6 +71,7 @@ Ganz im Sinne von Douglas Hofstadter (Gödel, Escher, Bach): Inhalt und Form sin
 
 Für die Arbeit daran heißt das:
 
+- **Autor und Werkstatt.** Der Projektinhaber ist der Autor, der Agent ist die Werkstatt. Wie etwas gebaut wird, entscheidet die Werkstatt frei. Was man sieht und liest, kommt nur vom Autor. Eigene Einfälle sind Vorschläge, nie Änderungen. **Nie übersetzen: der Deutsch-Englisch-Mix ist gewollt.**
 - **Bestehendes schützen.** Bevor ein sichtbarer Text, Name, Dateiname, ein Symbol oder ein Bedienverhalten geändert wird, erst fragen: Welche Doppelbedeutung trägt es? Ein technisch "sauberer" Eingriff (Hilfetext, Umbenennung, Standard-Icon, generische Fehlermeldung) zerstört leicht eine Ebene, die man nicht gesehen hat. Beispiele: `/enternity` mit dem exakten Satz "enter username and password and press enter to enter 0nefinity" (dreimal enter), Dateinamen wie `game0f1ife`, `0sp1wns`, `n0thingsp1s`.
 - **Keine eigenen Witze einbauen.** Einfälle werden vorgeschlagen und erst nach Absprache gebaut. Das gilt auch für Mehrdeutigkeit im Code selbst (Namen, Kommentare, Struktur).
 - **Texte nur im Wortlaut des Projektinhabers.** Keine Hilfe-, Hinweis- oder Fehlertexte ergänzen; Rückmeldungen lieber wortlos (Wackeln, Dimmen).
