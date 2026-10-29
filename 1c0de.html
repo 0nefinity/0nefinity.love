@@ -98,23 +98,72 @@
     let fernAn = true;
     let fernMass = null;
     let neuFern = null;
-    function fernTextur(zeilen, spalten, nZeilen, zm) {
+    // Zeilen als Text in die Textur malen; laeuft auch im Worker (Quelltext per toString), daher ohne Closure-Zugriffe
+    function fernMalen(g, zeilen, sx, tch, font, farbe) {
+      g.setTransform(sx, 0, 0, sx, 0, 0);
+      g.font = font;
+      g.fillStyle = farbe;
+      g.textBaseline = 'middle';
+      g.textAlign = 'left';
+      g.fontKerning = 'none';
+      for (let i = 0; i < zeilen.length; i++) if (zeilen[i]) g.fillText(zeilen[i], 0, (i + 0.5) * tch / sx);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    // Das Malen der Fern-Textur (Hunderte lange Zeilen je Bild) ist die Hauptlast der 018-Animation: im Worker, Hauptstrang bleibt frei
+    let fernGen = 0;
+    let fernWorker = null, fernBusy = false, fernWartend = null;
+    function fernSenden(job) {
+      if (job.gen !== fernGen) return;
+      if (fernBusy) { fernWartend = job; return; }
+      fernBusy = true;
+      fernWorker.postMessage(job);
+    }
+    function fernWorkerStarten() {
+      const code = `${fernMalen}
+        let cv = null;
+        onmessage = e => {
+          const j = e.data;
+          if (!cv) cv = new OffscreenCanvas(j.bw, j.bh);
+          const g = cv.getContext('2d');
+          if (cv.width !== j.bw || cv.height !== j.bh) { cv.width = j.bw; cv.height = j.bh; } else { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, j.bw, j.bh); }
+          fernMalen(g, j.zeilen, j.sx, j.tch, j.font, j.farbe);
+          const bmp = cv.transferToImageBitmap();
+          postMessage({ gen: j.gen, bw: j.bw, bh: j.bh, bmp }, [bmp]);
+        };`;
+      const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+      const w = new Worker(url);
+      URL.revokeObjectURL(url);
+      w.onerror = e => fehler('Fern-Worker: ' + (e.message || 'Fehler'), e);
+      w.onmessage = e => {
+        const d = e.data;
+        fernBusy = false;
+        if (d.gen === fernGen) {
+          if (fern.width !== d.bw || fern.height !== d.bh) { fern.width = d.bw; fern.height = d.bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, d.bw, d.bh); }
+          fg.drawImage(d.bmp, 0, 0);
+        }
+        d.bmp.close();
+        if (fernWartend) { const j = fernWartend; fernWartend = null; fernSenden(j); }
+      };
+      return w;
+    }
+    // ueberWorker: asynchron im Worker (laufende Animation); sonst sofort auf dem Hauptstrang. Ohne OffscreenCanvas im Worker bleibt es beim Hauptstrang.
+    function fernTextur(zeilen, spalten, nZeilen, zm, ueberWorker = false) {
       const tcw = Math.min(4, 4096 / spalten, 4096 / (nZeilen * zm.h / zm.b));
       const tch = tcw * zm.h / zm.b;
       // aufrunden und die Randpixel leer lassen: Rundung auf ganze Pixel hat die Textur gegenueber dem Nahtext gestreckt
       const bw = Math.max(1, Math.ceil(spalten * tcw)), bh = Math.max(1, Math.ceil(nZeilen * tch));
       fernMass = { tcw, tch, bw, bh, spalten, nZeilen };
-      if (fern.width !== bw || fern.height !== bh) { fern.width = bw; fern.height = bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, bw, bh); }
       // Grosse Schrift unter Skalierung: kleine Schriftgroessen runden die Zeichenbreite (Hinting) und driften
       const sx = tcw / (zm.b * PROJ_F);
-      fg.setTransform(sx, 0, 0, sx, 0, 0);
-      fg.font = `bold ${PROJ_F}px ${getComputedStyle(ziel).fontFamily}`;
-      fg.fillStyle = farbe;
-      fg.textBaseline = 'middle';
-      fg.textAlign = 'left';
-      fg.fontKerning = 'none';
-      for (let i = 0; i < zeilen.length; i++) if (zeilen[i]) fg.fillText(zeilen[i], 0, (i + 0.5) * tch / sx);
-      fg.setTransform(1, 0, 0, 1, 0, 0);
+      const font = `bold ${PROJ_F}px ${getComputedStyle(ziel).fontFamily}`;
+      fernGen++;
+      if (ueberWorker && typeof OffscreenCanvas === 'function' && typeof Worker === 'function') {
+        if (!fernWorker) fernWorker = fernWorkerStarten();
+        fernSenden({ gen: fernGen, zeilen, bw, bh, sx, tch, font, farbe });
+        return;
+      }
+      if (fern.width !== bw || fern.height !== bh) { fern.width = bw; fern.height = bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, bw, bh); }
+      fernMalen(fg, zeilen, sx, tch, font, farbe);
     }
 
     function fehler(text, err) {
@@ -225,6 +274,8 @@
 
     function stopp() {
       if (anim) { cancelAnimationFrame(anim.id); anim = null; }
+      fernGen++;
+      fernWartend = null;
     }
 
     function aufbauen() {
@@ -294,7 +345,7 @@
         if (textAktuell || fernAn) {
           const zl = zeilenBauen(r, rep, 0, c - 1, 0, z - 1);
           if (textAktuell) textSetzen(zl);
-          if (fernAn) fernTextur(zl, c, z, zm);
+          if (fernAn) fernTextur(zl, c, z, zm, gesetzt);
         }
         if (!gesetzt) { gesetzt = true; groesseSetzen(); }
       };
@@ -795,6 +846,7 @@
       container: document.body,
       minScale: 0,
       wheelSpeed: 0.03,
+      panAfterPinch: true,
       shouldIgnoreWheel: imPanel,
       initialScale: panel.params.groesse,
       initialOffsetX: (1 - panel.params.groesse) * sv0.w / 2,
