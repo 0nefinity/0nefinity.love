@@ -450,6 +450,8 @@
 
     // ─── Stellenanzeige: Ziffer oder Zone unter dem Zeiger ───
     let hoverX = null, info = null, infoKey = 'null';
+    // Touch-Tap: die getippte Stelle bleibt stehen, auch wenn Sausen die Ziffern weiterschiebt (pinOn/pinned); jedes setHover loest sie.
+    let pinOn = false, pinned = null;
     // fold: der naechste Treffer nach gezeichneter Lage und Breite. Jede Stelle gilt, auch die schmalste vor dem Strich (kein Sammelbereich);
     // der Strich (linker Punkt, rechtes Ende) nur, wenn er naeher liegt als jede Stelle: auf ihm selbst oder ausserhalb der letzten Stelle.
     function foldInfo(x, tol) {
@@ -476,7 +478,13 @@
         if (pHs > 0.5) return { kind: 'digit', index: h - 1, x0: posOf(h - 1), x1: posOf(h) };
         return line('left', fx, { hi: h - 1 });
       }
-      const k = Math.min(N - 1, Math.max(h, Math.floor(inv(x, h, N))));
+      const rs = span(0.5 * w);
+      if (!rs) return { kind: 'right', lo: h, x0: posOf(h), x1: R };
+      const ra = rs[0], rb = rs[1];
+      // Sammelanzeige genau in der Ziehzone (ab dem Verdichtungspunkt nach aussen), Einzelanzeige sonst: keine Luecke, keine Ueberlappung
+      if (ra > h && x < posOf(ra)) return { kind: 'left', lo: h, hi: ra - 1, x0: posOf(h), x1: posOf(ra) };
+      if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1, x0: posOf(rb + 1), x1: R };
+      const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
       return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
     }
     function pointerInfo() {
@@ -620,8 +628,9 @@
       infinity();
       flush(zoneL, y0, hd);
       flush(zoneR, y0, hd);
-      const ni = pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') + '|' + (ni.count ?? '') : 'null';
-      info = ni;
+      const ni = pinOn ? (pinned || (pinned = pointerInfo())) : pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') + '|' + (ni.count ?? '') : 'null';
+      // Unterstrich/Aufleuchten nur, solange die festgehaltene Ziffer noch dort liegt, wo sie getippt wurde
+      info = pinOn && ni && ni.kind === 'digit' && Math.abs(posOf(ni.index) - ni.x0) > 0.5 ? null : ni;
       underline(y0);
       drawFlash(y0, hd);
       ctx.restore();
@@ -779,9 +788,10 @@
     function setHover(x) {
       const v = x === null || x === undefined ? null : +x;
       if (v !== null && !Number.isFinite(v)) throw new TypeError('setHover: x muss eine Zahl oder null sein, war ' + x);
+      pinOn = false; pinned = null;
       if (v !== hoverX) { hoverX = v; dirty = true; }
     }
-    function tapAt(x) { setHover(x); flashReq = true; dirty = true; }
+    function tapAt(x, touch) { setHover(x); if (touch) pinOn = true; flashReq = true; dirty = true; }
     function onDown(e) {
       const x = local(e);
       if (e.pointerType !== 'mouse') tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
@@ -791,14 +801,14 @@
       if (!mode) return;
       drag = { id: e.pointerId, mode, x0: x, X0, L, R, slop: e.pointerType !== 'mouse', lastEv: e };
       unroll = false;
-      setHover(x);   // Greifen zeigt die Stelle unter dem Finger, auch auf dem Handy
+      if (e.pointerType === 'mouse') setHover(x);   // Maus: Greifen zeigt die Stelle unter dem Zeiger; Touch zeigt nur beim Tap
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     }
     function onMove(e) {
       const x = local(e);
       if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
-      if (e.pointerType === 'mouse' || (drag && drag.id === e.pointerId)) setHover(x);
+      if (e.pointerType === 'mouse') setHover(x);
       // Resize-Cursor genau in der Ziehzone eines freien Endes (ab dem Verdichtungspunkt nach aussen), sonst der normale Pfeil; nie eine Greifhand
       const endCur = () => { const c = typeof opts.endCursor === 'function' ? opts.endCursor() : (opts.endCursor || 'ew-resize'); return c; };
       if (!drag || drag.id !== e.pointerId) {
@@ -808,6 +818,7 @@
       }
       canvas.style.cursor = drag.mode === 'R' || drag.mode === 'L' ? endCur() : 'default';
       if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; }
+      if (e.pointerType !== 'mouse') setHover(null);   // ein Touch-Wisch loescht die Stellenanzeige; sie erscheint nur bei einem Tap
       // x0 aus dem letzten Zeigerereignis in den neuen Leinwand-Koordinaten: die Bewegung seit dem letzten Move geht beim Neusetzen nicht verloren
       if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = local(drag.lastEv); }
       drag.lastEv = e;
@@ -841,10 +852,8 @@
         const ok = performance.now() - tap.t < TAP_MS;
         const x = tap.x;
         tap = null;
-        if (ok) tapAt(x);
+        if (ok) tapAt(x, e.pointerType !== 'mouse');
       }
-      // Ein Wisch in der Lesezone (Touch) hinterlaesst keine Stellenanzeige; an einem freien Ende bleibt sie (zeigt die Stelle am Finger)
-      if (drag && drag.id === e.pointerId && e.pointerType !== 'mouse' && !drag.slop && drag.mode !== 'R' && drag.mode !== 'L') setHover(null);
       endDrag(e);
     }
     function onLeave(e) { if (e.pointerType === 'mouse') setHover(null); }
