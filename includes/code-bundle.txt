@@ -12315,6 +12315,9 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ### Verteilbarer 2D-Zoom/Pan-Helfer
 `tools/zoom.js` (`createZoom2D({container, content, …})`, `zoomAt()`, `screenToWorld()`, `setView()`, `dampingLoop()`): Rad, Maus-Drag, Zwei-Finger-Pinch um den Fixpunkt, Skalengrenzen 1e-9..1e6, optionale Trägheit, animiertes `setView`, Hooks zum Ignorieren von Gesten. Brauchbar; direkt. Der Standard für neue Seiten; die Eigenbauten unten sind Alternativen mit anderem Schwerpunkt.
 
+### Gesten-Modul ohne Abhängigkeiten
+`tools/gesten.js` (`Gesten.attach(el, {getView, setView, minScale, maxScale, excludeSelector, wheelStep})`, `ankern()`, `klemmen()`): Modell aus `bibelaufdenpunkt.html` herausgelöst. Rad (3 %), Maus-Drag, Pinch mit wandernder Mitte, Finger loslassen: der andere schwenkt ohne Sprung weiter; Weltpunkt unter Zeiger/Fingern bleibt auf < 1 px stehen; Grenzen `null` = unbegrenzt; Panel per `excludeSelector` ausgenommen. Test `tests/gesten/run.js` (mit Gegenprobe). Genutzt von `1c0de.html`. Brauchbar; direkt. Für Seiten, die nur Ansicht setzen wollen, ohne Zoom2D.
+
 ### Zoom/Pan/Pinch-Eigenbauten
 `10sand.html` (`ZOOM_CONFIG` 1e-5..1e4, `setupZoomPanEvents()`, `syncGridToScreen()`, `screenToWorld()`/`worldToScreen()`, `worldToGridIndex()`; Ziel-/Ist-Werte mit Damping 0.5, das Grid wächst per `gridOffsetX/Y` in negative Richtung): ausgefeilt. `beidseitig-belegtes-mandelbrot/app.js` (`zoomSmooth()`/`glideStep()`: Zoom als Logarithmus gesammelt und pro Frame zu einem Drittel verbraucht; Ansicht als BigInt-Hex im URL-Hash): brauchbar bis ausgefeilt, das Log-Gleiten ist direkt übertragbar. `bibelaufdenpunkt.html` (`beginScenePan()`, `updateScenePinch()`, `handleWheel()`), `fonts-of-0nefinity.html` (`zoomAtClient()`, `updatePinch()`, DOM-Transform), `moire effect fractal math art generator.html` (`zoom()`, `pan()`, `redraw()` per `setTransform`, 7 Zeilen): alle fixieren die Weltkoordinate unter Finger/Zeiger, brauchbar. `0neSlider.html` (`initSliderZoomInteraction()`): Zoom des Slider-Bereichs.
 
@@ -12452,6 +12455,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
   <!--#include virtual="/includes/something-in-the-head.html" -->
   <meta charset="UTF-8">
   <title>1c0de</title>
+  <script src="/tools/gesten.js?v=<!--#flastmod virtual="/tools/gesten.js" -->"></script>
   <style>
     body, body.menu-open { overflow: hidden; }
     .ctrl-seitensuche { position: static; max-width: none; margin: 0 0 0.5rem; max-height: min(30vh, 220px); }
@@ -12499,10 +12503,12 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
     const fg = fern.getContext('2d');
     const nah = document.getElementById('nah');
     const ng = nah.getContext('2d');
-    const cfg = { modus: 'text', quelle: 'seite', form: '01', pfad: location.pathname, groesse: 1 };
+    const cfg = { modus: 'text', quelle: 'seite', form: '01', pfad: location.pathname };
     const BUNDLE = '/includes/code-bundle.txt';
     const PROJEKT_SCHWELLE = 100;
     const MASKE_B = 1600;
+    const SYMBOL_B_MAX = 240;
+    const FERN_AUFLOESUNG = 0.5;
     const SYMBOL_MS = 33;
     const SYMBOL_PROBEN = 12;
     const FERN_START = 1.5;
@@ -12524,7 +12530,8 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
     let textMasse = { b: 1, h: 1 };
     function textSetzen(zl) {
       let b = 1;
-      for (const z of zl) if (z.length > b) b = z.length;
+      // Zellen sind Zeichen (Codepunkte), nicht UTF-16-Einheiten: ein Zeichen ausserhalb der BMP in der Zeile machte sonst die Zellbreite zu klein und die Fern-Textur zu schmal
+      for (const z of zl) { const n = astral ? Array.from(z).length : z.length; if (n > b) b = n; }
       textMasse = { b, h: Math.max(1, zl.length - (zl.length && zl[zl.length - 1] === '' ? 1 : 0)) };
       knoten.data = zl.join('\n');
     }
@@ -12540,8 +12547,10 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       return { w, h, l, t, cx: l + w / 2, cy: t + h / 2, dpr };
     }
     const einrasten = (v, dpr) => Math.round(v * dpr) / dpr;
-    // Ansicht wie bibelaufdenpunkt.html (Schwenk und Zoom): Zoom2D haelt die Welt unter Zeiger/Fingern fest; hier wird daraus die Bildmitte
-    const ansichtMitte = sv => ({ x: sv.cx + ansicht.ox + (ansicht.scale - 1) * sv.w / 2, y: sv.cy + ansicht.oy + (ansicht.scale - 1) * sv.h / 2 });
+    // Ansicht: Mitte der Form als Abstand zur Mitte des sichtbaren Bereichs. Eine Groessenaenderung des Fensters (Tastatur, Adressleiste)
+    // braucht so keine Umrechnung, und der Start (0, 0, Faktor 1) zentriert immer. Schwenk und Zoom kommen aus tools/gesten.js.
+    const ansicht = { scale: 1, ox: 0, oy: 0 };
+    const ansichtMitte = sv => ({ x: sv.cx + ansicht.ox, y: sv.cy + ansicht.oy });
     // Fernansicht wie bibelaufdenpunkt: echter Text als kleine Textur, per Bitmap-Skalierung ohne Mipmaps verkleinert (daher Moire), weich ueberblendet mit dem Nahtext
     let fernAn = true;
     let fernMass = null;
@@ -12585,7 +12594,8 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       w.onmessage = e => {
         const d = e.data;
         fernBusy = false;
-        if (d.gen === fernGen) {
+        // Nur das Ergebnis des neuesten Auftrags in der gerade gueltigen Groesse; alles andere ist veraltet und darf die Ebene nicht beruehren
+        if (d.gen === fernGen && fernMass && d.bw === fernMass.bw && d.bh === fernMass.bh) {
           if (fern.width !== d.bw || fern.height !== d.bh) { fern.width = d.bw; fern.height = d.bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, d.bw, d.bh); }
           fg.drawImage(d.bmp, 0, 0);
         }
@@ -12733,6 +12743,9 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       farbe = getComputedStyle(ziel).color;
       if (zeichen === null) return;
       meldung.hidden = true;
+      // Neue Form: alle Ebenen zusammen weg und Zustand der alten Form verwerfen, sichtbar wird erst die fertig gesetzte neue (kein Altes neben Neuem)
+      nah.style.visibility = 'hidden'; fern.style.visibility = 'hidden'; ziel.style.visibility = 'hidden';
+      fernMass = null; neuFern = null; proj = null; raster = null; fernAn = true;
       try {
         const N = zeichen.length;
         if (!N) throw new Error('Quelltext leer');
@@ -12772,7 +12785,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       const SP = 360;
       const proben = [];
       for (let a = 0; a < 360; a += 360 / SYMBOL_PROBEN) { const pc = neu(SP); zeichneAuf(pc.getContext('2d'), SP, a); proben.push(pc); }
-      const c = Math.min(MASKE_B, Math.ceil(spaltenFinden(proben, zeilenZu, N, SYMBOL_DECKUNG) * 1.15));
+      const c = Math.min(SYMBOL_B_MAX, MASKE_B, Math.ceil(spaltenFinden(proben, zeilenZu, N, SYMBOL_DECKUNG) * 1.15));
       const z = zeilenZu(c);
       const cv = document.createElement('canvas');
       cv.width = c; cv.height = z;
@@ -12820,13 +12833,14 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
     // Vier Glyphen (0, 1, ∞, ≡), sechs Plaetze. Jede Glyphe ist eine feste Zellmaske (1 Pixel = 1 Zelle, Zeilenlaeufe);
     // Drehung und Bewegung sind nur Transformationen. Fern: echter Text als Textur, verkleinert (Moire). Nah: nur der sichtbare Ausschnitt per fillText.
     const SYMBOL_HALB = 6.5;
+    // Form Text im ganzen Projekt: Abstand der Zeichen in Einheiten der Favicon-Zeichenflaeche
+    const REIHE_ABSTAND = 7;
     // Millionen Glyphen: das Nahbild erst bei groesserer Schrift einblenden (weniger Zeichen je Bild)
     const PROJ_NAH_START = 2;
     const PROJ_NAH_ENDE = 4.5;
     const TEX_PIXEL = 16e6;
     const TEX_SEITE = 8192;
     let proj = null;
-    const ansicht = { scale: 1, ox: 0, oy: 0 };
     let projOffen = false;
     let projZuletzt = 0;
 
@@ -12893,24 +12907,47 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
     function projektAufbauen(N, zm) {
       if (typeof drawFaviconFrame !== 'function') throw new Error('drawFaviconFrame fehlt');
       const fam = getComputedStyle(ziel).fontFamily;
-      const glyphen = [
-        { txt: FAVICON_LABELS[0], font: FAVICON_FONT_LABEL }, { txt: FAVICON_LABELS[1], font: FAVICON_FONT_LABEL },
-        { txt: FAVICON_LABELS[2], font: FAVICON_FONT_LABEL }, { txt: '≡', font: FAVICON_FONT_EDGE },
-      ];
+      // Form 018: vier Glyphen (0, 1, ∞, ≡) auf sechs Plaetzen, rotierend. Form Text: die Zeichen des Textes in einer ruhenden Reihe.
+      const reihe = cfg.modus === 'text' ? Array.from(cfg.form.replace(/\s/g, '')) : null;
+      if (reihe && !reihe.length) throw new Error('Form leer');
+      let glyphen, plaetze, ausdehnung;
+      if (reihe) {
+        glyphen = [...new Set(reihe)].map(txt => ({ txt, font: FAVICON_FONT_LABEL }));
+        plaetze = reihe.map((txt, i) => [glyphen.findIndex(g => g.txt === txt), i]);
+        ausdehnung = { b: REIHE_ABSTAND * reihe.length + 2, h: 12 };
+      } else {
+        glyphen = [
+          { txt: FAVICON_LABELS[0], font: FAVICON_FONT_LABEL }, { txt: FAVICON_LABELS[1], font: FAVICON_FONT_LABEL },
+          { txt: FAVICON_LABELS[2], font: FAVICON_FONT_LABEL }, { txt: '≡', font: FAVICON_FONT_EDGE },
+        ];
+        // Reihenfolge der Zeichen: Beschriftung 0, 1, ∞, dann die drei Kanten
+        plaetze = [[0, 0], [1, 0], [2, 0], [3, 0], [3, 1], [3, 2]];
+        ausdehnung = { b: FAVICON_SIZE, h: FAVICON_SIZE };
+      }
       let cw = 0.03, sp = null, gesamt = 0;
       for (let it = 0; it < 10; it++) {
         const u = cw / zm.b;
         sp = glyphen.map(g => spriteBauen(g, cw, u * zm.h, fam));
-        gesamt = sp[0].n + sp[1].n + sp[2].n + 3 * sp[3].n;
+        gesamt = plaetze.reduce((a, [gi]) => a + sp[gi].n, 0);
         if (gesamt >= N && gesamt <= N * 1.12) break;
         cw *= Math.sqrt(gesamt / (N * 1.04));
       }
       if (gesamt < N) throw new Error('Symbol zu klein fuer ' + N + ' Zeichen');
       const u = cw / zm.b;
-      // Reihenfolge der Zeichen: Beschriftung 0, 1, ∞, dann die drei Kanten
-      const plaetze = [[0, 0], [1, 0], [2, 0], [3, 0], [3, 1], [3, 2]];
+      // Reihe: Ausdehnung und Mitte aus der echten Tinte (die Ziffern sitzen nicht mittig im Spritefeld), damit die Form im Bild mittig steht
+      let mitte = { x: 0, y: 0 };
+      if (reihe) {
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        plaetze.forEach(([gi], i) => {
+          const g = sp[gi], px = (i - (reihe.length - 1) / 2) * REIHE_ABSTAND;
+          x0 = Math.min(x0, px + (g.bx0 - g.SW / 2) * cw); x1 = Math.max(x1, px + (g.bx0 + g.bw - g.SW / 2) * cw);
+          y0 = Math.min(y0, (g.by0 - g.SH / 2) * u * zm.h); y1 = Math.max(y1, (g.by0 + g.bh - g.SH / 2) * u * zm.h);
+        });
+        mitte = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+        ausdehnung = { b: x1 - x0 + 2, h: y1 - y0 + 2 };
+      }
       let basis = 0;
-      const inst = plaetze.map(([gi, k]) => { const s = sp[gi]; const o = { s, kante: gi === 3, k, basis }; basis += s.n; return o; });
+      const inst = plaetze.map(([gi, k]) => { const s = sp[gi]; const o = { s, kante: !reihe && gi === 3, k, basis }; basis += s.n; return o; });
       // Fern-Textur: nur die Tintenbox je Glyphe, gemeinsame Zellgroesse k (Pixel je Zeichenbreite) nach Speicherbudget
       const rh = zm.h / zm.b;
       let flaeche = 0, maxB = 0, maxH = 0;
@@ -12934,7 +12971,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
           c.fillText(laufText(zeichen, N, o.basis + s.ri[r], s.rl[r]), (s.rx[r] - s.bx0) * k / sx, (y - s.by0 + 0.5) * tch / sx);
         o.tex = cv; o.tk = k;
       }
-      proj = { N, zm, u, cw, ch: u * zm.h, inst, fam, cps: zeichen };
+      proj = { N, zm, u, cw, ch: u * zm.h, inst, fam, cps: zeichen, ausdehnung, mitte, reihe: !!reihe };
       knoten.data = '';
       ziel.style.visibility = 'hidden';
       nah.style.visibility = 'visible';
@@ -12948,17 +12985,21 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       const dpr = sv.dpr;
       const W = Math.max(1, Math.round(sv.w * dpr)), H = Math.max(1, Math.round(sv.h * dpr));
       for (const c of [fern, nah]) {
-        if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+        // Die Fern-Ebene ist ohnehin eine weiche Textur: halbe Aufloesung viertelt die Rasterarbeit je Bild
+        const w = c === fern ? Math.max(1, Math.round(W * FERN_AUFLOESUNG)) : W, h = c === fern ? Math.max(1, Math.round(H * FERN_AUFLOESUNG)) : H;
+        if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
         c.style.left = sv.l + 'px'; c.style.top = sv.t + 'px';
         c.style.width = W / dpr + 'px'; c.style.height = H / dpr + 'px';
       }
-      const Pd = Math.min(sv.w, sv.h) / 32 * ansicht.scale * dpr;
-      const cx = W / 2 + (ansicht.ox + (ansicht.scale - 1) * sv.w / 2) * dpr;
-      const cy = H / 2 + (ansicht.oy + (ansicht.scale - 1) * sv.h / 2) * dpr;
+      const a = proj ? proj.ausdehnung : { b: FAVICON_SIZE, h: FAVICON_SIZE };
+      const Pd = Math.min(sv.w / a.b, sv.h / a.h) * ansicht.scale * dpr;
+      const cx = W / 2 + ansicht.ox * dpr;
+      const cy = H / 2 + ansicht.oy * dpr;
       return { W, H, Pd, cx, cy };
     }
 
     function projektPlaetze(grad) {
+      if (proj.reihe) return proj.inst.map((_, i) => ({ x: (i - (proj.inst.length - 1) / 2) * REIHE_ABSTAND - proj.mitte.x, y: -proj.mitte.y, rot: 0 }));
       const R = FAVICON_RADIUS, a = grad * Math.PI / 180;
       const out = [];
       for (let i = 0; i < 3; i++) { const t = a + i * FAVICON_STEP; out.push({ x: R * Math.cos(t), y: R * Math.sin(t), rot: 0 }); }
@@ -12970,6 +13011,8 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       return out;
     }
 
+    // Nah-Ebene nur leeren, wenn sie etwas traegt: bei weit entfernter Form ist sie leer und das Leeren kostet je Bild eine ganze Bildschirmflaeche
+    let nahBelegt = true;
     function projektZeichnen() {
       projZuletzt = performance.now();
       if (!proj) return;
@@ -12977,10 +13020,10 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       const fs = proj.u * Pd;
       const t = weich(PROJ_NAH_START, PROJ_NAH_ENDE, fs);
       const pl = projektPlaetze(zeit ? zeit.winkel : 0);
+      const fr = fern.width / W;
       fg.setTransform(1, 0, 0, 1, 0, 0);
-      fg.clearRect(0, 0, W, H);
-      ng.setTransform(1, 0, 0, 1, 0, 0);
-      ng.clearRect(0, 0, W, H);
+      fg.clearRect(0, 0, fern.width, fern.height);
+      if (nahBelegt) { ng.setTransform(1, 0, 0, 1, 0, 0); ng.clearRect(0, 0, W, H); nahBelegt = false; }
       // Fern bleibt voll deckend unter dem Nahbild: beide halbtransparent ergaben Doppelbild und Helligkeitsdelle
       fern.style.opacity = 1; fern.style.visibility = t < 1 ? 'visible' : 'hidden';
       nah.style.opacity = t; nah.style.visibility = t > 0.01 ? 'visible' : 'hidden';
@@ -12991,12 +13034,13 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
         fg.imageSmoothingQuality = 'low';
         proj.inst.forEach((o, i) => {
           const p = pl[i], c = Math.cos(p.rot) * Pd, s = Math.sin(p.rot) * Pd;
-          fg.setTransform(c, s, -s, c, cx + p.x * Pd, cy + p.y * Pd);
+          fg.setTransform(c * fr, s * fr, -s * fr, c * fr, (cx + p.x * Pd) * fr, (cy + p.y * Pd) * fr);
           fg.drawImage(o.tex, (o.s.bx0 - o.s.SW / 2) * cw, (o.s.by0 - o.s.SH / 2) * ch, o.tex.width / o.tk * cw, o.tex.height / (o.tk * zm.h / zm.b) * ch);
         });
         fg.setTransform(1, 0, 0, 1, 0, 0);
       }
       if (t > 0.01) {
+        nahBelegt = true;
         const F = PROJ_F, ex = zm.b * F, ey = zm.h * F;
         ng.font = `bold ${F}px ${proj.fam}`;
         ng.fontKerning = 'none';
@@ -13043,6 +13087,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
     function projektStart() {
       stopp();
+      if (proj && proj.reihe) return;
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) { if (!zeit) zeit = { modus: 'projekt', start: null, virtuell: 0, winkel: 0 }; return; }
       if (!zeit || zeit.modus !== 'projekt') zeit = { modus: 'projekt', start: null, virtuell: 0, winkel: 0 };
       const st = { id: 0, letzter: -Infinity };
@@ -13068,7 +13113,10 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       const sv = sicht();
       const dpr = sv.dpr;
       const fit = Math.min(sv.w / (raster.spalten * raster.zm.b), sv.h / (raster.zeilen * raster.zm.h));
-      const fs = Math.floor(fit * cfg.groesse * dpr * 8) / (8 * dpr);
+      const fsSoll = fit * ansicht.scale;
+      // Schrift nur in Achtel-Geraetepixeln (Hinting), der Rest der Groesse kommt als Skalierung der fertigen Ebene: so folgt die Form dem Zoom exakt und der Ankerpunkt bleibt unter dem Finger
+      const fs = Math.floor(fsSoll * dpr * 8) / (8 * dpr);
+      ziel.style.transform = 'none';
       const bw = raster.spalten * raster.zm.b * fs, bh = raster.zeilen * raster.zm.h * fs;
       const t = weich(FERN_START, FERN_ENDE, fs * dpr);
       // Inhalt zuerst auffrischen, dann messen: sonst gilt die Box des alten Textes und die Ebenen sitzen verschieden (Doppelbild)
@@ -13086,6 +13134,11 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       const zb = textAktuell && mb === mr ? mb.width / textMasse.b : raster.zm.b * fs, zh = textAktuell && mb === mr ? mb.height / textMasse.h : raster.zm.h * fs;
       const lx = einrasten(am.x - zb * raster.spalten / 2, dpr) + 'px', ly = einrasten(am.y - zh * raster.zeilen / 2, dpr) + 'px';
       ziel.style.left = lx; ziel.style.top = ly;
+      // Soll-Groesse aus dem Zellmass der Seite (nicht aus der gehinteten Schrift): die Form waechst genau mit dem Zoom, der Ankerpunkt bleibt stehen
+      const kx = zb > 0 ? raster.zm.b * fsSoll / zb : 1, ky = zh > 0 ? raster.zm.h * fsSoll / zh : 1;
+      const ur = zb * raster.spalten / 2 + 'px ' + zh * raster.zeilen / 2 + 'px';
+      ziel.style.transformOrigin = ur; fern.style.transformOrigin = ur;
+      ziel.style.transform = fern.style.transform = kx === 1 && ky === 1 ? 'none' : 'scale(' + kx + ',' + ky + ')';
       fern.style.width = fernMass.bw / fernMass.tcw * zb + 'px'; fern.style.height = fernMass.bh / fernMass.tch * zh + 'px';
       fern.style.left = lx; fern.style.top = ly;
       ziel.style.opacity = t;
@@ -13096,7 +13149,6 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
     let entprellt = 0;
     function neuLayouten() {
-      if (zoom) sichtGeaendert();
       clearTimeout(entprellt);
       entprellt = setTimeout(() => { if (cfg.modus === 'text' && cfg.quelle !== 'projekt') aufbauen(); else groesseSetzen(); }, 150);
     }
@@ -13132,15 +13184,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
           aufbauen();
           return;
         }
-        if (cfg.modus === '018') {
-          const roh = await quelleLesen('/0nefinity.js');
-          const a = roh.indexOf('function drawFrameWithAngle(');
-          const e = roh.indexOf('// Funktion zum Zuschneiden transparenter');
-          if (a < 0 || e <= a) throw new Error('Symbol-Code in /0nefinity.js nicht gefunden');
-          t = roh.slice(a, e);
-        } else {
-          t = await quelleLesen(cfg.pfad);
-        }
+        t = await quelleLesen(cfg.pfad);
         if (mein !== lauf) return;
         quelle = t.replace(/\s/g, '');
         zeichen = Array.from(quelle);
@@ -13155,7 +13199,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
     function sichtbar() {
       panel.setRowVisibility('form', cfg.modus === 'text');
-      const pfadSichtbar = cfg.modus === 'text' && cfg.quelle === 'seite';
+      const pfadSichtbar = cfg.quelle === 'seite';
       panel.setRowVisibility('pfad', pfadSichtbar);
       if (!pfadSichtbar) listeZeigen(false);
     }
@@ -13236,29 +13280,25 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       }, 80);
     }
 
-    let zoomInnen = false;
-    let zoom = null;
     let panel = null;
     panel = Controls.createPanel({ position: 'left' });
+    // Form und Quelle sind unabhaengig: jede Form (Text, 018) gilt fuer jede Quelle (Diese Seite, Ganzes Projekt); nur das Textfeld haengt an Form = Text
     panel
       .addSelect('modus', { label: 'Form', value: cfg.modus,
         options: [{ value: 'text', label: 'Text' }, { value: '018', label: '018' }],
-        onChange: v => {
-          cfg.modus = v;
-          if (v === 'text' && cfg.quelle === 'projekt') { cfg.quelle = 'seite'; panel.set('quelle', 'seite'); }
-          sichtbar(); laden();
-        } })
+        onChange: v => { cfg.modus = v; sichtbar(); if (cfg.quelle === 'projekt') aufbauen(); else laden(); } })
       .addSelect('quelle', { label: 'Quelle', value: cfg.quelle,
         options: [{ value: 'seite', label: 'Diese Seite' }, { value: 'projekt', label: 'Ganzes Projekt' }],
-        onChange: v => {
-          cfg.quelle = v;
-          if (v === 'projekt' && cfg.modus !== '018') { cfg.modus = '018'; panel.set('modus', '018'); }
-          sichtbar(); laden();
-        } })
-      .addInput('form', { label: 'Text', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
-      .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => seitenSuche(v) })
-      .addSlider('groesse', { label: 'Größe', min: 0, max: 4, step: 0.05, value: cfg.groesse, decimals: 2, grow: true,
-        onChange: v => { if (zoomInnen) return; cfg.groesse = v; mitteHalten(v); } });
+        onChange: v => { cfg.quelle = v; sichtbar(); laden(); } })
+      .addInput('form', { label: 'Text', value: cfg.form, onChange: v => { cfg.form = v; formNeu(); } })
+      .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => seitenSuche(v) });
+
+    // Ganzes Projekt baut mit Millionen Zeichen: nicht bei jedem Tastenanschlag neu
+    let formZeit = 0;
+    function formNeu() {
+      clearTimeout(formZeit);
+      if (cfg.quelle === 'projekt') formZeit = setTimeout(aufbauen, 250); else aufbauen();
+    }
 
     const pfadZeile = panel.bodyEl.querySelector('[data-key="pfad"]');
     pfadZeile.after(liste);
@@ -13272,53 +13312,33 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       } else if (e.key === 'Escape') { panel.set('pfad', cfg.pfad); listeZeigen(false); clearTimeout(suchZeit); suchLauf++; }
     });
 
-    // Zoom um die Bildmitte, die Welt dort bleibt stehen (Schieberegler, Reset)
-    function mitteHalten(v) {
-      const sv = sicht(), st = zoom.getState();
-      const wx = (sv.w / 2 - st.offsetX) / st.scale, wy = (sv.h / 2 - st.offsetY) / st.scale;
-      zoom.setView({ scale: v, offsetX: sv.w / 2 - wx * v, offsetY: sv.h / 2 - wy * v }, false);
-    }
-    // Groessenaenderung des Fensters: Abstand der Bildmitte zur Bildschirmmitte bleibt
-    let sichtAlt = sicht();
-    function sichtGeaendert() {
-      const sv = sicht(), st = zoom.getState();
-      const dx = st.offsetX + (st.scale - 1) * sichtAlt.w / 2, dy = st.offsetY + (st.scale - 1) * sichtAlt.h / 2;
-      sichtAlt = sv;
-      zoom.setView({ scale: st.scale, offsetX: dx - (st.scale - 1) * sv.w / 2, offsetY: dy - (st.scale - 1) * sv.h / 2 }, false);
-    }
+    // Ansicht neu zeichnen, nachdem Schwenk, Zoom oder Zuruecksetzen sie geaendert haben
+    function ansichtZeichnen() { if (cfg.quelle === 'projekt') projektNeuZeichnen(); else groesseSetzen(); }
 
-    // Schwenk und Zoom wie in bibelaufdenpunkt.html: Rad 3 % je Schritt, Zoom unter Zeiger/Pinch-Mitte, Ziehen mit Maus und Finger, nach dem Pinch zieht der verbliebene Finger weiter. Das Panel bleibt aussen vor.
-    const imPanel = e => !!(e.target.closest && e.target.closest('[class*="ctrl-"]'));
-    const sv0 = sicht();
-    zoom = Zoom2D.createZoom2D({
-      container: document.body,
-      minScale: 0,
-      wheelSpeed: 0.03,
-      panAfterPinch: true,
-      shouldIgnoreWheel: imPanel,
-      initialScale: panel.params.groesse,
-      initialOffsetX: (1 - panel.params.groesse) * sv0.w / 2,
-      initialOffsetY: (1 - panel.params.groesse) * sv0.h / 2,
-      shouldIgnoreDrag: imPanel,
-      shouldIgnoreTouchDrag: imPanel,
-      onTransform: st => {
-        ansicht.scale = st.scale; ansicht.ox = st.offsetX; ansicht.oy = st.offsetY;
-        if (st.scale !== cfg.groesse) {
-          cfg.groesse = st.scale;
-          zoomInnen = true;
-          try { panel.set('groesse', Number(st.scale.toFixed(2))); } finally { zoomInnen = false; }
-        }
-        if (cfg.quelle === 'projekt') projektNeuZeichnen(); else groesseSetzen();
-      }
+    // Schwenk und Zoom (tools/gesten.js, Modell aus bibelaufdenpunkt.html): Zoom unbegrenzt, Welt unter Zeiger/Pinch-Mitte bleibt stehen. Das Panel bleibt aussen vor.
+    Gesten.attach(document.body, {
+      getView: () => { const sv = sicht(); return { scale: ansicht.scale, x: sv.cx + ansicht.ox, y: sv.cy + ansicht.oy }; },
+      setView: v => { const sv = sicht(); ansicht.scale = v.scale; ansicht.ox = v.x - sv.cx; ansicht.oy = v.y - sv.cy; ansichtZeichnen(); },
+      minScale: null,
+      maxScale: null,
+      excludeSelector: '[class*="ctrl-"]'
     });
     for (const ev of ['wheel', 'touchstart', 'touchmove']) panel.el.addEventListener(ev, e => e.stopPropagation(), { passive: true });
 
+    // Zuruecksetzen (↺): Panelwerte setzt controls.js, die Ansicht zurueck auf eingepasst und zentriert
+    panel.addResetButton({
+      afterReset: () => {
+        const vorher = { ...ansicht };
+        Object.assign(ansicht, { scale: 1, ox: 0, oy: 0 });
+        ansichtZeichnen();
+        return () => { Object.assign(ansicht, vorher); ansichtZeichnen(); };
+      }
+    });
+
     cfg.modus = panel.params.modus;
     cfg.quelle = panel.params.quelle;
-    if (cfg.quelle === 'projekt' && cfg.modus !== '018') { cfg.modus = '018'; panel.set('modus', '018'); }
     cfg.form = panel.params.form;
     cfg.pfad = panel.params.pfad;
-    cfg.groesse = panel.params.groesse;
     sichtbar();
     (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(laden);
   })();
@@ -86886,6 +86906,144 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
+})();
+
+tools/gesten.js
+// Schwenken und Zoomen mit Maus, Rad und Fingern (Modell aus bibelaufdenpunkt.html, ohne Abhaengigkeiten).
+//   const detach = Gesten.attach(element, { getView, setView, minScale, maxScale, excludeSelector, wheelStep });
+// Ansicht: { scale, x, y } mit Bildschirmpunkt = (x, y) + Weltpunkt * scale, Koordinaten des Elements (bei body/html: Fensterkoordinaten).
+// Anker: der Weltpunkt unter Zeiger oder Pinch-Mitte bleibt dort stehen. Pinch rechnet schrittweise, die Mitte darf wandern (Pinch ist zugleich Schwenk).
+// Laesst man beim Pinch einen Finger los, zieht der andere ohne Sprung weiter. minScale/maxScale null = unbegrenzt.
+// Teile des Elements, die selbst scrollen oder bedienen (Panel), gehen ueber excludeSelector vom Schwenken aus.
+(function () {
+    'use strict';
+    const KLEINST = 1e-9;
+
+    function klemmen(s, min, max) {
+        const lo = min === null || min === undefined ? KLEINST : Math.max(KLEINST, min);
+        const hi = max === null || max === undefined ? Infinity : max;
+        return Math.min(hi, Math.max(lo, s));
+    }
+
+    // Neue Ansicht mit Skala nach `scale`, der Weltpunkt unter (px, py) bleibt dort
+    function ankern(v, px, py, scale) {
+        const wx = (px - v.x) / v.scale, wy = (py - v.y) / v.scale;
+        return { scale, x: px - wx * scale, y: py - wy * scale };
+    }
+
+    function attach(el, opt) {
+        if (!el || !opt || typeof opt.getView !== 'function' || typeof opt.setView !== 'function') throw new Error('Gesten.attach: element, getView und setView noetig');
+        const min = opt.minScale ?? null, max = opt.maxScale ?? null;
+        const step = opt.wheelStep ?? 0.03;
+        const aus = opt.excludeSelector || null;
+        const wurzel = el === document.body || el === document.documentElement;
+        const lokal = (cx, cy) => {
+            if (wurzel) return { x: cx, y: cy };
+            const r = el.getBoundingClientRect();
+            return { x: cx - r.left, y: cy - r.top };
+        };
+        const ausgenommen = t => !!(aus && t && t.closest && t.closest(aus));
+        const vorher = el.style.touchAction;
+        el.style.touchAction = 'none';
+
+        const zoomUm = (px, py, faktor) => {
+            const v = opt.getView();
+            const s = klemmen(v.scale * faktor, min, max);
+            opt.setView(ankern(v, px, py, s));
+        };
+        const schieben = (dx, dy) => {
+            const v = opt.getView();
+            opt.setView({ scale: v.scale, x: v.x + dx, y: v.y + dy });
+        };
+
+        const onWheel = e => {
+            if (ausgenommen(e.target)) return;
+            e.preventDefault();
+            if (!e.deltaY) return;
+            const p = lokal(e.clientX, e.clientY);
+            zoomUm(p.x, p.y, 1 + (e.deltaY > 0 ? -step : step));
+        };
+
+        // Maus: linke Taste zieht. Kein setPointerCapture: das leitet den Klick um (Menueknopf).
+        let maus = null;
+        const onMouseDown = e => {
+            if (e.button !== 0 || ausgenommen(e.target)) return;
+            maus = lokal(e.clientX, e.clientY);
+        };
+        const onMouseMove = e => {
+            if (!maus) return;
+            if (!(e.buttons & 1)) { maus = null; return; }
+            const p = lokal(e.clientX, e.clientY);
+            schieben(p.x - maus.x, p.y - maus.y);
+            maus = p;
+        };
+        const onMouseUp = () => { maus = null; };
+
+        // Finger: nur Beruehrungen, die ausserhalb der ausgenommenen Teile begannen
+        const aktiv = new Map();
+        let pinch = null;
+        const mitteDist = () => {
+            const [a, b] = [...aktiv.values()];
+            return { mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+        };
+        const onTouchStart = e => {
+            for (const t of e.changedTouches) {
+                if (ausgenommen(t.target)) continue;
+                aktiv.set(t.identifier, lokal(t.clientX, t.clientY));
+            }
+            pinch = aktiv.size >= 2 ? mitteDist() : null;
+        };
+        const onTouchMove = e => {
+            if (!aktiv.size) return;
+            const vor = new Map(aktiv);
+            let bewegt = false;
+            for (const t of e.changedTouches) if (aktiv.has(t.identifier)) { aktiv.set(t.identifier, lokal(t.clientX, t.clientY)); bewegt = true; }
+            if (!bewegt) return;
+            e.preventDefault();
+            if (aktiv.size >= 2) {
+                const jetzt = mitteDist();
+                if (!pinch) { pinch = jetzt; return; }
+                if (pinch.d > 0 && jetzt.d > 0) {
+                    const v = opt.getView();
+                    const s = klemmen(v.scale * jetzt.d / pinch.d, min, max);
+                    const wx = (pinch.mx - v.x) / v.scale, wy = (pinch.my - v.y) / v.scale;
+                    opt.setView({ scale: s, x: jetzt.mx - wx * s, y: jetzt.my - wy * s });
+                }
+                pinch = jetzt;
+            } else {
+                const [id, p] = [...aktiv][0];
+                const q = vor.get(id);
+                if (q) schieben(p.x - q.x, p.y - q.y);
+            }
+        };
+        const onTouchEnd = e => {
+            for (const t of e.changedTouches) aktiv.delete(t.identifier);
+            pinch = aktiv.size >= 2 ? mitteDist() : null;
+        };
+
+        const dok = document;
+        el.addEventListener('wheel', onWheel, { passive: false });
+        el.addEventListener('mousedown', onMouseDown);
+        dok.addEventListener('mousemove', onMouseMove);
+        dok.addEventListener('mouseup', onMouseUp);
+        el.addEventListener('touchstart', onTouchStart, { passive: true });
+        el.addEventListener('touchmove', onTouchMove, { passive: false });
+        el.addEventListener('touchend', onTouchEnd);
+        el.addEventListener('touchcancel', onTouchEnd);
+        return function detach() {
+            el.removeEventListener('wheel', onWheel);
+            el.removeEventListener('mousedown', onMouseDown);
+            dok.removeEventListener('mousemove', onMouseMove);
+            dok.removeEventListener('mouseup', onMouseUp);
+            el.removeEventListener('touchstart', onTouchStart);
+            el.removeEventListener('touchmove', onTouchMove);
+            el.removeEventListener('touchend', onTouchEnd);
+            el.removeEventListener('touchcancel', onTouchEnd);
+            el.style.touchAction = vorher;
+        };
+    }
+
+    window.Gesten = { attach, ankern, klemmen };
 })();
 
 tools/gif-encoder.js
