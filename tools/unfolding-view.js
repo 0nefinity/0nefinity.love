@@ -463,7 +463,13 @@
         }
         return line('left', fx, { hi: h - 1 });
       }
-      const end = () => line('end', R, { count: Math.max(0, N - h) });
+      // Im Strich liegt der ganze Rest: ab der ersten nicht mehr sichtbaren Stelle jede Stelle bis unendlich, nie eine Anzahl
+      // (die Datei endet bei N, pi nicht). Beide Enden eingefaltet: jede Stelle ueberhaupt.
+      const end = () => {
+        const shut = N <= h || R - Lg() < 1.5 || nearPoint;
+        if (shut && L >= fx - 1) return line('all', fx);
+        return line('right', R, { lo: shut ? h : Math.max(h, Math.floor(inv(R - 0.5, h, N)) + 1) });
+      };
       if (N <= h || R - Lg() < 1.5 || x >= R - 0.5 || nearPoint) return end();
       if (x < posOf(h)) {
         // Luecke zwischen Punkt und erster Stelle: das Komma (halbe Zelle rechts vom Punkt), sonst der Punktstrich
