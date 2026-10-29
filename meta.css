@@ -3285,15 +3285,16 @@ html.oe-editing .ctrl-panel .ctrl-button {
         box-sizing: border-box;
     }
 
-    /* Vergleich ?panel=css: Blatt nur aus CSS, siehe CSS_SHEET in tools/controls.js */
+    /* Handy-Blatt nur aus CSS (Standard; ?panel=alt = altes Blatt), siehe CSS_SHEET in tools/controls.js.
+       --ctrl-kb ist nur dort > 0, wo der Browser die Tastatur ueber das Layout legt (Safari). */
     html.ctrl-css-sheet .ctrl-panel,
     html.ctrl-css-sheet .ctrl-panel.position-left,
     html.ctrl-css-sheet .ctrl-panel.position-right {
         top: auto !important;
-        bottom: env(safe-area-inset-bottom, 0px) !important;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + var(--ctrl-kb, 0px)) !important;
         transform: none !important;
         height: auto !important;
-        max-height: max(var(--ctrl-mobile-header-height, 42px), calc(var(--ctrl-sheet, 0.3333) * 100dvh)) !important;
+        max-height: max(var(--ctrl-mobile-header-height, 42px), calc(var(--ctrl-sheet, 0.3333) * (100dvh - var(--ctrl-kb, 0px)))) !important;
     }
 
     html.ctrl-css-sheet .ctrl-panel.ctrl-sheet-animate {
