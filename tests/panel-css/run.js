@@ -1,9 +1,9 @@
-// Vergleich altes Handy-Blatt gegen ?panel=css (Playwright, Pixel-7-Profil). Aufruf:
+// Vergleich CSS-Handy-Blatt (Standard) gegen das alte (?panel=alt) (Playwright, Pixel-7-Profil). Aufruf:
 //   node run.js [baseUrl] [--local /pfad/zum/repo] [--pages /pointfont,/1c0de]
 // Je Seite und Variante: Stil-/Klassen-Schreibzugriffe auf Panel und Panel-Koerper (die Lage des Blatts) waehrend 60 Viewport-Ereignissen (Tastatur offen, Seite gezogen),
 // Unterkante des Panels gegen Unterkante des sichtbaren Bereichs, Antippen/Ziehen am Griff.
-// Tastatur: alt = verkleinertes visualViewport (Android ohne interactive-widget), css = verkleinertes Layout-Viewport
-// (interactive-widget=resizes-content). Regel fuer css: 0 Panel-Schreibzugriffe bei Viewport-Ereignissen, Unterkante 0 px,
+// Tastatur: alt und safari = verkleinertes visualViewport bei gleichem Layout-Viewport (Safari, Android ohne interactive-widget),
+// css = verkleinertes Layout-Viewport (interactive-widget=resizes-content). Regel fuer safari: Unterkante 0 px ueber der Tastatur. Regel fuer css: 0 Panel-Schreibzugriffe bei Viewport-Ereignissen, Unterkante 0 px,
 // Tipp schliesst und oeffnet, Zug nach oben vergroessert. Umgebung: PLAYWRIGHT_PATH, CHROME_PATH. Exit 1 bei Verstoss.
 const fs = require('fs');
 const path = require('path');
@@ -19,7 +19,7 @@ const failures = [];
 
 (async () => {
     const browser = await chromium.launch({ executablePath: CHROME });
-    for (const page of PAGES) for (const variant of ['alt', 'css']) {
+    for (const page of PAGES) for (const variant of ['alt', 'css', 'safari']) {
         const ctx = await browser.newContext({ ...devices['Pixel 7'] });
         if (localDir) await ctx.route(/\/(meta\.js|meta\.css|tools\/controls\.js)(\?|$)/, async route => {
             const name = new URL(route.request().url()).pathname.slice(1);
@@ -38,7 +38,7 @@ const failures = [];
             new MutationObserver(l => { for (const m of l) if (m.target.matches && m.target.matches('.ctrl-panel, .ctrl-panel-body')) window.__pw++; })
                 .observe(document, { attributes: true, attributeFilter: ['style', 'class'], subtree: true });
         });
-        await p.goto(base + page + (variant === 'css' ? '?panel=css' : ''), { waitUntil: 'load' });
+        await p.goto(base + page + (variant === 'alt' ? '?panel=alt' : ''), { waitUntil: 'load' });
         await p.waitForTimeout(2000);
         if (!await p.$('.ctrl-panel')) { console.log(`${page}: kein Panel, uebersprungen`); await ctx.close(); continue; }
         const H = await p.evaluate(() => innerHeight), W = await p.evaluate(() => innerWidth);
@@ -91,6 +91,7 @@ const failures = [];
             if (Math.abs(auf.h - r0.h) > 1) failures.push(`${page} css: Tipp oeffnet nicht auf die alte Hoehe`);
             if (mehr && !(hoch.h > auf.h + 50)) failures.push(`${page} css: Zug nach oben vergroessert nicht`);
         }
+        if (variant === 'safari' && kbBottom !== null && Math.abs(kbBottom) > 1) failures.push(`${page} safari: Unterkante ${kbBottom}px neben der Tastatur`);
         if (errs.length) failures.push(`${page} ${variant}: pageerror ${errs[0]}`);
         await ctx.close();
     }
