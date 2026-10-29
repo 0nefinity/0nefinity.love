@@ -21,8 +21,9 @@
       margin: 0;
       padding: 0;
     }
-    #muster { position: fixed; inset: 0; margin: auto; width: max-content; height: max-content; contain: layout paint; }
-    #fern { position: fixed; inset: 0; margin: auto; pointer-events: none; image-rendering: auto; }
+    #muster { position: fixed; left: 0; top: 0; margin: 0; width: max-content; height: max-content; contain: layout paint; }
+    #fern, #nah { position: fixed; left: 0; top: 0; margin: 0; pointer-events: none; image-rendering: auto; will-change: opacity; }
+    #nah { visibility: hidden; }
     #mass { position: absolute; left: -99999px; top: 0; visibility: hidden; font-size: 100px; }
     #meldung { position: fixed; left: 0; right: 0; top: 0; padding: 1rem; text-align: left; }
   </style>
@@ -30,6 +31,7 @@
 <body>
   <div id="meldung" role="alert" hidden></div>
   <canvas id="fern" aria-hidden="true"></canvas>
+  <canvas id="nah" aria-hidden="true"></canvas>
   <div id="muster"></div>
   <div id="mass" aria-hidden="true"></div>
 
@@ -41,13 +43,18 @@
     const meldung = document.getElementById('meldung');
     const fern = document.getElementById('fern');
     const fg = fern.getContext('2d');
-    const cfg = { modus: 'text', form: '01', pfad: location.pathname, groesse: 1 };
+    const nah = document.getElementById('nah');
+    const ng = nah.getContext('2d');
+    const cfg = { modus: 'text', quelle: 'seite', form: '01', pfad: location.pathname, groesse: 1 };
+    const BUNDLE = '/includes/code-bundle.txt';
+    const PROJEKT_SCHWELLE = 100;
     const MASKE_B = 1600;
     const SYMBOL_MS = 33;
     const SYMBOL_PROBEN = 12;
     const FERN_START = 1.5;
     const FERN_ENDE = 4;
     const SYMBOL_DECKUNG = 16;
+    const PROJ_F = 100;
     const knoten = document.createTextNode('');
     ziel.appendChild(knoten);
     let zeichen = null;
@@ -62,8 +69,34 @@
     let neuText = null;
     let farbe = '';
     const weich = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
-    // Fernansicht wie bibelaufdenpunkt: Textur der Form, weich ueberblendet mit dem echten Text (Zeichengroesse in Geraetepixeln)
-    function fernFarbe() { fg.globalCompositeOperation = 'source-in'; fg.fillStyle = farbe; fg.fillRect(0, 0, fern.width, fern.height); fg.globalCompositeOperation = 'source-over'; }
+    // Sichtbarer Bereich (visualViewport: Tastatur, Adressleiste), Mitte in CSS-Pixeln der Layout-Ansicht
+    function sicht() {
+      const v = window.visualViewport;
+      const dpr = window.devicePixelRatio || 1;
+      const w = v ? v.width : innerWidth, h = v ? v.height : innerHeight;
+      const l = v ? v.offsetLeft : 0, t = v ? v.offsetTop : 0;
+      return { w, h, l, t, cx: l + w / 2, cy: t + h / 2, dpr };
+    }
+    const einrasten = (v, dpr) => Math.round(v * dpr) / dpr;
+    // Fernansicht wie bibelaufdenpunkt: echter Text als kleine Textur, per Bitmap-Skalierung ohne Mipmaps verkleinert (daher Moire), weich ueberblendet mit dem Nahtext
+    let fernAn = true;
+    let neuFern = null;
+    function fernTextur(zeilen, spalten, nZeilen, zm) {
+      const tcw = Math.min(4, 4096 / spalten, 4096 / (nZeilen * zm.h / zm.b));
+      const tch = tcw * zm.h / zm.b;
+      const bw = Math.max(1, Math.round(spalten * tcw)), bh = Math.max(1, Math.round(nZeilen * tch));
+      if (fern.width !== bw || fern.height !== bh) { fern.width = bw; fern.height = bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, bw, bh); }
+      // Grosse Schrift unter Skalierung: kleine Schriftgroessen runden die Zeichenbreite (Hinting) und driften
+      const sx = tcw / (zm.b * PROJ_F);
+      fg.setTransform(sx, 0, 0, sx, 0, 0);
+      fg.font = `bold ${PROJ_F}px ${getComputedStyle(ziel).fontFamily}`;
+      fg.fillStyle = farbe;
+      fg.textBaseline = 'middle';
+      fg.textAlign = 'left';
+      fg.fontKerning = 'none';
+      for (let i = 0; i < zeilen.length; i++) if (zeilen[i]) fg.fillText(zeilen[i], 0, (i + 0.5) * tch / sx);
+      fg.setTransform(1, 0, 0, 1, 0, 0);
+    }
 
     function fehler(text, err) {
       console.error('[1c0de] ' + text, err || '');
@@ -72,6 +105,9 @@
       meldung.hidden = false;
       knoten.data = '';
       fg.clearRect(0, 0, fern.width, fern.height);
+      ng.clearRect(0, 0, nah.width, nah.height);
+      nah.style.visibility = 'hidden';
+      proj = null;
       raster = null;
     }
 
@@ -183,6 +219,7 @@
         const N = zeichen.length;
         if (!N) throw new Error('Quelltext leer');
         const zm = zellmass();
+        if (cfg.quelle === 'projekt') return projektAufbauen(N, zm);
         if (cfg.modus === '018') return symbol(N, zm);
         const cv = maske(cfg.form);
         const zeilenZu = c => Math.max(1, Math.round(c * (cv.height / cv.width) * zm.b / zm.h));
@@ -196,12 +233,9 @@
         const zeilen = zeilenBauen(r, rep, x0, x1, y0, y1);
         raster = { spalten: x1 - x0 + 1, zeilen: y1 - y0 + 1, zm };
         knoten.data = zeilen.join('\n');
-        const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-        fern.width = bw; fern.height = bh;
-        const bild = fg.createImageData(bw, bh);
-        for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (r.an[(y + y0) * c + x + x0]) bild.data[(y * bw + x) * 4 + 3] = 255;
-        fg.putImageData(bild, 0, 0);
-        fernFarbe();
+        neuFern = () => fernTextur(zeilen, x1 - x0 + 1, y1 - y0 + 1, zm);
+        neuFern();
+        fernAn = true;
         groesseSetzen();
       } catch (e) {
         fehler(String(e && e.message ? e.message : e), e);
@@ -227,20 +261,21 @@
       const g = cv.getContext('2d', { willReadFrequently: true });
       const rep = repetition(c * z);
       const r = { an: new Uint8Array(c * z), spalten: c, zeilen: z };
-      fern.width = c; fern.height = z;
       neuText = () => { knoten.data = zeilenBauen(r, rep, 0, c - 1, 0, z - 1).join('\n'); };
+      neuFern = () => fernTextur(zeilenBauen(r, rep, 0, c - 1, 0, z - 1), c, z, zm);
+      fernAn = true;
       raster = { spalten: c, zeilen: z, zm };
-      groesseSetzen();
       const frame = grad => {
         g.setTransform(c / FAVICON_SIZE, 0, 0, z / FAVICON_SIZE, 0, 0);
         drawFaviconFrame(g, grad * Math.PI / 180);
         const d = g.getImageData(0, 0, c, z).data;
         const an = r.an;
         for (let i = 0; i < an.length; i++) an[i] = d[i * 4 + 3] >= SYMBOL_DECKUNG ? 1 : 0;
-        if (textAktuell) neuText();
-        fg.clearRect(0, 0, c, z);
-        fg.drawImage(cv, 0, 0);
-        fernFarbe();
+        if (textAktuell || fernAn) {
+          const zl = zeilenBauen(r, rep, 0, c - 1, 0, z - 1);
+          if (textAktuell) knoten.data = zl.join('\n');
+          if (fernAn) fernTextur(zl, c, z, zm);
+        }
       };
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) { frame(0); return; }
       if (!zeit || zeit.modus !== '018') zeit = { modus: '018', start: null, virtuell: 0, winkel: 0 };
@@ -261,14 +296,266 @@
       st.id = requestAnimationFrame(tick);
     }
 
+    // ---- Ganzes Projekt: das rotierende Symbol aus dem gesamten eigenen Quelltext ----
+    // Vier Glyphen (0, 1, ∞, ≡), sechs Plaetze. Jede Glyphe ist eine feste Zellmaske (1 Pixel = 1 Zelle, Zeilenlaeufe);
+    // Drehung und Bewegung sind nur Transformationen. Fern: echter Text als Textur, verkleinert (Moire). Nah: nur der sichtbare Ausschnitt per fillText.
+    const SYMBOL_HALB = 6.5;
+    // Millionen Glyphen: das Nahbild erst bei groesserer Schrift einblenden (weniger Zeichen je Bild)
+    const PROJ_NAH_START = 2;
+    const PROJ_NAH_ENDE = 4.5;
+    const TEX_PIXEL = 16e6;
+    const TEX_SEITE = 8192;
+    let proj = null;
+    const ansicht = { scale: 1, ox: 0, oy: 0 };
+    let projOffen = false;
+    let projZuletzt = 0;
+
+    function projektIndex(text) {
+      const out = new Uint32Array(text.length);
+      let n = 0;
+      for (let i = 0; i < text.length; i++) {
+        const c = text.codePointAt(i);
+        if (c > 0xFFFF) i++;
+        out[n++] = c;
+      }
+      return out.subarray(0, n);
+    }
+
+    function laufText(cps, N, von, len) {
+      let i = von % N;
+      let s = '';
+      while (len > 0) {
+        const m = Math.min(len, N - i, 4096);
+        s += String.fromCodePoint.apply(null, cps.subarray(i, i + m));
+        len -= m; i = (i + m) % N;
+      }
+      return s;
+    }
+
+    function spriteBauen(g, cw, ch, fam) {
+      const SW = Math.ceil(2 * SYMBOL_HALB / cw), SH = Math.ceil(2 * SYMBOL_HALB / ch);
+      if (SW > 9000 || SH > 9000) throw new Error('Quelltext zu gross fuer das Symbol');
+      const cv = document.createElement('canvas');
+      cv.width = SW; cv.height = SH;
+      const c = cv.getContext('2d', { willReadFrequently: true });
+      c.setTransform(1 / cw, 0, 0, 1 / ch, SW / 2, SH / 2);
+      c.fillStyle = '#fff';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.font = g.font;
+      c.fillText(g.txt, 0, 0);
+      const d = c.getImageData(0, 0, SW, SH).data;
+      const rowOff = new Int32Array(SH + 1);
+      const rx = [], rl = [], ri = [];
+      let n = 0;
+      for (let y = 0; y < SH; y++) {
+        rowOff[y] = rx.length;
+        const o = y * SW * 4 + 3;
+        let x = 0;
+        while (x < SW) {
+          if (d[o + x * 4] < SYMBOL_DECKUNG) { x++; continue; }
+          const l = x;
+          while (x < SW && d[o + x * 4] >= SYMBOL_DECKUNG) x++;
+          rx.push(l); rl.push(x - l); ri.push(n); n += x - l;
+        }
+      }
+      rowOff[SH] = rx.length;
+      let bx0 = SW, bx1 = 0, by0 = SH, by1 = 0;
+      for (let y = 0; y < SH; y++) for (let r = rowOff[y]; r < rowOff[y + 1]; r++) {
+        if (rx[r] < bx0) bx0 = rx[r];
+        if (rx[r] + rl[r] > bx1) bx1 = rx[r] + rl[r];
+        if (y < by0) by0 = y;
+        by1 = y + 1;
+      }
+      return { SW, SH, bx0, by0, bw: Math.max(1, bx1 - bx0), bh: Math.max(1, by1 - by0), n, rowOff, rx: Int32Array.from(rx), rl: Int32Array.from(rl), ri: Int32Array.from(ri) };
+    }
+
+    function projektAufbauen(N, zm) {
+      if (typeof drawFaviconFrame !== 'function') throw new Error('drawFaviconFrame fehlt');
+      const fam = getComputedStyle(ziel).fontFamily;
+      const glyphen = [
+        { txt: FAVICON_LABELS[0], font: FAVICON_FONT_LABEL }, { txt: FAVICON_LABELS[1], font: FAVICON_FONT_LABEL },
+        { txt: FAVICON_LABELS[2], font: FAVICON_FONT_LABEL }, { txt: '≡', font: FAVICON_FONT_EDGE },
+      ];
+      let cw = 0.03, sp = null, gesamt = 0;
+      for (let it = 0; it < 10; it++) {
+        const u = cw / zm.b;
+        sp = glyphen.map(g => spriteBauen(g, cw, u * zm.h, fam));
+        gesamt = sp[0].n + sp[1].n + sp[2].n + 3 * sp[3].n;
+        if (gesamt >= N && gesamt <= N * 1.12) break;
+        cw *= Math.sqrt(gesamt / (N * 1.04));
+      }
+      if (gesamt < N) throw new Error('Symbol zu klein fuer ' + N + ' Zeichen');
+      const u = cw / zm.b;
+      // Reihenfolge der Zeichen: Beschriftung 0, 1, ∞, dann die drei Kanten
+      const plaetze = [[0, 0], [1, 0], [2, 0], [3, 0], [3, 1], [3, 2]];
+      let basis = 0;
+      const inst = plaetze.map(([gi, k]) => { const s = sp[gi]; const o = { s, kante: gi === 3, k, basis }; basis += s.n; return o; });
+      // Fern-Textur: nur die Tintenbox je Glyphe, gemeinsame Zellgroesse k (Pixel je Zeichenbreite) nach Speicherbudget
+      const rh = zm.h / zm.b;
+      let flaeche = 0, maxB = 0, maxH = 0;
+      for (const o of inst) { flaeche += o.s.bw * o.s.bh * rh; maxB = Math.max(maxB, o.s.bw); maxH = Math.max(maxH, o.s.bh * rh); }
+      const k = Math.min(3, Math.sqrt(TEX_PIXEL / flaeche), TEX_SEITE / maxB, TEX_SEITE / maxH);
+      for (const o of inst) {
+        const s = o.s;
+        const tw = Math.max(1, Math.ceil(s.bw * k)), th = Math.max(1, Math.ceil(s.bh * k * rh));
+        const cv = document.createElement('canvas');
+        cv.width = tw; cv.height = th;
+        const c = cv.getContext('2d');
+        const sx = k / (zm.b * PROJ_F);
+        c.setTransform(sx, 0, 0, sx, 0, 0);
+        c.font = `bold ${PROJ_F}px ${fam}`;
+        c.fontKerning = 'none';
+        c.fillStyle = farbe;
+        c.textBaseline = 'middle';
+        c.textAlign = 'left';
+        const tch = k * rh;
+        for (let y = s.by0; y < s.by0 + s.bh; y++) for (let r = s.rowOff[y]; r < s.rowOff[y + 1]; r++)
+          c.fillText(laufText(zeichen, N, o.basis + s.ri[r], s.rl[r]), (s.rx[r] - s.bx0) * k / sx, (y - s.by0 + 0.5) * tch / sx);
+        o.tex = cv; o.tk = k;
+      }
+      proj = { N, zm, u, cw, ch: u * zm.h, inst, fam, cps: zeichen };
+      knoten.data = '';
+      ziel.style.visibility = 'hidden';
+      nah.style.visibility = 'visible';
+      raster = null;
+      projektStart();
+      projektGroesse();
+    }
+
+    function projektSicht() {
+      const sv = sicht();
+      const dpr = sv.dpr;
+      const W = Math.max(1, Math.round(sv.w * dpr)), H = Math.max(1, Math.round(sv.h * dpr));
+      for (const c of [fern, nah]) {
+        if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+        c.style.left = sv.l + 'px'; c.style.top = sv.t + 'px';
+        c.style.width = W / dpr + 'px'; c.style.height = H / dpr + 'px';
+      }
+      const Pd = Math.min(sv.w, sv.h) / 32 * ansicht.scale * dpr;
+      const cx = W / 2 + (ansicht.ox + (ansicht.scale - 1) * sv.w / 2) * dpr;
+      const cy = H / 2 + (ansicht.oy + (ansicht.scale - 1) * sv.h / 2) * dpr;
+      return { W, H, Pd, cx, cy };
+    }
+
+    function projektPlaetze(grad) {
+      const R = FAVICON_RADIUS, a = grad * Math.PI / 180;
+      const out = [];
+      for (let i = 0; i < 3; i++) { const t = a + i * FAVICON_STEP; out.push({ x: R * Math.cos(t), y: R * Math.sin(t), rot: 0 }); }
+      for (let i = 0; i < 3; i++) {
+        const t0 = a + i * FAVICON_STEP, t1 = t0 + FAVICON_STEP;
+        const x0 = R * Math.cos(t0), y0 = R * Math.sin(t0), x1 = R * Math.cos(t1), y1 = R * Math.sin(t1);
+        out.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, rot: Math.atan2(y1 - y0, x1 - x0) });
+      }
+      return out;
+    }
+
+    function projektZeichnen() {
+      projZuletzt = performance.now();
+      if (!proj) return;
+      const { W, H, Pd, cx, cy } = projektSicht();
+      const fs = proj.u * Pd;
+      const t = weich(PROJ_NAH_START, PROJ_NAH_ENDE, fs);
+      const pl = projektPlaetze(zeit ? zeit.winkel : 0);
+      fg.setTransform(1, 0, 0, 1, 0, 0);
+      fg.clearRect(0, 0, W, H);
+      ng.setTransform(1, 0, 0, 1, 0, 0);
+      ng.clearRect(0, 0, W, H);
+      fern.style.opacity = 1 - t; fern.style.visibility = t < 1 ? 'visible' : 'hidden';
+      nah.style.opacity = t; nah.style.visibility = t > 0.01 ? 'visible' : 'hidden';
+      if (!(Pd > 0)) return;
+      const { zm, cw, ch } = proj;
+      if (t < 1) {
+        fg.imageSmoothingEnabled = true;
+        fg.imageSmoothingQuality = 'low';
+        proj.inst.forEach((o, i) => {
+          const p = pl[i], c = Math.cos(p.rot) * Pd, s = Math.sin(p.rot) * Pd;
+          fg.setTransform(c, s, -s, c, cx + p.x * Pd, cy + p.y * Pd);
+          fg.drawImage(o.tex, (o.s.bx0 - o.s.SW / 2) * cw, (o.s.by0 - o.s.SH / 2) * ch, o.tex.width / o.tk * cw, o.tex.height / (o.tk * zm.h / zm.b) * ch);
+        });
+        fg.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      if (t > 0.01) {
+        const F = PROJ_F, ex = zm.b * F, ey = zm.h * F;
+        ng.font = `bold ${F}px ${proj.fam}`;
+        ng.fontKerning = 'none';
+        ng.fillStyle = farbe;
+        ng.textBaseline = 'middle';
+        ng.textAlign = 'left';
+        const k = proj.u * Pd / F;
+        proj.inst.forEach((o, i) => {
+          const p = pl[i], s = o.s;
+          const co = Math.cos(p.rot) * k, si = Math.sin(p.rot) * k;
+          const tx = cx + p.x * Pd, ty = cy + p.y * Pd;
+          const x0 = -s.SW / 2 * ex, y0 = -s.SH / 2 * ey;
+          // Bildschirmecken zurueck in Zellkoordinaten
+          const det = co * co + si * si;
+          let c0 = Infinity, c1 = -Infinity, r0 = Infinity, r1 = -Infinity;
+          for (const [bx, by] of [[0, 0], [W, 0], [0, H], [W, H]]) {
+            const dx = bx - tx, dy = by - ty;
+            const lx = (co * dx + si * dy) / det - x0, ly = (-si * dx + co * dy) / det - y0;
+            const col = lx / ex, row = ly / ey;
+            if (col < c0) c0 = col; if (col > c1) c1 = col; if (row < r0) r0 = row; if (row > r1) r1 = row;
+          }
+          c0 = Math.max(0, Math.floor(c0) - 1); c1 = Math.min(s.SW - 1, Math.ceil(c1) + 1);
+          r0 = Math.max(0, Math.floor(r0) - 1); r1 = Math.min(s.SH - 1, Math.ceil(r1) + 1);
+          if (c0 > c1 || r0 > r1) return;
+          ng.setTransform(co, si, -si, co, tx + co * x0 - si * y0, ty + si * x0 + co * y0);
+          for (let y = r0; y <= r1; y++) for (let r = s.rowOff[y]; r < s.rowOff[y + 1]; r++) {
+            const a = Math.max(s.rx[r], c0), b = Math.min(s.rx[r] + s.rl[r] - 1, c1);
+            if (a > b) continue;
+            ng.fillText(laufText(proj.cps, proj.N, o.basis + s.ri[r] + (a - s.rx[r]), b - a + 1), a * ex, (y + 0.5) * ey);
+          }
+        });
+        ng.setTransform(1, 0, 0, 1, 0, 0);
+      }
+    }
+
+
+    function projektNeuZeichnen() {
+      if (!proj || projOffen) return;
+      projOffen = true;
+      requestAnimationFrame(() => { projOffen = false; projektZeichnen(); });
+    }
+
+    function projektGroesse() { projektNeuZeichnen(); }
+
+    function projektStart() {
+      stopp();
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { if (!zeit) zeit = { modus: 'projekt', start: null, virtuell: 0, winkel: 0 }; return; }
+      if (!zeit || zeit.modus !== 'projekt') zeit = { modus: 'projekt', start: null, virtuell: 0, winkel: 0 };
+      const st = { id: 0, letzter: -Infinity };
+      anim = st;
+      const tick = now => {
+        st.id = requestAnimationFrame(tick);
+        if (document.hidden || now - st.letzter < SYMBOL_MS - 1) return;
+        st.letzter = now;
+        if (zeit.start === null) zeit.start = now;
+        const elapsed = (now - zeit.start) / 1000;
+        const due = Math.floor(elapsed * 60);
+        if (due - zeit.virtuell > 10) zeit.virtuell = due - 10;
+        const speed = faviconAutoSpeed(elapsed);
+        while (zeit.virtuell < due) { zeit.winkel = (zeit.winkel + speed) % 360; zeit.virtuell++; }
+        projektZeichnen();
+      };
+      st.id = requestAnimationFrame(tick);
+    }
+
     function groesseSetzen() {
+      if (cfg.quelle === 'projekt') return projektGroesse();
       if (!raster) return;
-      const dpr = window.devicePixelRatio || 1;
-      const fit = Math.min(innerWidth / (raster.spalten * raster.zm.b), innerHeight / (raster.zeilen * raster.zm.h));
+      const sv = sicht();
+      const dpr = sv.dpr;
+      const fit = Math.min(sv.w / (raster.spalten * raster.zm.b), sv.h / (raster.zeilen * raster.zm.h));
       const fs = Math.floor(fit * cfg.groesse * dpr * 8) / (8 * dpr);
+      const bw = raster.spalten * raster.zm.b * fs, bh = raster.zeilen * raster.zm.h * fs;
       ziel.style.fontSize = fs + 'px';
-      fern.style.width = raster.spalten * raster.zm.b * fs + 'px';
-      fern.style.height = raster.zeilen * raster.zm.h * fs + 'px';
+      // Echte Boxgroesse messen: die Zellmasse aus 100px-Schrift weichen bei anderer Groesse um Bruchteile ab
+      const mb = ziel.getBoundingClientRect();
+      const lx = einrasten(sv.cx - (mb.width > 0 ? mb.width : bw) / 2, dpr) + 'px', ly = einrasten(sv.cy - (mb.height > 0 ? mb.height : bh) / 2, dpr) + 'px';
+      ziel.style.left = lx; ziel.style.top = ly;
+      fern.style.width = (mb.width > 0 ? mb.width : bw) + 'px'; fern.style.height = (mb.height > 0 ? mb.height : bh) + 'px';
+      fern.style.left = lx; fern.style.top = ly;
       const t = weich(FERN_START, FERN_ENDE, fs * dpr);
       ziel.style.opacity = t;
       ziel.style.visibility = t > 0 ? 'visible' : 'hidden';
@@ -276,15 +563,18 @@
       fern.style.visibility = t < 1 ? 'visible' : 'hidden';
       if (t > 0 && !textAktuell) { textAktuell = true; if (neuText) neuText(); }
       else if (t === 0) textAktuell = false;
+      if (t < 1 && !fernAn) { fernAn = true; if (neuFern) neuFern(); }
+      else if (t === 1) fernAn = false;
     }
 
     let entprellt = 0;
     function neuLayouten() {
       clearTimeout(entprellt);
-      entprellt = setTimeout(() => { if (cfg.modus === 'text') aufbauen(); else groesseSetzen(); }, 150);
+      entprellt = setTimeout(() => { if (cfg.modus === 'text' && cfg.quelle !== 'projekt') aufbauen(); else groesseSetzen(); }, 150);
     }
     addEventListener('resize', neuLayouten);
     addEventListener('orientationchange', neuLayouten);
+    if (window.visualViewport) { visualViewport.addEventListener('resize', neuLayouten); visualViewport.addEventListener('scroll', neuLayouten); }
 
     async function quelleLesen(pfad) {
       const res = await fetch(pfad, { cache: 'no-store' });
@@ -296,8 +586,23 @@
       const mein = ++lauf;
       stopp();
       zeit = null;
+      proj = null;
+      nah.style.visibility = 'hidden';
       try {
         let t;
+        if (cfg.quelle === 'projekt') {
+          const t0 = performance.now();
+          const res = await fetch(BUNDLE, { cache: 'no-cache' });
+          if (!res.ok) throw new Error(res.status + ' ' + BUNDLE);
+          const roh = await res.text();
+          if (mein !== lauf) return;
+          const t1 = performance.now();
+          quelle = roh.replace(/\s/g, '');
+          zeichen = projektIndex(quelle);
+          console.info('[1c0de] Bundle geladen: ' + Math.round(t1 - t0) + ' ms, ' + zeichen.length + ' Zeichen');
+          aufbauen();
+          return;
+        }
         if (cfg.modus === '018') {
           const roh = await quelleLesen('/0nefinity.js');
           const a = roh.indexOf('function drawFrameWithAngle(');
@@ -321,7 +626,7 @@
 
     function sichtbar() {
       panel.setRowVisibility('form', cfg.modus === 'text');
-      panel.setRowVisibility('pfad', cfg.modus === 'text');
+      panel.setRowVisibility('pfad', cfg.modus === 'text' && cfg.quelle === 'seite');
     }
 
     let zoomInnen = false;
@@ -331,7 +636,18 @@
     panel
       .addSelect('modus', { label: 'Form', value: cfg.modus,
         options: [{ value: 'text', label: 'Text' }, { value: '018', label: '018' }],
-        onChange: v => { cfg.modus = v; sichtbar(); laden(); } })
+        onChange: v => {
+          cfg.modus = v;
+          if (v === 'text' && cfg.quelle === 'projekt') { cfg.quelle = 'seite'; panel.set('quelle', 'seite'); }
+          sichtbar(); laden();
+        } })
+      .addSelect('quelle', { label: 'Quelle', value: cfg.quelle,
+        options: [{ value: 'seite', label: 'Diese Seite' }, { value: 'projekt', label: 'Ganzes Projekt' }],
+        onChange: v => {
+          cfg.quelle = v;
+          if (v === 'projekt' && cfg.modus !== '018') { cfg.modus = '018'; panel.set('modus', '018'); }
+          sichtbar(); laden();
+        } })
       .addInput('form', { label: 'Text', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
       .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => { cfg.pfad = v; laden(); } })
       .addSlider('groesse', { label: 'Größe', min: 0, max: 4, step: 0.05, value: cfg.groesse, decimals: 2, grow: true,
@@ -343,9 +659,19 @@
       minScale: 0,
       shouldIgnoreWheel: e => !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
       initialScale: panel.params.groesse,
-      shouldIgnoreDrag: () => true,
-      shouldIgnoreTouchDrag: () => true,
+      shouldIgnoreDrag: e => cfg.quelle !== 'projekt' || !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
+      shouldIgnoreTouchDrag: e => cfg.quelle !== 'projekt' || !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
       onTransform: st => {
+        if (cfg.quelle === 'projekt') {
+          ansicht.scale = st.scale; ansicht.ox = st.offsetX; ansicht.oy = st.offsetY;
+          if (st.scale !== cfg.groesse) {
+            cfg.groesse = st.scale;
+            zoomInnen = true;
+            try { panel.set('groesse', Number(st.scale.toFixed(2))); } finally { zoomInnen = false; }
+          }
+          projektNeuZeichnen();
+          return;
+        }
         if (st.offsetX !== 0 || st.offsetY !== 0) { zoom.setView({ scale: st.scale, offsetX: 0, offsetY: 0 }, false); return; }
         if (st.scale === cfg.groesse) return;
         cfg.groesse = st.scale;
@@ -357,6 +683,8 @@
     for (const ev of ['wheel', 'touchstart', 'touchmove']) panel.el.addEventListener(ev, e => e.stopPropagation(), { passive: true });
 
     cfg.modus = panel.params.modus;
+    cfg.quelle = panel.params.quelle;
+    if (cfg.quelle === 'projekt' && cfg.modus !== '018') { cfg.modus = '018'; panel.set('modus', '018'); }
     cfg.form = panel.params.form;
     cfg.pfad = panel.params.pfad;
     cfg.groesse = panel.params.groesse;
