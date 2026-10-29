@@ -53,6 +53,9 @@
     let fontFamily = 'sans-serif';
     let color = '', dirty = true, error = null, drawn = 0, panelDirty = false;
     let panel = null, anim = null, building = 0, lastKs = [];
+    // Zaehler fuer Tests: nach dem Vorbau (ready) darf beim Bewegen keiner davon mehr steigen.
+    const cnt = { rowBuilds: 0, uploads: 0, sprites: 0, texAllocs: 0, fallbackLines: 0, builds: 0 };
+    let ready = false, lastRedraw = 0;
 
     function fail(message) {
       if (error) return;
@@ -133,6 +136,7 @@
       if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg) + anchorIn + anchorOff;
       st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), st.stelle));
       if (mode === 'gl') planAtlas();
+      ready = false;
       scheduleBuild();
       if (panel) syncPanel();
       dirty = true;
@@ -167,15 +171,17 @@
       g.textBaseline = 'middle';
       g.fillStyle = color;
       g.fillText(l.text, pad, c.height / 2);
-      l.img = c; l.sw = c.width;
+      l.img = c; l.sw = c.width; cnt.sprites++;
     }
     function dropSprites() {
+      ready = false;
       for (const l of lines) if (l) l.img = null;
       for (const r of rows) r.done = false;
       nextRow = 0;
       scheduleBuild();
     }
-    // Vorab in kleinen Haeppchen bauen, damit das erste Uebereinanderschieben nicht stockt.
+    // Vorbau: gleich nach Laden und Layout wird alles fuer die aktuelle Breite und Pixeldichte gebaut (Haeppchen von ~10 ms mit Luft dazwischen,
+    // die Seite friert nicht ein; sichtbare Reihen zuerst). Danach baut und laedt beim Bewegen nichts mehr; nur Resize/dpr-Wechsel baut einmal neu.
     function scheduleBuild() {
       if (building) return;
       building = setTimeout(buildChunk, 0);
@@ -184,34 +190,40 @@
       building = 0;
       if (!lines.length || !color) return;
       const t0 = performance.now();
-      let left = false;
+      let left = false, redraw = true;
       if (mode === 'gl') {
+        redraw = false;
         // Zuerst die Reihen, die das letzte Bild sichtbar gebraucht hat, dann der Reihe nach.
-        while (wanted.length && performance.now() - t0 <= 6) { const r = rows[wanted.pop()]; r.wanted = false; if (!r.done && !buildRow(r)) return; }
-        while (nextRow < rows.length && performance.now() - t0 <= 6) { const r = rows[nextRow++]; if (!r.done && !buildRow(r)) return; }
+        while (wanted.length && performance.now() - t0 <= 10) { const r = rows[wanted.pop()]; r.wanted = false; if (!r.done && !buildRow(r)) return; }
+        while (nextRow < rows.length && performance.now() - t0 <= 10) { const r = rows[nextRow++]; if (!r.done && !buildRow(r)) return; }
         left = nextRow < rows.length || wanted.length > 0;
+        // Zwischendurch hoechstens alle 300 ms neu zeichnen (das stehende Bild bleibt richtig: fehlende Reihen stehen in der Deckschicht), zum Schluss einmal.
+        if (!left || t0 - lastRedraw > 300) { redraw = true; lastRedraw = t0; }
+        if (!left) { try { glError('Vorbau'); } catch (e) { console.error('[EinNullgespraech] ' + e.message); setMode('2d', e.message); return; } }
       } else {
         for (const l of lines) {
           if (!l || l.img) continue;
-          if (performance.now() - t0 > 6) { left = true; break; }
+          if (performance.now() - t0 > 10) { left = true; break; }
           makeSprite(l);
         }
       }
-      dirty = true;
-      if (left) building = setTimeout(buildChunk, 8);
+      if (redraw) dirty = true;
+      if (left) building = setTimeout(buildChunk, 2);
+      else { ready = true; cnt.builds++; }
     }
 
     // ─── WebGL: Atlanten ───
     // Alle Zeilen-Bitmaps liegen als Alpha-Masken (nur Deckkraft, die Farbe kommt aus dem Shader) in quadratischen Texturen.
     // Plaetze werden beim Layout vergeben (Reihen gleicher Hoehe, Zeile fuer Zeile), gefuellt wird reihenweise im Hintergrund.
     // Je Atlas-Seite ein Draw-Call; die Zeilen einer Seite stehen im Instanzpuffer hintereinander.
-    let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, instBuf = null, instArr = null;
+    let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, scratchG = null, instBuf = null, instArr = null;
     let prog = null, U = null, A = null, cornerBuf = null, inst = null, colorRGB = [0, 0, 0], overlayUsed = false;
 
     function setMode(m, why) {
       const was = mode;
       mode = m;
       if (m === '2d') {
+        ready = false;
         glCanvas.style.display = 'none';
         if (gl) { const e = gl.getExtension('WEBGL_lose_context'); freePages(); if (e) e.loseContext(); }
         gl = null;
@@ -220,7 +232,7 @@
         dirty = true;
       }
     }
-    function freePages() { if (gl) for (const p of pages) if (p.tex) gl.deleteTexture(p.tex); pages = []; rows = []; nextRow = 0; wanted = []; }
+    function freePages() { ready = false; if (gl) for (const p of pages) if (p.tex) gl.deleteTexture(p.tex); pages = []; rows = []; nextRow = 0; wanted = []; }
     function compile(type, src) {
       const sh = gl.createShader(type);
       gl.shaderSource(sh, src); gl.compileShader(sh);
@@ -245,7 +257,7 @@
         atlasS = Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE));
         const vs = compile(gl.VERTEX_SHADER, [
           'attribute vec2 a_corner; attribute vec4 a_geo; attribute vec4 a_src;',
-          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_x0; uniform float u_hp; uniform float u_atlas;',
+          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_x0; uniform float u_hp; uniform vec2 u_atlas;',
           'varying vec2 v_uv; varying float v_a;',
           'void main() {',
           '  vec2 loc = vec2(u_x0 + a_corner.x * a_src.z, a_geo.z + a_corner.y * u_hp);',
@@ -270,12 +282,39 @@
         instBuf = gl.createBuffer();
         gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
         gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        warmUp();
         glCanvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); pages = []; rows = []; setMode('2d', 'WebGL-Kontext verloren'); });
         mode = 'gl';
         console.info('[EinNullgespraech] Renderer: ' + glName + ', Atlas ' + atlasS + ' px');
       } catch (e) {
         setMode('2d', e.message);
       }
+    }
+    // Probezeichnung mit einer unsichtbaren Instanz: zwingt den Treiber, das Programm jetzt fertig zu uebersetzen und die Puffer anzulegen,
+    // nicht erst beim ersten sichtbaren Bild.
+    function warmUp() {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 1, 1, 0, gl.ALPHA, gl.UNSIGNED_BYTE, new Uint8Array(1));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.useProgram(prog);
+      gl.uniform2f(U.u_origin, 0, 0); gl.uniform2f(U.u_res, 1, 1); gl.uniform1f(U.u_x0, 0); gl.uniform1f(U.u_hp, 1);
+      gl.uniform2f(U.u_atlas, 1, 1); gl.uniform3f(U.u_color, 0, 0, 0); gl.uniform1i(U.u_tex, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+      gl.enableVertexAttribArray(A.corner); gl.vertexAttribPointer(A.corner, 2, gl.FLOAT, false, 0, 0); inst.div(A.corner, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([1, 0, 0, 0, 0, 0, 1, 0]), gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(A.geo); gl.enableVertexAttribArray(A.src);
+      inst.div(A.geo, 1); inst.div(A.src, 1);
+      gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, 16);
+      inst.draw(1);
+      gl.finish();
+      glError('Probezeichnung');
+      gl.deleteTexture(tex);
     }
     // Plaetze im Atlas vergeben: Reihen der Hoehe hp, Zeilen nacheinander, neue Seite wenn die letzte voll ist.
     function planAtlas() {
@@ -288,45 +327,61 @@
         if (l.wp > S) return setMode('2d', 'Zeile breiter als der Atlas (' + l.wp + ' px)');
         if (!row || x + l.wp > S) {
           if (row) y += hp;
-          if (!pages.length || y + hp > S) { pages.push({ tex: null }); y = 0; }
-          row = { page: pages.length - 1, y, lines: [], done: false, wanted: false };
+          if (!pages.length || y + hp > S) { pages.push({ tex: null, h: hp }); y = 0; }
+          row = { page: pages.length - 1, y, w: 0, lines: [], done: false, wanted: false };
           rows.push(row); x = 0;
         }
         l.row = rows.length - 1; l.sx = x; row.lines.push(l);
         x += l.wp;
+        row.w = x;
+        pages[row.page].h = row.y + hp;
       }
       nextRow = 0;
+      // Alle Texturen sofort in genau der noetigen Hoehe anlegen (nicht erst beim ersten Sichtbarwerden einer Reihe).
+      try {
+        for (const pg of pages) {
+          pg.tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, pg.tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, S, pg.h, 0, gl.ALPHA, gl.UNSIGNED_BYTE, null);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          glError('Atlas anlegen');
+          cnt.texAllocs++;
+        }
+      } catch (e) {
+        console.error('[EinNullgespraech] ' + e.message);
+        setMode('2d', e.message);
+      }
     }
     function glError(what) {
       const e = gl.getError();
       if (e !== gl.NO_ERROR) throw new Error('WebGL-Fehler ' + e + ' bei ' + what);
     }
     // Eine Reihe setzen und hochladen. Gibt false zurueck, wenn der Renderer dabei auf Canvas2D zurueckfiel.
+    // Der Satz laeuft auf einer CPU-Leinwand (willReadFrequently), die Alpha-Bytes gehen direkt in die Textur: kein GPU-Rueckleseweg
+    // (Canvas als Texturquelle kostete je Reihe einen Stillstand von GPU-Prozess und Hauptstrang).
     function buildRow(r) {
       try {
         const hp = heightPx(), pad = padPx(), S = atlasS;
         if (!scratch) scratch = document.createElement('canvas');
-        if (scratch.width !== S || scratch.height !== hp) { scratch.width = S; scratch.height = hp; }
-        const g = scratch.getContext('2d');
+        if (scratch.width !== S || scratch.height !== hp) { scratch.width = S; scratch.height = hp; scratchG = null; }
+        const g = scratchG || (scratchG = scratch.getContext('2d', { willReadFrequently: true }));
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, S, hp);
         g.font = fontPx * dpr + 'px ' + fontFamily;
         g.textBaseline = 'middle';
         g.fillStyle = color;
         for (const l of r.lines) g.fillText(l.text, l.sx + pad, hp / 2);
+        const w = Math.min(S, Math.ceil(r.w)), rgba = g.getImageData(0, 0, w, hp).data;
+        const a = new Uint8Array(w * hp);
+        for (let i = 0, n = a.length; i < n; i++) a[i] = rgba[4 * i + 3];
         const pg = pages[r.page];
-        if (!pg.tex) {
-          pg.tex = gl.createTexture();
-          gl.bindTexture(gl.TEXTURE_2D, pg.tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, S, S, 0, gl.ALPHA, gl.UNSIGNED_BYTE, null);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-          glError('Atlas anlegen');
-        } else gl.bindTexture(gl.TEXTURE_2D, pg.tex);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, r.y, gl.ALPHA, gl.UNSIGNED_BYTE, scratch);
-        glError('Reihe hochladen');
+        gl.bindTexture(gl.TEXTURE_2D, pg.tex);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, r.y, w, hp, gl.ALPHA, gl.UNSIGNED_BYTE, a);
+        cnt.rowBuilds++; cnt.uploads++;
         r.done = true;
         return true;
       } catch (e) {
@@ -405,6 +460,7 @@
         else {
           // Bitmap noch nicht gebaut: direkt setzen statt auszulassen (nie fehlender Text, kein Flackern).
           drawText(l, x0 + pad, y0 + hp / 2);
+          cnt.fallbackLines++;
           missing = true;
         }
         lastKs.push(k);
@@ -438,6 +494,7 @@
           ctx.setTransform(cos, sin, -sin, cos, ox, oy);
           ctx.globalAlpha = alpha;
           drawText(l, x0 + pad, y0 + hp / 2);
+          cnt.fallbackLines++;
           overlayUsed = true;
           if (r && !r.wanted) { r.wanted = true; wanted.push(l.row); }
           continue;
@@ -460,7 +517,7 @@
       if (n) {
         gl.useProgram(prog);
         gl.uniform2f(U.u_origin, ox, oy); gl.uniform2f(U.u_res, cw, ch);
-        gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp); gl.uniform1f(U.u_atlas, atlasS);
+        gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp);
         gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
         gl.uniform1i(U.u_tex, 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
@@ -472,6 +529,7 @@
         gl.activeTexture(gl.TEXTURE0);
         for (const [pg, start, count] of segs) {
           gl.bindTexture(gl.TEXTURE_2D, pages[pg].tex);
+          gl.uniform2f(U.u_atlas, atlasS, pages[pg].h);
           gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, start * 32);
           gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, start * 32 + 16);
           inst.draw(count);
@@ -669,6 +727,8 @@
         return g.getImageData(0, 0, c.width, c.height);
       },
       lineTexts() { return lines.map((l) => (l ? { text: l.text, msg: l.msg } : null)); },
+      ready() { return ready; },
+      counters() { return Object.assign({}, cnt); },
       allBuilt() { return mode === 'gl' ? rows.every((r) => r.done) : lines.every((l) => !l || l.img); },
       drawnKs() { return lastKs.slice(); },
       visibleKs() {
@@ -691,14 +751,24 @@
       }
     };
 
-    fetch(DATA_URL, { cache: 'no-cache' })
-      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status + ' fuer ' + DATA_URL); return r.json(); })
-      .then((data) => {
+    // Schrift zuerst: erst wenn sie geladen ist, wird gesetzt und gebaut (sonst gaebe es einen zweiten, vollen Neuaufbau).
+    let fontsReady = false;
+    const fontsWait = () => {
+      if (!document.fonts || !document.fonts.ready) { fontsReady = true; return Promise.resolve(); }
+      const probe = (W < 600 ? 15 : 16) + 'px ' + (getComputedStyle(stage).fontFamily || 'sans-serif');
+      return Promise.race([
+        Promise.all([document.fonts.load(probe, 'Ag\u00e4\u00f6\u00fc\u00df'), document.fonts.ready]).then(() => { fontsReady = true; }, () => {}),
+        new Promise((res) => setTimeout(res, 4000))
+      ]);
+    };
+    initGL();
+    Promise.all([fetch(DATA_URL, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status + ' fuer ' + DATA_URL); return r.json(); }), fontsWait()])
+      .then(([data]) => {
         if (!Array.isArray(data) || !data.length || !data.every((m) => (m.wer === 'tim' || m.wer === 'claude') && typeof m.text === 'string')) {
           throw new Error('Gespraechsdaten ungueltig');
         }
         messages = data;
-        initGL();
         layout();
         buildPanel();
         setState(loadUrl());
@@ -711,7 +781,7 @@
     for (const el of [document.documentElement, document.body]) themeObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshColor);
     window.addEventListener('resize', () => { if (messages) layout(); });
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages) layout(true); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (messages && !fontsReady) layout(true); });
     requestAnimationFrame(frame);
   })();
   </script>
