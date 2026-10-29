@@ -664,7 +664,7 @@
         if (!g) continue;
         let wDev = pHs * w * dpr, xDev = posOf(i) * dpr;
         if (wDev >= wd * 0.999) { wDev = wd; xDev = Math.round(xDev); ctx.globalAlpha = 1; ctx.drawImage(g.img, xDev, y0, wDev, hd); if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); if (drawLog) drawLog.push([xDev, wDev]); }
-        else if (wDev >= 1) { if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); deposit(zoneL, g.t, xDev, wDev, 1); }
+        else if (wDev >= 1 || fold) { if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); deposit(zoneL, g.t, xDev, wDev, 1); }
         else region(i, i + 1, zoneL);
       }
     }
