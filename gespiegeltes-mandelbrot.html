@@ -16,32 +16,8 @@
 }
 #deko { pointer-events: none; }
 
-#steuer {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--visible-viewport-bottom, 0px) + var(--oe-bar-platz, 0px) + 1rem);
-  transform: translateX(-50%);
-  z-index: 10;
-  width: max-content;
-  max-width: calc(100vw - 1.5rem);
-  padding: 0.4rem 0.6rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem 0.5rem;
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border-soft);
-  border-radius: 8px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  text-shadow: none;
-}
-#steuer * { text-shadow: none; }
-
 #wert {
-  flex-basis: 100%;
-  margin: 0;
+  margin: 0 0 0.3rem;
   text-align: center;
   font-family: var(--font-libertinus-math);
   font-size: 1.125rem;
@@ -49,58 +25,12 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-color);
   white-space: nowrap;
+  text-shadow: none;
 }
-
-.zeile {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-#steuer button {
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 0.75rem;
-  border: 0;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text-color) 9%, transparent);
-  color: var(--text-color);
-  font-family: var(--font-family);
-  font-size: 0.9375rem;
-  white-space: nowrap;
-  transition: background 150ms;
-}
-#steuer button:hover {
-  background: color-mix(in srgb, var(--text-color) 16%, transparent);
-  color: var(--text-color);
-  scale: none;
-}
-#steuer button:active { scale: none; }
-#steuer button:focus-visible,
-#r:focus-visible { outline: 1px solid var(--ui-border-stronger); outline-offset: 1px; }
-#steuer button[aria-pressed="true"] {
+.ctrl-button[aria-pressed="true"] {
   background: var(--text-color);
   color: var(--bg-color);
 }
-
-#r-feld {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 44px;
-  font-family: var(--font-libertinus-math);
-  font-size: 1.125rem;
-  color: var(--text-color);
-  font-variant-numeric: tabular-nums;
-}
-#r {
-  width: 8.5rem;
-  height: 44px;
-  margin: 0;
-  accent-color: var(--text-color);
-  background: transparent;
-}
-#r-zahl { min-width: 2.6em; }
 
 #fehler {
   position: fixed;
@@ -118,9 +48,6 @@
 #fehler[hidden] { display: none; }
 
 @media (max-width: 420px) {
-  #steuer { padding: 0.35rem 0.4rem; gap: 0.25rem 0.35rem; }
-  #steuer button { padding: 0 0.55rem; font-size: 0.875rem; }
-  #r { width: 6.5rem; }
   #wert { font-size: 1rem; }
 }
 </style>
@@ -130,18 +57,7 @@
   <canvas id="bild" aria-label="Mandelbrot-Menge, innen echt, außen am Kreis gespiegelt; Spiegelpunkt verschiebbar"></canvas>
   <canvas id="deko" aria-hidden="true"></canvas>
 </div>
-<div id="steuer">
-  <p id="wert" aria-live="off"></p>
-  <div class="zeile" role="group" aria-label="Spiegelpunkte">
-    <button type="button" data-preset="0">Seepferdchen</button>
-    <button type="button" data-preset="1">Elefanten</button>
-    <button type="button" data-preset="2">𝑐 = 𝑖</button>
-  </div>
-  <div class="zeile">
-    <label id="r-feld"><span>𝑟</span><input id="r" type="range" min="-3" max="2" step="0.005" aria-label="Radius r"><span id="r-zahl"></span></label>
-    <button id="rasten" type="button" aria-pressed="false">einrasten</button>
-  </div>
-</div>
+<p id="wert" aria-live="off"></p>
 <p id="fehler" role="alert" hidden></p>
 <script>
 "use strict";
@@ -151,9 +67,6 @@
   const deko = document.getElementById("deko");
   const dctx = deko.getContext("2d");
   const wert = document.getElementById("wert");
-  const rIn = document.getElementById("r");
-  const rZahl = document.getElementById("r-zahl");
-  const rasten = document.getElementById("rasten");
   const fehler = document.getElementById("fehler");
 
   const fail = (msg) => {
@@ -161,28 +74,6 @@
     fehler.textContent = msg;
     fehler.hidden = false;
   };
-
-  // The login editor's toolbar (tools/editor.js) is fixed to the bottom edge;
-  // keep the controls above it while it is there.
-  (() => {
-    let beobachtet = null;
-    const messen = () => {
-      const platz = beobachtet ? Math.max(0, window.innerHeight - beobachtet.getBoundingClientRect().top) : 0;
-      document.documentElement.style.setProperty("--oe-bar-platz", platz + "px");
-    };
-    const ro = new ResizeObserver(messen);
-    const pruefen = () => {
-      const bar = document.getElementById("oe-bar");
-      if (bar === beobachtet) return;
-      if (beobachtet) ro.unobserve(beobachtet);
-      beobachtet = bar;
-      if (bar) ro.observe(bar);
-      messen();
-    };
-    new MutationObserver(pruefen).observe(document.body, { childList: true });
-    window.addEventListener("resize", messen);
-    pruefen();
-  })();
 
   // Misiurewicz points from the Forschungsheft, section (g) and (h)
   const PRESETS = [
@@ -417,11 +308,10 @@ void main() {
   const fmt = (x, n) => (x < 0 ? "−" : "") + Math.abs(x).toFixed(n).replace(".", ",");
   function showValues() {
     wert.textContent = `𝑐 = ${fmt(cMx, 6)} ${cMy < 0 ? "−" : "+"} ${fmt(Math.abs(cMy), 6)} 𝑖`;
-    rZahl.textContent = fmt(r, 2);
-    rIn.value = String(Math.log2(r));
+    if (panel.get("r") !== r) panel.set("r", r);
+    if (panel.get("rasten") !== snapOn) panel.set("rasten", snapOn);
     const i = PRESETS.findIndex((p) => p.c[0] === cMx && p.c[1] === cMy && p.r === r);
-    document.querySelectorAll("[data-preset]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.preset === i)));
-    rasten.setAttribute("aria-pressed", String(snapOn));
+    panel.bodyEl.querySelectorAll("[data-button-key]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.buttonKey === i)));
   }
   function saveUrl() {
     const u = new URL(location.href);
@@ -571,25 +461,70 @@ void main() {
   feld.addEventListener("pointercancel", up);
   feld.addEventListener("dblclick", () => { fitView(); request(false); });
 
-  rIn.addEventListener("input", () => {
-    r = Math.pow(2, Number(rIn.value));
-    showValues();
-    request(true);
-  });
-  rasten.addEventListener("click", () => {
-    snapOn = !snapOn;
-    if (snapOn) [cMx, cMy] = snap(cMx, cMy, Math.max(1e-15, r * sw * 0.25));
-    showValues();
-    request(false);
-  });
-  document.querySelectorAll("[data-preset]").forEach((btn) => btn.addEventListener("click", () => {
-    const p = PRESETS[+btn.dataset.preset];
-    [cMx, cMy] = p.c;
-    r = p.r;
-    fitView();
-    showValues();
-    request(false);
-  }));
+  // ---- panel (tools/controls.js); code values are the start state the reset returns to ----
+  const panel = Controls.createPanel({ position: "left" });
+  panel
+    .addButtonGroup("spiegelpunkte", {
+      buttons: ["Seepferdchen", "Elefanten", "𝑐 = 𝑖"].map((label, i) => ({
+        key: String(i),
+        label,
+        onClick: () => {
+          const p = PRESETS[i];
+          [cMx, cMy] = p.c;
+          r = p.r;
+          fitView();
+          showValues();
+          request(false);
+        },
+      })),
+    })
+    .addSlider("r", {
+      label: "𝑟", min: 0, max: 4, step: 0.01, decimals: 2, grow: true,
+      value: PRESETS[0].r,
+      onChange: (v) => {
+        r = Math.max(0, Number(v) || 0);
+        showValues();
+        request(true);
+      },
+    })
+    .addToggle("rasten", {
+      label: "einrasten",
+      value: false,
+      onChange: (on) => {
+        snapOn = !!on;
+        if (snapOn) [cMx, cMy] = snap(cMx, cMy, Math.max(1e-15, r * sw * 0.25));
+        showValues();
+        request(false);
+      },
+    })
+    .addResetButton({
+      // the panel already put r and rasten back; the rest of the start state is the
+      // first preset in the fitted view, with no trace left in the URL
+      afterReset: () => {
+        const vorher = { cMx, cMy, r, vx, vy, sw, snapOn };
+        [cMx, cMy] = PRESETS[0].c;
+        fitView();
+        showValues();
+        zeichneJetzt();
+        const u = new URL(location.href);
+        for (const k of ["c", "r", "w", "s", "rasten", "frei"]) u.searchParams.delete(k);
+        history.replaceState(history.state, "", u);
+        return () => {
+          ({ cMx, cMy, r, vx, vy, sw, snapOn } = vorher);
+          showValues();
+          zeichneJetzt();
+        };
+      },
+    });
+  panel.bodyEl.prepend(wert);
+
+  // full-quality frame now, without the delayed saveUrl of request()
+  function zeichneJetzt() {
+    clearTimeout(idle);
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    quality = 1;
+    draw();
+  }
 
   function fitView() {
     vx = 0; vy = 0;
@@ -614,6 +549,9 @@ void main() {
   cssH = Math.max(1, b0.height);
   dpr = Math.min(1.5, window.devicePixelRatio || 1);
   fitView();
+  // URL > page defaults (control-defaults) > code values; the panel holds the latter two
+  r = panel.get("r");
+  snapOn = !!panel.get("rasten");
   loadUrl();
   showValues();
   quality = 1;
