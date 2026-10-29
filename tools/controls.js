@@ -422,10 +422,15 @@
         const layoutWidth = Math.max(document.documentElement?.clientWidth || 0, window.innerWidth || 0, 1);
         const layoutHeight = Math.max(document.documentElement?.clientHeight || 0, window.innerHeight || 0, 1);
         const width = Math.max(1, visualViewport?.width || window.innerWidth || layoutWidth);
-        const height = Math.max(1, visualViewport?.height || window.innerHeight || layoutHeight);
+        const fullHeight = Math.max(1, visualViewport?.height || window.innerHeight || layoutHeight);
+        // VirtualKeyboard-Modus (nur solange ein Panel-Textfeld Fokus hat): die Tastatur verkleinert nichts, die Seite zieht
+        // das Viewport also nicht mehr; die verdeckte Hoehe kommt aus boundingRect, nicht aus visualViewport.
+        const vk = navigator.virtualKeyboard;
+        const kbHeight = vk && vk.overlaysContent ? Math.max(0, vk.boundingRect?.height ?? 0) : 0;
+        const height = Math.max(1, fullHeight - kbHeight);
         const offsetLeft = Math.max(0, visualViewport?.offsetLeft || 0);
         const offsetTop = Math.max(0, visualViewport?.offsetTop || 0);
-        const bottomInset = Math.max(0, layoutHeight - (offsetTop + height));
+        const bottomInset = Math.max(0, layoutHeight - (offsetTop + fullHeight));
         const rightInset = Math.max(0, layoutWidth - (offsetLeft + width));
 
         return {
@@ -436,7 +441,8 @@
             offsetLeft,
             offsetTop,
             bottomInset,
-            rightInset
+            rightInset,
+            keyboardHeight: kbHeight
         };
     }
 
@@ -2255,7 +2261,7 @@
             }
             const viewport = getViewportMetrics();
             const rootBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--visible-viewport-bottom')) || 0;
-            this.el.style.setProperty('--ctrl-mobile-bottom-offset', `${Math.round(Math.max(viewport.bottomInset, rootBottom))}px`);
+            this.el.style.setProperty('--ctrl-mobile-bottom-offset', `${Math.round(Math.max(viewport.bottomInset, rootBottom, viewport.keyboardHeight))}px`);
         }
 
         _updateMobileCanvasOcclusion() {
@@ -2791,9 +2797,22 @@
             window.addEventListener('resize', this._handleMobileSheetResize);
 
             const isTextField = t => t instanceof Element && t.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file]), textarea');
+            // Chrome Android verschiebt bei offener Tastatur das Viewport (Seite ziehen) auf dem Compositor; ein per JS
+            // nachgefuehrtes Panel haengt dann ein Frame hinterher und wackelt. Im VirtualKeyboard-Modus bleibt das Viewport
+            // stehen und das Panel sitzt per CSS (env(keyboard-inset-height), meta.css) ohne JS am Tastaturrand.
+            const setKeyboardOverlay = (on) => {
+                const vk = navigator.virtualKeyboard;
+                if (!vk || vk.overlaysContent === on) return;
+                try { vk.overlaysContent = on; } catch (err) { console.error('controls.js: VirtualKeyboard-Modus nicht setzbar', err); }
+            };
+            if (navigator.virtualKeyboard) {
+                this._handleKbGeometry = () => { if (this.el && isMobile()) this._refreshMobileSheetLayout?.(); };
+                navigator.virtualKeyboard.addEventListener('geometrychange', this._handleKbGeometry);
+            }
             this._handleKbFocusIn = (e) => {
                 if (!isMobile() || !isTextField(e.target)) return;
                 clearTimeout(this._kbHoldTimer);
+                setKeyboardOverlay(true);
                 if (!this._kbHold && !isMostlyClosed()) {
                     const top = this.el.getBoundingClientRect().top - getViewportMetrics().offsetTop;
                     this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - getViewportMetrics().offsetTop - top };
@@ -2804,6 +2823,7 @@
                 this._kbHoldTimer = setTimeout(() => {
                     if (!this.el || isTextField(document.activeElement) && this.el.contains(document.activeElement)) return;
                     this._kbHold = null;
+                    setKeyboardOverlay(false);
                     this._refreshMobileSheetLayout?.();
                 }, 350);
             };
@@ -4882,6 +4902,12 @@
             if (this._handleMobileSheetResize) {
                 window.removeEventListener('resize', this._handleMobileSheetResize);
                 this._handleMobileSheetResize = null;
+            }
+
+            if (this._handleKbGeometry && navigator.virtualKeyboard) {
+                navigator.virtualKeyboard.removeEventListener('geometrychange', this._handleKbGeometry);
+                this._handleKbGeometry = null;
+                navigator.virtualKeyboard.overlaysContent = false;
             }
 
             if (this._handleMobileViewportChange && window.visualViewport) {
