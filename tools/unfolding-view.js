@@ -461,7 +461,9 @@
       if (x < fx && !nearPoint) {
         if (pHs * w >= 1 && x >= L) {
           const k = Math.min(h - 1, Math.max(0, Math.floor((x - L) / (pHs * w))));
-          return { kind: 'digit', index: k, x0: posOf(k), x1: k === h - 1 ? fx : posOf(k + 1) };
+          // Die Punktzelle ist EIN Feld: ihre linke Haelfte zeigt dieselbe ganze Zelle wie die rechte (unten), nicht nur die halbe
+          const dotCell = k === h - 1 && pHs > 0.5 && N > h && R - Lg() >= 1.5;
+          return { kind: 'digit', index: k, x0: posOf(k), x1: k === h - 1 && !dotCell ? fx : posOf(k + 1) };
         }
         return line('left', fx, { hi: h - 1 });
       }
@@ -647,7 +649,7 @@
         if (!g) continue;
         let wDev = pHs * w * dpr, xDev = posOf(i) * dpr;
         if (wDev >= wd * 0.999) { wDev = wd; xDev = Math.round(xDev); ctx.globalAlpha = 1; ctx.drawImage(g.img, xDev, y0, wDev, hd); if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); if (drawLog) drawLog.push([xDev, wDev]); }
-        else if (wDev >= 1) deposit(zoneL, g.t, xDev, wDev, 1);
+        else if (wDev >= 1) { if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); deposit(zoneL, g.t, xDev, wDev, 1); }
         else region(i, i + 1, zoneL);
       }
     }
@@ -665,16 +667,21 @@
     // Breite die ganze Glyphe und schrumpft bis 0,85 Breite auf die Tinte: gestauchte Ziffern geben ihre Seitenraender ab,
     // sonst bliebe vor jedem Ende eine leere Spalte. Schmalere Ziffern zaehlt region().
     function deposit(zone, t, xDev, wDev, al) {
-      const end = xDev + wDev;
       const cum = atlas.cums[t], hd = gh, ex = atlas.exts[t];
-      const k = Math.max(0, Math.min(1, (wDev / gw - 0.85) / 0.15));
-      const s0 = ex[0] * (1 - k), s1 = gw - (gw - ex[1]) * (1 - k), sc = (s1 - s0) / wDev;
-      if (depLog) { const e = depLog[depLog.length - 1]; if (e && e.x === xDev && e.w === wDev) { e.s0 = s0; e.s1 = s1; } }
-      for (let c = Math.floor(xDev); c < end; c++) {
+      // Die Tinte wird nie breiter als ihre natuerliche Breite: ab Zellbreite >= Tintenbreite liegt sie unverzerrt in der Zelle
+      // (Rand proportional wie bei voller Breite), darunter wird sie auf die Zelle gestaucht. Sonst waere eine Ziffer auf dem
+      // Weg zur vollen Breite zeitweise breiter als normal.
+      const ext = ex[1] - ex[0], free = gw - ext;
+      if (!(ext > 0)) return;
+      const s0 = ex[0], s1 = ex[1];
+      const w2 = Math.min(wDev, ext), sx = wDev > ext && free > 0 ? xDev + (wDev - ext) * ex[0] / free : xDev;
+      const sc = (s1 - s0) / w2, end = sx + w2;
+      if (depLog) { const e = depLog[depLog.length - 1]; if (e && e.x === xDev && e.w === wDev) { e.s0 = s0; e.s1 = s1; e.dx = sx; e.dw = w2; } }
+      for (let c = Math.floor(sx); c < end; c++) {
         if (c < 0 || c >= accCols) continue;
-        const part = Math.min(c + 1, end) - Math.max(c, xDev);
+        const part = Math.min(c + 1, end) - Math.max(c, sx);
         if (part <= 0) continue;
-        const u0 = s0 + (Math.max(c, xDev) - xDev) * sc, u1 = Math.min(s1, u0 + part * sc);
+        const u0 = s0 + (Math.max(c, sx) - sx) * sc, u1 = Math.min(s1, u0 + part * sc);
         const i0 = Math.min(gw - 1, Math.floor(u0)), f0 = u0 - i0, i1 = Math.min(gw - 1, Math.floor(u1)), f1 = u1 - i1;
         const a0 = i0 * hd, a1 = i1 * hd, o = c * hd;
         for (let y = 0; y < hd; y++) {
