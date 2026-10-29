@@ -42,10 +42,12 @@
 	            };
 	        }
         
-        // Berechne den sichtbaren Bereich basierend auf dem Seitenverhältnis
-        // Radius 1 = 50% der kleineren Dimension
-        let xRange, yRange;
-        
+        // Ansicht (unendliche Ebene): Weltpunkt in der Bildmitte + Zoomfaktor.
+        // Zoom-Grenzen und Zoom-Geschwindigkeit uebernommen aus
+        // bibelaufdenpunkt.html (CONFIG.ZOOM: min 0.00001, max 10000, speed 0.03).
+        const VIEW_ZOOM = { min: 0.00001, max: 10000, speed: 0.03 };
+        let viewX = 0, viewY = 0, viewZoom = 1, baseScale = 1;
+
         function resize() {
                 invalidateCurrentStateCache();
 	            const bounds = getCanvasBounds();
@@ -58,17 +60,9 @@
             
             // Skalierung: Radius 1 = 25% der kleineren Dimension
             // (damit Radius 1 bei 50% zwischen Mitte und Rand liegt)
-            scale = Math.min(width, height) * 0.25;
-            
-            // Berechne den mathematischen Bereich basierend auf dem Seitenverhältnis
-            // Wir wollen den GESAMTEN Bildschirm ausfüllen
-            xRange = (width / 2) / scale;  // Wie viele Einheiten passen von Mitte bis Rand X
-            yRange = (height / 2) / scale; // Wie viele Einheiten passen von Mitte bis Rand Y
-            
-            // Füge etwas Puffer hinzu für Überzeichnung
-            xRange += 0.5;
-            yRange += 0.5;
-            
+            baseScale = Math.min(width, height) * 0.25;
+            scale = baseScale * viewZoom;
+
             draw();
         }
 
@@ -158,15 +152,15 @@
         
         function screenToMath(sx, sy) {
             return {
-                x: (sx - centerX) / scale,
-                y: -(sy - centerY) / scale
+                x: viewX + (sx - centerX) / scale,
+                y: viewY - (sy - centerY) / scale
             };
         }
         
         function mathToScreen(mx, my) {
             return {
-                x: centerX + mx * scale,
-                y: centerY - my * scale
+                x: centerX + (mx - viewX) * scale,
+                y: centerY - (my - viewY) * scale
             };
         }
 
@@ -1533,21 +1527,190 @@
             ctx.fillStyle = bgColor;
             ctx.fillRect(0, 0, width, height);
             
-            drawGrid();
-            drawAxes();
-            drawCircle();
+            if (!(scale > 0) || !Number.isFinite(viewX) || !Number.isFinite(viewY)) {
+                throw new Error('co0rdinates: ungueltige Ansicht');
+            }
+            const pad = 24 / scale;
+            const items = collectInfluence();
+            const cover = computeCover(
+                viewX - centerX / scale - pad, viewY - (height - centerY) / scale - pad,
+                viewX + (width - centerX) / scale + pad, viewY + centerY / scale + pad,
+                items
+            );
+
+            drawGrid(cover, items);
+            drawAxes(cover, items);
+            drawCircle(cover);
             drawControlPoints();
         }
         
-        function drawGrid() {
+        // ============================================
+        // UNENDLICHE EBENE
+        // Pro Frame wird nur der sichtbare Bereich erzeugt: Gitterlinien, Achsen
+        // und Kreis entstehen aus Ansicht (viewX/viewY/viewZoom) und Verzerrung.
+        // Weil die Verzerrung Raum verschiebt, wird nicht das sichtbare Rechteck,
+        // sondern sein Urbild unter der Verzerrung abgedeckt (Quadtree mit
+        // Lipschitz-Schranke der Gauss-Kerne): so reichen die Linien auch dann
+        // ueber jeden Bildrand, wenn Punkte weit gezogen wurden.
+        // Praezision: Bildschirmposition = (Welt - Ansichtsmitte) * scale, also
+        // immer relativ zur Bildmitte; brauchbar bei Zoom 1e-5 bis 1e4 und
+        // Ansichtsmitte bis etwa +-1e8 Einheiten.
+        // ============================================
+
+        const GRID_MIN_PX = 4;       // engste Linien-Abstaende auf dem Schirm
+        const MAX_LINES_PER_AXIS = 20000;
+        let lineCapReported = false;
+
+        // Einflusspunkte des Frames; bei Uebergaengen mit ihrem Gewicht.
+        function collectInfluence() {
+            const items = [];
+            const add = (state, weight) => {
+                if (weight === 0) return;
+                prepareStateForRendering(state);
+                for (const cp of state.controlPoints) {
+                    if (cp._rIsZero) continue;
+                    const cut = Math.sqrt(cp._cutoff2);
+                    const mag = Math.hypot(cp.dx, cp.dy) * Math.abs(weight);
+                    if (!(cut > 0) || !(mag > 0)) continue;
+                    // Gradient von d*exp(-|u|^2/r^2) ist hoechstens |d|*sqrt(2/e)/r
+                    items.push({ x: cp.x, y: cp.y, cut, cut2: cp._cutoff2, mag, grad: mag * 0.8578 / (cut / 4) });
+                }
+            };
+            if (stateTransition) {
+                const p = getTransitionProgress();
+                add(stateTransition.sourceState, 1 - p);
+                add(stateTransition.targetState, p);
+            } else {
+                add(getCurrentState(), 1);
+            }
+            return items;
+        }
+
+        // Quadrate der Weltebene, die das sichtbare Rechteck nach der Verzerrung treffen koennen.
+        function computeCover(vx0, vy0, vx1, vy1, items) {
+            if (items.length === 0) return [{ x0: vx0, y0: vy0, x1: vx1, y1: vy1 }];
+
+            const vcx = (vx0 + vx1) / 2, vcy = (vy0 + vy1) / 2;
+            const vhx = (vx1 - vx0) / 2, vhy = (vy1 - vy0) / 2;
+            let total = 0;
+            for (const it of items) total += it.mag;
+
+            const leafHalf = Math.max(vhx, vhy) / 2;
+            const out = [];
+            const stack = [[vcx, vcy, Math.max(vhx, vhy) + total, 0]];
+
+            while (stack.length) {
+                const [cx, cy, h, depth] = stack.pop();
+                const reachR = h * Math.SQRT2;
+                let lip = 0;
+                for (const it of items) {
+                    const ex = cx - it.x, ey = cy - it.y;
+                    const reach = it.cut + reachR;
+                    if (ex * ex + ey * ey <= reach * reach) lip += it.grad;
+                }
+                const d = getDisplacement(cx, cy);
+                const rho = reachR * (1 + lip);
+                if (Math.abs(cx + d.dx - vcx) > vhx + rho || Math.abs(cy + d.dy - vcy) > vhy + rho) continue;
+
+                if (h <= leafHalf || depth >= 40 || out.length + stack.length > 4000) {
+                    out.push({ x0: cx - h, y0: cy - h, x1: cx + h, y1: cy + h });
+                    continue;
+                }
+                const q = h / 2;
+                stack.push([cx - q, cy - q, q, depth + 1], [cx + q, cy - q, q, depth + 1],
+                           [cx - q, cy + q, q, depth + 1], [cx + q, cy + q, q, depth + 1]);
+            }
+            return out;
+        }
+
+        // Quadrate zu disjunkten Intervallen laengs einer Achse; t0/t1 = Ausdehnung quer dazu.
+        function mergeCover(boxes, alongX) {
+            const lo = alongX ? 'x0' : 'y0', hi = alongX ? 'x1' : 'y1';
+            const tlo = alongX ? 'y0' : 'x0', thi = alongX ? 'y1' : 'x1';
+            const sorted = boxes.slice().sort((p, q) => p[lo] - q[lo]);
+            const out = [];
+            for (const b of sorted) {
+                const last = out[out.length - 1];
+                if (last && b[lo] <= last.b) {
+                    last.b = Math.max(last.b, b[hi]);
+                    last.t0 = Math.min(last.t0, b[tlo]);
+                    last.t1 = Math.max(last.t1, b[thi]);
+                } else {
+                    out.push({ a: b[lo], b: b[hi], t0: b[tlo], t1: b[thi] });
+                }
+            }
+            return out;
+        }
+
+        // Eine Linie (isV: x = c, sonst y = c) von t0 bis t1. Gerade, wo keine
+        // Verzerrung wirkt; nur dort, wo ein Kontrollpunkt Einfluss hat, wird fein abgetastet.
+        function traceLine(c, t0, t1, isV, items, pitch) {
+            const ivs = [];
+            for (const it of items) {
+                const dc = c - (isV ? it.x : it.y);
+                const d2 = it.cut2 - dc * dc;
+                if (d2 <= 0) continue;
+                const hh = Math.sqrt(d2), mid = isV ? it.y : it.x;
+                const a = Math.max(t0, mid - hh), b = Math.min(t1, mid + hh);
+                if (a < b) ivs.push([a, b]);
+            }
+            const ts = [t0];
+            if (ivs.length) {
+                ivs.sort((p, q) => p[0] - q[0]);
+                const merged = [ivs[0].slice()];
+                for (let i = 1; i < ivs.length; i++) {
+                    const last = merged[merged.length - 1];
+                    if (ivs[i][0] <= last[1]) last[1] = Math.max(last[1], ivs[i][1]);
+                    else merged.push(ivs[i].slice());
+                }
+                for (const [a, b] of merged) {
+                    const pp = Math.max(pitch, (b - a) / 3000);
+                    ts.push(a);
+                    for (let j = Math.floor(a / pp) + 1; j * pp < b; j++) ts.push(j * pp);
+                    ts.push(b);
+                }
+            }
+            ts.push(t1);
+
+            for (let i = 0; i < ts.length; i++) {
+                const pos = isV ? transformPoint(c, ts[i]) : transformPoint(ts[i], c);
+                if (i === 0) ctx.moveTo(pos.x, pos.y);
+                else ctx.lineTo(pos.x, pos.y);
+            }
+        }
+
+        function strokeGridBatch(alongX, step, items, cover, pitch, alpha, pick) {
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            const ivs = mergeCover(cover, alongX);
+            let count = 0;
+            for (const iv of ivs) {
+                const i0 = Math.ceil(iv.a / step), i1 = Math.floor(iv.b / step);
+                for (let i = i0; i <= i1; i++) {
+                    if (!pick(i)) continue;
+                    if (++count > MAX_LINES_PER_AXIS) {
+                        if (!lineCapReported) {
+                            lineCapReported = true;
+                            console.error('co0rdinates: Linienobergrenze erreicht, Gitter wird abgeschnitten');
+                        }
+                        ctx.stroke();
+                        return;
+                    }
+                    traceLine(i * step, iv.t0, iv.t1, alongX, items, pitch);
+                }
+            }
+            ctx.stroke();
+        }
+
+        function drawGrid(cover, items) {
             if (!config.showGrid) return;
-            const step = getRenderedGridDensity();
+            const density = getRenderedGridDensity();
             const textColor = frameTextColor;
-            
+
             // 0nefinity: Bei Dichte 0 (oder negativ) wird das Gitter zum Kontinuum
             // Unendlich viele Linien = ausgefüllte Fläche
             // Negative Dichte würde eine Endlosschleife erzeugen!
-            if (step <= 0) {
+            if (density <= 0) {
                 ctx.save();
                 ctx.globalAlpha = 0.08;
                 ctx.fillStyle = textColor;
@@ -1555,132 +1718,115 @@
                 ctx.restore();
                 return;
             }
-            
+
+            // Stufen in Zehnerpotenzen: Stufe k hat Abstand density*10^k. Beim
+            // Hineinzoomen (e < 0) kommen feinere Linien hinzu und blenden ein; die
+            // groeberen (jede zehnte) bleiben. Bei ganzzahligem e gilt genau eine Stufe;
+            // bei Zoom 1 ist das die urspruengliche Gitterdichte.
+            const e = -Math.log10(viewZoom);
+            const stepPx = k => density * Math.pow(10, k) * scale;
+            let k = Math.floor(e);
+            for (let guard = 0; guard < 400 && stepPx(k + 1) < GRID_MIN_PX; guard++) k++;
+            const frac = Math.min(1, e - k);
+            let fade = 1 - frac;
+            if (fade > 0) fade *= Math.min(1, Math.max(0, (stepPx(k) - GRID_MIN_PX / 2) / (GRID_MIN_PX / 2)));
+            const step = density * Math.pow(10, k);
+            const pitch = 0.05 / Math.max(1, viewZoom);
+            const isTenth = i => ((i % 10) + 10) % 10 === 0;
+
             ctx.save();
-            ctx.globalAlpha = 0.12;
             ctx.strokeStyle = textColor;
             ctx.lineWidth = 1;
-            
-            // Finde den Startpunkt, sodass 0 immer auf einer Gitterlinie liegt
-            // Für negative Richtung: größtes Vielfaches von step, das ≤ -xRange ist
-            const startX = Math.floor(-xRange / step) * step;
-            const startY = Math.floor(-yRange / step) * step;
-            
-            // Vertikale Linien (x = const)
-            for (let x = startX; x <= xRange; x += step) {
-                ctx.beginPath();
-                let first = true;
-                for (let y = -yRange; y <= yRange; y += 0.05) {
-                    const pos = transformPoint(x, y);
-                    if (first) {
-                        ctx.moveTo(pos.x, pos.y);
-                        first = false;
-                    } else {
-                        ctx.lineTo(pos.x, pos.y);
-                    }
+            for (const alongX of [true, false]) {
+                if (fade >= 1) {
+                    strokeGridBatch(alongX, step, items, cover, pitch, 0.12, () => true);
+                } else {
+                    strokeGridBatch(alongX, step, items, cover, pitch, 0.12, isTenth);
+                    if (fade > 0.002) strokeGridBatch(alongX, step, items, cover, pitch, 0.12 * fade, i => !isTenth(i));
                 }
-                ctx.stroke();
             }
-            
-            // Horizontale Linien (y = const)
-            for (let y = startY; y <= yRange; y += step) {
-                ctx.beginPath();
-                let first = true;
-                for (let x = -xRange; x <= xRange; x += 0.05) {
-                    const pos = transformPoint(x, y);
-                    if (first) {
-                        ctx.moveTo(pos.x, pos.y);
-                        first = false;
-                    } else {
-                        ctx.lineTo(pos.x, pos.y);
-                    }
-                }
-                ctx.stroke();
-            }
-
             ctx.restore();
         }
-        
-        function drawAxes() {
+
+        function drawAxes(cover, items) {
             if (!config.showAxes) return;
             const textColor = frameTextColor;
-            
+            const pitch = 0.02 / Math.max(1, viewZoom);
+
             ctx.save();
             ctx.globalAlpha = 0.4;
             ctx.strokeStyle = textColor;
             ctx.lineWidth = 2;
-            
-            // X-Achse (y = 0)
             ctx.beginPath();
-            let first = true;
-            for (let x = -xRange; x <= xRange; x += 0.02) {
-                const pos = transformPoint(x, 0);
-                if (first) {
-                    ctx.moveTo(pos.x, pos.y);
-                    first = false;
-                } else {
-                    ctx.lineTo(pos.x, pos.y);
-                }
-            }
-            ctx.stroke();
-            
-            // Y-Achse (x = 0)
-            ctx.beginPath();
-            first = true;
-            for (let y = -yRange; y <= yRange; y += 0.02) {
-                const pos = transformPoint(0, y);
-                if (first) {
-                    ctx.moveTo(pos.x, pos.y);
-                    first = false;
-                } else {
-                    ctx.lineTo(pos.x, pos.y);
-                }
-            }
+
+            // X-Achse (y = 0) und Y-Achse (x = 0), nur wo sie im Bild landen koennen
+            const onX = mergeCover(cover, false).find(iv => iv.a <= 0 && 0 <= iv.b);
+            if (onX) traceLine(0, onX.t0, onX.t1, false, items, pitch);
+            const onY = mergeCover(cover, true).find(iv => iv.a <= 0 && 0 <= iv.b);
+            if (onY) traceLine(0, onY.t0, onY.t1, true, items, pitch);
             ctx.stroke();
             ctx.restore();
-            
-            // Beschriftungen
+
+            // Beschriftungen: bei 80% des sichtbaren Bereichs, am Bildrand haftend
             ctx.save();
             ctx.globalAlpha = 0.45;
             ctx.fillStyle = textColor;
             ctx.font = '14px system-ui';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            
-            // X bei 80% des sichtbaren Bereichs
-            const xLabelPos = transformPoint(xRange * 0.8, 0);
-            const yLabelPos = transformPoint(0, yRange * 0.8);
-            
-            ctx.fillText('x', xLabelPos.x, xLabelPos.y);
-            ctx.fillText('y', yLabelPos.x, yLabelPos.y);
+
+            const xr = (width / 2) / scale + 0.5 / viewZoom;
+            const yr = (height / 2) / scale + 0.5 / viewZoom;
+            const xLabelPos = transformPoint(viewX + xr * 0.8, 0);
+            const yLabelPos = transformPoint(0, viewY + yr * 0.8);
+            const stick = (v, max) => Math.min(max - 14, Math.max(14, v));
+
+            ctx.fillText('x', stick(xLabelPos.x, width), stick(xLabelPos.y, height));
+            ctx.fillText('y', stick(yLabelPos.x, width), stick(yLabelPos.y, height));
             ctx.restore();
         }
-        
-        function drawCircle() {
+
+        function drawCircle(cover) {
             const textColor = frameTextColor;
-            
+
             ctx.strokeStyle = textColor;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            
-            const resolution = config.circleResolution;
-            for (let i = 0; i <= resolution; i++) {
-                const angle = (i / resolution) * Math.PI * 2;
-                const mx = Math.cos(angle);
-                const my = Math.sin(angle);
-                
-                const pos = transformPoint(mx, my);
-                
-                if (i === 0) {
-                    ctx.moveTo(pos.x, pos.y);
-                } else {
-                    ctx.lineTo(pos.x, pos.y);
-                }
+
+            // Nur der Bogen, dessen Urbild in der Abdeckung liegt (Kreis um den Ursprung, Radius 1).
+            let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+            for (const b of cover) {
+                x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0);
+                x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1);
             }
-            ctx.closePath();
+            if (!(x1 >= x0)) return;
+            const bcx = (x0 + x1) / 2, bcy = (y0 + y1) / 2;
+            const reach = Math.hypot(x1 - x0, y1 - y0) / 2 + 3 / scale;
+            const dist = Math.hypot(bcx, bcy);
+            if (Math.abs(1 - dist) > reach) return;
+
+            const resolution = config.circleResolution;
+            const maxStep = Math.min((Math.PI * 2) / resolution, 4 / scale);
+            const full = 1 + dist <= reach || dist < 1e-12;
+            let from = 0, span = Math.PI * 2;
+            if (!full) {
+                const cosD = Math.max(-1, Math.min(1, (1 + dist * dist - reach * reach) / (2 * dist)));
+                const delta = Math.acos(cosD);
+                from = Math.atan2(bcy, bcx) - delta;
+                span = 2 * delta;
+            }
+            const count = Math.min(200000, Math.max(full ? resolution : 1, Math.ceil(span / maxStep)));
+
+            for (let i = 0; i <= count; i++) {
+                const angle = from + (i / count) * span;
+                const pos = transformPoint(Math.cos(angle), Math.sin(angle));
+                if (i === 0) ctx.moveTo(pos.x, pos.y);
+                else ctx.lineTo(pos.x, pos.y);
+            }
+            if (full) ctx.closePath();
             ctx.stroke();
         }
-        
+
         function drawControlPoints() {
             if (!config.showControlPoints) return;
             if (isResetting) return;
@@ -1783,6 +1929,8 @@
         }
         
         function onPointerDown(e) {
+            if (handleViewPointerDown(e)) return;
+
             if (stateTransition || isRelaxing || isResetting) {
                 e.preventDefault();
                 return;
@@ -1828,6 +1976,10 @@
                 dragOffsetY = 0;
             }
             
+            warpSnapshot = target
+                ? { cp: dragPoint, created: false, dx: dragPoint.dx, dy: dragPoint.dy, radius: dragPoint.radius, influenceRadius: config.influenceRadius }
+                : { cp: dragPoint, created: true };
+
             isDragging = true;
             isResetting = false;
 
@@ -1844,6 +1996,7 @@
         }
         
         function onPointerMove(e) {
+            if (handleViewPointerMove(e)) return;
             if (isDragging && activePointerId !== null && e.pointerId !== activePointerId) return;
 
             const pos = getPointerPos(e);
@@ -1881,9 +2034,11 @@
         }
         
         function onPointerUp(e) {
+            if (handleViewPointerEnd(e)) return;
             if (activePointerId !== null && typeof e.pointerId === 'number' && e.pointerId !== activePointerId) return;
 
             const wasDragging = isDragging;
+            warpSnapshot = null;
 
             if (typeof e.pointerId === 'number' && canvas.hasPointerCapture(e.pointerId)) {
                 canvas.releasePointerCapture(e.pointerId);
@@ -1918,6 +2073,7 @@
         }
 
         function onPointerCancel(e) {
+            if (handleViewPointerEnd(e)) return;
             if (activePointerId !== null && typeof e.pointerId === 'number' && e.pointerId !== activePointerId) return;
 
             if (typeof e.pointerId === 'number' && canvas.hasPointerCapture(e.pointerId)) {
@@ -1935,6 +2091,182 @@
             draw();
         }
         
+        // ============================================
+        // ANSICHT: ZOOM UND VERSCHIEBEN
+        // Modell aus bibelaufdenpunkt.html (Rad: Faktor 1 +- speed je Ereignis, Zoom
+        // unter dem Zeiger; Pinch: Mitte und Abstand, der Weltpunkt unter der Mitte
+        // bleibt; nach dem Pinch verschiebt der uebrige Finger weiter; keine Traegheit).
+        // Verzerren behaelt Maus links und einen Finger; Verschieben: mittlere/rechte
+        // Taste, Shift + links, zwei Finger.
+        // ============================================
+
+        const touchPoints = new Map();
+        let viewGesture = null;
+        let viewDrawQueued = false;
+        let warpSnapshot = null;
+        let viewHomeActive = false;
+
+        function scheduleViewDraw() {
+            if (viewDrawQueued) return;
+            viewDrawQueued = true;
+            requestAnimationFrame(() => {
+                viewDrawQueued = false;
+                draw();
+            });
+        }
+
+        function setViewZoom(z) {
+            viewZoom = Math.min(VIEW_ZOOM.max, Math.max(VIEW_ZOOM.min, z));
+            scale = baseScale * viewZoom;
+        }
+
+        // Weltpunkt w soll unter dem Bildschirmpunkt (sx, sy) liegen.
+        function pinViewTo(w, sx, sy) {
+            viewX = w.x - (sx - centerX) / scale;
+            viewY = w.y + (sy - centerY) / scale;
+        }
+
+        function panViewBy(dxPx, dyPx) {
+            viewX -= dxPx / scale;
+            viewY += dyPx / scale;
+        }
+
+        function stopViewHome() {
+            viewHomeActive = false;
+        }
+
+        function abortWarpDrag() {
+            if (!isDragging) return;
+            const snap = warpSnapshot;
+            if (snap) {
+                if (snap.created) {
+                    controlPoints = controlPoints.filter(cp => cp !== snap.cp);
+                } else {
+                    snap.cp.dx = snap.dx;
+                    snap.cp.dy = snap.dy;
+                    snap.cp.radius = snap.radius;
+                    if (config.influenceRadius !== snap.influenceRadius) {
+                        config.influenceRadius = snap.influenceRadius;
+                        syncInfluenceRadiusControl();
+                    }
+                }
+            }
+            if (activePointerId !== null && canvas.hasPointerCapture(activePointerId)) {
+                canvas.releasePointerCapture(activePointerId);
+            }
+            warpSnapshot = null;
+            isDragging = false;
+            dragPoint = null;
+            dragMode = null;
+            dragOffsetX = 0;
+            dragOffsetY = 0;
+            activePointerId = null;
+            invalidateCurrentStateCache();
+            setHoverState(null, null);
+        }
+
+        function beginPinch() {
+            const ids = [...touchPoints.keys()].slice(0, 2);
+            const a = touchPoints.get(ids[0]), b = touchPoints.get(ids[1]);
+            const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+            viewGesture = {
+                type: 'pinch',
+                ids,
+                startDist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+                startZoom: viewZoom,
+                anchor: screenToMath(cx, cy)
+            };
+        }
+
+        function beginPan(id, pos) {
+            viewGesture = { type: 'pan', id, lastX: pos.x, lastY: pos.y };
+        }
+
+        function handleViewPointerDown(e) {
+            const isTouch = e.pointerType === 'touch';
+            if (isTouch) {
+                touchPoints.set(e.pointerId, getPointerPos(e));
+                if (touchPoints.size >= 2) {
+                    stopViewHome();
+                    abortWarpDrag();
+                    if (!viewGesture || viewGesture.type !== 'pinch') beginPinch();
+                    canvas.setPointerCapture(e.pointerId);
+                    e.preventDefault();
+                    return true;
+                }
+                return false;
+            }
+            const panButton = e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey);
+            if (!panButton) return false;
+            stopViewHome();
+            beginPan(e.pointerId, getPointerPos(e));
+            canvas.setPointerCapture(e.pointerId);
+            canvas.style.cursor = 'grabbing';
+            e.preventDefault();
+            return true;
+        }
+
+        function handleViewPointerMove(e) {
+            if (e.pointerType === 'touch' && touchPoints.has(e.pointerId)) {
+                touchPoints.set(e.pointerId, getPointerPos(e));
+            }
+            if (!viewGesture) return false;
+            const g = viewGesture;
+            if (g.type === 'pinch') {
+                if (!g.ids.includes(e.pointerId)) return true;
+                const a = touchPoints.get(g.ids[0]), b = touchPoints.get(g.ids[1]);
+                const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+                const dist = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+                setViewZoom(g.startZoom * dist / g.startDist);
+                pinViewTo(g.anchor, cx, cy);
+            } else {
+                if (e.pointerId !== g.id) return false;
+                const pos = getPointerPos(e);
+                panViewBy(pos.x - g.lastX, pos.y - g.lastY);
+                g.lastX = pos.x;
+                g.lastY = pos.y;
+            }
+            scheduleViewDraw();
+            e.preventDefault();
+            return true;
+        }
+
+        function handleViewPointerEnd(e) {
+            const wasTouch = e.pointerType === 'touch';
+            if (wasTouch) touchPoints.delete(e.pointerId);
+            const g = viewGesture;
+            if (!g) return false;
+            if (g.type === 'pinch') {
+                if (!g.ids.includes(e.pointerId)) return true;
+                const rest = [...touchPoints.keys()];
+                if (rest.length === 1) beginPan(rest[0], touchPoints.get(rest[0]));
+                else if (rest.length >= 2) beginPinch();
+                else viewGesture = null;
+                return true;
+            }
+            if (e.pointerId !== g.id) return false;
+            viewGesture = null;
+            if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+            updateCanvasCursor(null);
+            return true;
+        }
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            stopViewHome();
+            const pos = getPointerPos(e);
+            const anchor = screenToMath(pos.x, pos.y);
+            const factor = 1 + (e.deltaY > 0 ? -VIEW_ZOOM.speed : VIEW_ZOOM.speed);
+            setViewZoom(viewZoom * factor);
+            pinViewTo(anchor, pos.x, pos.y);
+            scheduleViewDraw();
+        }, { passive: false });
+
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 1) e.preventDefault();
+        });
+
         canvas.addEventListener('pointerdown', onPointerDown);
         canvas.addEventListener('pointermove', onPointerMove);
         canvas.addEventListener('pointerup', onPointerUp);
@@ -1956,6 +2288,32 @@
             requestAnimationFrame(animateReset);
         }
         
+        // Reset fuehrt auch die Ansicht heim: gleiche Geschwindigkeit wie das Entspannen,
+        // Zoom logarithmisch, damit er ueber alle Groessenordnungen gleichmaessig laeuft.
+        function startViewHome() {
+            if (viewX === 0 && viewY === 0 && viewZoom === 1) return;
+            viewHomeActive = true;
+            requestAnimationFrame(animateViewHome);
+        }
+
+        function animateViewHome() {
+            if (!viewHomeActive) return;
+            const keep = 1 - Math.min(1, Math.max(0, config.resetSpeed));
+            viewX *= keep;
+            viewY *= keep;
+            const lz = Math.log(viewZoom) * keep;
+            setViewZoom(Math.exp(lz));
+            const done = Math.abs(lz) < 0.001 && Math.hypot(viewX, viewY) * scale < 0.25;
+            if (done) {
+                viewX = 0;
+                viewY = 0;
+                setViewZoom(1);
+                viewHomeActive = false;
+            }
+            draw();
+            if (viewHomeActive) requestAnimationFrame(animateViewHome);
+        }
+
         function startReset() {
             flushUndoCommit();
             finishStateTransition();
@@ -1973,6 +2331,7 @@
                 window.undoRedoPanel.set('symbol', '');
             }
 
+            startViewHome();
             isResetting = true;
             deletingPoints.clear();
             hoverTarget = null;
