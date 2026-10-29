@@ -2242,7 +2242,9 @@
             if (!this.el) return 0;
             const viewport = getViewportMetrics();
             const rect = this.el.getBoundingClientRect();
-            return Math.max(0, Math.min(rect.bottom, viewport.height) - Math.max(rect.top, 0));
+            // rect liegt im Layout-Viewport, viewport.height misst das sichtbare Viewport: bei verschobenem Viewport
+            // (Tastatur offen, Seite gezogen) erst in dessen Koordinaten umrechnen, sonst fehlt unten offsetTop und der Koerper wird zu kurz.
+            return Math.max(0, Math.min(rect.bottom - viewport.offsetTop, viewport.height) - Math.max(rect.top - viewport.offsetTop, 0));
         }
 
         _updateMobileViewportOffset() {
@@ -2739,7 +2741,7 @@
                 const f = document.activeElement;
                 if (!f || !this.bodyEl || !this.bodyEl.contains(f)) return;
                 const vp = getViewportMetrics();
-                const over = f.getBoundingClientRect().bottom - (vp.height - 8);
+                const over = f.getBoundingClientRect().bottom - vp.offsetTop - (vp.height - 8);
                 if (over > 0) this.bodyEl.scrollTop += over;
             };
             this._refreshMobileSheetLayout = ({ animate = false } = {}) => {
@@ -2793,8 +2795,8 @@
                 if (!isMobile() || !isTextField(e.target)) return;
                 clearTimeout(this._kbHoldTimer);
                 if (!this._kbHold && !isMostlyClosed()) {
-                    const top = this.el.getBoundingClientRect().top;
-                    this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - top };
+                    const top = this.el.getBoundingClientRect().top - getViewportMetrics().offsetTop;
+                    this._kbHold = { top, rel: e.target.getBoundingClientRect().bottom - getViewportMetrics().offsetTop - top };
                 }
             };
             this._handleKbFocusOut = () => {
