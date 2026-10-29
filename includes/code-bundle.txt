@@ -12546,23 +12546,72 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
     let fernAn = true;
     let fernMass = null;
     let neuFern = null;
-    function fernTextur(zeilen, spalten, nZeilen, zm) {
+    // Zeilen als Text in die Textur malen; laeuft auch im Worker (Quelltext per toString), daher ohne Closure-Zugriffe
+    function fernMalen(g, zeilen, sx, tch, font, farbe) {
+      g.setTransform(sx, 0, 0, sx, 0, 0);
+      g.font = font;
+      g.fillStyle = farbe;
+      g.textBaseline = 'middle';
+      g.textAlign = 'left';
+      g.fontKerning = 'none';
+      for (let i = 0; i < zeilen.length; i++) if (zeilen[i]) g.fillText(zeilen[i], 0, (i + 0.5) * tch / sx);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    // Das Malen der Fern-Textur (Hunderte lange Zeilen je Bild) ist die Hauptlast der 018-Animation: im Worker, Hauptstrang bleibt frei
+    let fernGen = 0;
+    let fernWorker = null, fernBusy = false, fernWartend = null;
+    function fernSenden(job) {
+      if (job.gen !== fernGen) return;
+      if (fernBusy) { fernWartend = job; return; }
+      fernBusy = true;
+      fernWorker.postMessage(job);
+    }
+    function fernWorkerStarten() {
+      const code = `${fernMalen}
+        let cv = null;
+        onmessage = e => {
+          const j = e.data;
+          if (!cv) cv = new OffscreenCanvas(j.bw, j.bh);
+          const g = cv.getContext('2d');
+          if (cv.width !== j.bw || cv.height !== j.bh) { cv.width = j.bw; cv.height = j.bh; } else { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, j.bw, j.bh); }
+          fernMalen(g, j.zeilen, j.sx, j.tch, j.font, j.farbe);
+          const bmp = cv.transferToImageBitmap();
+          postMessage({ gen: j.gen, bw: j.bw, bh: j.bh, bmp }, [bmp]);
+        };`;
+      const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+      const w = new Worker(url);
+      URL.revokeObjectURL(url);
+      w.onerror = e => fehler('Fern-Worker: ' + (e.message || 'Fehler'), e);
+      w.onmessage = e => {
+        const d = e.data;
+        fernBusy = false;
+        if (d.gen === fernGen) {
+          if (fern.width !== d.bw || fern.height !== d.bh) { fern.width = d.bw; fern.height = d.bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, d.bw, d.bh); }
+          fg.drawImage(d.bmp, 0, 0);
+        }
+        d.bmp.close();
+        if (fernWartend) { const j = fernWartend; fernWartend = null; fernSenden(j); }
+      };
+      return w;
+    }
+    // ueberWorker: asynchron im Worker (laufende Animation); sonst sofort auf dem Hauptstrang. Ohne OffscreenCanvas im Worker bleibt es beim Hauptstrang.
+    function fernTextur(zeilen, spalten, nZeilen, zm, ueberWorker = false) {
       const tcw = Math.min(4, 4096 / spalten, 4096 / (nZeilen * zm.h / zm.b));
       const tch = tcw * zm.h / zm.b;
       // aufrunden und die Randpixel leer lassen: Rundung auf ganze Pixel hat die Textur gegenueber dem Nahtext gestreckt
       const bw = Math.max(1, Math.ceil(spalten * tcw)), bh = Math.max(1, Math.ceil(nZeilen * tch));
       fernMass = { tcw, tch, bw, bh, spalten, nZeilen };
-      if (fern.width !== bw || fern.height !== bh) { fern.width = bw; fern.height = bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, bw, bh); }
       // Grosse Schrift unter Skalierung: kleine Schriftgroessen runden die Zeichenbreite (Hinting) und driften
       const sx = tcw / (zm.b * PROJ_F);
-      fg.setTransform(sx, 0, 0, sx, 0, 0);
-      fg.font = `bold ${PROJ_F}px ${getComputedStyle(ziel).fontFamily}`;
-      fg.fillStyle = farbe;
-      fg.textBaseline = 'middle';
-      fg.textAlign = 'left';
-      fg.fontKerning = 'none';
-      for (let i = 0; i < zeilen.length; i++) if (zeilen[i]) fg.fillText(zeilen[i], 0, (i + 0.5) * tch / sx);
-      fg.setTransform(1, 0, 0, 1, 0, 0);
+      const font = `bold ${PROJ_F}px ${getComputedStyle(ziel).fontFamily}`;
+      fernGen++;
+      if (ueberWorker && typeof OffscreenCanvas === 'function' && typeof Worker === 'function') {
+        if (!fernWorker) fernWorker = fernWorkerStarten();
+        fernSenden({ gen: fernGen, zeilen, bw, bh, sx, tch, font, farbe });
+        return;
+      }
+      if (fern.width !== bw || fern.height !== bh) { fern.width = bw; fern.height = bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, bw, bh); }
+      fernMalen(fg, zeilen, sx, tch, font, farbe);
     }
 
     function fehler(text, err) {
@@ -12673,6 +12722,8 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
     function stopp() {
       if (anim) { cancelAnimationFrame(anim.id); anim = null; }
+      fernGen++;
+      fernWartend = null;
     }
 
     function aufbauen() {
@@ -12742,7 +12793,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
         if (textAktuell || fernAn) {
           const zl = zeilenBauen(r, rep, 0, c - 1, 0, z - 1);
           if (textAktuell) textSetzen(zl);
-          if (fernAn) fernTextur(zl, c, z, zm);
+          if (fernAn) fernTextur(zl, c, z, zm, gesetzt);
         }
         if (!gesetzt) { gesetzt = true; groesseSetzen(); }
       };
@@ -13243,6 +13294,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
       container: document.body,
       minScale: 0,
       wheelSpeed: 0.03,
+      panAfterPinch: true,
       shouldIgnoreWheel: imPanel,
       initialScale: panel.params.groesse,
       initialOffsetX: (1 - panel.params.groesse) * sv0.w / 2,
@@ -77071,50 +77123,6 @@ tools/0necanvas/ui.js
   };
 })();
 
-tools/1c0de-UEBERGABE.md
-# 1c0de.html - Uebergabe
-
-Datei: `1c0de.html` (Repo 0nefinity.love, PR #179). Quelltext einer Seite wird als Kalligramm gesetzt (Text-Form oder rotierendes 018-Symbol).
-
-## Aufbau
-- Maske: Canvas, Form (Text-Form oder Symbol) zeichnen, Alpha-Schwelle (018: 16) -> Zelle innen/aussen. Zellgroesse = exakte Monospace-Zelle (Breite/Hoehe gemessen in `#mass`), line-height = Zellhoehe, Schrittweite 1/8 Geraete-Pixel.
-- Raster: Quelle ohne Whitespace, Codepoints (astralsicher). Binaere Suche nach kleinster Spaltenzahl c, bei der Zellzahl >= N. Zeilen = round(c*Aspekt*cw/ch). Max. `MASKE_B` = 1600 Spalten.
-- Fuellung: nach Index der Reihe nach, bei Ende von vorn (Wiederholung). Leerzeichen am Zeilenende gekuerzt. Nicht-Leerraum == Code in Reihenfolge.
-- Fuellcode 018: Ausschnitt aus `/0nefinity.js` von `function drawFrameWithAngle(` bis `// Funktion zum Zuschneiden transparenter` (der Code, der das Startseiten-Symbol zeichnet).
-- Animation 018: Geometrie identisch zum Favicon/Startseite (`drawFrameWithAngle`, `AUTO_SPEED_CONFIG`). Virtueller 60-Hz-Takt (`zeit`), ein c x z Canvas (`willReadFrequently`) direkt, pro Frame zeichnen + getImageData + Maske, Textknoten nur bei Aenderung, einmal pro Frame. Spaltenzahl aus 12 Probewinkeln, Reserve x1.15. `prefers-reduced-motion`: ein Frame.
-- Ansicht: `tools/zoom.js` (Zoom2D, Config 1c0de.html:794): Rad 3 % je Schritt, Zoom unter Zeiger/Pinch-Mitte, Ziehen mit Maus und Finger, Pan unbegrenzt, Zoom nach aussen unbegrenzt (minScale 0). Die Bildmitte ist `ansichtMitte(sv)` (Zeile ~447ff); `groesseSetzen` (566) setzt `#fern`/`#nah`/`#muster` aus derselben Mitte. Regler "groesse" 0..4 ist Zusatzzoom, 0 erlaubt. Panel (`imPanel`) bleibt von Zoom/Pan ausgenommen.
-- Resize/Rotation: 150 ms entprellt, Text-Modus baut neu, 018 passt nur Groesse an; kein Reload.
-
-## Nah/Fern-Technik (aus bibelaufdenpunkt.html uebernommen)
-Zwei Ebenen: `#muster` (echter Text, nah) und Canvas `#fern` (Form als Textur, fern). Ueberblendung per CSS-Opacity mit `smoothstep(FERN_START, FERN_ENDE, Zeichengroesse in Geraete-Pixel)`: 1.5 / 4 (dort 3.2 / 10). Text wird unterhalb der Schwelle gar nicht gebaut. Farbe der Textur per `source-in`. Nicht uebernommen: progressive Texturstufen, Presence-Overlay. Gleiche Technik fuer das Gesamtcode-Symbol verwenden: Fern-Textur aus derselben Maske, Opacity-Kopplung an Zeichengroesse.
-
-## Messwerte
-018 bei 4x CPU-Drosselung: 21-23 Updates/s (vorher 7.2), ungedrosselt 30/s. Kein Querscroll (Pixel 7, iPhone 390x844, Desktop 1440x900, hoch und quer).
-
-## Bekannte Grenzen
-- Ebenenversatz fern/nah gemessen < 1 CSS px (Text 0.14-0.63, Projekt <= 0.73 Canvas-px).
-- Panel-Ueberlappung wird bei der Passung ignoriert.
-- Schwellen 1.5/4 nach Augenmass, nicht pro Geraet getunt.
-- Bei 4x Drosselung nur knapp ueber 20/s.
-
-## Ursache der Doppelzeichen (behoben)
-Die DOM-Box von `#muster` ist so breit wie die breiteste Zeile (Leerzeichen am Zeilenende gekuerzt) und so hoch wie die gerenderten Zeilen (leere Schlusszeile entfaellt). Das 018-Raster hat ~15 % Leerrand (563 Spalten, breiteste Zeile 481), `Box/raster.spalten` war daher eine falsche Zellgroesse und das Gitter wurde nach der Box zentriert, die Fern-Textur deckt aber das ganze Gitter: Versatz 1.17x. Fix: `textMasse` (Spalten/Zeilen der echten Box), Zellgroesse = Box / textMasse, Gitter aus der Ansichtsmitte zentriert. Chrome rastet den Zeilenabstand auf 1/64 px; die echte Box ist Referenz.
-
-## Inventar bibelaufdenpunkt.html (Zeile : Inhalt : Status)
-- 209 `touch-action: none` auf dem Container : uebernommen (zoom.js setzt es).
-- 410-413 `CONFIG.ZOOM`, Radschritt 0.03 : uebernommen (wheelSpeed 0.03).
-- 747 `getViewportMetrics` (Container-Rect als Bezug) : uebernommen als `ansichtMitte`.
-- 3511 `beginScenePan`, 3547 `updateScenePinch` : Pan mit Maus/Finger, Pinch mit Mittelpunkt als Anker : durch Zoom2D abgedeckt.
-- 3875 `wheel` am Container : Zoom am Zeiger : uebernommen.
-- 3910 `touchmove`, 3921 `touchend`: nach Pinch zieht der verbliebene Finger weiter : uebernommen in `tools/zoom.js` onTouchEnd.
-- 3584-3773 Textur/Blend/`applyTransform` (3671) : Fern/Nah-Ueberblendung : sinngemaess uebernommen (weich()).
-- 3934 `resize` (1629-1660 Auto-Fit) : 150 ms entprellt, Mitte neu : uebernommen (Layout-Mitte bleibt, kein Reload).
-- Nicht uebernommen: progressive Texturstufen und Neurender-Schwellen (Zeichenzahl hier klein genug), Presence-Overlay, Drop-Bible-Overlay, Fluestertexte, Karussell (6892ff), `viewAutoFit`.
-- In der Quelle nicht vorhanden (daher nichts zu portieren): Traegheit, Doppeltipp auf der Szene, Tastatur-Pan/Zoom, URL-/History-Zustand, visualViewport.
-
-## Seite-Feld
-Eingabe in der Panelzeile "Seite" nutzt `window.menuSuche.suchen()` aus `meta.js` (gleiche Fuzzy-Suche und `includes/search-index.json` wie das Menue). Treffer als Liste (`ctrl-select-popup`), Pfeiltasten/Enter/Klick laden die Seite als Quelle; Liste scrollt im Panel sichtbar.
-
 tools/claude-chat.js
 // Seiten-Chat: eingeloggt (dev-Login, /api/auth/me) bekommt die Seite rechts einen eingeklappten Knopf
 // "claude"; offen zeigt er den Verlauf der zugeordneten Claude-Sitzung und ein Eingabefeld.
@@ -90345,6 +90353,7 @@ tools/zoom.js
     shouldIgnoreWheel: null,
     shouldIgnoreDrag: null,
     shouldIgnoreTouchDrag: null,
+    panAfterPinch: false,
     getScrollX: null,
     getScrollY: null,
   };
@@ -90597,7 +90606,7 @@ tools/zoom.js
     function onTouchEnd(e) {
       if (e.touches.length < 2) {
         // Nach dem Pinch zieht der verbliebene Finger weiter (wie bibelaufdenpunkt.html, touchend)
-        if (pinch.active && e.touches.length === 1) {
+        if (cfg.panAfterPinch && pinch.active && e.touches.length === 1) {
           isDragging = true;
           lastX = e.touches[0].clientX;
           lastY = e.touches[0].clientY;
