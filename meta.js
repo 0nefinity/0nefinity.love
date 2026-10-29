@@ -719,8 +719,37 @@ function initMenuSearch(menu, fileList) {
         }
     });
 
+    // Gleiche Suche (Name unscharf, Volltext) fuer andere Eingabefelder, z. B. das Seitenfeld in 1c0de.html.
+    // Liefert je Treffer href, label, dir und Funktionen, die Linktext bzw. Ausschnitt mit <mark> in ein Element schreiben.
+    async function suchen(queryRaw) {
+        const query = queryRaw.trim();
+        if (!query) return { treffer: [], mehr: 0, fehler: false, fertig: true };
+        if (contentState.state === 'idle') await loadContent();
+        const { hits, altsList } = search(query);
+        const treffer = hits.map(entry => ({
+            href: entry.href, label: entry.label, dir: entry.dir,
+            fuellen: el => renderLabel(el, entry, altsList), ausschnitt: null
+        }));
+        const inContent = contentHits(altsList, new Set(hits.map(h => h.href)));
+        const byHref = new Map(entries.map(e => [e.href, e]));
+        inContent.slice(0, CONTENT_CAP).forEach(({ doc, m }) => {
+            const entry = byHref.get(doc.href);
+            treffer.push({
+                href: doc.href, label: entry.label, dir: entry.dir,
+                fuellen: el => { el.textContent = entry.label; },
+                ausschnitt: el => renderSnippet(el, doc, m, altsList)
+            });
+        });
+        return {
+            treffer, mehr: Math.max(0, inContent.length - CONTENT_CAP),
+            fehler: contentState.state === 'error',
+            fertig: contentState.state === 'ready' || contentState.state === 'error'
+        };
+    }
+
     return {
         reset: clearSearch,
+        suchen,
         focus() {
             searchInput.focus();
             searchInput.select();
@@ -734,6 +763,7 @@ if (menu && menuButton && menuToggle) {
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
     const search = initMenuSearch(menu, fileList);
+    window.menuSuche = search;
 
     // Zurück-Taste schließt das Menü: offen = ein History-Eintrag {menu:true}.
     // Jedes Schließen ohne Zurück-Taste nimmt den Eintrag per history.back() wieder weg,
