@@ -3199,8 +3199,7 @@ html.oe-editing .ctrl-panel .ctrl-button {
         --ctrl-mobile-effective-bottom-offset: max(
             var(--ctrl-mobile-bottom-offset, 0px),
             var(--visible-viewport-bottom, 0px),
-            env(safe-area-inset-bottom, 0px),
-            env(keyboard-inset-height, 0px)
+            env(safe-area-inset-bottom, 0px)
         );
         top: auto;
         bottom: var(--ctrl-mobile-effective-bottom-offset);
