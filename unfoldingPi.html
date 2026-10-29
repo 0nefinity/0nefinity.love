@@ -186,6 +186,7 @@
     // ─── Ansicht ───
     // Einzelnes pi: Ganzzahl und Dezimalpunkt sind ein statisches Overlay (nie Teil des Stroms); ONE_DOT = false ist der alte Zustand (Punkt im Strom).
     const ONE_DOT = true, DOT_ALPHA = 1;
+    let dotScale = 1;   // Regler "your circle width": Durchmesser des Punkts im Verhaeltnis zum Schriftpunkt (1 = Standard); pi selbst bleibt gleich
     let dotCache = null;   // dotMetrics (unten); hier, weil es schon beim Anlegen der Ansicht braucht
     const ORIGIN = UnfoldingView.MARGIN + 24;   // Zelle 0 (die 3); links davon 24 px Greifflaeche fuer das linke Ende
     const fontSize = () => Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
@@ -492,7 +493,7 @@
       const SW = stage.clientWidth, SH = stage.clientHeight, w = cellW(), p0 = MARGIN + w / 2, n = multi.items.length;
       const A = freeArea();
       if (form === 'kette') {
-        const dh = dotMetrics().half, dc = dh + 0.5;
+        const dh = dotHalf(), dc = dh + 0.5;
         // Bezugsstelle: gerade Zahl = mittlere Verbindungsstelle (Grenze n/2), ungerade = Punkt des mittleren Glieds (ANNAHME)
         const mid = Math.floor(n / 2);
         const j = n % 2 === 0 ? mid : (multi.items[mid].dir === 'r' ? mid : mid + 1);
@@ -526,7 +527,7 @@
         return;
       }
       const xmin = A.x0;
-      const cx = A.cx, cy = A.cy, BH = Math.round(3 * fontSize()), dh = dotMetrics().half, dc = dh + 0.5;
+      const cx = A.cx, cy = A.cy, BH = Math.round(3 * fontSize()), dh = dotHalf(), dc = dh + 0.5;
       multi.cx = cx; multi.cy = cy;
       multi.items.forEach((it, k) => {
         const th = 360 * k / n, rad = th * Math.PI / 180, co = Math.cos(rad), si = Math.sin(rad);
@@ -576,9 +577,12 @@
         return { l, r, t, b };
       };
       const dot = ink('.'), one = ink('1');
-      dotCache = { fs, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K };
+      dotCache = { fs, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K, bot: (dot.b - S / 2) / K };
       return dotCache;
     }
+    const dotHalf = () => dotMetrics().half * dotScale;
+    // Der Punkt ist die Konstante: der Strich (gefaltete Ziffern) ist genau so breit wie er und deckt ihn nur, verschwindet er nie
+    function syncFoldWidth() { const D = 2 * dotHalf(); if (view.state().foldWidth !== D) view.setFoldWidth(D); }
     function drawDots(raw) {
       const T = multi || single;
       if (!T.punkt) return;
@@ -591,6 +595,7 @@
       const BW = Math.max(1, Math.round(SW * dpr)), BHt = Math.max(1, Math.round(SH * dpr));
       if (cv.width !== BW) cv.width = BW;
       if (cv.height !== BHt) cv.height = BHt;
+      if (!multi) syncFoldWidth();
       const g = cv.getContext('2d'), dm = dotMetrics();
       g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, BW, BHt);
       // Ohne Transform gezeichnet: WebKit wendet nach dem Wechsel in den Bearbeiten-Modus setTransform(dpr) doppelt an (Zeichnung 2x verschoben)
@@ -599,12 +604,9 @@
       g.fillStyle = getComputedStyle(stage).color;
       if (!multi && !ONE_DOT) return;
       g.globalAlpha = DOT_ALPHA;
-      // Ganz eingeschoben liegt der Strich auf dem Punkt und deckt ihn ("3|"); erst beim Herausziehen erscheint er
-      const covered = !multi && view && (() => {
-        const st = view.state(), off = canvas.getBoundingClientRect().left - stage.getBoundingClientRect().left;
-        return off + st.R < pts[0].x + dm.half || off + st.L > pts[0].x - dm.half || (!st.fold && st.uLeft > 0.5);   // Strich/Falte auf dem Punkt: nur sie, kein Punkt darunter
-      })();
-      if (!covered) for (const q of pts) g.fillText('.', (PUNKT_X(q) - dm.dx) * dpr, (q.y + dm.dy) * dpr);
+      // Kreis (rund bei jeder Groesse), Unterkante wie der Schriftpunkt auf der Grundlinie der Ziffern; Mitte waagerecht auf dem Punkt
+      const r = dotHalf();
+      if (r > 0) for (const q of pts) { g.beginPath(); g.arc(PUNKT_X(q) * dpr, (q.y + dm.dy + dm.bot - r) * dpr, r * dpr, 0, 2 * Math.PI); g.fill(); }
       g.globalAlpha = 1;
     }
     // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
@@ -887,6 +889,13 @@
         factorValue = +v || 0;
         view.setFactor(factorValue);
         if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
+      }
+    });
+    panel.addSlider('circle', {
+      label: 'your circle width', min: 0, max: 4, step: 0.01, value: 1, decimals: 2, grow: true,
+      onChange: (v) => {
+        dotScale = Math.max(0, +v || 0);
+        if (multi) layoutMulti(); else centreSingle();
       }
     });
     panel.addButton('notation', { label: 'change notation', onClick: () => setNotation(notation === 'zero' ? 'int' : 'zero') });

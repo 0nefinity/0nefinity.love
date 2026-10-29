@@ -31,6 +31,7 @@
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
+ *   view.setFoldWidth(px)               // nur fold: Breite des Strichs in css px (Durchmesser des Punkts); gefaltete Ziffern laufen auf diese Breite zu
  *   view.setFactor(f)  view.setLocked(b)  view.invalidate()  view.refreshColor()
  *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
@@ -133,6 +134,8 @@
     const NG = GLYPHS.length, AVG = NG, NGA = NG + 1;
     let acc = new Float32Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
+    let fw = 0;   // fold: Strichbreite in css px (setFoldWidth); 0 = Haarlinie
+    const fwDev = () => (fold ? fw * dpr : 0);
     let dirty = true;
     let velocity = 0, drawnCount = 0;
     let locked = false;
@@ -427,11 +430,19 @@
         if (c >= 0 && c < accCols) {
           cntC.fill(0); cntF.fill(0); cntMiss = 0;
           addRange(a, b);
-          const o = c * NGA;
-          for (let t = 0; t < 10; t++) acc[o + t] += cntC[t] + FILE_ALPHA * cntF[t];
-          acc[o + 10] += cntC[10];
-          acc[o + AVG] += FILE_ALPHA * cntMiss;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
-          mark(zone, c);
+          // fold: gefaltete Tinte ist nie schmaler als der Strich (= Punktbreite): die Zaehlung dieser Spalte verteilt sich auf
+          // fwDev Geraetepixel um die Mitte ihrer Ziffern (Tinte bleibt erhalten, nur breiter). Ohne Strichbreite: eine Spalte.
+          const D = fwDev();
+          const xc = (posOf(a) + posOf(b)) / 2 * dpr, sLo = D > 1 ? xc - D / 2 : c, sHi = D > 1 ? xc + D / 2 : c + 1;
+          for (let cc = Math.max(0, Math.floor(sLo)); cc < sHi && cc < accCols; cc++) {
+            const f = D > 1 ? (Math.min(cc + 1, sHi) - Math.max(cc, sLo)) / D : 1;
+            if (!(f > 0)) continue;
+            const o = cc * NGA;
+            for (let t = 0; t < 10; t++) acc[o + t] += (cntC[t] + FILE_ALPHA * cntF[t]) * f;
+            acc[o + 10] += cntC[10] * f;
+            acc[o + AVG] += FILE_ALPHA * cntMiss * f;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
+            mark(zone, cc);
+          }
           if (colLog) colLog.set(c, { c, a, b, zone: zone === zoneL ? 'L' : 'R', cntC: Array.from(cntC), cntF: Array.from(cntF), miss: cntMiss, inf: 0 });
         }
         a = b;
@@ -674,7 +685,14 @@
       const ext = ex[1] - ex[0], free = gw - ext;
       if (!(ext > 0)) return;
       const s0 = ex[0], s1 = ex[1];
-      const w2 = Math.min(wDev, ext), sx = wDev > ext && free > 0 ? xDev + (wDev - ext) * ex[0] / free : xDev;
+      let w2 = Math.min(wDev, ext), sx = wDev > ext && free > 0 ? xDev + (wDev - ext) * ex[0] / free : xDev;
+      // fold: gefaltete Tinte laeuft auf die Strichbreite D zu, um ihre Mitte. D <= Tintenbreite: nie schmaler als D. D > Tintenbreite:
+      // stetig von der natuerlichen Breite (volle Zelle) bis D (Zelle 0), die Ziffer wird beim Hineinschieben breiter. Immer monoton in der Zelle.
+      const D = fwDev();
+      if (D > 0) {
+        const iw = D > ext ? ext + (D - ext) * (1 - Math.min(1, wDev / gw)) : Math.max(w2, D);
+        if (iw !== w2) { sx += (w2 - iw) / 2; w2 = iw; }
+      }
       const sc = (s1 - s0) / w2, end = sx + w2;
       if (depLog) { const e = depLog[depLog.length - 1]; if (e && e.x === xDev && e.w === wDev) { e.s0 = s0; e.s1 = s1; e.dx = sx; e.dw = w2; } }
       for (let c = Math.floor(sx); c < end; c++) {
@@ -951,6 +969,12 @@
 
     // ─── Verdichtungsfaktor ───
     // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen. Offen folgt L der 3.
+    function setFoldWidth(px) {
+      if (!fold) throw new Error('UnfoldingView.setFoldWidth: nur im fold-Modus');
+      if (!(+px >= 0) || !Number.isFinite(+px)) throw new TypeError('UnfoldingView.setFoldWidth: Zahl >= 0 erwartet, war ' + px);
+      fw = +px;
+      dirty = true;
+    }
     function setFactor(f) {
       factor = clampFactor(f);
       settle(rolledLeft() ? 'x' : 'three');
@@ -1009,7 +1033,7 @@
     }
 
     return {
-      setDigits, appendDigits, rewind, resize, setOrigin, setFactor, destroy, refreshColor, setRemote,
+      setDigits, appendDigits, rewind, resize, setOrigin, setFactor, setFoldWidth, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       setHover,
       // Nur lesend (Debug-Anzeige, Tests): Ziehzonen in Canvas-px, [von, bis]; links nur wo das linke Ende ziehbar ist
@@ -1050,7 +1074,7 @@
           L, R, X0, d, dEff: dd, fold: fold ? { x: foldX(), hs: pHs, gap: gapX() } : null, factor, w, W, H, dpr, uLeft: leftU(dd),
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
-          velocity, drawnCount,
+          velocity, drawnCount, foldWidth: fw,
           chainLength: chainLen, totalLength: total(), step, blur, sausen,
           inkTop: atlas ? inkTop / dpr + (H / 2 - gh / dpr / 2) : null,   // null bis zum ersten Bild
           inkBottom: atlas ? inkBottom / dpr + (H / 2 - gh / dpr / 2) : null,
