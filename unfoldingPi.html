@@ -603,6 +603,8 @@
       g.textAlign = 'center'; g.textBaseline = 'middle';   // wie die Ziffern; dy (dotMetrics) legt die Punkt-Unterkante auf die der Ziffern
       g.fillStyle = getComputedStyle(stage).color;
       if (!multi && !ONE_DOT) return;
+      // Der Punkt bleibt, wird aber ganz verdeckt, sobald Ziffern in ihn gefaltet sind: ihre Tinte steht dann auf ihm und er scheint nicht durch die Luecken (eine einzelne 3 hat Luecken)
+      if (!multi) { const st = view.state(); if (st.L >= st.fold.x - 0.5 || st.R <= st.fold.x + 0.5) return; }
       g.globalAlpha = DOT_ALPHA;
       // Kreis (rund bei jeder Groesse), Unterkante wie der Schriftpunkt auf der Grundlinie der Ziffern; Mitte waagerecht auf dem Punkt
       const r = dotHalf();
