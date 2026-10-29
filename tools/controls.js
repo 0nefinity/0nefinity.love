@@ -2595,7 +2595,7 @@
 
         // Variante ?panel=css: kein Messen, kein visualViewport, kein ResizeObserver. Lage und Hoehe rechnet der Browser
         // aus meta.css (html.ctrl-css-sheet); hier wird nur --ctrl-sheet gesetzt, der Anteil von 100dvh, den das Blatt
-        // hoechstens einnimmt. Zwischen 0 und 1 liegt alles, was das Blatt sein kann.
+        // hoechstens einnimmt.
         _initCssSheet() {
             const el = this.el;
             const vh = () => Math.max(1, window.innerHeight);
