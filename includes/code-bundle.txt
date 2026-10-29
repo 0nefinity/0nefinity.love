@@ -91142,7 +91142,7 @@ unfoldingPi.html
     .pi-form[data-off] { visibility: hidden; }
     .pi-form button { height: calc(var(--pi-h) - 4px); padding: 0; line-height: 1; border: 0; border-radius: 6px; background: transparent; cursor: pointer; opacity: 0.6; }
     .pi-form button[aria-pressed="true"] { background: var(--ui-fill-15); opacity: 1; }
-    .pi-list { display: flex; flex-direction: column; gap: var(--pi-gap); height: calc(3 * var(--pi-h) + 2 * var(--pi-gap)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }
+    .pi-list { display: flex; flex-direction: column; gap: var(--pi-gap); max-height: calc(3 * var(--pi-h) + 2 * var(--pi-gap)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }
     .pi-row { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 5rem 6rem; gap: var(--pi-gap); height: var(--pi-h); }
     .pi-sel { position: relative; display: block; min-width: 0; }
     .pi-sel::after { content: ''; position: absolute; right: 0.95rem; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--ui-text-70); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
@@ -91697,9 +91697,9 @@ unfoldingPi.html
       // Der Punkt bleibt, wird aber ganz verdeckt, sobald Ziffern in ihn gefaltet sind: ihre Tinte steht dann auf ihm und er scheint nicht durch die Luecken (eine einzelne 3 hat Luecken)
       if (!multi) { const st = view.state(); if (st.L >= st.fold.x - 0.5 || st.R <= st.fold.x + 0.5 || st.uLeft > 0) return; }
       g.globalAlpha = DOT_ALPHA;
-      // Kreis (rund bei jeder Groesse), Unterkante wie der Schriftpunkt auf der Grundlinie der Ziffern; Mitte waagerecht auf dem Punkt
+      // Kreis (rund bei jeder Groesse), Mitte = Mitte des Schriftpunkts (Standardgroesse sitzt auf der Grundlinie), Skalierung um diese Mitte
       const r = dotHalf();
-      if (r > 0) for (const q of pts) { g.beginPath(); g.arc(PUNKT_X(q) * dpr, (q.y + dm.dy + dm.bot - r) * dpr, r * dpr, 0, 2 * Math.PI); g.fill(); }
+      if (r > 0) for (const q of pts) { g.beginPath(); g.arc(PUNKT_X(q) * dpr, (q.y + dm.dy + dm.bot - dm.half) * dpr, r * dpr, 0, 2 * Math.PI); g.fill(); }
       g.globalAlpha = 1;
     }
     // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
@@ -91803,7 +91803,7 @@ unfoldingPi.html
       changed();
     }
     // Panel: eine Zeile je Konstante [Auswahl][mirror][x]. Die Zeilen werden gezielt ergaenzt, entfernt und umgeschrieben,
-    // nie neu aufgebaut; die Liste hat feste Hoehe (drei Zeilen), so bewegt sich beim Klick nichts.
+    // nie neu aufgebaut; die Liste waechst mit den Zeilen bis drei, danach scrollt sie (keine Leerflaeche bei einer Konstante).
     const ui = { rows: new Map(), list: null, form: null };
     const mk = (tag, cls, attrs) => { const e = document.createElement(tag); if (cls) e.className = cls; if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
     function buildConstPanel() {
