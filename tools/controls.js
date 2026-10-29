@@ -360,10 +360,11 @@
         return window.innerWidth <= 768;
     }
 
-    // Vergleich (?panel=css): das Handy-Blatt sitzt nur per CSS (position:fixed, bottom:0, Hoehe als Anteil von 100dvh).
-    // JS schreibt dann eine einzige Zahl, und nur, wenn ein Finger das Blatt zieht. Die Tastatur verkleinert dafuer das
-    // Layout-Viewport (interactive-widget=resizes-content), so dass bottom:0 von selbst ueber ihr liegt.
-    const CSS_SHEET = new URLSearchParams(location.search).get('panel') === 'css';
+    // Das Handy-Blatt sitzt nur per CSS (position:fixed, bottom:0, Hoehe als Anteil von 100dvh). JS schreibt dann eine
+    // einzige Zahl, und nur, wenn ein Finger das Blatt zieht. Die Tastatur verkleinert dafuer das Layout-Viewport
+    // (interactive-widget=resizes-content), so dass bottom:0 von selbst ueber ihr liegt. ?panel=alt holt das alte,
+    // per visualViewport nachgefuehrte Blatt zurueck.
+    const CSS_SHEET = new URLSearchParams(location.search).get('panel') !== 'alt';
     if (CSS_SHEET) {
         document.documentElement.classList.add('ctrl-css-sheet');
         const widget = () => document.querySelectorAll('meta[name="viewport"]').forEach(m => {
@@ -2593,7 +2594,7 @@
 	            }
         }
 
-        // Variante ?panel=css: kein Messen, kein visualViewport, kein ResizeObserver. Lage und Hoehe rechnet der Browser
+        // CSS-Blatt (Standard, ?panel=alt schaltet es ab): kein Messen, kein ResizeObserver, visualViewport nur fuer die Tastatur (unten). Lage und Hoehe rechnet der Browser
         // aus meta.css (html.ctrl-css-sheet); hier wird nur --ctrl-sheet gesetzt, der Anteil von 100dvh, den das Blatt
         // hoechstens einnimmt.
         _initCssSheet() {
@@ -2630,6 +2631,31 @@
                 if (isClosed()) set(lastOpen, true);
             };
             requestAnimationFrame(() => set(lastOpen, false));
+
+            // Safari kennt interactive-widget nicht (und ob Chrome es nachtraeglich gesetzt uebernimmt, ist offen): dann
+            // bleibt das Layout-Viewport gross und die Tastatur liegt ueber bottom:0. Nur solange ein Textfeld im Blatt
+            // fokussiert ist, hebt --ctrl-kb das Blatt um den verdeckten Teil an. Wo resizes-content greift, ist der Teil 0
+            // und es wird nichts geschrieben; die Zahl haengt nicht an der Groesse des Blatts, kann sich also nicht aufschaukeln.
+            const vv = window.visualViewport;
+            if (vv) {
+                const typing = () => {
+                    const a = document.activeElement;
+                    return !!a && el.contains(a) && a.matches('textarea, [contenteditable], input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]):not([type=button]):not([type=file])');
+                };
+                let kb = 0, raf = 0;
+                const measure = () => {
+                    raf = 0;
+                    const next = typing() ? Math.max(0, Math.round(window.innerHeight - vv.offsetTop - vv.height)) : 0;
+                    if (Math.abs(next - kb) < 2) return;
+                    kb = next;
+                    el.style.setProperty('--ctrl-kb', `${kb}px`);
+                };
+                const queue = () => { if (!raf) raf = requestAnimationFrame(measure); };
+                vv.addEventListener('resize', queue);
+                vv.addEventListener('scroll', queue);
+                el.addEventListener('focusin', queue);
+                el.addEventListener('focusout', () => setTimeout(queue, 0));
+            }
 
             let drag = null;
             const startDrag = (e) => {

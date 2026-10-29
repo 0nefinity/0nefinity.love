@@ -55080,15 +55080,16 @@ html.oe-editing .ctrl-panel .ctrl-button {
         box-sizing: border-box;
     }
 
-    /* Vergleich ?panel=css: Blatt nur aus CSS, siehe CSS_SHEET in tools/controls.js */
+    /* Handy-Blatt nur aus CSS (Standard; ?panel=alt = altes Blatt), siehe CSS_SHEET in tools/controls.js.
+       --ctrl-kb ist nur dort > 0, wo der Browser die Tastatur ueber das Layout legt (Safari). */
     html.ctrl-css-sheet .ctrl-panel,
     html.ctrl-css-sheet .ctrl-panel.position-left,
     html.ctrl-css-sheet .ctrl-panel.position-right {
         top: auto !important;
-        bottom: env(safe-area-inset-bottom, 0px) !important;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + var(--ctrl-kb, 0px)) !important;
         transform: none !important;
         height: auto !important;
-        max-height: max(var(--ctrl-mobile-header-height, 42px), calc(var(--ctrl-sheet, 0.3333) * 100dvh)) !important;
+        max-height: max(var(--ctrl-mobile-header-height, 42px), calc(var(--ctrl-sheet, 0.3333) * (100dvh - var(--ctrl-kb, 0px)))) !important;
     }
 
     html.ctrl-css-sheet .ctrl-panel.ctrl-sheet-animate {
@@ -77834,10 +77835,11 @@ tools/controls.js
         return window.innerWidth <= 768;
     }
 
-    // Vergleich (?panel=css): das Handy-Blatt sitzt nur per CSS (position:fixed, bottom:0, Hoehe als Anteil von 100dvh).
-    // JS schreibt dann eine einzige Zahl, und nur, wenn ein Finger das Blatt zieht. Die Tastatur verkleinert dafuer das
-    // Layout-Viewport (interactive-widget=resizes-content), so dass bottom:0 von selbst ueber ihr liegt.
-    const CSS_SHEET = new URLSearchParams(location.search).get('panel') === 'css';
+    // Das Handy-Blatt sitzt nur per CSS (position:fixed, bottom:0, Hoehe als Anteil von 100dvh). JS schreibt dann eine
+    // einzige Zahl, und nur, wenn ein Finger das Blatt zieht. Die Tastatur verkleinert dafuer das Layout-Viewport
+    // (interactive-widget=resizes-content), so dass bottom:0 von selbst ueber ihr liegt. ?panel=alt holt das alte,
+    // per visualViewport nachgefuehrte Blatt zurueck.
+    const CSS_SHEET = new URLSearchParams(location.search).get('panel') !== 'alt';
     if (CSS_SHEET) {
         document.documentElement.classList.add('ctrl-css-sheet');
         const widget = () => document.querySelectorAll('meta[name="viewport"]').forEach(m => {
@@ -80067,7 +80069,7 @@ tools/controls.js
 	            }
         }
 
-        // Variante ?panel=css: kein Messen, kein visualViewport, kein ResizeObserver. Lage und Hoehe rechnet der Browser
+        // CSS-Blatt (Standard, ?panel=alt schaltet es ab): kein Messen, kein ResizeObserver, visualViewport nur fuer die Tastatur (unten). Lage und Hoehe rechnet der Browser
         // aus meta.css (html.ctrl-css-sheet); hier wird nur --ctrl-sheet gesetzt, der Anteil von 100dvh, den das Blatt
         // hoechstens einnimmt.
         _initCssSheet() {
@@ -80104,6 +80106,31 @@ tools/controls.js
                 if (isClosed()) set(lastOpen, true);
             };
             requestAnimationFrame(() => set(lastOpen, false));
+
+            // Safari kennt interactive-widget nicht (und ob Chrome es nachtraeglich gesetzt uebernimmt, ist offen): dann
+            // bleibt das Layout-Viewport gross und die Tastatur liegt ueber bottom:0. Nur solange ein Textfeld im Blatt
+            // fokussiert ist, hebt --ctrl-kb das Blatt um den verdeckten Teil an. Wo resizes-content greift, ist der Teil 0
+            // und es wird nichts geschrieben; die Zahl haengt nicht an der Groesse des Blatts, kann sich also nicht aufschaukeln.
+            const vv = window.visualViewport;
+            if (vv) {
+                const typing = () => {
+                    const a = document.activeElement;
+                    return !!a && el.contains(a) && a.matches('textarea, [contenteditable], input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]):not([type=button]):not([type=file])');
+                };
+                let kb = 0, raf = 0;
+                const measure = () => {
+                    raf = 0;
+                    const next = typing() ? Math.max(0, Math.round(window.innerHeight - vv.offsetTop - vv.height)) : 0;
+                    if (Math.abs(next - kb) < 2) return;
+                    kb = next;
+                    el.style.setProperty('--ctrl-kb', `${kb}px`);
+                };
+                const queue = () => { if (!raf) raf = requestAnimationFrame(measure); };
+                vv.addEventListener('resize', queue);
+                vv.addEventListener('scroll', queue);
+                el.addEventListener('focusin', queue);
+                el.addEventListener('focusout', () => setTimeout(queue, 0));
+            }
 
             let drag = null;
             const startDrag = (e) => {
