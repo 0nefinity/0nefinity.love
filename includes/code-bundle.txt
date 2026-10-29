@@ -88388,6 +88388,7 @@ tools/unfolding-view.js
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
+ *   view.setFoldWidth(px)               // nur fold: Breite des Strichs in css px (Durchmesser des Punkts); gefaltete Ziffern laufen auf diese Breite zu
  *   view.setFactor(f)  view.setLocked(b)  view.invalidate()  view.refreshColor()
  *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
@@ -88490,6 +88491,8 @@ tools/unfolding-view.js
     const NG = GLYPHS.length, AVG = NG, NGA = NG + 1;
     let acc = new Float32Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
+    let fw = 0;   // fold: Strichbreite in css px (setFoldWidth); 0 = Haarlinie
+    const fwDev = () => (fold ? fw * dpr : 0);
     let dirty = true;
     let velocity = 0, drawnCount = 0;
     let locked = false;
@@ -88784,11 +88787,19 @@ tools/unfolding-view.js
         if (c >= 0 && c < accCols) {
           cntC.fill(0); cntF.fill(0); cntMiss = 0;
           addRange(a, b);
-          const o = c * NGA;
-          for (let t = 0; t < 10; t++) acc[o + t] += cntC[t] + FILE_ALPHA * cntF[t];
-          acc[o + 10] += cntC[10];
-          acc[o + AVG] += FILE_ALPHA * cntMiss;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
-          mark(zone, c);
+          // fold: gefaltete Tinte ist nie schmaler als der Strich (= Punktbreite): die Zaehlung dieser Spalte verteilt sich auf
+          // fwDev Geraetepixel um die Mitte ihrer Ziffern (Tinte bleibt erhalten, nur breiter). Ohne Strichbreite: eine Spalte.
+          const D = fwDev();
+          const xc = (posOf(a) + posOf(b)) / 2 * dpr, sLo = D > 1 ? xc - D / 2 : c, sHi = D > 1 ? xc + D / 2 : c + 1;
+          for (let cc = Math.max(0, Math.floor(sLo)); cc < sHi && cc < accCols; cc++) {
+            const f = D > 1 ? (Math.min(cc + 1, sHi) - Math.max(cc, sLo)) / D : 1;
+            if (!(f > 0)) continue;
+            const o = cc * NGA;
+            for (let t = 0; t < 10; t++) acc[o + t] += (cntC[t] + FILE_ALPHA * cntF[t]) * f;
+            acc[o + 10] += cntC[10] * f;
+            acc[o + AVG] += FILE_ALPHA * cntMiss * f;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
+            mark(zone, cc);
+          }
           if (colLog) colLog.set(c, { c, a, b, zone: zone === zoneL ? 'L' : 'R', cntC: Array.from(cntC), cntF: Array.from(cntF), miss: cntMiss, inf: 0 });
         }
         a = b;
@@ -89031,7 +89042,14 @@ tools/unfolding-view.js
       const ext = ex[1] - ex[0], free = gw - ext;
       if (!(ext > 0)) return;
       const s0 = ex[0], s1 = ex[1];
-      const w2 = Math.min(wDev, ext), sx = wDev > ext && free > 0 ? xDev + (wDev - ext) * ex[0] / free : xDev;
+      let w2 = Math.min(wDev, ext), sx = wDev > ext && free > 0 ? xDev + (wDev - ext) * ex[0] / free : xDev;
+      // fold: gefaltete Tinte laeuft auf die Strichbreite D zu, um ihre Mitte. D <= Tintenbreite: nie schmaler als D. D > Tintenbreite:
+      // stetig von der natuerlichen Breite (volle Zelle) bis D (Zelle 0), die Ziffer wird beim Hineinschieben breiter. Immer monoton in der Zelle.
+      const D = fwDev();
+      if (D > 0) {
+        const iw = D > ext ? ext + (D - ext) * (1 - Math.min(1, wDev / gw)) : Math.max(w2, D);
+        if (iw !== w2) { sx += (w2 - iw) / 2; w2 = iw; }
+      }
       const sc = (s1 - s0) / w2, end = sx + w2;
       if (depLog) { const e = depLog[depLog.length - 1]; if (e && e.x === xDev && e.w === wDev) { e.s0 = s0; e.s1 = s1; e.dx = sx; e.dw = w2; } }
       for (let c = Math.floor(sx); c < end; c++) {
@@ -89308,6 +89326,12 @@ tools/unfolding-view.js
 
     // ─── Verdichtungsfaktor ───
     // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen. Offen folgt L der 3.
+    function setFoldWidth(px) {
+      if (!fold) throw new Error('UnfoldingView.setFoldWidth: nur im fold-Modus');
+      if (!(+px >= 0) || !Number.isFinite(+px)) throw new TypeError('UnfoldingView.setFoldWidth: Zahl >= 0 erwartet, war ' + px);
+      fw = +px;
+      dirty = true;
+    }
     function setFactor(f) {
       factor = clampFactor(f);
       settle(rolledLeft() ? 'x' : 'three');
@@ -89366,7 +89390,7 @@ tools/unfolding-view.js
     }
 
     return {
-      setDigits, appendDigits, rewind, resize, setOrigin, setFactor, destroy, refreshColor, setRemote,
+      setDigits, appendDigits, rewind, resize, setOrigin, setFactor, setFoldWidth, destroy, refreshColor, setRemote,
       setLocked(b) { locked = !!b; },
       setHover,
       // Nur lesend (Debug-Anzeige, Tests): Ziehzonen in Canvas-px, [von, bis]; links nur wo das linke Ende ziehbar ist
@@ -89407,7 +89431,7 @@ tools/unfolding-view.js
           L, R, X0, d, dEff: dd, fold: fold ? { x: foldX(), hs: pHs, gap: gapX() } : null, factor, w, W, H, dpr, uLeft: leftU(dd),
           startIndex, endIndex,
           visibleCount: Math.max(0, Math.floor(endIndex) - Math.ceil(startIndex - 1e-9)),
-          velocity, drawnCount,
+          velocity, drawnCount, foldWidth: fw,
           chainLength: chainLen, totalLength: total(), step, blur, sausen,
           inkTop: atlas ? inkTop / dpr + (H / 2 - gh / dpr / 2) : null,   // null bis zum ersten Bild
           inkBottom: atlas ? inkBottom / dpr + (H / 2 - gh / dpr / 2) : null,
@@ -91244,6 +91268,7 @@ unfoldingPi.html
     // ─── Ansicht ───
     // Einzelnes pi: Ganzzahl und Dezimalpunkt sind ein statisches Overlay (nie Teil des Stroms); ONE_DOT = false ist der alte Zustand (Punkt im Strom).
     const ONE_DOT = true, DOT_ALPHA = 1;
+    let dotScale = 1;   // Regler "your circle width": Durchmesser des Punkts im Verhaeltnis zum Schriftpunkt (1 = Standard); pi selbst bleibt gleich
     let dotCache = null;   // dotMetrics (unten); hier, weil es schon beim Anlegen der Ansicht braucht
     const ORIGIN = UnfoldingView.MARGIN + 24;   // Zelle 0 (die 3); links davon 24 px Greifflaeche fuer das linke Ende
     const fontSize = () => Math.min(56, Math.max(28, Math.round(window.innerWidth * 0.06)));
@@ -91550,7 +91575,7 @@ unfoldingPi.html
       const SW = stage.clientWidth, SH = stage.clientHeight, w = cellW(), p0 = MARGIN + w / 2, n = multi.items.length;
       const A = freeArea();
       if (form === 'kette') {
-        const dh = dotMetrics().half, dc = dh + 0.5;
+        const dh = dotHalf(), dc = dh + 0.5;
         // Bezugsstelle: gerade Zahl = mittlere Verbindungsstelle (Grenze n/2), ungerade = Punkt des mittleren Glieds (ANNAHME)
         const mid = Math.floor(n / 2);
         const j = n % 2 === 0 ? mid : (multi.items[mid].dir === 'r' ? mid : mid + 1);
@@ -91584,7 +91609,7 @@ unfoldingPi.html
         return;
       }
       const xmin = A.x0;
-      const cx = A.cx, cy = A.cy, BH = Math.round(3 * fontSize()), dh = dotMetrics().half, dc = dh + 0.5;
+      const cx = A.cx, cy = A.cy, BH = Math.round(3 * fontSize()), dh = dotHalf(), dc = dh + 0.5;
       multi.cx = cx; multi.cy = cy;
       multi.items.forEach((it, k) => {
         const th = 360 * k / n, rad = th * Math.PI / 180, co = Math.cos(rad), si = Math.sin(rad);
@@ -91634,9 +91659,12 @@ unfoldingPi.html
         return { l, r, t, b };
       };
       const dot = ink('.'), one = ink('1');
-      dotCache = { fs, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K };
+      dotCache = { fs, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K, bot: (dot.b - S / 2) / K };
       return dotCache;
     }
+    const dotHalf = () => dotMetrics().half * dotScale;
+    // Der Punkt ist die Konstante: der Strich (gefaltete Ziffern) ist genau so breit wie er und deckt ihn nur, verschwindet er nie
+    function syncFoldWidth() { const D = 2 * dotHalf(); if (view.state().foldWidth !== D) view.setFoldWidth(D); }
     function drawDots(raw) {
       const T = multi || single;
       if (!T.punkt) return;
@@ -91649,6 +91677,7 @@ unfoldingPi.html
       const BW = Math.max(1, Math.round(SW * dpr)), BHt = Math.max(1, Math.round(SH * dpr));
       if (cv.width !== BW) cv.width = BW;
       if (cv.height !== BHt) cv.height = BHt;
+      if (!multi) syncFoldWidth();
       const g = cv.getContext('2d'), dm = dotMetrics();
       g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, BW, BHt);
       // Ohne Transform gezeichnet: WebKit wendet nach dem Wechsel in den Bearbeiten-Modus setTransform(dpr) doppelt an (Zeichnung 2x verschoben)
@@ -91657,12 +91686,9 @@ unfoldingPi.html
       g.fillStyle = getComputedStyle(stage).color;
       if (!multi && !ONE_DOT) return;
       g.globalAlpha = DOT_ALPHA;
-      // Ganz eingeschoben liegt der Strich auf dem Punkt und deckt ihn ("3|"); erst beim Herausziehen erscheint er
-      const covered = !multi && view && (() => {
-        const st = view.state(), off = canvas.getBoundingClientRect().left - stage.getBoundingClientRect().left;
-        return off + st.R < pts[0].x + dm.half || off + st.L > pts[0].x - dm.half || (!st.fold && st.uLeft > 0.5);   // Strich/Falte auf dem Punkt: nur sie, kein Punkt darunter
-      })();
-      if (!covered) for (const q of pts) g.fillText('.', (PUNKT_X(q) - dm.dx) * dpr, (q.y + dm.dy) * dpr);
+      // Kreis (rund bei jeder Groesse), Unterkante wie der Schriftpunkt auf der Grundlinie der Ziffern; Mitte waagerecht auf dem Punkt
+      const r = dotHalf();
+      if (r > 0) for (const q of pts) { g.beginPath(); g.arc(PUNKT_X(q) * dpr, (q.y + dm.dy + dm.bot - r) * dpr, r * dpr, 0, 2 * Math.PI); g.fill(); }
       g.globalAlpha = 1;
     }
     // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
@@ -91945,6 +91971,13 @@ unfoldingPi.html
         factorValue = +v || 0;
         view.setFactor(factorValue);
         if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
+      }
+    });
+    panel.addSlider('circle', {
+      label: 'your circle width', min: 0, max: 4, step: 0.01, value: 1, decimals: 2, grow: true,
+      onChange: (v) => {
+        dotScale = Math.max(0, +v || 0);
+        if (multi) layoutMulti(); else centreSingle();
       }
     });
     panel.addButton('notation', { label: 'change notation', onClick: () => setNotation(notation === 'zero' ? 'int' : 'zero') });
