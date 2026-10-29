@@ -139,7 +139,7 @@
   </div>
   <div class="zeile">
     <label id="r-feld"><span>𝑟</span><input id="r" type="range" min="-3" max="2" step="0.005" aria-label="Radius r"><span id="r-zahl"></span></label>
-    <button id="rasten" type="button" aria-pressed="true">einrasten</button>
+    <button id="rasten" type="button" aria-pressed="false">einrasten</button>
   </div>
 </div>
 <p id="fehler" role="alert" hidden></p>
@@ -194,7 +194,7 @@
   // state: mirror point cM, radius r; view in the w-plane: center (vx, vy), sw = w units per CSS pixel
   let cMx = PRESETS[0].c[0], cMy = PRESETS[0].c[1], r = PRESETS[0].r;
   let vx = 0, vy = 0, sw = 0;
-  let snapOn = true;
+  let snapOn = false;
   let cssW = 1, cssH = 1, dpr = 1, quality = 1;
 
   // ---- WebGL ----
@@ -429,7 +429,8 @@ void main() {
     u.searchParams.set("r", String(r));
     u.searchParams.set("w", vx + "," + vy);
     u.searchParams.set("s", String(sw));
-    if (snapOn) u.searchParams.delete("frei"); else u.searchParams.set("frei", "1");
+    u.searchParams.delete("frei");
+    if (snapOn) u.searchParams.set("rasten", "1"); else u.searchParams.delete("rasten");
     history.replaceState(null, "", u);
   }
   function loadUrl() {
@@ -444,7 +445,7 @@ void main() {
     if (rr > 0 && Number.isFinite(rr)) r = rr;
     if (w) { vx = w[0]; vy = w[1]; }
     if (ss > 0 && Number.isFinite(ss)) sw = ss;
-    snapOn = q.get("frei") !== "1";
+    snapOn = q.get("rasten") === "1";
   }
 
   // ---- snap to the boundary of M (doubles) ----
