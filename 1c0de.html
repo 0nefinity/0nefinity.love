@@ -6,6 +6,11 @@
   <title>1c0de</title>
   <style>
     body, body.menu-open { overflow: hidden; }
+    .ctrl-seitensuche { position: static; max-width: none; margin: 0 0 0.5rem; max-height: min(30vh, 220px); }
+    .ctrl-seitensuche mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
+    .ctrl-seitensuche .ctrl-select-option { display: flex; flex-direction: column; gap: 0.15rem; flex: none; }
+    .ctrl-seitensuche-zeile { opacity: 0.6; font-size: 0.8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ctrl-seitensuche-hinweis { padding: 0.45rem 0.65rem; opacity: 0.6; font-size: 0.85em; }
     #muster, #mass {
       white-space: pre;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -67,6 +72,14 @@
     let zeit = null;
     const kleine = new Map();
     let textAktuell = false;
+    // Zeichen je breitester Zeile und gerenderte Zeilen des Nahtexts: die Box misst nur das, nicht das ganze Raster (Leerrand rechts/unten)
+    let textMasse = { b: 1, h: 1 };
+    function textSetzen(zl) {
+      let b = 1;
+      for (const z of zl) if (z.length > b) b = z.length;
+      textMasse = { b, h: Math.max(1, zl.length - (zl.length && zl[zl.length - 1] === '' ? 1 : 0)) };
+      knoten.data = zl.join('\n');
+    }
     let neuText = null;
     let farbe = '';
     const weich = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -79,13 +92,18 @@
       return { w, h, l, t, cx: l + w / 2, cy: t + h / 2, dpr };
     }
     const einrasten = (v, dpr) => Math.round(v * dpr) / dpr;
+    // Ansicht wie bibelaufdenpunkt.html (Schwenk und Zoom): Zoom2D haelt die Welt unter Zeiger/Fingern fest; hier wird daraus die Bildmitte
+    const ansichtMitte = sv => ({ x: sv.cx + ansicht.ox + (ansicht.scale - 1) * sv.w / 2, y: sv.cy + ansicht.oy + (ansicht.scale - 1) * sv.h / 2 });
     // Fernansicht wie bibelaufdenpunkt: echter Text als kleine Textur, per Bitmap-Skalierung ohne Mipmaps verkleinert (daher Moire), weich ueberblendet mit dem Nahtext
     let fernAn = true;
+    let fernMass = null;
     let neuFern = null;
     function fernTextur(zeilen, spalten, nZeilen, zm) {
       const tcw = Math.min(4, 4096 / spalten, 4096 / (nZeilen * zm.h / zm.b));
       const tch = tcw * zm.h / zm.b;
-      const bw = Math.max(1, Math.round(spalten * tcw)), bh = Math.max(1, Math.round(nZeilen * tch));
+      // aufrunden und die Randpixel leer lassen: Rundung auf ganze Pixel hat die Textur gegenueber dem Nahtext gestreckt
+      const bw = Math.max(1, Math.ceil(spalten * tcw)), bh = Math.max(1, Math.ceil(nZeilen * tch));
+      fernMass = { tcw, tch, bw, bh, spalten, nZeilen };
       if (fern.width !== bw || fern.height !== bh) { fern.width = bw; fern.height = bh; } else { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, bw, bh); }
       // Grosse Schrift unter Skalierung: kleine Schriftgroessen runden die Zeichenbreite (Hinting) und driften
       const sx = tcw / (zm.b * PROJ_F);
@@ -233,7 +251,7 @@
         const rep = repetition(r.n);
         const zeilen = zeilenBauen(r, rep, x0, x1, y0, y1);
         raster = { spalten: x1 - x0 + 1, zeilen: y1 - y0 + 1, zm };
-        knoten.data = zeilen.join('\n');
+        textSetzen(zeilen);
         neuFern = () => fernTextur(zeilen, x1 - x0 + 1, y1 - y0 + 1, zm);
         neuFern();
         fernAn = true;
@@ -262,10 +280,11 @@
       const g = cv.getContext('2d', { willReadFrequently: true });
       const rep = repetition(c * z);
       const r = { an: new Uint8Array(c * z), spalten: c, zeilen: z };
-      neuText = () => { knoten.data = zeilenBauen(r, rep, 0, c - 1, 0, z - 1).join('\n'); };
+      neuText = () => textSetzen(zeilenBauen(r, rep, 0, c - 1, 0, z - 1));
       neuFern = () => fernTextur(zeilenBauen(r, rep, 0, c - 1, 0, z - 1), c, z, zm);
       fernAn = true;
       raster = { spalten: c, zeilen: z, zm };
+      let gesetzt = false;
       const frame = grad => {
         g.setTransform(c / FAVICON_SIZE, 0, 0, z / FAVICON_SIZE, 0, 0);
         drawFaviconFrame(g, grad * Math.PI / 180);
@@ -274,9 +293,10 @@
         for (let i = 0; i < an.length; i++) an[i] = d[i * 4 + 3] >= SYMBOL_DECKUNG ? 1 : 0;
         if (textAktuell || fernAn) {
           const zl = zeilenBauen(r, rep, 0, c - 1, 0, z - 1);
-          if (textAktuell) knoten.data = zl.join('\n');
+          if (textAktuell) textSetzen(zl);
           if (fernAn) fernTextur(zl, c, z, zm);
         }
+        if (!gesetzt) { gesetzt = true; groesseSetzen(); }
       };
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) { frame(0); return; }
       if (!zeit || zeit.modus !== '018') zeit = { modus: '018', start: null, virtuell: 0, winkel: 0 };
@@ -462,7 +482,8 @@
       fg.clearRect(0, 0, W, H);
       ng.setTransform(1, 0, 0, 1, 0, 0);
       ng.clearRect(0, 0, W, H);
-      fern.style.opacity = 1 - t; fern.style.visibility = t < 1 ? 'visible' : 'hidden';
+      // Fern bleibt voll deckend unter dem Nahbild: beide halbtransparent ergaben Doppelbild und Helligkeitsdelle
+      fern.style.opacity = 1; fern.style.visibility = t < 1 ? 'visible' : 'hidden';
       nah.style.opacity = t; nah.style.visibility = t > 0.01 ? 'visible' : 'hidden';
       if (!(Pd > 0)) return;
       const { zm, cw, ch } = proj;
@@ -550,26 +571,33 @@
       const fit = Math.min(sv.w / (raster.spalten * raster.zm.b), sv.h / (raster.zeilen * raster.zm.h));
       const fs = Math.floor(fit * cfg.groesse * dpr * 8) / (8 * dpr);
       const bw = raster.spalten * raster.zm.b * fs, bh = raster.zeilen * raster.zm.h * fs;
-      ziel.style.fontSize = fs + 'px';
-      // Echte Boxgroesse messen: die Zellmasse aus 100px-Schrift weichen bei anderer Groesse um Bruchteile ab
-      const mb = ziel.getBoundingClientRect();
-      const lx = einrasten(sv.cx - (mb.width > 0 ? mb.width : bw) / 2, dpr) + 'px', ly = einrasten(sv.cy - (mb.height > 0 ? mb.height : bh) / 2, dpr) + 'px';
-      ziel.style.left = lx; ziel.style.top = ly;
-      fern.style.width = (mb.width > 0 ? mb.width : bw) + 'px'; fern.style.height = (mb.height > 0 ? mb.height : bh) + 'px';
-      fern.style.left = lx; fern.style.top = ly;
       const t = weich(FERN_START, FERN_ENDE, fs * dpr);
-      ziel.style.opacity = t;
-      ziel.style.visibility = t > 0 ? 'visible' : 'hidden';
-      fern.style.opacity = 1 - t;
-      fern.style.visibility = t < 1 ? 'visible' : 'hidden';
+      // Inhalt zuerst auffrischen, dann messen: sonst gilt die Box des alten Textes und die Ebenen sitzen verschieden (Doppelbild)
       if (t > 0 && !textAktuell) { textAktuell = true; if (neuText) neuText(); }
       else if (t === 0) textAktuell = false;
       if (t < 1 && !fernAn) { fernAn = true; if (neuFern) neuFern(); }
       else if (t === 1) fernAn = false;
+      ziel.style.fontSize = fs + 'px';
+      // Echte Boxgroesse messen: die Zellmasse aus 100px-Schrift weichen bei anderer Groesse um Bruchteile ab
+      // (nur wenn der Text aktuell ist; sonst gilt die Rechengroesse)
+      const mr = ziel.getBoundingClientRect();
+      const mb = textAktuell && mr.width > 0 && mr.height > 0 ? mr : { width: bw, height: bh };
+      const am = ansichtMitte(sv);
+      // Zellmass aus der echten Box (nur die breiteste Zeile und die gerenderten Zeilen), Raster um seine Mitte zentrieren
+      const zb = textAktuell && mb === mr ? mb.width / textMasse.b : raster.zm.b * fs, zh = textAktuell && mb === mr ? mb.height / textMasse.h : raster.zm.h * fs;
+      const lx = einrasten(am.x - zb * raster.spalten / 2, dpr) + 'px', ly = einrasten(am.y - zh * raster.zeilen / 2, dpr) + 'px';
+      ziel.style.left = lx; ziel.style.top = ly;
+      fern.style.width = fernMass.bw / fernMass.tcw * zb + 'px'; fern.style.height = fernMass.bh / fernMass.tch * zh + 'px';
+      fern.style.left = lx; fern.style.top = ly;
+      ziel.style.opacity = t;
+      ziel.style.visibility = t > 0 ? 'visible' : 'hidden';
+      fern.style.opacity = 1;
+      fern.style.visibility = t < 1 ? 'visible' : 'hidden';
     }
 
     let entprellt = 0;
     function neuLayouten() {
+      if (zoom) sichtGeaendert();
       clearTimeout(entprellt);
       entprellt = setTimeout(() => { if (cfg.modus === 'text' && cfg.quelle !== 'projekt') aufbauen(); else groesseSetzen(); }, 150);
     }
@@ -588,7 +616,8 @@
       stopp();
       zeit = null;
       proj = null;
-      nah.style.visibility = 'hidden';
+      // Zustandswechsel atomar: alle drei Ebenen zusammen weg, bis die neue Quelle steht (sonst steht Altes neben Neuem)
+      nah.style.visibility = 'hidden'; fern.style.visibility = 'hidden'; ziel.style.visibility = 'hidden';
       try {
         let t;
         if (cfg.quelle === 'projekt') {
@@ -627,7 +656,85 @@
 
     function sichtbar() {
       panel.setRowVisibility('form', cfg.modus === 'text');
-      panel.setRowVisibility('pfad', cfg.modus === 'text' && cfg.quelle === 'seite');
+      const pfadSichtbar = cfg.modus === 'text' && cfg.quelle === 'seite';
+      panel.setRowVisibility('pfad', pfadSichtbar);
+      if (!pfadSichtbar) listeZeigen(false);
+    }
+
+    // Seitenfeld wie die Menue-Suche: window.menuSuche (meta.js) sucht unscharf in Namen und im Volltext (includes/search-index.json), die Treffer stehen als Liste unter dem Feld
+    const liste = document.createElement('div');
+    liste.className = 'ctrl-select-popup open ctrl-seitensuche';
+    liste.style.display = 'none';
+    let listeAn = false, auswahl = -1, suchLauf = 0, suchZeit = 0;
+    function listeZeigen(an) { listeAn = an; liste.style.display = an ? 'flex' : 'none'; if (!an) auswahl = -1; }
+    function markieren(i) {
+      const alle = liste.querySelectorAll('.ctrl-select-option');
+      if (!alle.length) { auswahl = -1; return; }
+      auswahl = (i + alle.length) % alle.length;
+      alle.forEach((b, k) => { b.classList.toggle('selected', k === auswahl); b.setAttribute('aria-selected', k === auswahl ? 'true' : 'false'); });
+      alle[auswahl].scrollIntoView({ block: 'nearest' });
+    }
+    function seiteWaehlen(href) {
+      listeZeigen(false);
+      panel.set('pfad', href);
+      if (href === cfg.pfad) return;
+      cfg.pfad = href;
+      laden();
+    }
+    function hinweis(text) {
+      const d = document.createElement('div');
+      d.className = 'ctrl-seitensuche-hinweis';
+      d.textContent = text;
+      return d;
+    }
+    async function seitenSuche(v) {
+      clearTimeout(suchZeit);
+      const q = v.trim();
+      const lauf = ++suchLauf;
+      if (!q || q === cfg.pfad) { listeZeigen(false); return; }
+      suchZeit = setTimeout(async () => {
+        liste.replaceChildren();
+        let r;
+        try {
+          if (!window.menuSuche) throw new Error('Menue-Suche (meta.js) nicht geladen');
+          r = await window.menuSuche.suchen(q);
+        } catch (e) {
+          console.error('[1c0de] Seitensuche', e);
+          if (lauf !== suchLauf) return;
+          liste.replaceChildren(hinweis('Suche nicht verfügbar'));
+          listeZeigen(true);
+          return;
+        }
+        if (lauf !== suchLauf) return;
+        const teile = [];
+        for (const t of r.treffer) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'ctrl-select-option';
+          b.setAttribute('role', 'option');
+          b.dataset.href = t.href;
+          const l = document.createElement('span');
+          t.fuellen(l);
+          b.append(l);
+          const z = document.createElement('span');
+          z.className = 'ctrl-seitensuche-zeile';
+          if (t.ausschnitt) t.ausschnitt(z); else z.textContent = t.dir;
+          if (z.textContent) b.append(z);
+          b.addEventListener('click', e => { e.stopPropagation(); seiteWaehlen(t.href); });
+          teile.push(b);
+        }
+        if (r.mehr) teile.push(hinweis('+' + r.mehr + ' weitere'));
+        if (r.fehler) teile.push(hinweis('Volltext nicht verfügbar'));
+        if (!r.treffer.length && r.fertig) teile.push(hinweis('nichts gefunden'));
+        liste.replaceChildren(...teile);
+        listeZeigen(teile.length > 0);
+        markieren(0);
+        setTimeout(() => {
+          const kb = panel.bodyEl, k = kb.getBoundingClientRect(), l = liste.getBoundingClientRect();
+          const unten = Math.min(k.bottom, innerHeight);
+          if (l.bottom > unten) kb.scrollTop += Math.min(l.bottom - unten, l.top - k.top);
+        }, 350);
+      }, 80);
     }
 
     let zoomInnen = false;
@@ -650,35 +757,58 @@
           sichtbar(); laden();
         } })
       .addInput('form', { label: 'Text', value: cfg.form, onChange: v => { cfg.form = v; aufbauen(); } })
-      .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => { cfg.pfad = v; laden(); } })
+      .addInput('pfad', { label: 'Seite', value: cfg.pfad, onChange: v => seitenSuche(v) })
       .addSlider('groesse', { label: 'Größe', min: 0, max: 4, step: 0.05, value: cfg.groesse, decimals: 2, grow: true,
-        onChange: v => { if (zoomInnen) return; cfg.groesse = v; groesseSetzen(); zoom.setView({ scale: v, offsetX: 0, offsetY: 0 }, false); } });
+        onChange: v => { if (zoomInnen) return; cfg.groesse = v; mitteHalten(v); } });
 
-    // Rad und Pinch ueber tools/zoom.js, zentriert, ohne Verschiebung; das Panel bleibt aussen vor
+    const pfadZeile = panel.bodyEl.querySelector('[data-key="pfad"]');
+    pfadZeile.after(liste);
+    pfadZeile.querySelector('.ctrl-input').addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (listeAn) { e.preventDefault(); markieren(auswahl + (e.key === 'ArrowDown' ? 1 : -1)); } }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        const b = listeAn ? liste.querySelectorAll('.ctrl-select-option')[auswahl] : null;
+        if (b) seiteWaehlen(b.dataset.href);
+        else if (e.target.value.trim().startsWith('/')) seiteWaehlen(e.target.value.trim());
+      } else if (e.key === 'Escape') { panel.set('pfad', cfg.pfad); listeZeigen(false); clearTimeout(suchZeit); suchLauf++; }
+    });
+
+    // Zoom um die Bildmitte, die Welt dort bleibt stehen (Schieberegler, Reset)
+    function mitteHalten(v) {
+      const sv = sicht(), st = zoom.getState();
+      const wx = (sv.w / 2 - st.offsetX) / st.scale, wy = (sv.h / 2 - st.offsetY) / st.scale;
+      zoom.setView({ scale: v, offsetX: sv.w / 2 - wx * v, offsetY: sv.h / 2 - wy * v }, false);
+    }
+    // Groessenaenderung des Fensters: Abstand der Bildmitte zur Bildschirmmitte bleibt
+    let sichtAlt = sicht();
+    function sichtGeaendert() {
+      const sv = sicht(), st = zoom.getState();
+      const dx = st.offsetX + (st.scale - 1) * sichtAlt.w / 2, dy = st.offsetY + (st.scale - 1) * sichtAlt.h / 2;
+      sichtAlt = sv;
+      zoom.setView({ scale: st.scale, offsetX: dx - (st.scale - 1) * sv.w / 2, offsetY: dy - (st.scale - 1) * sv.h / 2 }, false);
+    }
+
+    // Schwenk und Zoom wie in bibelaufdenpunkt.html: Rad 3 % je Schritt, Zoom unter Zeiger/Pinch-Mitte, Ziehen mit Maus und Finger, nach dem Pinch zieht der verbliebene Finger weiter. Das Panel bleibt aussen vor.
+    const imPanel = e => !!(e.target.closest && e.target.closest('[class*="ctrl-"]'));
+    const sv0 = sicht();
     zoom = Zoom2D.createZoom2D({
       container: document.body,
       minScale: 0,
-      shouldIgnoreWheel: e => !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
+      wheelSpeed: 0.03,
+      shouldIgnoreWheel: imPanel,
       initialScale: panel.params.groesse,
-      shouldIgnoreDrag: e => cfg.quelle !== 'projekt' || !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
-      shouldIgnoreTouchDrag: e => cfg.quelle !== 'projekt' || !!(e.target.closest && e.target.closest('[class*="ctrl-"]')),
+      initialOffsetX: (1 - panel.params.groesse) * sv0.w / 2,
+      initialOffsetY: (1 - panel.params.groesse) * sv0.h / 2,
+      shouldIgnoreDrag: imPanel,
+      shouldIgnoreTouchDrag: imPanel,
       onTransform: st => {
-        if (cfg.quelle === 'projekt') {
-          ansicht.scale = st.scale; ansicht.ox = st.offsetX; ansicht.oy = st.offsetY;
-          if (st.scale !== cfg.groesse) {
-            cfg.groesse = st.scale;
-            zoomInnen = true;
-            try { panel.set('groesse', Number(st.scale.toFixed(2))); } finally { zoomInnen = false; }
-          }
-          projektNeuZeichnen();
-          return;
+        ansicht.scale = st.scale; ansicht.ox = st.offsetX; ansicht.oy = st.offsetY;
+        if (st.scale !== cfg.groesse) {
+          cfg.groesse = st.scale;
+          zoomInnen = true;
+          try { panel.set('groesse', Number(st.scale.toFixed(2))); } finally { zoomInnen = false; }
         }
-        if (st.offsetX !== 0 || st.offsetY !== 0) { zoom.setView({ scale: st.scale, offsetX: 0, offsetY: 0 }, false); return; }
-        if (st.scale === cfg.groesse) return;
-        cfg.groesse = st.scale;
-        zoomInnen = true;
-        try { panel.set('groesse', Number(st.scale.toFixed(2))); } finally { zoomInnen = false; }
-        groesseSetzen();
+        if (cfg.quelle === 'projekt') projektNeuZeichnen(); else groesseSetzen();
       }
     });
     for (const ev of ['wheel', 'touchstart', 'touchmove']) panel.el.addEventListener(ev, e => e.stopPropagation(), { passive: true });
