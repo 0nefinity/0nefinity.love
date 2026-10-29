@@ -63,6 +63,8 @@
     .pi-mirror:disabled, .pi-del:disabled { opacity: 0.3; cursor: default; }
     .pi-add { width: 8.5rem; background: transparent; box-shadow: inset 0 0 0 1px var(--ui-border-soft); opacity: 0.85; }
     @media (hover: hover) { .pi-select:hover, .pi-mirror:not(:disabled):hover, .pi-del:not(:disabled):hover, .pi-add:hover { background: var(--ui-fill-12); } }
+    .pi-consts button:hover { color: inherit; scale: 1; }
+    @media (hover: none) { .pi-mirror:hover, .pi-del:hover { background: var(--ui-fill-08); } .pi-mirror[aria-pressed="true"]:hover { background: var(--ui-fill-20); } .pi-add:hover { background: transparent; } }
     .pi-consts :focus-visible { outline: 2px solid var(--ui-border-stronger); outline-offset: 1px; }
   </style>
 </head>
@@ -517,7 +519,7 @@
           it.cl = cx[i] - left;   // centrum in Canvas-Koordinaten
           it.lx = cx[i]; it.ly = A.cy;
           Object.assign(it.canvas.style, {
-            left: left + 'px', top: '0px', width: width + 'px', height: A.y1 + 'px', zIndex: String(z),
+            left: left + 'px', top: (A.cy - A.y1 / 2) + 'px', width: width + 'px', height: A.y1 + 'px', zIndex: String(z),
             transform: '', transformOrigin: '',
             clipPath: ''
           });
