@@ -20,7 +20,8 @@ const failures = [];
 
 (async () => {
     const browser = await chromium.launch({ executablePath: CHROME });
-    for (const url of PAGES) {
+    // Beide Blaetter: das CSS-Blatt (Standard) haelt die Unterkante ueber --ctrl-kb, das alte (?panel=alt) per Nachfuehren
+    for (const url of PAGES.flatMap(u => [u, u + '?panel=alt'])) {
         const ctx = await browser.newContext({ ...devices['Pixel 7'] });
         if (localDir) await ctx.route(/\/(meta\.js|meta\.css|tools\/controls\.js)(\?|$)/, async route => {
             const name = new URL(route.request().url()).pathname.slice(1);
@@ -36,8 +37,8 @@ const failures = [];
         });
         await p.goto(base + url, { waitUntil: 'load' });
         await p.waitForTimeout(1500);
-        const field = p.locator('.ctrl-panel input[type=text], .ctrl-panel input[type=search]').first();
-        if (!await field.count()) { console.log(`${url}: kein Textfeld im Panel, uebersprungen`); await ctx.close(); continue; }
+        const field = p.locator('.ctrl-panel input[type=text]:visible, .ctrl-panel input[type=search]:visible').first();
+        if (!await field.count()) { console.log(`${url}: kein sichtbares Textfeld im Panel, uebersprungen`); await ctx.close(); continue; }
         const H = await p.evaluate(() => innerHeight);
         const vh = Math.round(H * 0.55), kb = H - vh;
         await field.focus();
