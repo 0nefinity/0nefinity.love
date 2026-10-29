@@ -271,6 +271,12 @@
 
     function onTouchEnd(e) {
       if (e.touches.length < 2) {
+        // Nach dem Pinch zieht der verbliebene Finger weiter (wie bibelaufdenpunkt.html, touchend)
+        if (pinch.active && e.touches.length === 1) {
+          isDragging = true;
+          lastX = e.touches[0].clientX;
+          lastY = e.touches[0].clientY;
+        }
         pinch.active = false;
       }
       if (e.touches.length === 0) {
