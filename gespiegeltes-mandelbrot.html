@@ -540,7 +540,9 @@ void main() {
     if (sw > 0) sw *= old / Math.min(cssW, cssH);
     request(false);
   }
-  window.addEventListener("resize", resize);
+  // the field also changes size without a window resize (controls.js sets
+  // --controls-mobile-occlusion after the panel is built or dragged)
+  new ResizeObserver(resize).observe(feld);
 
   bild.addEventListener("webglcontextlost", (e) => { e.preventDefault(); fail("Grafikkontext verloren, Seite neu laden."); });
 
