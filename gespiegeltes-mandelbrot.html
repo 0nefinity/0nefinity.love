@@ -148,7 +148,7 @@
     PB = n;
     PBn = BigInt(n);
     ref = null;
-    if (mis) cH = misRefine(cH[0], cH[1], mis.k, mis.p);
+    if (mis) cH = misRefine(cH[0], cH[1], mis.k, mis.p) || cH;
   }
   // bits for the finest c-pixel of the current view, plus 64 to spare
   function ensurePB() {
@@ -171,10 +171,10 @@
     mis = null;
     cH = [H(x), H(y)];
     if (!exact) return;
-    const m = misSearch(x, y, 1e-12 * (1 + Math.hypot(x, y)), 0);
+    const m = misFind(x, y, 1e-12 * (1 + Math.hypot(x, y)));
     if (m) {
       mis = { k: m.k, p: m.p };
-      cH = misRefine(H(m.c[0]), H(m.c[1]), m.k, m.p);
+      cH = m.e;
     }
   }
 
@@ -203,43 +203,74 @@
     }
     return null;
   }
-  // minimal preperiod and period of a root; null for centres (0 on the cycle)
-  function misKind(cx, cy, k, p) {
-    const zs = [[0, 0]];
-    let zx = 0, zy = 0;
-    for (let n = 1; n <= k + p; n++) {
-      const t = zx * zx - zy * zy + cx;
+  // pairs (k, p) whose Newton step from c is shorter than R: near c lies a root of
+  // z_{k+p} = z_k about that far away. Smallest k first.
+  function misCandidates(cx, cy, R) {
+    const zs = [], ds = [];
+    let zx = 0, zy = 0, dx = 0, dy = 0;
+    for (let n = 1; n <= 2000; n++) {
+      const t = 2 * (zx * dx - zy * dy) + 1;
+      dy = 2 * (zx * dy + zy * dx);
+      dx = t;
+      const u = zx * zx - zy * zy + cx;
       zy = 2 * zx * zy + cy;
-      zx = t;
-      if (Math.hypot(zx, zy) < 1e-7) return null;
-      zs.push([zx, zy]);
+      zx = u;
+      if (!(zx * zx + zy * zy < 1e6 && Math.abs(dx) + Math.abs(dy) < 1e150)) break;
+      zs.push(zx, zy);
+      ds.push(dx, dy);
     }
-    for (let kk = 1; kk <= k; kk++)
-      for (let pp = 1; pp <= p; pp++)
-        if (Math.hypot(zs[kk + pp][0] - zs[kk][0], zs[kk + pp][1] - zs[kk][1]) < 1e-7) return { k: kk, p: pp };
+    const L = zs.length / 2, out = [];
+    for (let k = 1; k < L; k++)
+      for (let p = 1; p <= 8 && k + p <= L; p++) {
+        const i = 2 * (k - 1), j = 2 * (k + p - 1);
+        const gx = zs[j] - zs[i], gy = zs[j + 1] - zs[i + 1], hx = ds[j] - ds[i], hy = ds[j + 1] - ds[i + 1];
+        const h2 = hx * hx + hy * hy;
+        if (h2 > 0 && (gx * gx + gy * gy) / h2 < R * R) out.push({ k, p });
+      }
+    return out;
+  }
+  const ab = (b) => (b < 0n ? -b : b);
+  // exact check of a refined root: the next Newton step is below half the working
+  // precision, and the cycle repels (a centre has 0 on its cycle and attracts: finite).
+  // Barely repelling cycles are endless too, but grow so slowly per turn that far out
+  // the iteration limit runs out first and the view goes flat: at least 1/16 bit per step.
+  function misVerify(cx, cy, k, p) {
+    const one = 1n << PBn, s1 = PBn - 1n;
+    let zx = 0n, zy = 0n, dx = 0n, dy = 0n, ax = 0n, ay = 0n, bx = 0n, by = 0n, lam = 0;
+    for (let n = 1; n <= k + p; n++) {
+      if (n > k) lam += Math.log2(2 * Math.hypot(N(zx), N(zy)));
+      const t = ((zx * dx - zy * dy) >> s1) + one;
+      dy = (zx * dy + zy * dx) >> s1;
+      dx = t;
+      const u = ((zx * zx - zy * zy) >> PBn) + cx;
+      zy = ((zx * zy) >> s1) + cy;
+      zx = u;
+      if (ab(zx) + ab(zy) > 8n << PBn) return false;
+      if (n === k) { ax = zx; ay = zy; bx = dx; by = dy; }
+    }
+    const gx = zx - ax, gy = zy - ay, hx = dx - bx, hy = dy - by;
+    const h2 = (hx * hx + hy * hy) >> PBn;
+    if (h2 === 0n || !(lam >= p / 16)) return false;
+    const sx = ((gx * hx + gy * hy) >> PBn << PBn) / h2, sy = ((gy * hx - gx * hy) >> PBn << PBn) / h2;
+    return N(ab(sx) + ab(sy)) < 2 ** (-PB / 2);
+  }
+  // a verified Misiurewicz point within R of c (double in, exact out), smallest preperiod first
+  function misFind(cx, cy, R) {
+    const h0 = [H(cx), H(cy)];
+    let tries = 0;
+    for (const { k, p } of misCandidates(cx, cy, R)) {
+      if (++tries > 64) break;
+      const c = misNewton(cx, cy, k, p) || [cx, cy];
+      if (Math.hypot(c[0] - cx, c[1] - cy) > 2 * R) continue;
+      const e = misRefine(H(c[0]), H(c[1]), k, p);
+      if (!e || Math.hypot(N(e[0] - h0[0]), N(e[1] - h0[1])) > R || !misVerify(e[0], e[1], k, p)) continue;
+      return { c: [N(e[0]), N(e[1])], e, k, p };
+    }
     return null;
   }
-  // nearest root found from a (2g+1)^2 grid of starts with spacing tol, k <= 64, p <= 4
-  function misSearch(cx, cy, tol, g) {
-    let best = null;
-    for (let i = -g; i <= g; i++)
-      for (let j = -g; j <= g; j++)
-        for (let k = 1; k <= 64; k++) {
-          for (let p = 1; p <= 4; p++) {
-            const c = misNewton(cx + i * tol, cy + j * tol, k, p);
-            if (!c) continue;
-            const d = Math.hypot(c[0] - cx, c[1] - cy);
-            if (best && d >= best.d) continue;
-            const kind = misKind(c[0], c[1], k, p);
-            if (kind) best = { c, d, ...kind };
-          }
-          if (best && best.d < tol) break;
-        }
-    return best && best.d < (g ? Infinity : tol) ? best : null;
-  }
-  // Newton in fixed point, quadratic from the double root
+  // Newton in fixed point, quadratic from the double root; null if the orbit escapes
   function misRefine(cx, cy, k, p) {
-    const one = 1n << PBn, s1 = PBn - 1n;
+    const one = 1n << PBn, s1 = PBn - 1n, esc = 8n << PBn;
     for (let it = 0; it < 40; it++) {
       let zx = 0n, zy = 0n, dx = 0n, dy = 0n, ax = 0n, ay = 0n, bx = 0n, by = 0n;
       for (let n = 1; n <= k + p; n++) {
@@ -249,6 +280,7 @@
         const u = ((zx * zx - zy * zy) >> PBn) + cx;
         zy = ((zx * zy) >> s1) + cy;
         zx = u;
+        if (ab(zx) + ab(zy) > esc) return null;
         if (n === k) { ax = zx; ay = zy; bx = dx; by = dy; }
       }
       const gx = zx - ax, gy = zy - ay, hx = dx - bx, hy = dy - by;
@@ -563,7 +595,8 @@ void main() {
       }
       const h = (vH[0] * vH[0] + vH[1] * vH[1] >> PBn) - (1n << PBn);
       gl.uniform1i(U.uMode, 1);
-      gl.uniform1f(U.uH, f32(N(h) / (s * vAbs)));
+      // far out |vc|^2 overflows a double, and the 1 no longer counts there
+      gl.uniform1f(U.uH, f32(vAbs > 1e100 ? vAbs / s : N(h) / (s * vAbs)));
       gl.uniform2f(U.uVn, vnx, vny);
       gl.uniform1f(U.uEps, s / vAbs);
       gl.uniform2f(U.uE, s / vAbs * vnx, -s / vAbs * vny);
@@ -597,14 +630,27 @@ void main() {
       dctx.stroke();
     }
     dctx.beginPath();
-    dctx.arc(ox, oy, 11, 0, 2 * Math.PI);
+    dctx.arc(ox + shake, oy, 11, 0, 2 * Math.PI);
     dctx.lineWidth = 2;
     dctx.strokeStyle = dragging ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.85)";
     dctx.stroke();
     dctx.beginPath();
-    dctx.arc(ox, oy, 2, 0, 2 * Math.PI);
+    dctx.arc(ox + shake, oy, 2, 0, 2 * Math.PI);
     dctx.fillStyle = "rgba(255, 255, 255, 0.85)";
     dctx.fill();
+  }
+
+  // no: the marker shakes its head (no snap target near)
+  let shake = 0;
+  function wackeln() {
+    const t0 = performance.now();
+    const step = (t) => {
+      const a = Math.max(0, (t - t0) / 360);
+      shake = a < 1 ? 5 * Math.sin(a * 6 * Math.PI) * (1 - a) : 0;
+      drawDeko();
+      if (a < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   // ---- scheduling: low resolution while moving, full resolution when idle ----
@@ -710,18 +756,19 @@ void main() {
     return [cx, cy];
   }
 
-  // after the boundary snap: the nearest Misiurewicz point, if close, so the
-  // mirror point is exact and the pattern outside goes on without end
+  // after the boundary snap: a Misiurewicz point close by, so the mirror point is
+  // exact and the pattern outside goes on without end. A boundary point alone would
+  // close up far out, so without one the point stays put and the marker shakes its head.
   function snapC() {
-    const tol = Math.max(1e-15, r * sw);
+    if (mis) return true;
+    const tol = Math.max(1e-15, r * Math.min(sw, fitSw()));
     const [x, y] = snap(cMx, cMy, tol * 0.25);
-    const m = misSearch(x, y, tol, 2);
-    setC(x, y, false);
-    if (m && m.d < 8 * tol) {
-      setC(m.c[0], m.c[1], false);
-      mis = { k: m.k, p: m.p };
-      cH = misRefine(H(m.c[0]), H(m.c[1]), m.k, m.p);
-    }
+    const m = misFind(x, y, 8 * tol);
+    if (!m) { wackeln(); return false; }
+    setC(m.c[0], m.c[1], false);
+    mis = { k: m.k, p: m.p };
+    cH = m.e;
+    return true;
   }
 
   // ---- input ----
@@ -743,6 +790,9 @@ void main() {
     if (L <= 1 || Math.hypot(vx + dx, vy + dy) <= Math.max(o, L)) return panBy(dx, dy);
     const k = (1 - Math.min(1, Math.max(0, o - L) / (0.5 * L))) ** 2;
     panBy(dx * k, dy * k);
+    // k is taken where the step starts: one hard flick must not shoot past the stiff end
+    const n = Math.hypot(vx, vy);
+    if (n > 1.5 * L) setV(H(vx * (1.5 * L / n)), H(vy * (1.5 * L / n)));
   }
   function springBack() {
     const L = reach(), n = Math.hypot(vx, vy);
@@ -771,7 +821,9 @@ void main() {
     const x = e.clientX - b.left, y = e.clientY - b.top;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const [hx, hy] = toScreen(0, 0);
-    if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
+    // zoomed out past the whole view the marker is not grabbed: it sits at the edge
+    // there, and one pixel would fling cM by sw, off into nowhere
+    if (pts.size === 1 && sw <= fitSw() && Math.hypot(x - hx, y - hy) <= 30) {
       dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy };
       drawDeko();
     } else if (dragging) {
@@ -887,8 +939,9 @@ void main() {
     draw();
   }
 
+  function fitSw() { return (2 * 1.6) / Math.min(cssW, cssH); }
   function fitView() {
-    sw = (2 * 1.6) / Math.min(cssW, cssH);
+    sw = fitSw();
     setV(0n, 0n);
     ensurePB();
   }
