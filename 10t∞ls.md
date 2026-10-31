@@ -68,7 +68,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Canvas/WebGL-Rendering
 
 ### WebGL2-Mandelbrot mit Perturbation (Shader)
-`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `uploadRef()`, `draw()`, `probe()`, `snap()`, `zoomAt()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), Pixel iterieren nur die Differenz mit Rebasing, Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom bis 1e-30, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung. Ausgefeilt; Shader-String plus `uploadRef`/`draw` als Modul herauslösbar.
+`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus bis 1e±290, Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung. Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
 
 ### Raymarching mit zusammensetzbarer GLSL-Fold-Pipeline
 `fractal0ne.html` (`buildFragmentShader()`, `buildProgram()`, `camBasis()`, `euler3x3Inv()`, `rayThroughCursor()`, `buildPanel()`/`renderPipeline()`, `encodeState()/decodeState()`; Tabelle `FOLDS`): Fragment-Shader wird zur Laufzeit aus einer Liste von Faltungs-Bausteinen zusammengesetzt, Marsch über Text-SDF, freie Kamera, Mausstrahl-Pick, Presets, Zustand in URL. Brauchbar; Shader-Generator-Muster.
