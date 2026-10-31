@@ -45383,6 +45383,20 @@ gespiegeltes-mandelbrot.html
   display: block;
 }
 #deko { pointer-events: none; }
+#feld #lupe {
+  inset: auto;
+  /* below the menu and back buttons in the top corners */
+  top: 64px;
+  right: 12px;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  border: 1px solid var(--text-color);
+  background: var(--bg-color);
+  pointer-events: none;
+}
+#feld #lupe.links { right: auto; left: 12px; }
+#feld #lupe[hidden] { display: none; }
 
 #wert {
   margin: 0 0 0.3rem;
@@ -45424,6 +45438,7 @@ gespiegeltes-mandelbrot.html
 <div id="feld" class="_018-canvas">
   <canvas id="bild" aria-label="Mandelbrot-Menge, innen echt, außen am Kreis gespiegelt; Spiegelpunkt verschiebbar"></canvas>
   <canvas id="deko" aria-hidden="true"></canvas>
+  <canvas id="lupe" aria-hidden="true" hidden></canvas>
 </div>
 <p id="wert" aria-live="off"></p>
 <p id="fehler" role="alert" hidden></p>
@@ -45434,6 +45449,8 @@ gespiegeltes-mandelbrot.html
   const bild = document.getElementById("bild");
   const deko = document.getElementById("deko");
   const dctx = deko.getContext("2d");
+  const lupe = document.getElementById("lupe");
+  const lctx = lupe.getContext("2d");
   const wert = document.getElementById("wert");
   const fehler = document.getElementById("fehler");
 
@@ -45897,12 +45914,13 @@ void main() {
   }
   const f32 = (x) => Math.max(-3e38, Math.min(3e38, x));
 
-  function draw() {
-    const W = Math.max(1, Math.round(cssW * dpr * quality));
-    const Hc = Math.max(1, Math.round(cssH * dpr * quality));
-    if (bild.width !== W || bild.height !== Hc) { bild.width = W; bild.height = Hc; }
+  // lp > 0: the lupe pass, an lp x lp square in the lower left of the canvas
+  function drawView(lp) {
+    const W = lp || Math.max(1, Math.round(cssW * dpr * quality));
+    const Hc = lp || Math.max(1, Math.round(cssH * dpr * quality));
+    if (!lp && (bild.width !== W || bild.height !== Hc)) { bild.width = W; bild.height = Hc; }
     gl.viewport(0, 0, W, Hc);
-    ensurePB();
+    if (!lp) ensurePB();
     const s = sw * cssW / W;   // w units per canvas pixel
     const hd = Math.hypot(W, Hc) / 2;
 
@@ -45920,7 +45938,8 @@ void main() {
     gl.uniform1i(U.uMaxit, maxit);
     if (vAbs <= half) {
       // origin in view: reference cM itself, u = w / s in pixels
-      if (!want(ref) || ref.mode !== 0 || ref.cx !== cH[0] || ref.cy !== cH[1] || ref.exact !== exact) {
+      // an exact orbit also serves where doubles would do (the lupe reuses the field's)
+      if (!want(ref) || ref.mode !== 0 || ref.cx !== cH[0] || ref.cy !== cH[1] || (exact && !ref.exact)) {
         const o = orbit(cH[0], cH[1], longer, exact);
         o.mode = 0;
         o.exact = exact;
@@ -45977,7 +45996,62 @@ void main() {
     }
     gl.uniform1i(U.uRefLen, ref.L);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    drawDeko();
+    if (!lp) drawDeko();
+  }
+
+  function draw() {
+    drawView(0);
+    if (!lupe.hidden) drawLupe();
+  }
+
+  // The lupe: the start view while the finger holds the mirror point far out.
+  // Near and far in one glance: the lupe shows the 1 under the finger, the field the ∞ it makes.
+  const LUPE_FIT = 2 * 1.6;
+  function drawLupe() {
+    const Lc = lupe.clientWidth;
+    const lp = Math.max(1, Math.min(Math.round(Lc * dpr), bild.width, bild.height));
+    if (lupe.width !== lp || lupe.height !== lp) { lupe.width = lp; lupe.height = lp; }
+    const keep = { vx, vy, vH, sw, cssW, cssH };
+    vx = 0; vy = 0; vH = [0n, 0n];
+    cssW = cssH = Lc;
+    sw = LUPE_FIT / Lc;
+    try {
+      drawView(lp);
+    } finally {
+      ({ vx, vy, vH, sw, cssW, cssH } = keep);
+    }
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.drawImage(bild, 0, bild.height - lp, lp, lp, 0, 0, lp, lp);
+    // paint the field back over the corner the lupe borrowed (same orbit, no new reference)
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, 0, lp, lp);
+    drawView(0);
+    gl.disable(gl.SCISSOR_TEST);
+    const k = lp / Lc;
+    lctx.setTransform(k, 0, 0, k, 0, 0);
+    lctx.beginPath();
+    lctx.arc(Lc / 2, Lc / 2, Lc / LUPE_FIT, 0, 2 * Math.PI);
+    lctx.lineWidth = 1;
+    lctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+    lctx.stroke();
+    lctx.beginPath();
+    lctx.arc(Lc / 2, Lc / 2, 6, 0, 2 * Math.PI);
+    lctx.lineWidth = 1.5;
+    lctx.strokeStyle = "rgba(255, 255, 255, 1)";
+    lctx.stroke();
+    lctx.beginPath();
+    lctx.arc(Lc / 2, Lc / 2, 1.5, 0, 2 * Math.PI);
+    lctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    lctx.fill();
+  }
+  // the lupe sits in a top corner; when the finger comes near it, it moves to the other one
+  function ausweichen(x, y) {
+    const Lc = lupe.clientWidth || 132, top = 64, pad = 12 + 24;
+    const links = lupe.classList.contains("links");
+    const nearRight = y < top + Lc + 24 && x > cssW - Lc - pad;
+    const nearLeft = y < top + Lc + 24 && x < Lc + pad;
+    if (!links && nearRight) lupe.classList.add("links");
+    else if (links && nearLeft) lupe.classList.remove("links");
   }
 
   // w -> CSS pixel
@@ -46189,13 +46263,19 @@ void main() {
     const x = e.clientX - b.left, y = e.clientY - b.top;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const [hx, hy] = toScreen(0, 0);
-    // zoomed out past the whole view the marker is not grabbed: it sits at the edge
-    // there, and one pixel would fling cM by sw, off into nowhere
-    if (pts.size === 1 && sw <= fitSw() && Math.hypot(x - hx, y - hy) <= 30) {
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy };
+    // the ring may be tiny, the spot to grab stays finger sized at every zoom
+    if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
+      // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()) };
+      if (sw > 2 * fitSw()) {
+        lupe.classList.remove("links");
+        ausweichen(x, y);
+        lupe.hidden = false;
+      }
       drawDeko();
     } else if (dragging) {
       dragging = null;
+      lupe.hidden = true;
     }
   });
   feld.addEventListener("pointermove", (e) => {
@@ -46203,8 +46283,13 @@ void main() {
     if (!p) return;
     const b = feld.getBoundingClientRect();
     if (dragging && dragging.id === e.pointerId) {
-      // M slides under the fixed mirror: the point under the finger moves with it
-      setC(dragging.cx - r * (e.clientX - dragging.x) * sw, dragging.cy + r * (e.clientY - dragging.y) * sw, false);
+      // M slides under the fixed mirror: the point under the finger moves with it,
+      // never further out than M itself reaches (|c| <= 2)
+      let nx = dragging.cx - dragging.k * (e.clientX - dragging.x), ny = dragging.cy + dragging.k * (e.clientY - dragging.y);
+      const na = Math.hypot(nx, ny);
+      if (na > 2) { nx *= 2 / na; ny *= 2 / na; }
+      setC(nx, ny, false);
+      if (!lupe.hidden) ausweichen(e.clientX - b.left, e.clientY - b.top);
       p.x = e.clientX; p.y = e.clientY;
       showValues();
       request(true);
@@ -46226,6 +46311,7 @@ void main() {
     pts.delete(e.pointerId);
     if (dragging && dragging.id === e.pointerId) {
       dragging = null;
+      lupe.hidden = true;
       if (snapOn) {
         snapC();
         showValues();
