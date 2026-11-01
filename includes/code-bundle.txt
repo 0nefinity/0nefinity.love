@@ -45393,8 +45393,10 @@ gespiegeltes-mandelbrot.html
   border-radius: 50%;
   border: 1px solid var(--text-color);
   background: var(--bg-color);
-  pointer-events: none;
+  touch-action: none;
+  cursor: grab;
 }
+#feld #lupe:active { cursor: grabbing; }
 #feld #lupe.links { right: auto; left: 12px; }
 #feld #lupe[hidden] { display: none; }
 
@@ -46001,15 +46003,21 @@ void main() {
 
   function draw() {
     drawView(0);
+    lupe.hidden = !(lupeOn && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe();
   }
 
-  // The lupe: the start view while the finger holds the mirror point far out.
+  // The lupe: the start view, there whenever the field is zoomed far out.
   // Near and far in one glance: the lupe shows the 1 under the finger, the field the ∞ it makes.
   const LUPE_FIT = 2 * 1.6;
+  let lupeOn = true, lupeKey = "";
   function drawLupe() {
     const Lc = lupe.clientWidth;
     const lp = Math.max(1, Math.min(Math.round(Lc * dpr), bild.width, bild.height));
+    // the lupe only changes with the mirror point and r: panning and zooming far out leave it be
+    const key = [cH[0], cH[1], PB, r, lp].join();
+    if (key === lupeKey) return;
+    lupeKey = key;
     if (lupe.width !== lp || lupe.height !== lp) { lupe.width = lp; lupe.height = lp; }
     const keep = { vx, vy, vH, sw, cssW, cssH };
     vx = 0; vy = 0; vH = [0n, 0n];
@@ -46044,8 +46052,41 @@ void main() {
     lctx.fillStyle = "rgba(255, 255, 255, 0.85)";
     lctx.fill();
   }
-  // the lupe sits in a top corner; when the finger comes near it, it moves to the other one
+  // Until it is moved by hand the lupe sits in a top corner and, when the finger comes
+  // near it, moves to the other one. Put somewhere by hand, it stays there: that was a choice.
+  let lupePos = null;
+  function setLupePos(p) {
+    lupePos = p;
+    if (!p) {
+      lupe.style.left = lupe.style.top = lupe.style.right = "";
+      lupe.classList.remove("links");
+      return;
+    }
+    const Lc = lupe.offsetWidth || 132;
+    p.x = Math.max(0, Math.min(cssW - Lc, p.x));
+    p.y = Math.max(0, Math.min(cssH - Lc, p.y));
+    lupe.style.right = "auto";
+    lupe.style.left = p.x + "px";
+    lupe.style.top = p.y + "px";
+  }
+  // dropped under the panel it would be lost: move it next to the panel
+  function lupeNebenPanel() {
+    if (!lupePos || !panel.el) return;
+    const fb = feld.getBoundingClientRect(), pb = panel.el.getBoundingClientRect(), Lc = lupe.offsetWidth || 132;
+    const x = fb.left + lupePos.x, y = fb.top + lupePos.y;
+    if (x >= pb.right || x + Lc <= pb.left || y >= pb.bottom || y + Lc <= pb.top) return;
+    const wege = [
+      { x: pb.right + 8 - fb.left, y: lupePos.y },
+      { x: pb.left - Lc - 8 - fb.left, y: lupePos.y },
+      { x: lupePos.x, y: pb.top - Lc - 8 - fb.top },
+      { x: lupePos.x, y: pb.bottom + 8 - fb.top },
+    ].filter((w) => w.x >= 0 && w.x <= cssW - Lc && w.y >= 0 && w.y <= cssH - Lc);
+    if (!wege.length) return;
+    wege.sort((a, b) => Math.hypot(a.x - lupePos.x, a.y - lupePos.y) - Math.hypot(b.x - lupePos.x, b.y - lupePos.y));
+    setLupePos(wege[0]);
+  }
   function ausweichen(x, y) {
+    if (lupePos) return;
     const Lc = lupe.clientWidth || 132, top = 64, pad = 12 + 24;
     const links = lupe.classList.contains("links");
     const nearRight = y < top + Lc + 24 && x > cssW - Lc - pad;
@@ -46110,6 +46151,7 @@ void main() {
     wert.textContent = `𝑐 = ${fmt(cMx, 6)} ${cMy < 0 ? "−" : "+"} ${fmt(Math.abs(cMy), 6)} 𝑖`;
     if (panel.get("r") !== r) panel.set("r", r);
     if (panel.get("rasten") !== snapOn) panel.set("rasten", snapOn);
+    if (panel.get("lupe") !== lupeOn) panel.set("lupe", lupeOn);
     const i = PRESETS.findIndex((p) => p.c[0] === cMx && p.c[1] === cMy && p.r === r);
     panel.bodyEl.querySelectorAll("[data-button-key]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.buttonKey === i)));
   }
@@ -46123,6 +46165,7 @@ void main() {
     u.searchParams.set("s", String(sw));
     u.searchParams.delete("frei");
     if (snapOn) u.searchParams.set("rasten", "1"); else u.searchParams.delete("rasten");
+    if (lupeOn) u.searchParams.delete("lupe"); else u.searchParams.set("lupe", "0");
     history.replaceState(null, "", u);
   }
   function loadUrl() {
@@ -46145,6 +46188,7 @@ void main() {
     ensurePB();
     if (c) setC(c[0], c[1], true);
     snapOn = q.get("rasten") === "1";
+    if (q.has("lupe")) lupeOn = q.get("lupe") !== "0";
   }
 
   // ---- snap to the boundary of M (doubles) ----
@@ -46213,6 +46257,64 @@ void main() {
     return true;
   }
 
+  // ---- how far the mirror point may leave M ----
+  // Just far enough that the circle no longer touches M: then circle and mirror hold
+  // the whole nothing, in every direction, and one step back brings M again.
+  const RAND_H = 0.01, RAND_X0 = -2.05, RAND_NX = 262, RAND_NY = 122;
+  let randInnen = null, randPunkte = null;
+  function baueRand() {
+    // M on a grid (upper half, M is symmetric); its edge cells are the boundary
+    randInnen = new Uint8Array(RAND_NX * RAND_NY);
+    for (let j = 0; j < RAND_NY; j++) {
+      for (let i = 0; i < RAND_NX; i++) {
+        const cx = RAND_X0 + i * RAND_H, cy = j * RAND_H;
+        let zx = 0, zy = 0, n = 0;
+        for (; n < 400 && zx * zx + zy * zy <= 4; n++) {
+          const t = zx * zx - zy * zy + cx;
+          zy = 2 * zx * zy + cy;
+          zx = t;
+        }
+        randInnen[j * RAND_NX + i] = n === 400 ? 1 : 0;
+      }
+    }
+    const at = (i, j) => i >= 0 && i < RAND_NX && j < RAND_NY && randInnen[Math.abs(j) * RAND_NX + i];
+    const p = [];
+    for (let j = 0; j < RAND_NY; j++) {
+      for (let i = 0; i < RAND_NX; i++) {
+        if (at(i, j) && !(at(i - 1, j) && at(i + 1, j) && at(i, j - 1) && at(i, j + 1))) p.push(RAND_X0 + i * RAND_H, j * RAND_H);
+      }
+    }
+    randPunkte = Float64Array.from(p);
+  }
+  function inM(cx, cy) {
+    const i = Math.round((cx - RAND_X0) / RAND_H), j = Math.round(Math.abs(cy) / RAND_H);
+    return i >= 0 && i < RAND_NX && j < RAND_NY && randInnen[j * RAND_NX + i] === 1;
+  }
+  function abstandM(cx, cy) {
+    const ay = Math.abs(cy);
+    let d2 = Infinity;
+    for (let k = 0; k < randPunkte.length; k += 2) {
+      const dx = cx - randPunkte[k], dy = ay - randPunkte[k + 1];
+      const q = dx * dx + dy * dy;
+      if (q < d2) d2 = q;
+    }
+    return Math.sqrt(d2);
+  }
+  // a hair beyond r: the grid misses filaments thinner than its cells
+  const erlaubt = (cx, cy) => inM(cx, cy) || abstandM(cx, cy) <= r * 1.05 + 0.03;
+  // from (ax, ay) toward (bx, by), as far as allowed
+  function bisZumNichts(ax, ay, bx, by) {
+    if (!randPunkte) baueRand();
+    if (erlaubt(bx, by)) return [bx, by, false];
+    if (!erlaubt(ax, ay)) return abstandM(bx, by) <= abstandM(ax, ay) ? [bx, by, false] : [ax, ay, true];
+    let lo = 0, hi = 1;
+    for (let k = 0; k < 24; k++) {
+      const m = (lo + hi) / 2;
+      if (erlaubt(ax + m * (bx - ax), ay + m * (by - ay))) lo = m; else hi = m;
+    }
+    return [ax + lo * (bx - ax), ay + lo * (by - ay), true];
+  }
+
   // ---- input ----
   const pts = new Map();
   let dragging = null;
@@ -46267,15 +46369,10 @@ void main() {
     if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
       // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
       dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()) };
-      if (sw > 2 * fitSw()) {
-        lupe.classList.remove("links");
-        ausweichen(x, y);
-        lupe.hidden = false;
-      }
+      if (!lupe.hidden) ausweichen(x, y);
       drawDeko();
     } else if (dragging) {
       dragging = null;
-      lupe.hidden = true;
     }
   });
   feld.addEventListener("pointermove", (e) => {
@@ -46284,10 +46381,11 @@ void main() {
     const b = feld.getBoundingClientRect();
     if (dragging && dragging.id === e.pointerId) {
       // M slides under the fixed mirror: the point under the finger moves with it,
-      // never further out than M itself reaches (|c| <= 2)
-      let nx = dragging.cx - dragging.k * (e.clientX - dragging.x), ny = dragging.cy + dragging.k * (e.clientY - dragging.y);
-      const na = Math.hypot(nx, ny);
-      if (na > 2) { nx *= 2 / na; ny *= 2 / na; }
+      // out of M only until the circle holds nothing
+      const [nx, ny, amRand] = bisZumNichts(cMx, cMy,
+        dragging.cx - dragging.k * (e.clientX - dragging.x), dragging.cy + dragging.k * (e.clientY - dragging.y));
+      // held at the edge, the finger starts over from here: turning back moves the point at once
+      if (amRand) Object.assign(dragging, { x: e.clientX, y: e.clientY, cx: nx, cy: ny });
       setC(nx, ny, false);
       if (!lupe.hidden) ausweichen(e.clientX - b.left, e.clientY - b.top);
       p.x = e.clientX; p.y = e.clientY;
@@ -46311,7 +46409,6 @@ void main() {
     pts.delete(e.pointerId);
     if (dragging && dragging.id === e.pointerId) {
       dragging = null;
-      lupe.hidden = true;
       if (snapOn) {
         snapC();
         showValues();
@@ -46322,7 +46419,34 @@ void main() {
   };
   feld.addEventListener("pointerup", up);
   feld.addEventListener("pointercancel", up);
-  feld.addEventListener("dblclick", () => { fitView(); request(false); });
+  feld.addEventListener("dblclick", (e) => {
+    if (e.target === lupe) return;
+    fitView();
+    request(false);
+  });
+
+  // the lupe itself is moved by hand; the field underneath stays put
+  let lupeZug = null;
+  lupe.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    lupe.setPointerCapture(e.pointerId);
+    const lb = lupe.getBoundingClientRect();
+    lupeZug = { id: e.pointerId, dx: e.clientX - lb.left, dy: e.clientY - lb.top };
+  });
+  lupe.addEventListener("pointermove", (e) => {
+    if (!lupeZug || lupeZug.id !== e.pointerId) return;
+    e.stopPropagation();
+    const fb = feld.getBoundingClientRect();
+    setLupePos({ x: e.clientX - fb.left - lupeZug.dx, y: e.clientY - fb.top - lupeZug.dy });
+  });
+  const lupeLos = (e) => {
+    if (!lupeZug || lupeZug.id !== e.pointerId) return;
+    e.stopPropagation();
+    lupeZug = null;
+    lupeNebenPanel();
+  };
+  lupe.addEventListener("pointerup", lupeLos);
+  lupe.addEventListener("pointercancel", lupeLos);
 
   // ---- panel (tools/controls.js); code values are the start state the reset returns to ----
   const panel = Controls.createPanel({ position: "left" });
@@ -46360,20 +46484,32 @@ void main() {
         request(false);
       },
     })
+    .addToggle("lupe", {
+      label: "Lupe",
+      value: true,
+      onChange: (on) => {
+        lupeOn = !!on;
+        showValues();
+        request(false);
+      },
+    })
     .addResetButton({
       // the panel already put r and rasten back; the rest of the start state is the
       // first preset in the fitted view, with no trace left in the URL
       afterReset: () => {
-        const vorher = { cMx, cMy, r, sw, snapOn, cH, vH, mis, PB };
+        const vorher = { cMx, cMy, r, sw, snapOn, lupeOn, cH, vH, mis, PB, lupePos };
+        lupeOn = !!panel.get("lupe");
+        setLupePos(null);
         fitView();
         setC(PRESETS[0].c[0], PRESETS[0].c[1], true);
         showValues();
         zeichneJetzt();
         const u = new URL(location.href);
-        for (const k of ["c", "r", "w", "s", "rasten", "frei"]) u.searchParams.delete(k);
+        for (const k of ["c", "r", "w", "s", "rasten", "lupe", "frei"]) u.searchParams.delete(k);
         history.replaceState(history.state, "", u);
         return () => {
-          ({ cMx, cMy, r, sw, snapOn, cH, mis } = vorher);
+          ({ cMx, cMy, r, sw, snapOn, lupeOn, cH, mis } = vorher);
+          setLupePos(vorher.lupePos);
           PB = vorher.PB;
           PBn = BigInt(PB);
           ref = null;
@@ -46407,6 +46543,7 @@ void main() {
     cssW = Math.max(1, b.width);
     cssH = Math.max(1, b.height);
     if (sw > 0) sw *= old / Math.min(cssW, cssH);
+    if (lupePos) setLupePos(lupePos);
     request(false);
   }
   // the field also changes size without a window resize (controls.js sets
@@ -46423,6 +46560,7 @@ void main() {
   // URL > page defaults (control-defaults) > code values; the panel holds the latter two
   r = panel.get("r");
   snapOn = !!panel.get("rasten");
+  lupeOn = !!panel.get("lupe");
   setC(cMx, cMy, true);
   loadUrl();
   showValues();
