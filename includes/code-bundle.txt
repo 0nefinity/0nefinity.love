@@ -12252,7 +12252,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Canvas/WebGL-Rendering
 
 ### WebGL2-Mandelbrot mit Perturbation (Shader)
-`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus bis 1e±290, Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung. Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
+`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus bis 1e±290, Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung, Rückflug zur Startansicht gleitend in Dekaden (`ranZoomen()`). Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
 
 ### Raymarching mit zusammensetzbarer GLSL-Fold-Pipeline
 `fractal0ne.html` (`buildFragmentShader()`, `buildProgram()`, `camBasis()`, `euler3x3Inv()`, `rayThroughCursor()`, `buildPanel()`/`renderPipeline()`, `encodeState()/decodeState()`; Tabelle `FOLDS`): Fragment-Shader wird zur Laufzeit aus einer Liste von Faltungs-Bausteinen zusammengesetzt, Marsch über Text-SDF, freie Kamera, Mausstrahl-Pick, Presets, Zustand in URL. Brauchbar; Shader-Generator-Muster.
@@ -45411,10 +45411,6 @@ gespiegeltes-mandelbrot.html
   white-space: nowrap;
   text-shadow: none;
 }
-.ctrl-button[aria-pressed="true"] {
-  background: var(--text-color);
-  color: var(--bg-color);
-}
 
 #fehler {
   position: fixed;
@@ -45462,18 +45458,14 @@ gespiegeltes-mandelbrot.html
     fehler.hidden = false;
   };
 
-  // Misiurewicz points from the Forschungsheft, section (g) and (h)
-  const PRESETS = [
-    { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 },
-    { c: [0.37213770544957649, 0.090398233158172877], r: 2.5 },
-    { c: [0, 1], r: 2.5 },
-  ];
+  // the start: a Misiurewicz point from the Forschungsheft, section (h)
+  const START = { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 };
 
   // state: mirror point cM, radius r; view in the w-plane: center (vx, vy), sw = w units per CSS pixel.
   // cMx/cMy and vx/vy are double shadows of the exact values cH and vH (fixed point, below)
-  let cMx = PRESETS[0].c[0], cMy = PRESETS[0].c[1], r = PRESETS[0].r;
+  let cMx = START.c[0], cMy = START.c[1], r = START.r;
   let vx = 0, vy = 0, sw = 0;
-  let snapOn = false;
+  let snapOn = true;
   let cssW = 1, cssH = 1, dpr = 1, quality = 1;
   // zoom stops where doubles stop: about 290 decades in, 290 out
   const SW_MIN = 1e-290, SW_MAX = 1e290;
@@ -45551,7 +45543,7 @@ gespiegeltes-mandelbrot.html
     vy = N(hy);
   }
   const panBy = (dx, dy) => setV(vH[0] + H(dx), vH[1] + H(dy));
-  // exact: look for the Misiurewicz point this double is the rounding of (presets, URL)
+  // exact: look for the Misiurewicz point this double is the rounding of (start, URL)
   function setC(x, y, exact) {
     cMx = x;
     cMy = y;
@@ -46152,8 +46144,6 @@ void main() {
     if (panel.get("r") !== r) panel.set("r", r);
     if (panel.get("rasten") !== snapOn) panel.set("rasten", snapOn);
     if (panel.get("lupe") !== lupeOn) panel.set("lupe", lupeOn);
-    const i = PRESETS.findIndex((p) => p.c[0] === cMx && p.c[1] === cMy && p.r === r);
-    panel.bodyEl.querySelectorAll("[data-button-key]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.buttonKey === i)));
   }
   function saveUrl() {
     const u = new URL(location.href);
@@ -46164,7 +46154,7 @@ void main() {
     u.searchParams.set("w", sw < 1e-10 ? toDec(vH[0], dig) + "," + toDec(vH[1], dig) : vx + "," + vy);
     u.searchParams.set("s", String(sw));
     u.searchParams.delete("frei");
-    if (snapOn) u.searchParams.set("rasten", "1"); else u.searchParams.delete("rasten");
+    if (snapOn) u.searchParams.delete("rasten"); else u.searchParams.set("rasten", "0");
     if (lupeOn) u.searchParams.delete("lupe"); else u.searchParams.set("lupe", "0");
     history.replaceState(null, "", u);
   }
@@ -46187,7 +46177,7 @@ void main() {
     }
     ensurePB();
     if (c) setC(c[0], c[1], true);
-    snapOn = q.get("rasten") === "1";
+    if (q.has("rasten")) snapOn = q.get("rasten") !== "0";
     if (q.has("lupe")) lupeOn = q.get("lupe") !== "0";
   }
 
@@ -46380,17 +46370,9 @@ void main() {
     if (!p) return;
     const b = feld.getBoundingClientRect();
     if (dragging && dragging.id === e.pointerId) {
-      // M slides under the fixed mirror: the point under the finger moves with it,
-      // out of M only until the circle holds nothing
-      const [nx, ny, amRand] = bisZumNichts(cMx, cMy,
-        dragging.cx - dragging.k * (e.clientX - dragging.x), dragging.cy + dragging.k * (e.clientY - dragging.y));
-      // held at the edge, the finger starts over from here: turning back moves the point at once
-      if (amRand) Object.assign(dragging, { x: e.clientX, y: e.clientY, cx: nx, cy: ny });
-      setC(nx, ny, false);
+      ziehe(e);
       if (!lupe.hidden) ausweichen(e.clientX - b.left, e.clientY - b.top);
       p.x = e.clientX; p.y = e.clientY;
-      showValues();
-      request(true);
       return;
     }
     if (pts.size === 1) {
@@ -46407,16 +46389,28 @@ void main() {
   });
   const up = (e) => {
     pts.delete(e.pointerId);
-    if (dragging && dragging.id === e.pointerId) {
-      dragging = null;
-      if (snapOn) {
-        snapC();
-        showValues();
-      }
-      request(false);
-    }
+    if (dragging && dragging.id === e.pointerId) lasseLos();
     if (!pts.size) springBack();
   };
+  // M slides under the fixed mirror: the point under the finger moves with it,
+  // out of M only until the circle holds nothing
+  function ziehe(e) {
+    const [nx, ny, amRand] = bisZumNichts(cMx, cMy,
+      dragging.cx - dragging.k * (e.clientX - dragging.x), dragging.cy + dragging.k * (e.clientY - dragging.y));
+    // held at the edge, the finger starts over from here: turning back moves the point at once
+    if (amRand) Object.assign(dragging, { x: e.clientX, y: e.clientY, cx: nx, cy: ny });
+    setC(nx, ny, false);
+    showValues();
+    request(true);
+  }
+  function lasseLos() {
+    dragging = null;
+    if (snapOn) {
+      snapC();
+      showValues();
+    }
+    request(false);
+  }
   feld.addEventListener("pointerup", up);
   feld.addEventListener("pointercancel", up);
   feld.addEventListener("dblclick", (e) => {
@@ -46425,21 +46419,38 @@ void main() {
     request(false);
   });
 
-  // the lupe itself is moved by hand; the field underneath stays put
+  // in the lupe: its middle is the mirror point and moves it, at the lupe's scale;
+  // anywhere else the lupe itself is moved by hand. The field underneath stays put
   let lupeZug = null;
   lupe.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
     lupe.setPointerCapture(e.pointerId);
     const lb = lupe.getBoundingClientRect();
+    const Lc = lb.width;
+    if (Math.hypot(e.clientX - lb.left - Lc / 2, e.clientY - lb.top - Lc / 2) <= 24) {
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc };
+      drawDeko();
+      return;
+    }
     lupeZug = { id: e.pointerId, dx: e.clientX - lb.left, dy: e.clientY - lb.top };
   });
   lupe.addEventListener("pointermove", (e) => {
+    if (dragging && dragging.id === e.pointerId) {
+      e.stopPropagation();
+      ziehe(e);
+      return;
+    }
     if (!lupeZug || lupeZug.id !== e.pointerId) return;
     e.stopPropagation();
     const fb = feld.getBoundingClientRect();
     setLupePos({ x: e.clientX - fb.left - lupeZug.dx, y: e.clientY - fb.top - lupeZug.dy });
   });
   const lupeLos = (e) => {
+    if (dragging && dragging.id === e.pointerId) {
+      e.stopPropagation();
+      lasseLos();
+      return;
+    }
     if (!lupeZug || lupeZug.id !== e.pointerId) return;
     e.stopPropagation();
     lupeZug = null;
@@ -46451,23 +46462,9 @@ void main() {
   // ---- panel (tools/controls.js); code values are the start state the reset returns to ----
   const panel = Controls.createPanel({ position: "left" });
   panel
-    .addButtonGroup("spiegelpunkte", {
-      buttons: ["Seepferdchen", "Elefanten", "𝑐 = 𝑖"].map((label, i) => ({
-        key: String(i),
-        label,
-        onClick: () => {
-          const p = PRESETS[i];
-          r = p.r;
-          setC(p.c[0], p.c[1], true);
-          fitView();
-          showValues();
-          request(false);
-        },
-      })),
-    })
     .addSlider("r", {
       label: "𝑟", min: 0, max: 4, step: 0.01, decimals: 2, grow: true,
-      value: PRESETS[0].r,
+      value: START.r,
       onChange: (v) => {
         r = Math.max(0, Number(v) || 0);
         showValues();
@@ -46476,7 +46473,7 @@ void main() {
     })
     .addToggle("rasten", {
       label: "einrasten",
-      value: false,
+      value: true,
       onChange: (on) => {
         snapOn = !!on;
         if (snapOn) snapC();
@@ -46493,15 +46490,16 @@ void main() {
         request(false);
       },
     })
+    .addButton("ran", { label: "ran zoomen", onClick: ranZoomen })
     .addResetButton({
       // the panel already put r and rasten back; the rest of the start state is the
-      // first preset in the fitted view, with no trace left in the URL
+      // start point in the fitted view, with no trace left in the URL
       afterReset: () => {
         const vorher = { cMx, cMy, r, sw, snapOn, lupeOn, cH, vH, mis, PB, lupePos };
         lupeOn = !!panel.get("lupe");
         setLupePos(null);
         fitView();
-        setC(PRESETS[0].c[0], PRESETS[0].c[1], true);
+        setC(START.c[0], START.c[1], true);
         showValues();
         zeichneJetzt();
         const u = new URL(location.href);
@@ -46534,6 +46532,31 @@ void main() {
     sw = fitSw();
     setV(0n, 0n);
     ensurePB();
+  }
+  // back to the start view, the mirror point stays: the zoom glides in decades,
+  // so 1e50 takes no longer than 1e2
+  let ranZug = 0;
+  function ranZoomen() {
+    cancelAnimationFrame(ranZug);
+    const s0 = Math.log(sw), s1 = Math.log(fitSw()), v0 = vH, P0 = PB, t0 = performance.now();
+    const dauer = Math.min(900, 250 + 25 * Math.abs(s1 - s0) / Math.LN10);
+    const step = (t) => {
+      if (pts.size) return;
+      const a = Math.min(1, (t - t0) / dauer), e = a < 0.5 ? 4 * a * a * a : 1 - (-2 * a + 2) ** 3 / 2;
+      if (a >= 1) {
+        fitView();
+        request(false);
+        return;
+      }
+      sw = Math.exp(s0 + (s1 - s0) * e);
+      ensurePB();
+      const F = BigInt(Math.round((1 - e) * 2 ** 40));
+      const sh = (b) => (PB > P0 ? b << BigInt(PB - P0) : b >> BigInt(P0 - PB));
+      setV(sh(v0[0] * F >> 40n), sh(v0[1] * F >> 40n));
+      request(true);
+      ranZug = requestAnimationFrame(step);
+    };
+    ranZug = requestAnimationFrame(step);
   }
 
   function resize() {
