@@ -12252,7 +12252,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Canvas/WebGL-Rendering
 
 ### WebGL2-Mandelbrot mit Perturbation (Shader)
-`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus ohne feste Grenze (Maßstab als log2, BLA-Sprünge nach Zhuoran/Heiland-Allen, tiefe Bahnen im abbrechbaren Worker `tools/workers/gespiegeltes-mandelbrot-bahn.js`, scharf in Bändern), Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung, Rückflug zur Startansicht als reine Ähnlichkeit um den Fixpunkt beider Ansichten, weit daneben van Wijk–Nuij (`ranZoomen()`), Einrast-Schienen aus ~100k vorab berechneten Misiurewicz-Punkten (Morton-Varints, deflate-raw per `DecompressionStream`, Raster-NN in µs, `naechste()`/`aufSchiene()`) plus Worker, der im Leerlauf um den Ausschnitt verdichtet (`tools/workers/gespiegeltes-mandelbrot-worker.js`), Spiegelpunkt in jeder Tiefe ziehbar und einrastbar (exakt als BigInt, Misiurewicz-Suche nahe dem Finger im Worker: `nahe()` mit Störungs-Newton in Doubles, dann Festkomma-Newton mit Double-Ableitung), ohne BLA-Tabelle ein eigenes Shader-Programm ohne Sprungcode (flach doppelt so schnell), nahe dem Misiurewicz-Punkt gedrehte Kopien aus einem Turm echter Bilder (`rho()`, `haeck()`, Distanz in R16F statt Grau, Stichprobe gegen echte Pixel mit halbpixel-versetztem Rauschmaß, `tempo(v)` als Schnittstelle für den Regler). Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
+`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus ohne feste Grenze (Maßstab als log2, BLA-Sprünge nach Zhuoran/Heiland-Allen, tiefe Bahnen im abbrechbaren Worker `tools/workers/gespiegeltes-mandelbrot-bahn.js`, scharf in Bändern), Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung, Rückflug zur Startansicht als reine Ähnlichkeit um den Fixpunkt beider Ansichten, weit daneben van Wijk–Nuij (`ranZoomen()`), Einrast-Schienen aus ~100k vorab berechneten Misiurewicz-Punkten (Morton-Varints, deflate-raw per `DecompressionStream`, Raster-NN in µs, `naechste()`/`aufSchiene()`) plus Worker, der im Leerlauf um den Ausschnitt verdichtet (`tools/workers/gespiegeltes-mandelbrot-worker.js`), Spiegelpunkt in jeder Tiefe ziehbar und einrastbar (exakt als BigInt, Misiurewicz-Suche nahe dem Finger im Worker: `nahe()` mit Störungs-Newton in Doubles, dann Festkomma-Newton mit Double-Ableitung), ohne BLA-Tabelle ein eigenes Shader-Programm ohne Sprungcode (flach doppelt so schnell), nahe dem Misiurewicz-Punkt gedrehte Kopien aus einem Turm echter Bilder (`rho()`, `haeck()`, Distanz in R16F statt Grau, Stichprobe gegen echte Pixel mit halbpixel-versetztem Rauschmaß, `tempo(v)` als Schnittstelle für den Regler), Federregler fürs Zoomtempo (Auslenkung = Oktaven pro Sekunde, exponentiell, ohne Anschlag, zählt ab dem Aufsetzpunkt, federt in 200 ms zur Mitte). Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
 
 ### Raymarching mit zusammensetzbarer GLSL-Fold-Pipeline
 `fractal0ne.html` (`buildFragmentShader()`, `buildProgram()`, `camBasis()`, `euler3x3Inv()`, `rayThroughCursor()`, `buildPanel()`/`renderPipeline()`, `encodeState()/decodeState()`; Tabelle `FOLDS`): Fragment-Shader wird zur Laufzeit aus einer Liste von Faltungs-Bausteinen zusammengesetzt, Marsch über Text-SDF, freie Kamera, Mausstrahl-Pick, Presets, Zustand in URL. Brauchbar; Shader-Generator-Muster.
@@ -45412,6 +45412,39 @@ gespiegeltes-mandelbrot.html
   text-shadow: none;
 }
 
+#tempo {
+  grid-column: 1 / -1;
+  position: relative;
+  width: 100%;
+  height: 44px;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
+}
+#tempo:active { cursor: grabbing; }
+#tempo .spur {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 3px;
+  background: var(--ui-fill-20);
+}
+#tempo .knopf {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: var(--text-color);
+}
+#tempo:focus-visible .knopf { box-shadow: 0 0 0 2px var(--bg-color), 0 0 0 3px var(--text-color); }
+.ctrl-panel.bar-mode #tempoReihe { width: 240px; }
+
 #fehler {
   position: fixed;
   top: 5rem;
@@ -47547,6 +47580,64 @@ void main() {
       },
     });
   panel.bodyEl.prepend(wert);
+
+  // ---- tempo slider (#416): how far it is held out is how fast it zooms, right in, left out,
+  // faster and faster towards the ends and on past them. The middle is 0, both ends lead to ∞,
+  // and the spring always brings it home to 0. ----
+  const tempoReihe = document.createElement("div");
+  tempoReihe.className = "ctrl-row";
+  tempoReihe.id = "tempoReihe";
+  tempoReihe.innerHTML = '<div id="tempo" tabindex="0"><div class="spur"></div><div class="knopf"></div></div>';
+  panel.bodyEl.querySelector('[data-key="r"]').after(tempoReihe);
+  const tempoEl = tempoReihe.firstElementChild, knopf = tempoEl.lastElementChild;
+  // d: deflection in half track lengths, unbounded; out comes v for tempo() (v < 0 is in)
+  const tempoAus = (d) => -Math.sign(d) * 0.25 * (2 ** (8 * Math.abs(d)) - 1);
+  let tempoZug = null, tempoD = 0, feder = 0;
+  const halbeSpur = () => Math.max(1, tempoEl.clientWidth / 2 - 8);
+  function tempoStell(d) {
+    tempoD = d;
+    knopf.style.transform = `translateX(${Math.max(-1, Math.min(1, d)) * halbeSpur()}px)`;
+    tempo(tempoAus(d));
+  }
+  // let go: back to the middle in 200 ms, the zoom slows down along with it
+  function tempoLos() {
+    tempoZug = null;
+    cancelAnimationFrame(feder);
+    const d0 = tempoD, t0 = performance.now();
+    const step = (t) => {
+      const a = Math.min(1, (t - t0) / 200);
+      tempoStell(a < 1 ? d0 * (1 - a) ** 3 : 0);
+      if (a < 1) feder = requestAnimationFrame(step);
+    };
+    feder = requestAnimationFrame(step);
+  }
+  // grabbed anywhere, it counts from where the finger lands: no jump on touch
+  tempoEl.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    cancelAnimationFrame(feder);
+    tempoEl.setPointerCapture(e.pointerId);
+    tempoZug = { id: e.pointerId, x: e.clientX - tempoD * halbeSpur() };
+  });
+  tempoEl.addEventListener("pointermove", (e) => {
+    if (!tempoZug || tempoZug.id !== e.pointerId) return;
+    tempoStell((e.clientX - tempoZug.x) / halbeSpur());
+  });
+  for (const t of ["pointerup", "pointercancel"]) {
+    tempoEl.addEventListener(t, (e) => {
+      if (tempoZug && tempoZug.id === e.pointerId) tempoLos();
+    });
+  }
+  tempoEl.addEventListener("keydown", (e) => {
+    const s = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!s) return;
+    e.preventDefault();
+    cancelAnimationFrame(feder);
+    tempoStell(s * (e.shiftKey ? 1 : 0.5));
+  });
+  tempoEl.addEventListener("keyup", (e) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") tempoLos();
+  });
 
   // full-quality frame now, without the delayed saveUrl of request()
   function zeichneJetzt() {
