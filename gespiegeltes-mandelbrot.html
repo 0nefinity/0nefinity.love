@@ -207,6 +207,7 @@
     cMx = x;
     cMy = y;
     mis = null;
+    cGenau = false;
     cH = [H(x), H(y)];
     if (!exact) return;
     const m = misFind(x, y, 1e-12 * (1 + Math.hypot(x, y)));
@@ -214,6 +215,16 @@
       mis = { k: m.k, p: m.p };
       cH = m.e;
     }
+  }
+
+  // c exactly at h, below what a double resolves (dragged deep down); m: Misiurewicz point
+  let cGenau = false;
+  function setCH(h, m) {
+    cH = h;
+    mis = m;
+    cMx = N(h[0]);
+    cMy = N(h[1]);
+    cGenau = true;
   }
 
   // ---- Misiurewicz points: z_{k+p} = z_k for the orbit of 0, k >= 1 ----
@@ -290,7 +301,8 @@
     const h2 = (hx * hx + hy * hy) >> PBn;
     if (h2 === 0n || !(lam >= p / 16)) return false;
     const sx = ((gx * hx + gy * hy) >> PBn << PBn) / h2, sy = ((gy * hx - gx * hy) >> PBn << PBn) / h2;
-    return N(ab(sx) + ab(sy)) < 2 ** (-PB / 2);
+    // in log2: 2^(-PB/2) itself is 0 as a double from PB = 2150 on
+    return lg2(ab(sx) + ab(sy)) < -PB / 2;
   }
   // a verified Misiurewicz point within R of c (double in, exact out), smallest preperiod first
   function misFind(cx, cy, R) {
@@ -427,7 +439,11 @@ void main() {
     }
   }
   // the tables hold for |dc| up to 2^uLc
+#ifdef BLA
   bool bla = uBlaTop > 0 && log2(length(dcm)) + float(ec) <= uLc;
+#else
+  const bool bla = false;
+#endif
 
   // D = dz/dc * |dc/dp|: the derivative in pixels, so neither it nor the pixel size overflows
   vec2 dz = vec2(0.0), D = vec2(0.0), z = vec2(0.0), dc = vec2(0.0);
@@ -529,29 +545,35 @@ void main() {
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
     return s;
   }
-  let prog;
+  // two programs: with the BLA jumps, and without them for shallow views. The unused jump
+  // code alone costs the plain one half its speed (measured, e5abca86 had none)
+  const programme = {};
   try {
-    prog = gl.createProgram();
-    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    for (const bla of [false, true]) {
+      const prog = gl.createProgram();
+      gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
+      gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, bla ? FS.replace("\n", "\n#define BLA\n") : FS));
+      gl.bindAttribLocation(prog, 0, "p");
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      const u = {};
+      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) u[n] = gl.getUniformLocation(prog, n);
+      gl.useProgram(prog);
+      gl.uniform1i(u.uRef, 0);
+      gl.uniform1i(u.uBlaAB, 1);
+      gl.uniform1i(u.uBlaR, 2);
+      programme[bla] = { prog, u };
+    }
   } catch (e) {
     fail("Shader-Fehler: " + e.message);
     return;
   }
-  gl.useProgram(prog);
+  let U = programme[false].u;
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, "p");
-  gl.enableVertexAttribArray(loc);
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  const U = {};
-  for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) U[n] = gl.getUniformLocation(prog, n);
-  gl.uniform1i(U.uRef, 0);
-  gl.uniform1i(U.uBlaAB, 1);
-  gl.uniform1i(U.uBlaR, 2);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   gl.getExtension("EXT_color_buffer_float");
   // orbits as long as the device's textures allow: the only bound on depth
   const LMAX = 4096 * gl.getParameter(gl.MAX_TEXTURE_SIZE);
@@ -723,6 +745,10 @@ void main() {
     if (!brauchbar) return false;
     const ox = zuPB(o.cx, o.PB), oy = zuPB(o.cy, o.PB);
 
+    // shallow (maxit below about 4500) the lookups cost more than the steps they save
+    const mitBla = exact && o.L > 4 && maxit > 4500;
+    gl.useProgram(programme[mitBla].prog);
+    U = programme[mitBla].u;
     // the largest |dc| in view, for the BLA tables
     let lc;
     gl.uniform2f(U.uRes, W, Hc);
@@ -765,8 +791,6 @@ void main() {
     }
     // tables for a much larger |dc| than in view hold, but jump less: remade every 8 octaves
     lc = Math.max(-1e5, Math.ceil(lc / 4) * 4);
-    // shallow (maxit in the low thousands) the lookups cost more than the steps they save
-    const mitBla = exact && o.L > 4;
     if (mitBla && (!o.bla || o.bla.lc < lc || o.bla.lc > lc + 8)) baueBla(o, lc);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, o.tex);
@@ -1057,11 +1081,18 @@ void main() {
   }
   function saveUrl() {
     const u = new URL(location.href);
-    u.searchParams.set("c", cMx + "," + cMy);
+    const L10 = Math.log10(2);
+    // dragged deep down: c with as many digits as it has bits, then k and p if it is a
+    // Misiurewicz point (found again in a moment from there)
+    let c = cMx + "," + cMy;
+    if (cGenau) {
+      const n = Math.ceil(PB * L10) + 2;
+      c = toDec(cH[0], n) + "," + toDec(cH[1], n) + (mis ? "," + mis.k + "," + mis.p : "");
+    }
+    u.searchParams.set("c", c);
     u.searchParams.set("r", String(r));
     // deep views need more digits than a double has; far out the centre is a number with
     // as many digits as the view is wide, written as mantissa and exponent
-    const L10 = Math.log10(2);
     let w;
     if (lv > 60) {
       const sig = Math.ceil((lv - ls) * L10) + 6;
@@ -1092,10 +1123,12 @@ void main() {
       return v.length === 2 && v.every(Number.isFinite) ? v : null;
     };
     const c = pair("c");
+    const cs = (q.get("c") || "").split(",");
+    const genau = cs.length >= 2 && cs[0].length + cs[1].length > 48;
     const rr = Number(q.get("r"));
     if (rr > 0 && Number.isFinite(rr)) r = rr;
     // before the bits grow: the Misiurewicz point is found at start precision, setPB refines it
-    if (c) setC(c[0], c[1], true);
+    if (c) setC(c[0], c[1], !genau);
     // s as mantissa and exponent, so 1e-5000 is a scale too
     const sm = /^\s*(\d*\.?\d+)(?:e([+-]?\d+))?\s*$/i.exec(q.get("s") || "");
     if (sm && Number(sm[1]) > 0) setS(Math.log2(Number(sm[1])) + (Number(sm[2]) || 0) / Math.log10(2));
@@ -1110,6 +1143,15 @@ void main() {
       }
     }
     ensurePB();
+    // more digits than a double: read at the bits the view needs
+    if (genau) {
+      const h = [fromDec(cs[0]), fromDec(cs[1])];
+      if (h[0] !== null && h[1] !== null) {
+        const k = Number(cs[2]), p = Number(cs[3]);
+        const e = k >= 1 && p >= 1 && misRefine(h[0], h[1], k, p);
+        setCH(e && misVerify(e[0], e[1], k, p) ? e : h, e && misVerify(e[0], e[1], k, p) ? { k, p } : null);
+      }
+    }
     if (q.has("rasten")) snapOn = q.get("rasten") !== "0";
     if (q.has("lupe")) lupeOn = q.get("lupe") !== "0";
   }
@@ -1168,14 +1210,20 @@ void main() {
   // after the boundary snap: a Misiurewicz point close by, so the mirror point is
   // exact and the pattern outside goes on without end. A boundary point alone would
   // close up far out, so without one the point stays put and the marker shakes its head.
-  function snapC() {
+  // lk: log2 of c per pixel where the point was moved (the view, or the lupe); in log2,
+  // since deep down c per pixel is no double any more
+  function snapC(lk = proPixel()) {
     if (mis) return true;
+    if (lk < TIEF) {
+      sucheNahe(cH, lk + 3, true);
+      return true;
+    }
     if (tab) {
       if (aufSchiene(cMx, cMy)) return true;
       wackeln();
       return false;
     }
-    const tol = Math.max(1e-15, r * Math.min(sw, fitSw()));
+    const tol = Math.max(1e-15, 2 ** lk);
     const [x, y] = snap(cMx, cMy, tol * 0.25);
     const m = misFind(x, y, 8 * tol);
     if (!m) { wackeln(); return false; }
@@ -1495,7 +1543,7 @@ void main() {
     // the ring may be tiny, the spot to grab stays finger sized at every zoom
     if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
       // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()) };
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()), lk: proPixel(), h: cH, PB };
       if (!lupe.hidden) ausweichen(x, y);
       drawDeko();
     } else if (dragging) {
@@ -1532,6 +1580,19 @@ void main() {
   // M slides under the fixed mirror: the point under the finger moves with it,
   // out of M only until the circle holds nothing
   function ziehe(e) {
+    if (dragging.lk < TIEF) {
+      const t = zielH(e);
+      if (!snapOn) {
+        setCH(t, null);
+        showValues();
+        request(true);
+        return;
+      }
+      // only when the finger is more than a pixel away from where the point sits
+      const lR = abstand(cH, t) - 0.05;
+      if (lR > dragging.lk) sucheNahe(t, mis ? lR : dragging.lk + 3, false);
+      return;
+    }
     if (snapOn && tab) {
       const tx = dragging.cx - dragging.k * (e.clientX - dragging.x), ty = dragging.cy + dragging.k * (e.clientY - dragging.y);
       // the worker looks where the finger is, the point follows on the rails
@@ -1551,12 +1612,57 @@ void main() {
     request(true);
   }
   function lasseLos() {
+    const { lk } = dragging;
     dragging = null;
     if (snapOn) {
-      snapC();
+      snapC(lk);
       showValues();
     }
     request(false);
+  }
+
+  // ---- deep down: Misiurewicz points near the finger, found exactly ----
+  // Below double resolution (c-pixel under 2^TIEF) the rails are far too coarse and doubles
+  // cannot even say where the finger is. The finger's target is then the exact start point
+  // plus its pixels, and a worker looks for a Misiurewicz point near it (nahe in the bahn
+  // file). The point stays where it sits until one turns up nearer to the finger than it
+  // is. One search at a time; the newest finger position waits for it.
+  const TIEF = -45;
+  const proPixel = () => Math.log2(r) + Math.min(ls, Math.log2(fitSw()));
+  function zielH(e) {
+    const { lk } = dragging, h = dragging.h.map((b) => zuPB(b, dragging.PB));
+    return [h[0] - Hl(e.clientX - dragging.x, lk), h[1] + Hl(e.clientY - dragging.y, lk)];
+  }
+  const abstand = (a, b) => logadd(2 * lg2(a[0] - b[0]), 2 * lg2(a[1] - b[1])) / 2;
+  let sucheW = null, sucheLauf = null, sucheNext = null;
+  // look within 2^lR of t; wackelt: shake if nothing turns up and the point is still free
+  function sucheNahe(t, lR, wackelt) {
+    const auftrag = { t, lR, wackelt, PB };
+    if (sucheLauf) { sucheNext = auftrag; return; }
+    if (!sucheW) {
+      sucheW = new Worker("/tools/workers/gespiegeltes-mandelbrot-bahn.js");
+      sucheW.onerror = (e) => { e.preventDefault(); fail("Such-Worker: " + (e.message || "Fehler")); };
+      sucheW.onmessage = (e) => {
+        const a = sucheLauf, m = e.data.nahe;
+        sucheLauf = null;
+        // same bits still, and nearer to where the finger is now than the point is
+        const ziel = sucheNext ? sucheNext.t : a.t;
+        if (m && m.PB === PB && (!mis || abstand(m.e, ziel) < abstand(cH, ziel))) {
+          setCH(m.e, { k: m.k, p: m.p });
+          showValues();
+          request(!!dragging);
+        } else if (!m && a.wackelt && !mis && !sucheNext) {
+          wackeln();
+        }
+        if (sucheNext) {
+          const n = sucheNext;
+          sucheNext = null;
+          if (n.PB === PB) sucheNahe(n.t, n.lR, n.wackelt);
+        }
+      };
+    }
+    sucheLauf = auftrag;
+    sucheW.postMessage({ nahe: { tx: t[0], ty: t[1], lR, PB } });
   }
   feld.addEventListener("pointerup", up);
   feld.addEventListener("pointercancel", up);
@@ -1575,7 +1681,7 @@ void main() {
     const lb = lupe.getBoundingClientRect();
     const Lc = lb.width;
     if (Math.hypot(e.clientX - lb.left - Lc / 2, e.clientY - lb.top - Lc / 2) <= 24) {
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc };
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc, lk: Math.log2(r * LUPE_FIT / Lc), h: cH, PB };
       drawDeko();
       return;
     }
@@ -1642,7 +1748,7 @@ void main() {
       // the panel already put r and rasten back; the rest of the start state is the
       // start point in the fitted view, with no trace left in the URL
       afterReset: () => {
-        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, cH, vH, mis, PB, lupePos };
+        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, cH, vH, mis, PB, lupePos, cGenau };
         lupeOn = !!panel.get("lupe");
         setLupePos(null);
         fitView();
@@ -1653,7 +1759,7 @@ void main() {
         for (const k of ["c", "r", "w", "s", "rasten", "lupe", "frei"]) u.searchParams.delete(k);
         history.replaceState(history.state, "", u);
         return () => {
-          ({ cMx, cMy, r, snapOn, lupeOn, cH, mis } = vorher);
+          ({ cMx, cMy, r, snapOn, lupeOn, cH, mis, cGenau } = vorher);
           setS(vorher.ls);
           setLupePos(vorher.lupePos);
           PB = vorher.PB;
