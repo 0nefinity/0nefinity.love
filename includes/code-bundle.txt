@@ -45430,6 +45430,10 @@ gespiegeltes-mandelbrot.html
 @media (max-width: 420px) {
   #wert { font-size: 1rem; }
 }
+/* the speed slider has no label: its track takes the whole width of the panel */
+.ctrl-panel:not(.bar-mode) .ctrl-row[data-key="tempo"] { grid-template-columns: minmax(0, 1fr); }
+.ctrl-row[data-key="tempo"] .ctrl-label { display: none; }
+.ctrl-panel:not(.bar-mode) .ctrl-row[data-key="tempo"] .ctrl-slider-group { grid-column: 1; }
 </style>
 </head>
 <body>
@@ -45543,11 +45547,28 @@ gespiegeltes-mandelbrot.html
   // cM as an exact Misiurewicz point: preperiod k, period p (null when cM is just where the finger left it)
   let mis = null;
 
+  // Fewer bits cut the centre (and c) off at the new width. Zoomed back in, those bits are
+  // what the view stood on: out and in again must land on the same spot. So the values from
+  // before the cut are kept while the centre (c) is still the cut version of them, and put
+  // back when the width grows again.
+  let verlust = null;
+  const schnitt = (b, von, auf) => (auf > von ? b << BigInt(auf - von) : b >> BigInt(von - auf));
   function setPB(n) {
     if (n === PB) return;
-    const sh = (b) => (n > PB ? b << BigInt(n - PB) : b >> BigInt(PB - n));
-    cH = cH.map(sh);
-    vH = vH.map(sh);
+    const sh = (b) => schnitt(b, PB, n);
+    let nv = vH.map(sh), nc = cH.map(sh);
+    if (n < PB) {
+      const treu = verlust && vH.every((b, i) => b === schnitt(verlust.vH[i], verlust.PB, PB))
+        && (mis || cH.every((b, i) => b === schnitt(verlust.cH[i], verlust.PB, PB)));
+      if (!treu) verlust = { PB, vH, cH };
+    } else if (verlust) {
+      const vP = verlust.PB;
+      if (vH.every((b, i) => b === schnitt(verlust.vH[i], vP, PB))) nv = verlust.vH.map((b) => schnitt(b, vP, n));
+      if (!mis && cH.every((b, i) => b === schnitt(verlust.cH[i], vP, PB))) nc = verlust.cH.map((b) => schnitt(b, vP, n));
+      if (n >= vP) verlust = null;
+    }
+    vH = nv;
+    cH = nc;
     PB = n;
     PBn = BigInt(n);
     if (mis) cH = misRefine(cH[0], cH[1], mis.k, mis.p) || cH;
@@ -46239,25 +46260,37 @@ void main() {
   }
   // what the canvas holds is moved and scaled to where the view went; only what that leaves
   // uncovered is computed (sharp when it is cheap, else coarse), so panning and slight zooming
-  // never start over. Another c_M at the same view: the old picture stays and is overwritten
-  // in bands from the bottom up. null when the canvas is of no use.
+  // never start over. Another c_M: no part of the old picture is of use (a seam of two c_M
+  // in one frame would lie). null when the canvas is of no use.
   const kopieFbo = rahmen();
-  let rollY = 0;   // the band runs down to 0 and starts over at the top: the picture never gets finished, only newer
   const KOSTEN_MS = 40;
+  // the anchor: the last picture that was computed in one go (not moved, not scaled), kept in
+  // kopieFbo. Every moved frame is cut from it, never from the frame before: a chain of
+  // moved pictures adds a blur and a rounding of up to half a pixel at every step, the
+  // anchor keeps both at one step.
+  let anker = null;
+  const ANKER_Q = 0.5;
+  function ankerNeu(W, Hc) {
+    kopiere(W, Hc);
+    anker = { ...gezeigt };
+  }
   function plan(W, Hc) {
-    const g = gezeigt;
-    if (!g || g.W !== W || g.Hc !== Hc) return null;
-    const dl = g.ls - ls;
+    const g0 = gezeigt;
+    if (!g0 || g0.W !== W || g0.Hc !== Hc) return null;
+    const lsc = ls + Math.log2(cssW / W);
+    const gleichK = (g) => g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
+      && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
+    const versatz = (g) => [g.ls - ls, N(zuPB(g.vH[0], g.PB) - vH[0], lsc), N(zuPB(g.vH[1], g.PB) - vH[1], lsc)];
+    if (!gleichK(g0)) return null;
+    const g = anker;
+    if (!g || g.W !== W || g.Hc !== Hc || !(g.q >= ANKER_Q) || !gleichK(g)) return null;
+    let [dl, dx, dy] = versatz(g);
     if (!(Math.abs(dl) <= 1)) return null;
-    const lsc = ls + Math.log2(cssW / W), k = 2 ** dl;
-    let dx = N(zuPB(g.vH[0], g.PB) - vH[0], lsc), dy = N(zuPB(g.vH[1], g.PB) - vH[1], lsc);
+    const k = 2 ** dl;
     if (!isFinite(dx) || !isFinite(dy)) return null;
     const still = Math.abs(dl) < 1e-9;
     const exakt = still && Math.abs(dx - Math.round(dx)) < 0.02 && Math.abs(dy - Math.round(dy)) < 0.02;
     if (exakt) { dx = Math.round(dx); dy = Math.round(dy); }
-    const gleichK = g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
-      && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
-    if (!gleichK) return still && Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6 ? { rollen: true } : null;
     const x0 = Math.round(W / 2 + dx - k * W / 2), x1 = Math.round(W / 2 + dx + k * W / 2);
     const y0 = Math.round(Hc / 2 + dy - k * Hc / 2), y1 = Math.round(Hc / 2 + dy + k * Hc / 2);
     const cx0 = Math.max(0, x0), cx1 = Math.min(W, x1), cy0 = Math.max(0, y0), cy1 = Math.min(Hc, y1);
@@ -46286,23 +46319,7 @@ void main() {
   // true / false (no reference: nothing was touched) / null (not applicable)
   function umschieben(a, W, Hc) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    if (a.rollen) {
-      const h = Math.max(8, Math.min(Hc, Math.round(14 / (pxMs * W))));
-      if (rollY <= 0 || rollY > Hc) rollY = Hc;
-      const y = Math.max(0, rollY - h);
-      gl.enable(gl.SCISSOR_TEST);
-      gl.scissor(0, y, W, rollY - y);
-      const ok = drawView(W, Hc, "feld");
-      gl.disable(gl.SCISSOR_TEST);
-      if (!ok) { altesBild(); return false; }
-      const von = rollY;
-      rollY = y;
-      messe((von - y) * W);
-      gezeichnet(Math.min(gezeigt.q, 0.05));
-      return true;
-    }
     if (a.kosten > KOSTEN_MS) return null;
-    kopiere(W, Hc);
     let n = 0;
     gl.enable(gl.SCISSOR_TEST);
     for (const t of a.rects) {
@@ -46314,6 +46331,7 @@ void main() {
     setzeEin(a, W, Hc);
     if (n) messe(n);
     gezeichnet(a.exakt ? a.qs : Math.min(a.qs, 0.99));
+    if (a.exakt) ankerNeu(W, Hc);
     return true;
   }
   // the whole view at quality q (<= 1), at once
@@ -46333,7 +46351,6 @@ void main() {
       if (e !== null) return e;
     }
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
-    if (alt) kopiere(W, Hc);
     if (w === W && h === Hc) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       if (!drawView(W, Hc, "feld")) { altesBild(); return false; }
@@ -46348,6 +46365,7 @@ void main() {
     }
     messe(w * h);
     gezeichnet(w === W && h === Hc ? 1 : alt ? Math.min(q, alt.qs) : q);
+    if (!alt || (w === W && h === Hc)) ankerNeu(W, Hc);
     return true;
   }
   function draw(q, schieben = true) {
@@ -46985,6 +47003,7 @@ void main() {
         if (nr !== lauf) return;
         if (y > 0) return band();
         gezeigt.q = 1;
+        ankerNeu(W, Hc);
         fertig();
       });
     };
@@ -47678,24 +47697,37 @@ void main() {
     });
   panel.bodyEl.prepend(wert);
 
-  // ---- tempo slider (#416): right zooms in, left out, as fast as it is set, until it is set
-  // back to 0. Its scale grows like log(1 + v), fine round 0 and fast towards the ends;
-  // typed in, any speed goes. ----
+  // ---- tempo slider (#416): right zooms in, left out, until it is set back to 0. The
+  // slider goes from -1 over 0 to 1 and no further, what 1 means is set in its menu (Max,
+  // octaves per second, any number). The thumb stands for u, the speed is EINS * u^3: slow
+  // speeds sit wide apart, near 0, and the far end is reached with a small step. Typed in,
+  // anything past 1 stays 1. 0 is rest, 1 is EINS, and the way to infinity is the slider. ----
+  const EINS = 8;
   const tempoSkala = {
     toSliderValue(v, cfg) {
       const lim = v > 0 ? cfg.max : -cfg.min;
       if (!v || !(lim > 0)) return 0;
-      return Math.sign(v) * lim * Math.log1p(Math.min(Math.abs(v), lim)) / Math.log1p(lim);
+      return Math.sign(v) * lim * Math.min(1, Math.cbrt(Math.abs(v) / lim));
     },
     fromSliderValue(x, cfg) {
       const lim = x > 0 ? cfg.max : -cfg.min;
+      const u = Math.min(1, Math.abs(x) / lim);
       // a small dead zone round the middle: rest is easy to find
-      if (!(lim > 0) || Math.abs(x) < 0.02 * lim) return 0;
-      return Math.sign(x) * Math.expm1(Math.min(1, Math.abs(x) / lim) * Math.log1p(lim));
+      return !(lim > 0) || u < 0.02 ? 0 : Math.sign(x) * lim * u ** 3;
+    },
+    formatDisplayValue(v, decs, cfg) {
+      const lim = v > 0 ? cfg.max : -cfg.min;
+      return String(!v || !(lim > 0) ? 0 : +(Math.sign(v) * Math.min(1, Math.cbrt(Math.abs(v) / lim))).toFixed(3));
+    },
+    parseDisplayValue(text, cfg) {
+      const n = Number(String(text).trim().replace(",", "."));
+      if (!Number.isFinite(n)) return NaN;
+      const u = Math.max(-1, Math.min(1, n));
+      return Math.sign(u) * (u > 0 ? cfg.max : -cfg.min) * Math.abs(u) ** 3;
     },
   };
   panel.addSlider("tempo", {
-    label: "", min: -64, max: 64, step: 1, decimals: 2, transform: tempoSkala,
+    label: "", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala,
     value: 0,
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
