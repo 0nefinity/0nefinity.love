@@ -45412,39 +45412,6 @@ gespiegeltes-mandelbrot.html
   text-shadow: none;
 }
 
-#tempo {
-  grid-column: 1 / -1;
-  position: relative;
-  width: 100%;
-  height: 44px;
-  touch-action: none;
-  cursor: grab;
-  outline: none;
-}
-#tempo:active { cursor: grabbing; }
-#tempo .spur {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 50%;
-  height: 6px;
-  margin-top: -3px;
-  border-radius: 3px;
-  background: var(--ui-fill-20);
-}
-#tempo .knopf {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
-  border-radius: 50%;
-  background: var(--text-color);
-}
-#tempo:focus-visible .knopf { box-shadow: 0 0 0 2px var(--bg-color), 0 0 0 3px var(--text-color); }
-.ctrl-panel.bar-mode #tempoReihe { width: 240px; }
-
 #fehler {
   position: fixed;
   top: 5rem;
@@ -46277,7 +46244,7 @@ void main() {
     if (kopie) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       zeigeTurm(kopie, W, Hc);
-      gezeichnet(1);
+      gezeichnet(1 / kopie.B.f);
       turmKontrolle(kopie, W, Hc);
       return true;
     }
@@ -46302,8 +46269,8 @@ void main() {
     ensurePB();
     const ok = grob(q);
     drawDeko();
-    lupe.hidden = !(lupeOn && sw > 2 * fitSw());
-    if (!lupe.hidden) drawLupe();
+    lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
+    if (!lupe.hidden) drawLupe(false);
     return ok;
   }
 
@@ -46335,6 +46302,7 @@ void main() {
   // at sh12a), give or take a quarter, plus lone boundary pixels one side's iteration limit
   // leaves black and the other's lets escape
   const TURM_SCHWELLE = 0.002, TURM_VERSUCHE = 7, TURM_TAKT = 3000;
+  const TURM_FOLGE = ["innenGrob", "innen", "aussenGrob", "aussen"];
   let turm = null;
   const TFS = `#version 300 es
 precision highp float;
@@ -46431,7 +46399,7 @@ void main() {
   }
   // the copy for scale lsc and origin u (device pixels from the centre): which frame, turned
   // and scaled how; null before the tower's first turn or beyond its edge
-  function turmPlan(B, lsc, ux, uy, ext) {
+  function turmPlan(B, lsc, ux, uy, ext, g = 1) {
     const { lam, th } = turm;
     const m = B.innen ? (B.A - lsc) / lam : (lsc - B.A) / lam;
     if (!(m >= 0)) return null;
@@ -46442,7 +46410,7 @@ void main() {
     } else {
       j = Math.min(B.J - 1, Math.max(0, Math.floor((s - B.A) / B.D + 1e-9)));
     }
-    const k = 2 ** (s - B.l[j]), a = (n * th) % (2 * Math.PI);
+    const k = 2 ** (s - B.l[j]) * g / B.f, a = (n * th) % (2 * Math.PI);
     if (!(ext * k < B.side / 2 - 1)) return null;
     return { B, j, n, k, tex: B.tex[j], rx: k * Math.cos(a), ry: k * Math.sin(a), ux, uy };
   }
@@ -46517,7 +46485,7 @@ void main() {
     pruefFbo.an(W, Hc);
     nebenFbo.an(W, Hc);
     kopieFbo.an(W, Hc);
-    const plan = turmPlan(B, an.l, f32(N(an.v[0], an.l + an.vb - PB)), f32(N(an.v[1], an.l + an.vb - PB)), an.ext);
+    const g = an.g || 1, plan = turmPlan(B, an.l - Math.log2(g), f32(N(an.v[0], an.l + an.vb - PB)), f32(N(an.v[1], an.l + an.vb - PB)), an.ext, g);
     if (!plan) throw new Error("Turm-Vergleich ausserhalb des Turms");
     zeigeTurm(plan, W, Hc);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -46544,8 +46512,7 @@ void main() {
   }
   function turmWeg() {
     if (!turm) return;
-    turmFrei(turm.innen);
-    turmFrei(turm.aussen);
+    for (const key of TURM_FOLGE) turmFrei(turm[key]);
     turm = null;
   }
   // the same mirror point, give or take the bits a change of PB refines
@@ -46555,18 +46522,21 @@ void main() {
   }
   const turmGilt = () => mis && turm.k === mis.k && turm.p === mis.p && turm.r === r && gleichC(turm.cx, turm.PB, cH[0], PB) && gleichC(turm.cy, turm.PB, cH[1], PB);
 
-  // builds one side's tower, attempt t: the frames lie 8 bits further past the circle per attempt
+  // builds one tower, attempt t: the frames lie 8 bits further past the circle per attempt.
+  // br names side and grain: "innen", "aussen" sharp (a texel per device pixel), "...Grob" with
+  // f device pixels per texel, f² times cheaper, shown only while things move
   function baue(br, t, R) {
-    const T = turm, innen = br === "innen";
+    const T = turm, innen = br.startsWith("innen"), f = br.endsWith("Grob") ? turmF() : 1;
     const J = Math.max(1, Math.ceil(T.lam)), D = T.lam / J;
-    const side = 2 * Math.ceil(R * 2 ** D) + 4;
+    const voll = 2 * Math.ceil(R * 2 ** D) + 4, side = f === 1 ? voll : 2 * Math.ceil(R / f * 2 ** D) + 4;
     if (t >= TURM_VERSUCHE || side > Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE))) {
       T[br] = { ok: "nein", t, R };
       return;
     }
     // inner: the frame's corners within 1/8 of the circle; outer: its middle pixels 8 times outside
-    const A = innen ? -Math.log2(side * Math.SQRT1_2) - 3 - 8 * t : Math.log2(8 / Math.SQRT1_2) + 8 * t;
-    const B = { innen, t, A, J, D, side, R, l: [], tex: [], fb: [], ok: null, pruef: [] };
+    // (both grains alike, so they copy the same stretch)
+    const A = innen ? -Math.log2(voll * Math.SQRT1_2) - 3 - 8 * t : Math.log2(8 / Math.SQRT1_2) + 8 * t;
+    const B = { innen, f, t, A, J, D, side, R, l: [], tex: [], fb: [], ok: null, pruef: [] };
     T[br] = B;
     T.bau = true;
     const weg = () => turm !== T || T[br] !== B;
@@ -46574,7 +46544,8 @@ void main() {
       T.bau = false;
       if (ok) {
         B.ok = true;
-        request(false);
+        if (br.startsWith(turmSeite)) request(false);
+        else bauWeiter();
         return;
       }
       turmFrei(B);
@@ -46605,16 +46576,16 @@ void main() {
         T[br] = { ok: "nein", t, R };
         return;
       }
-      verdeckt(fb, side, side, { l, v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
+      verdeckt(fb, side, side, { l: l + Math.log2(f), v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
     };
     // the sample before anything is copied: real frames one turn past the tower (with a fraction,
     // so the step between frames is tested too) and about 16 bits past it
     const proben = [1.37, Math.ceil(16 / T.lam) + 0.37];
     const pruefe = (i) => {
       if (i === proben.length) return ende(true);
-      const [W, Hc] = vollW();
+      const [W0, H0] = vollW(), W = Math.ceil(W0 / f), Hc = Math.ceil(H0 / f);
       const l = innen ? A - proben[i] * T.lam : A + proben[i] * T.lam;
-      vergleiche(B, { l, v: [0n, 0n], vb: PB, ext: Math.hypot(W, Hc) / 2 }, W, Hc, baender(W, Hc), probeFbo, weg, (st) => {
+      vergleiche(B, { l: l + Math.log2(f), g: f, v: [0n, 0n], vb: PB, ext: Math.hypot(W, Hc) / 2 }, W, Hc, baender(W, Hc), probeFbo, weg, (st) => {
         B.pruef.push(Object.assign(st, { l }));
         T.protokoll.push({ br, t, A, l, anteil: st.anteil, basis: st.basis, max: st.max, mittel: st.mittel });
         if (!st.ok) return ende(false);
@@ -46624,7 +46595,24 @@ void main() {
     ebene(0);
   }
 
-  // the copy for the current view, if the tower serves it; starts a tower where one would
+  // the side the view was last on: built first, and asked to redraw when its tower is ready
+  let turmSeite = "innen";
+  // device pixels per texel of a coarse tower: about 2 css pixels
+  const turmF = () => Math.max(2, Math.round(2 * dpr));
+  function neuTurm() {
+    if (turm && !turmGilt()) turmWeg();
+    if (turm) return;
+    const q = rho(cH[0], cH[1], mis.k, mis.p);
+    turm = { cx: cH[0], cy: cH[1], PB, r, k: mis.k, p: mis.p, lam: q.lam, th: q.th, bau: false, prueft: false, geprueft: 0, kontrollen: [], protokoll: [] };
+    for (const key of TURM_FOLGE) turm[key] = null;
+  }
+  // a sharp tower starts where its coarse one passed: the anchors that failed there fail here too
+  function ersterVersuch(key) {
+    const G = key.endsWith("Grob") ? null : turm[key + "Grob"];
+    return G && G.ok === true ? G.t : 0;
+  }
+  // the copy for the current view, if a tower serves it: the sharp one, else the coarse one.
+  // Starts a tower where one would serve, the coarse one first.
   function haeck(W, Hc) {
     if (!mis) return null;
     if (turm && !turmGilt()) turmWeg();
@@ -46634,20 +46622,40 @@ void main() {
     if (!(ext < 4 * hd)) return null;
     const br = lsc + Math.log2(ext) < 0 ? "innen" : lsc + Math.log2(Math.hypot(naechst(ux, W), naechst(uy, Hc))) > 0 ? "aussen" : null;
     if (!br) return null;
-    if (!turm) {
-      const q = rho(cH[0], cH[1], mis.k, mis.p);
-      turm = { cx: cH[0], cy: cH[1], PB, r, k: mis.k, p: mis.p, lam: q.lam, th: q.th, innen: null, aussen: null, bau: false, prueft: false, geprueft: 0, kontrollen: [], protokoll: [] };
-    }
-    const B = turm[br];
-    if (B && B.ok === true) {
+    turmSeite = br;
+    neuTurm();
+    for (const key of [br, br + "Grob"]) {
+      const B = turm[key];
+      if (!B || B.ok !== true) continue;
       const plan = turmPlan(B, lsc, ux, uy, ext);
-      if (plan) return Object.assign(plan, { br, lsc, ext });
-      if (B.R >= ext) return null;
+      if (plan) return Object.assign(plan, { br: key, lsc, ext });
     }
-    if (turm.bau || (B && B.ok === "nein")) return null;
-    if (B) turmFrei(B);
-    baue(br, B ? B.t : 0, Math.max(1.25 * hd, ext));
+    if (turm.bau) return null;
+    for (const key of [br + "Grob", br]) {
+      const B = turm[key];
+      // ready (this view lies before its first turn) or given up on
+      if (B && (B.ok === "nein" || (B.ok === true && B.R >= ext))) continue;
+      if (B) turmFrei(B);
+      baue(key, B ? B.t : ersterVersuch(key), Math.max(1.25 * hd, ext));
+      return null;
+    }
     return null;
+  }
+  // while nothing moves: the towers not yet there, the side last looked at first, so zooming
+  // either way finds its copies waiting
+  function bauWeiter() {
+    if (!mis) return;
+    neuTurm();
+    if (turm.bau) return;
+    const o = turmSeite === "innen" ? "aussen" : "innen";
+    for (const key of [turmSeite + "Grob", turmSeite, o + "Grob", o]) {
+      const B = turm[key];
+      if (B && (B.ok === true || B.ok === "nein")) continue;
+      if (B) turmFrei(B);
+      const [W, Hc] = vollW();
+      baue(key, B ? B.t : ersterVersuch(key), 1.25 * Math.hypot(W, Hc) / 2);
+      return;
+    }
   }
   // every few seconds while copies show: real pixels in five patches of the shown view against
   // the copy. A miss throws the tower away, loudly, and builds it again a step further out with ρ
@@ -46656,10 +46664,13 @@ void main() {
     const T = turm, B = plan.B, br = plan.br;
     if (T.prueft || performance.now() - T.geprueft < TURM_TAKT) return;
     T.prueft = true;
+    const f = B.f;
+    W = Math.ceil(W / f);
+    Hc = Math.ceil(Hc / f);
     const P = Math.min(64, W - 2, Hc - 2), rnd = (n) => 1 + Math.floor(Math.random() * Math.max(1, n - P - 2));
     const rects = [[(W - P) >> 1, (Hc - P) >> 1, P, P]];
     for (let i = 0; i < 4; i++) rects.push([rnd(W), rnd(Hc), P, P]);
-    const an = { l: plan.lsc, v: vH, vb: PB, ext: plan.ext };
+    const an = { l: plan.lsc + Math.log2(f), g: f, v: vH, vb: PB, ext: plan.ext / f };
     const weg = () => turm !== T || T[br] !== B;
     vergleiche(B, an, W, Hc, rects, kontrollFbo, weg, (st) => {
       T.prueft = false;
@@ -46678,10 +46689,11 @@ void main() {
 
   // ---- tempo: the interface for the speed slider (#416) ----
   // tempo(v) zooms on and on at v octaves per second (v < 0 in, v > 0 out, no bound either way),
-  // tempo(0) stops. The origin stays put while it is on screen, else the centre. Every frame is
-  // drawn at once: where the tower serves, a turned copy, the same cost at any depth.
+  // tempo(0) stops. The middle of the view stays put, wherever it is. Every frame is drawn at
+  // once: where the tower serves, a turned copy, the same cost at any depth.
   let tempoV = 0, tempoRaf = 0, tempoT = 0;
   function tempo(v) {
+    if (!Number.isFinite(v)) throw new Error("tempo(" + v + "): keine Zahl");
     tempoV = v;
     if (!v || tempoRaf) return;
     tempoT = performance.now();
@@ -46690,8 +46702,7 @@ void main() {
       if (!tempoV) return;
       const dt = Math.min(0.1, Math.max(0, t - tempoT) / 1000);
       tempoT = t;
-      const [ox, oy] = origin(), da = ox >= 0 && ox <= cssW && oy >= 0 && oy <= cssH;
-      zoomAt(2 ** (tempoV * dt), da ? ox : cssW / 2, da ? oy : cssH / 2);
+      zoomLog(tempoV * dt, cssW / 2, cssH / 2);
       lauf++;
       wechsel++;
       draw(qGrob());
@@ -46705,14 +46716,28 @@ void main() {
   // The lupe: the start view, there whenever the field is zoomed far out.
   // Near and far in one glance: the lupe shows the 1 under the finger, the field the ∞ it makes.
   const LUPE_FIT = 2 * 1.6;
-  let lupeOn = true, lupeKey = "";
-  function drawLupe() {
-    const Lc = lupe.clientWidth;
+  // css pixels across; on wide screens it may take more room
+  const LUPE_G = matchMedia("(min-width: 769px)").matches ? 264 : 132;
+  let lupeOn = true, lupeKey = "", lupePB = 0, lupeG = LUPE_G;
+  function setLupeG(g) {
+    lupeG = Math.max(0, g);
+    lupe.style.width = lupe.style.height = lupeG + "px";
+    if (lupePos) setLupePos(lupePos);
+  }
+  // still: called at rest, also while hidden, so it is ready before it shows
+  function drawLupe(still) {
+    let Lc = lupe.clientWidth;
+    if (lupe.hidden) {
+      const cs = getComputedStyle(lupe);
+      Lc = cs.boxSizing === "border-box" ? lupeG - 2 * parseFloat(cs.borderLeftWidth) : lupeG;
+    }
     const lp = Math.max(1, Math.min(Math.round(Lc * dpr), bild.width, bild.height));
-    // the lupe only changes with the mirror point and r: panning and zooming far out leave it be
-    const key = [cH[0], cH[1], PB, r, lp].join();
-    if (key === lupeKey) return;
+    // the lupe only changes with the mirror point and r: panning and zooming far out leave it be.
+    // A new precision alone does not change the picture, so it waits for a still moment.
+    const key = [cH[0], cH[1], r, lp].join();
+    if (key === lupeKey && (PB === lupePB || !still)) return;
     lupeKey = key;
+    lupePB = PB;
     if (lupe.width !== lp || lupe.height !== lp) { lupe.width = lp; lupe.height = lp; }
     const keep = { ls, sw, lv, vnx, vny, vH, cssW, cssH };
     setV(0n, 0n);
@@ -46856,7 +46881,7 @@ void main() {
   function scharf() {
     const nr = ++lauf;
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    const fertig = () => { saveUrl(); meldeOrt(); };
+    const fertig = () => { saveUrl(); meldeOrt(); if (lupeOn && lupeG > 0) drawLupe(true); bauWeiter(); };
     if (!gleich() && !draw(qGrob())) return;
     if (gezeigt.q >= 1) return fertig();
     const [W, Hc] = leinwand();
@@ -47303,37 +47328,16 @@ void main() {
 
   // the point under (x, y) stays put
   function zoomAt(f, x, y) {
+    zoomLog(Math.log2(f), x, y);
+  }
+  // by d octaves (d < 0 in) around (x, y). Counted in octaves the way has no end; as the
+  // factor 2^d it ran past the largest double, and the picture was gone.
+  function zoomLog(d, x, y) {
+    if (!Number.isFinite(d)) throw new Error("Zoom um " + d + " Oktaven");
     const l0 = ls, px = x - cssW / 2, py = -(y - cssH / 2);
-    setS(ls + Math.log2(f));
+    setS(ls + d);
     ensurePB();
     setV(vH[0] + Hl(px, l0) - Hl(px, ls), vH[1] + Hl(py, l0) - Hl(py, ls));
-  }
-
-  // Far out everything lies near the origin. Beyond L (half the view) from it the view
-  // goes stiff the further it gets, and springs back on release: the origin stays in reach.
-  // All in pixels, so it holds at any scale.
-  const reach = () => Math.min(cssW, cssH) / 2;
-  const frei = () => ls + Math.log2(reach()) <= 0;
-  function rubberPan(dx, dy) {
-    const L = reach(), o = 2 ** (lv - ls);
-    if (frei() || Math.hypot(vnx * o + dx, vny * o + dy) <= Math.max(o, L)) return panPx(dx, dy);
-    const k = (1 - Math.min(1, Math.max(0, o - L) / (0.5 * L))) ** 2;
-    panPx(dx * k, dy * k);
-    // k is taken where the step starts: one hard flick must not shoot past the stiff end
-    if (2 ** (lv - ls) > 1.5 * L) setV(Hl(vnx * 1.5 * L, ls), Hl(vny * 1.5 * L, ls));
-  }
-  function springBack() {
-    const L = reach(), n = 2 ** (lv - ls), l0 = ls;
-    if (frei() || !(n > L) || !Number.isFinite(n)) return;
-    const fx = vnx * n, fy = vny * n, t0 = performance.now();
-    const step = (t) => {
-      if (pts.size) return;
-      const a = Math.min(1, (t - t0) / 200), f = 1 - (1 - L / n) * (1 - (1 - a) ** 3);
-      setV(Hl(fx * f, l0), Hl(fy * f, l0));
-      request(a < 1);
-      if (a < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
   }
 
   feld.addEventListener("wheel", (e) => {
@@ -47370,7 +47374,7 @@ void main() {
       return;
     }
     if (pts.size === 1) {
-      rubberPan(-(e.clientX - p.x), e.clientY - p.y);
+      panPx(-(e.clientX - p.x), e.clientY - p.y);
     } else if (pts.size === 2) {
       const [a, c] = [...pts.values()];
       const before = Math.hypot(a.x - c.x, a.y - c.y);
@@ -47384,7 +47388,6 @@ void main() {
   const up = (e) => {
     pts.delete(e.pointerId);
     if (dragging && dragging.id === e.pointerId) lasseLos();
-    if (!pts.size) springBack();
   };
   // M slides under the fixed mirror: the point under the finger moves with it,
   // out of M only until the circle holds nothing
@@ -47551,6 +47554,14 @@ void main() {
         showValues();
         request(false);
       },
+      details: (p) => p.addSlider("lupeG", {
+        label: "Größe", min: 0, max: 2 * LUPE_G, step: 1, grow: true,
+        value: LUPE_G,
+        onChange: (v) => {
+          setLupeG(Number(v) || 0);
+          request(false);
+        },
+      }),
     })
     .addButton("ran", { label: "ran zoomen", onClick: ranZoomen })
     .addResetButton({
@@ -47581,63 +47592,28 @@ void main() {
     });
   panel.bodyEl.prepend(wert);
 
-  // ---- tempo slider (#416): how far it is held out is how fast it zooms, right in, left out,
-  // faster and faster towards the ends and on past them. The middle is 0, both ends lead to ∞,
-  // and the spring always brings it home to 0. ----
-  const tempoReihe = document.createElement("div");
-  tempoReihe.className = "ctrl-row";
-  tempoReihe.id = "tempoReihe";
-  tempoReihe.innerHTML = '<div id="tempo" tabindex="0"><div class="spur"></div><div class="knopf"></div></div>';
-  panel.bodyEl.querySelector('[data-key="r"]').after(tempoReihe);
-  const tempoEl = tempoReihe.firstElementChild, knopf = tempoEl.lastElementChild;
-  // d: deflection in half track lengths, unbounded; out comes v for tempo() (v < 0 is in)
-  const tempoAus = (d) => -Math.sign(d) * 0.25 * (2 ** (8 * Math.abs(d)) - 1);
-  let tempoZug = null, tempoD = 0, feder = 0;
-  const halbeSpur = () => Math.max(1, tempoEl.clientWidth / 2 - 8);
-  function tempoStell(d) {
-    tempoD = d;
-    knopf.style.transform = `translateX(${Math.max(-1, Math.min(1, d)) * halbeSpur()}px)`;
-    tempo(tempoAus(d));
-  }
-  // let go: back to the middle in 200 ms, the zoom slows down along with it
-  function tempoLos() {
-    tempoZug = null;
-    cancelAnimationFrame(feder);
-    const d0 = tempoD, t0 = performance.now();
-    const step = (t) => {
-      const a = Math.min(1, (t - t0) / 200);
-      tempoStell(a < 1 ? d0 * (1 - a) ** 3 : 0);
-      if (a < 1) feder = requestAnimationFrame(step);
-    };
-    feder = requestAnimationFrame(step);
-  }
-  // grabbed anywhere, it counts from where the finger lands: no jump on touch
-  tempoEl.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    cancelAnimationFrame(feder);
-    tempoEl.setPointerCapture(e.pointerId);
-    tempoZug = { id: e.pointerId, x: e.clientX - tempoD * halbeSpur() };
+  // ---- tempo slider (#416): right zooms in, left out, as fast as it is set, until it is set
+  // back to 0. Its scale grows like log(1 + v), fine round 0 and fast towards the ends;
+  // typed in, any speed goes. ----
+  const tempoSkala = {
+    toSliderValue(v, cfg) {
+      const lim = v > 0 ? cfg.max : -cfg.min;
+      if (!v || !(lim > 0)) return 0;
+      return Math.sign(v) * lim * Math.log1p(Math.min(Math.abs(v), lim)) / Math.log1p(lim);
+    },
+    fromSliderValue(x, cfg) {
+      const lim = x > 0 ? cfg.max : -cfg.min;
+      // a small dead zone round the middle: rest is easy to find
+      if (!(lim > 0) || Math.abs(x) < 0.02 * lim) return 0;
+      return Math.sign(x) * Math.expm1(Math.min(1, Math.abs(x) / lim) * Math.log1p(lim));
+    },
+  };
+  panel.addSlider("tempo", {
+    label: "", min: -64, max: 64, step: 1, decimals: 2, transform: tempoSkala,
+    value: 0,
+    onChange: (v) => tempo(-(Number(v) || 0)),
   });
-  tempoEl.addEventListener("pointermove", (e) => {
-    if (!tempoZug || tempoZug.id !== e.pointerId) return;
-    tempoStell((e.clientX - tempoZug.x) / halbeSpur());
-  });
-  for (const t of ["pointerup", "pointercancel"]) {
-    tempoEl.addEventListener(t, (e) => {
-      if (tempoZug && tempoZug.id === e.pointerId) tempoLos();
-    });
-  }
-  tempoEl.addEventListener("keydown", (e) => {
-    const s = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-    if (!s) return;
-    e.preventDefault();
-    cancelAnimationFrame(feder);
-    tempoStell(s * (e.shiftKey ? 1 : 0.5));
-  });
-  tempoEl.addEventListener("keyup", (e) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") tempoLos();
-  });
+  panel.bodyEl.querySelector('[data-key="r"]').after(panel.bodyEl.querySelector('[data-key="tempo"]'));
 
   // full-quality frame now, without the delayed saveUrl of request()
   function zeichneJetzt() {
@@ -47745,6 +47721,7 @@ void main() {
   r = panel.get("r");
   snapOn = !!panel.get("rasten");
   lupeOn = !!panel.get("lupe");
+  setLupeG(panel.get("lupeG"));
   setC(cMx, cMy, true);
   loadUrl();
   showValues();
