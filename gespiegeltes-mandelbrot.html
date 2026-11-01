@@ -858,7 +858,7 @@ void main() {
   // wechsel counts every change asked for (request): the canvas is current when it was drawn since
   let wechsel = 0;
   function gezeichnet(q) {
-    gezeigt = { ls, vH, PB, q, w: wechsel };
+    gezeigt = { ls, vH, PB, q, w: wechsel, W: bild.width, Hc: bild.height, cx: cH[0], cy: cH[1], r, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 };
     bild.style.transform = "";
   }
   const gleich = () => gezeigt && gezeigt.w === wechsel;
@@ -869,8 +869,87 @@ void main() {
     const tx = N(zuPB(gezeigt.vH[0], gezeigt.PB) - vH[0], ls), ty = -N(zuPB(gezeigt.vH[1], gezeigt.PB) - vH[1], ls);
     bild.style.transform = `translate(${f32(tx)}px, ${f32(ty)}px) scale(${f32(k)})`;
   }
+  // what the canvas holds is moved and scaled to where the view went; only what that leaves
+  // uncovered is computed (sharp when it is cheap, else coarse), so panning and slight zooming
+  // never start over. Another c_M at the same view: the old picture stays and is overwritten
+  // in bands from the bottom up. null when the canvas is of no use.
+  const kopieFbo = rahmen();
+  let rollY = 0;
+  const KOSTEN_MS = 40;
+  function plan(W, Hc) {
+    const g = gezeigt;
+    if (!g || g.W !== W || g.Hc !== Hc) return null;
+    const dl = g.ls - ls;
+    if (!(Math.abs(dl) <= 1)) return null;
+    const lsc = ls + Math.log2(cssW / W), k = 2 ** dl;
+    let dx = N(zuPB(g.vH[0], g.PB) - vH[0], lsc), dy = N(zuPB(g.vH[1], g.PB) - vH[1], lsc);
+    if (!isFinite(dx) || !isFinite(dy)) return null;
+    const still = Math.abs(dl) < 1e-9;
+    const exakt = still && Math.abs(dx - Math.round(dx)) < 0.02 && Math.abs(dy - Math.round(dy)) < 0.02;
+    if (exakt) { dx = Math.round(dx); dy = Math.round(dy); }
+    const gleichK = g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
+      && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
+    if (!gleichK) return still && Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6 ? { rollen: true } : null;
+    const x0 = Math.round(W / 2 + dx - k * W / 2), x1 = Math.round(W / 2 + dx + k * W / 2);
+    const y0 = Math.round(Hc / 2 + dy - k * Hc / 2), y1 = Math.round(Hc / 2 + dy + k * Hc / 2);
+    const cx0 = Math.max(0, x0), cx1 = Math.min(W, x1), cy0 = Math.max(0, y0), cy1 = Math.min(Hc, y1);
+    if (cx1 <= cx0 || cy1 <= cy0) return null;
+    const rects = [];
+    if (cy0 > 0) rects.push([0, 0, W, cy0]);
+    if (cy1 < Hc) rects.push([0, cy1, W, Hc - cy1]);
+    if (cx0 > 0) rects.push([0, cy0, cx0, cy1 - cy0]);
+    if (cx1 < W) rects.push([cx1, cy0, W - cx1, cy1 - cy0]);
+    const flaeche = rects.reduce((a, t) => a + t[2] * t[3], 0);
+    return { x0, x1, y0, y1, exakt, rects, kosten: flaeche * pxMs, qs: g.q };
+  }
+  function kopiere(W, Hc) {
+    kopieFbo.an(W, Hc);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, kopieFbo.fb);
+    gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  function setzeEin(a, W, Hc) {
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, kopieFbo.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.blitFramebuffer(0, 0, W, Hc, a.x0, a.y0, a.x1, a.y1, gl.COLOR_BUFFER_BIT, a.exakt ? gl.NEAREST : gl.LINEAR);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  // true / false (no reference: nothing was touched) / null (not applicable)
+  function umschieben(a, W, Hc) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (a.rollen) {
+      const h = Math.max(8, Math.min(Hc, Math.round(14 / (pxMs * W))));
+      if (rollY <= 0 || rollY > Hc) rollY = Hc;
+      const y = Math.max(0, rollY - h);
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(0, y, W, rollY - y);
+      const ok = drawView(W, Hc, "feld");
+      gl.disable(gl.SCISSOR_TEST);
+      if (!ok) { altesBild(); return false; }
+      const von = rollY;
+      rollY = y;
+      messe((von - y) * W);
+      gezeichnet(Math.min(gezeigt.q, 0.05));
+      return true;
+    }
+    if (a.kosten > KOSTEN_MS) return null;
+    kopiere(W, Hc);
+    let n = 0;
+    gl.enable(gl.SCISSOR_TEST);
+    for (const t of a.rects) {
+      gl.scissor(t[0], t[1], t[2], t[3]);
+      if (!drawView(W, Hc, "feld")) { gl.disable(gl.SCISSOR_TEST); altesBild(); return false; }
+      n += t[2] * t[3];
+    }
+    gl.disable(gl.SCISSOR_TEST);
+    setzeEin(a, W, Hc);
+    if (n) messe(n);
+    gezeichnet(a.exakt ? a.qs : Math.min(a.qs, 0.99));
+    return true;
+  }
   // the whole view at quality q (<= 1), at once
-  function grob(q) {
+  function grob(q, schieben) {
     const [W, Hc] = leinwand();
     const kopie = haeck(W, Hc);
     if (kopie) {
@@ -880,7 +959,13 @@ void main() {
       turmKontrolle(kopie, W, Hc);
       return true;
     }
+    const alt = schieben ? plan(W, Hc) : null;
+    if (alt) {
+      const e = umschieben(alt, W, Hc);
+      if (e !== null) return e;
+    }
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
+    if (alt) kopiere(W, Hc);
     if (w === W && h === Hc) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       if (!drawView(W, Hc, "feld")) { altesBild(); return false; }
@@ -891,15 +976,16 @@ void main() {
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
       gl.blitFramebuffer(0, 0, w, h, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.LINEAR);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (alt) setzeEin(alt, W, Hc);
     }
     messe(w * h);
-    gezeichnet(w === W && h === Hc ? 1 : q);
+    gezeichnet(w === W && h === Hc ? 1 : alt ? Math.min(q, alt.qs) : q);
     return true;
   }
-  function draw(q) {
+  function draw(q, schieben = true) {
     takt(performance.now());
     ensurePB();
-    const ok = grob(q);
+    const ok = grob(q, schieben);
     drawDeko();
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe(false);
@@ -2253,7 +2339,7 @@ void main() {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     lauf++;
     wechsel++;
-    draw(1);
+    draw(1, false);
   }
 
   function fitSw() { return (2 * 1.6) / Math.min(cssW, cssH); }
