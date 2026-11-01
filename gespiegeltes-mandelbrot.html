@@ -626,6 +626,7 @@ void main() {
   }
 
   function draw() {
+    takt(performance.now());
     drawView(0);
     lupe.hidden = !(lupeOn && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe();
@@ -766,7 +767,7 @@ void main() {
     if (moving) quality = 0.5;
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
     clearTimeout(idle);
-    idle = setTimeout(() => { quality = 1; draw(); saveUrl(); }, moving ? 160 : 0);
+    idle = setTimeout(() => { quality = 1; draw(); saveUrl(); meldeOrt(); }, moving ? 160 : 0);
   }
 
   // ---- readout and URL ----
@@ -869,6 +870,11 @@ void main() {
   // close up far out, so without one the point stays put and the marker shakes its head.
   function snapC() {
     if (mis) return true;
+    if (tab) {
+      if (aufSchiene(cMx, cMy)) return true;
+      wackeln();
+      return false;
+    }
     const tol = Math.max(1e-15, r * Math.min(sw, fitSw()));
     const [x, y] = snap(cMx, cMy, tol * 0.25);
     const m = misFind(x, y, 8 * tol);
@@ -877,6 +883,203 @@ void main() {
     mis = { k: m.k, p: m.p };
     cH = m.e;
     return true;
+  }
+
+  // ---- rails: every snap point, computed once ----
+  // About 100 000 Misiurewicz points spread evenly along the boundary, bays included,
+  // made offline and shipped packed (upper half, Morton order, gaps as varints, deflate).
+  // With einrasten on, the dragged point only ever sits on one of them or on one the
+  // device found itself while idling (worker), always the one nearest the finger.
+  const RG = 0.01, RX0 = -2.1, RY0 = -1.25, RW = 270, RH = 250;
+  let tab = null;
+  const extra = new Map(), extraOrt = [];
+  let dazu = 0;
+  async function ladeRasten() {
+    try {
+      const res = await fetch("/gespiegeltes-mandelbrot-einrastpunkte.bin?raw=1");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const buf = new Uint8Array(await new Response(res.body.pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+      tab = entpacke(buf);
+    } catch (err) {
+      console.error("einrastpunkte nicht geladen:", err);
+      wackeln();
+      return;
+    }
+    if (snapOn && !dragging && !mis) { snapC(); showValues(); request(false); }
+    starteSucher();
+  }
+  function entpacke(buf) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    if (String.fromCharCode(...buf.subarray(0, 4)) !== "MIS1") throw new Error("kein MIS1");
+    const Q = 2 ** dv.getUint8(4), n = dv.getUint32(5, true), xoff = dv.getUint32(9, true);
+    let pos = 13;
+    const varint = () => {
+      let v = 0, f = 1, b;
+      do { b = buf[pos++]; v += (b & 127) * f; f *= 128; } while (b & 128);
+      return v;
+    };
+    const halb = (v) => {
+      v &= 0x55555555;
+      v = (v | (v >>> 1)) & 0x33333333;
+      v = (v | (v >>> 2)) & 0x0f0f0f0f;
+      v = (v | (v >>> 4)) & 0x00ff00ff;
+      return (v | (v >>> 8)) & 0xffff;
+    };
+    const ux = new Float64Array(n), uy = new Float64Array(n);
+    let m = 0, gespiegelt = 0;
+    for (let i = 0; i < n; i++) {
+      m += varint();
+      const lo = m % 4294967296, hi = Math.floor(m / 4294967296);
+      ux[i] = ((halb(lo) | (halb(hi) << 16)) - xoff) / Q;
+      uy[i] = (halb(lo >>> 1) | (halb(hi >>> 1) << 16)) / Q;
+      if (uy[i] > 0) gespiegelt++;
+    }
+    const tot = n + gespiegelt;
+    const x = new Float64Array(tot), y = new Float64Array(tot), k = new Uint16Array(tot), p = new Uint8Array(tot);
+    for (let i = 0, j = n; i < n; i++) {
+      const kp = varint();
+      x[i] = ux[i]; y[i] = uy[i]; k[i] = (kp >> 3) + 1; p[i] = (kp & 7) + 1;
+      if (uy[i] > 0) { x[j] = ux[i]; y[j] = -uy[i]; k[j] = k[i]; p[j] = p[i]; j++; }
+    }
+    if (pos !== buf.length) throw new Error("Laenge passt nicht");
+    // grid of RG cells, points sorted by cell (CSR)
+    const zelle = (i) => Math.min(RH - 1, Math.max(0, Math.floor((y[i] - RY0) / RG))) * RW
+      + Math.min(RW - 1, Math.max(0, Math.floor((x[i] - RX0) / RG)));
+    const start = new Int32Array(RW * RH + 1);
+    for (let i = 0; i < tot; i++) start[zelle(i) + 1]++;
+    for (let c = 0; c < RW * RH; c++) start[c + 1] += start[c];
+    const fill = start.slice(0, RW * RH), ord = new Int32Array(tot);
+    for (let i = 0; i < tot; i++) ord[fill[zelle(i)]++] = i;
+    const pick = (a, T) => T.from(ord, (i) => a[i]);
+    return { n: tot, start, x: pick(x, Float64Array), y: pick(y, Float64Array), k: pick(k, Uint16Array), p: pick(p, Uint8Array) };
+  }
+  // the cells of square ring rr around (ix, iy)
+  function ring(ix, iy, rr, f) {
+    if (rr === 0) return f(ix, iy);
+    for (let d = -rr; d <= rr; d++) { f(ix + d, iy - rr); f(ix + d, iy + rr); }
+    for (let d = -rr + 1; d < rr; d++) { f(ix - rr, iy + d); f(ix + rr, iy + d); }
+  }
+  // the n snap points nearest (tx, ty), nearest first
+  function naechste(tx, ty, n) {
+    const best = [];
+    const nimm = (x, y, k, p) => {
+      const d = Math.hypot(x - tx, y - ty);
+      if (best.length === n && d >= best[n - 1].d) return;
+      if (best.length === n) best.pop();
+      let i = best.length;
+      while (i > 0 && best[i - 1].d > d) i--;
+      best.splice(i, 0, { x, y, k, p, d });
+    };
+    const grenze = () => (best.length < n ? Infinity : best[n - 1].d);
+    if (tab) {
+      const gx = Math.min(RX0 + RW * RG, Math.max(RX0, tx)), gy = Math.min(RY0 + RH * RG, Math.max(RY0, ty));
+      const off = Math.hypot(tx - gx, ty - gy);
+      const ix = Math.min(RW - 1, Math.floor((gx - RX0) / RG)), iy = Math.min(RH - 1, Math.floor((gy - RY0) / RG));
+      const { start, x, y, k, p } = tab;
+      const zelle = (a, b) => {
+        if (a < 0 || b < 0 || a >= RW || b >= RH) return;
+        for (let q = start[b * RW + a], e = start[b * RW + a + 1]; q < e; q++) nimm(x[q], y[q], k[q], p[q]);
+      };
+      for (let rr = 0; rr < Math.max(RW, RH) && (rr - 1) * RG - off <= grenze(); rr++) ring(ix, iy, rr, zelle);
+    }
+    // found on the device: finer grids, only the few rings around
+    for (const [g, m] of extra) {
+      const ix = Math.floor(tx / g), iy = Math.floor(ty / g);
+      const zelle = (a, b) => {
+        const l = m.get(a + "," + b);
+        if (l) for (let q = 0; q < l.length; q += 4) nimm(l[q], l[q + 1], l[q + 2], l[q + 3]);
+      };
+      for (let rr = 0; rr <= 4 && (rr - 1) * g <= grenze(); rr++) ring(ix, iy, rr, zelle);
+    }
+    return best;
+  }
+  // a snap point exactly: double Newton from where it is stored, then fixed point, then the check
+  const genau = new Map();
+  function exakt(q) {
+    const key = q.x + "," + q.y + "," + q.k + "," + q.p;
+    let m = genau.get(key);
+    if (m === undefined || (m && m.PB !== PB)) {
+      m = null;
+      const c = misNewton(q.x, q.y, q.k, q.p);
+      const e = c && misRefine(H(c[0]), H(c[1]), q.k, q.p);
+      if (e && misVerify(e[0], e[1], q.k, q.p)) m = { c: [N(e[0]), N(e[1])], e, k: q.k, p: q.p, PB };
+      if (genau.size > 4096) genau.clear();
+      genau.set(key, m);
+    }
+    return m;
+  }
+  // onto the snap point nearest (tx, ty); the point it sits on counts too, so it never
+  // leaves the rails. False only if there is nothing to sit on
+  function aufSchiene(tx, ty) {
+    const jetzt = mis ? Math.hypot(cMx - tx, cMy - ty) : Infinity;
+    for (const q of naechste(tx, ty, 8)) {
+      if (q.d >= jetzt) return true;
+      const m = exakt(q);
+      if (!m) continue;
+      setC(m.c[0], m.c[1], false);
+      mis = { k: m.k, p: m.p };
+      cH = m.e;
+      return true;
+    }
+    return !!mis;
+  }
+
+  // the worker keeps looking around the mirror point, finer the longer the device idles
+  let sucher = null, sucherOrt = "";
+  function starteSucher() {
+    if (!window.Worker) return;
+    sucher = new Worker("/tools/workers/gespiegeltes-mandelbrot-worker.js");
+    sucher.onerror = (e) => console.error("einrastpunkte-worker:", e.message || e);
+    sucher.onmessage = (e) => {
+      const { p, k } = e.data;
+      // cells of about 8 pixels at the scale they were found for
+      const g = RG / 2 ** Math.max(1, Math.ceil(Math.log2(RG / (8 * k))));
+      if (!extra.has(g)) extra.set(g, new Map());
+      const m = extra.get(g);
+      for (let i = 0; i < p.length; i += 4) {
+        const [x, y, kk, pp] = [p[i], p[i + 1], p[i + 2], p[i + 3]];
+        if (schonDa(x, y, kk, pp)) continue;
+        const key = Math.floor(x / g) + "," + Math.floor(y / g);
+        if (!m.has(key)) m.set(key, []);
+        m.get(key).push(x, y, kk, pp);
+        dazu++;
+      }
+    };
+    document.addEventListener("visibilitychange", () => sucher.postMessage({ typ: "pause", an: document.hidden }));
+    sucher.postMessage({ typ: "pause", an: document.hidden });
+    meldeOrt();
+  }
+  // table points sit up to 2^-19 off their root: compare roots
+  function schonDa(x, y, k, p) {
+    for (const q of naechste(x, y, 4)) {
+      if (q.d < 1e-12 * (1 + Math.hypot(x, y))) return true;
+      if (q.d < 4e-6 && q.k === k && q.p === p) {
+        const c = misNewton(q.x, q.y, k, p);
+        if (c && Math.hypot(c[0] - x, c[1] - y) < 1e-12 * (1 + Math.hypot(x, y))) return true;
+      }
+    }
+    return false;
+  }
+  function meldeOrt(x = cMx, y = cMy) {
+    if (!sucher || !snapOn) return;
+    let k = r * Math.min(sw, fitSw());
+    if (!lupe.hidden) k = Math.min(k, r * LUPE_FIT / lupe.clientWidth);
+    const D = Math.min(cssW, cssH), key = [x, y, k, D].join();
+    if (key === sucherOrt || !(k > 0)) return;
+    sucherOrt = key;
+    sucher.postMessage({ typ: "ort", cx: x, cy: y, k, D });
+  }
+  // slow frames while the worker runs: it rests longer between its slices
+  let taktT = 0, taktN = 0, taktLangsam = 0, taktMeld = 0;
+  function takt(t) {
+    if (!sucher) return;
+    if (taktT && t - taktT < 500) { taktN++; if (t - taktT > 34) taktLangsam++; }
+    taktT = t;
+    if (taktN >= 20 && t - taktMeld > 500) {
+      sucher.postMessage({ typ: "takt", faktor: taktLangsam > taktN / 4 ? 2 : 0.5 });
+      taktN = taktLangsam = 0;
+      taktMeld = t;
+    }
   }
 
   // ---- how far the mirror point may leave M ----
@@ -1027,6 +1230,16 @@ void main() {
   // M slides under the fixed mirror: the point under the finger moves with it,
   // out of M only until the circle holds nothing
   function ziehe(e) {
+    if (snapOn && tab) {
+      const tx = dragging.cx - dragging.k * (e.clientX - dragging.x), ty = dragging.cy + dragging.k * (e.clientY - dragging.y);
+      // the worker looks where the finger is, the point follows on the rails
+      meldeOrt(tx, ty);
+      if (aufSchiene(tx, ty)) {
+        showValues();
+        request(true);
+        return;
+      }
+    }
     const [nx, ny, amRand] = bisZumNichts(cMx, cMy,
       dragging.cx - dragging.k * (e.clientX - dragging.x), dragging.cy + dragging.k * (e.clientY - dragging.y));
     // held at the edge, the finger starts over from here: turning back moves the point at once
@@ -1166,25 +1379,63 @@ void main() {
     ensurePB();
   }
   // back to the start view, the mirror point stays: the zoom glides in decades,
-  // so 1e50 takes no longer than 1e2
+  // so 1e50 takes no longer than 1e2.
+  // The flight is one similarity: the point that sits at the same screen spot in both
+  // views stays put, the scale runs in logarithms. If that point lies off screen
+  // (panned far away), the camera takes the van Wijk-Nuij arc instead: out, over, in.
   let ranZug = 0;
+  const lncosh = (x) => Math.abs(x) + Math.log1p(Math.exp(-2 * Math.abs(x))) - Math.LN2;
+  const lnsinh = (x) => x + Math.log1p(-Math.exp(-2 * x)) - Math.LN2;
   function ranZoomen() {
     cancelAnimationFrame(ranZug);
-    const s0 = Math.log(sw), s1 = Math.log(fitSw()), v0 = vH, P0 = PB, t0 = performance.now();
-    const dauer = Math.min(900, 250 + 25 * Math.abs(s1 - s0) / Math.LN10);
+    const s0 = sw, s1 = fitSw(), v0 = vH, P0 = PB, u1 = Math.hypot(vx, vy);
+    const D = Math.min(cssW, cssH);
+    const sh = (b) => (PB > P0 ? b << BigInt(PB - P0) : b >> BigInt(P0 - PB));
+    // where the fixed point sits on screen, in pixels from the centre
+    const fest = u1 / Math.abs(s1 - s0);
+    let pose = null, weg;
+    if (fest > D / 2 && u1 > 0) {
+      const R = Math.SQRT2, R2 = 2, w0 = s0 * D, w1 = s1 * D;
+      const r0 = -Math.asinh((w1 * w1 - w0 * w0 + R2 * R2 * u1 * u1) / (2 * w0 * R2 * u1));
+      const r1 = -Math.asinh((w1 * w1 - w0 * w0 - R2 * R2 * u1 * u1) / (2 * w1 * R2 * u1));
+      const S = (r1 - r0) / R;
+      if (Number.isFinite(S) && S > 0) {
+        weg = S * R;
+        const ux = -vx / u1, uy = -vy / u1, lc0 = lncosh(r0);
+        pose = (e) => {
+          const x = R * S * e;
+          sw = Math.exp(Math.log(s0) + lc0 - lncosh(x + r0));
+          ensurePB();
+          const u = x > 0 ? Math.exp(Math.log(w0) - Math.log(R2) + lnsinh(x) - lncosh(x + r0)) : 0;
+          setV(sh(v0[0]) + H(u * ux), sh(v0[1]) + H(u * uy));
+        };
+      }
+    }
+    if (!pose) {
+      weg = Math.abs(Math.log(s1 / s0));
+      pose = (e) => {
+        sw = Math.exp(Math.log(s0) + Math.log(s1 / s0) * e);
+        ensurePB();
+        // v = v0 (s1 - sw) / (s1 - s0), with the shrinking part kept to 60 bits
+        const g = (sw - s0) / (s1 - s0);
+        if (!(g > 0)) return setV(sh(v0[0]), sh(v0[1]));
+        const E = 60 - Math.floor(Math.log2(g)), G = BigInt(Math.round(ldexp(g, E))), En = BigInt(E);
+        setV(sh(v0[0] - ((v0[0] * G) >> En)), sh(v0[1] - ((v0[1] * G) >> En)));
+      };
+    }
+    const dauer = Math.min(900, 250 + 25 * weg / Math.LN10);
+    // a slow frame advances the flight by at most 1/30 s, so no frame skips ahead
+    let a = 0, tz = performance.now();
     const step = (t) => {
       if (pts.size) return;
-      const a = Math.min(1, (t - t0) / dauer), e = a < 0.5 ? 4 * a * a * a : 1 - (-2 * a + 2) ** 3 / 2;
+      a = Math.min(1, a + Math.min(t - tz, 1000 / 30) / dauer);
+      tz = t;
       if (a >= 1) {
         fitView();
         request(false);
         return;
       }
-      sw = Math.exp(s0 + (s1 - s0) * e);
-      ensurePB();
-      const F = BigInt(Math.round((1 - e) * 2 ** 40));
-      const sh = (b) => (PB > P0 ? b << BigInt(PB - P0) : b >> BigInt(P0 - PB));
-      setV(sh(v0[0] * F >> 40n), sh(v0[1] * F >> 40n));
+      pose(a < 0.5 ? 4 * a * a * a : 1 - (-2 * a + 2) ** 3 / 2);
       request(true);
       ranZug = requestAnimationFrame(step);
     };
@@ -1222,6 +1473,7 @@ void main() {
   quality = 1;
   draw();
   saveUrl();
+  requestAnimationFrame(() => setTimeout(ladeRasten, 0));
 })();
 </script>
 <!--#include virtual="/includes/something-in-the-body.html" -->
