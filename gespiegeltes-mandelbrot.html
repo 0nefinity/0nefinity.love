@@ -72,6 +72,7 @@
 </div>
 <p id="wert" aria-live="off"></p>
 <p id="fehler" role="alert" hidden></p>
+<script src="/tools/workers/gespiegeltes-mandelbrot-bahn.js"></script>
 <script>
 "use strict";
 (() => {
@@ -93,14 +94,18 @@
   // the start: a Misiurewicz point from the Forschungsheft, section (h)
   const START = { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 };
 
-  // state: mirror point cM, radius r; view in the w-plane: center (vx, vy), sw = w units per CSS pixel.
-  // cMx/cMy and vx/vy are double shadows of the exact values cH and vH (fixed point, below)
+  // state: mirror point cM, radius r; view in the w-plane: center vH (exact, below), scale ls.
+  // cMx/cMy are double shadows of the exact cH. The view center is known as log2|v| (lv)
+  // and direction (vnx, vny), so far out, where |v| is no double any more, nothing overflows.
   let cMx = START.c[0], cMy = START.c[1], r = START.r;
-  let vx = 0, vy = 0, sw = 0;
+  let lv = -Infinity, vnx = 0, vny = 0;
+  // ls = log2(sw), sw = w units per CSS pixel. The zoom lives in ls: here the 1 is the 0,
+  // and 0 and ∞ are the two ends of the same line, both out of reach, neither a wall.
+  // sw itself is only a shadow and may round to 0 or ∞.
+  let ls = NaN, sw = NaN;
+  const setS = (l) => { ls = l; sw = 2 ** l; };
   let snapOn = true;
-  let cssW = 1, cssH = 1, dpr = 1, quality = 1;
-  // zoom stops where doubles stop: about 290 decades in, 290 out
-  const SW_MIN = 1e-290, SW_MAX = 1e290;
+  let cssW = 1, cssH = 1, dpr = 1;
 
   // ---- exact numbers: BigInt fixed point, value = b / 2^PB ----
   // Deep views need the view center and the reference orbit far below double resolution.
@@ -111,21 +116,35 @@
     while (n < -1000) { x *= 2 ** -1000; n += 1000; }
     return x * 2 ** n;
   }
-  // double -> fixed point (exact)
-  function H(x) {
+  // double times 2^sh -> fixed point (exact)
+  function H(x, sh = 0) {
     if (x === 0 || !Number.isFinite(x)) return 0n;
     const e = Math.floor(Math.log2(Math.abs(x))) - 60;
     const m = BigInt(Math.round(ldexp(x, -e)));
-    const k = e + PB;
+    const k = e + PB + sh;
     return k >= 0 ? m << BigInt(k) : m >> BigInt(-k);
   }
-  // fixed point -> double, divided by 2^e
+  // x 2^l -> fixed point, l need not be whole
+  const Hl = (x, l) => { const li = Math.floor(l); return H(x * 2 ** (l - li), li); };
+  // fixed point -> double, divided by 2^e (e need not be whole); 0 or ±∞ where doubles end
   function N(b, e = 0) {
-    let k = PB + e;
-    const drop = Math.min(k, bitLen(b) - 64);
-    if (drop > 0) { b >>= BigInt(drop); k -= drop; }
-    return ldexp(Number(b), -k);
+    if (b === 0n) return 0;
+    const drop = Math.max(0, bitLen(b) - 64);
+    return ldexp(Number(drop ? b >> BigInt(drop) : b), drop - PB - e);
   }
+  // log2 |b|, for any size
+  function lg2(b) {
+    if (b === 0n) return -Infinity;
+    if (b < 0n) b = -b;
+    const drop = Math.max(0, bitLen(b) - 64);
+    return Math.log2(Number(b >> BigInt(drop))) + drop - PB;
+  }
+  const logadd = (a, b) => {
+    const m = Math.max(a, b);
+    return m === -Infinity ? m : m + Math.log2(2 ** (a - m) + 2 ** (b - m));
+  };
+  // b from fixed point with `from` bits to the current PB
+  const zuPB = (b, from) => (PB >= from ? b << BigInt(PB - from) : b >> BigInt(from - PB));
   const mul = (a, b) => (a * b) >> PBn;
   // decimal string (also 1.5e-7) -> fixed point
   function fromDec(str) {
@@ -144,12 +163,17 @@
     const fp = (((b - (ip << PBn)) * 10n ** BigInt(n)) >> PBn).toString().padStart(n, "0").replace(/0+$/, "");
     return (neg ? "-" : "") + ip + (fp ? "." + fp : "");
   }
+  // fixed point (|b| >= 1) -> decimal with n significant digits, exponent of any size
+  function toSci(b, n) {
+    const neg = b < 0n;
+    if (neg) b = -b;
+    const ip = (b >> PBn).toString(), fp = ip.slice(1, n).replace(/0+$/, "");
+    return (neg ? "-" : "") + ip[0] + (fp ? "." + fp : "") + "e" + (ip.length - 1);
+  }
 
   let cH = [0n, 0n], vH = [0n, 0n];
   // cM as an exact Misiurewicz point: preperiod k, period p (null when cM is just where the finger left it)
   let mis = null;
-  // reference orbit currently in the texture
-  let ref = null;
 
   function setPB(n) {
     if (n === PB) return;
@@ -158,23 +182,26 @@
     vH = vH.map(sh);
     PB = n;
     PBn = BigInt(n);
-    ref = null;
     if (mis) cH = misRefine(cH[0], cH[1], mis.k, mis.p) || cH;
   }
   // bits for the finest c-pixel of the current view, plus 64 to spare
   function ensurePB() {
-    const half = Math.hypot(cssW, cssH) / 2 * sw;
-    const wmax = Math.hypot(vx, vy) + half;
-    const pc = Math.max(1e-300, Math.max(r, 1e-9) * sw / Math.max(1, wmax * wmax));
-    const need = Math.max(128, Math.ceil((64 + Math.max(0, -Math.log2(pc), -Math.log2(sw))) / 64) * 64);
+    const lw = logadd(lv, Math.log2(Math.hypot(cssW, cssH) / 2) + ls);
+    const lpc = Math.log2(Math.max(r, 1e-9)) + ls - 2 * Math.max(0, lw);
+    const need = Math.max(128, Math.ceil((64 + Math.max(0, -lpc, -ls)) / 64) * 64);
     if (need > PB || need < PB - 128) setPB(need);
   }
   function setV(hx, hy) {
     vH = [hx, hy];
-    vx = N(hx);
-    vy = N(hy);
+    const lx = lg2(hx), ly = lg2(hy), m = Math.max(lx, ly);
+    if (m === -Infinity) { lv = -Infinity; vnx = vny = 0; return; }
+    const ax = 2 ** (lx - m), ay = 2 ** (ly - m), h = Math.hypot(ax, ay);
+    lv = m + Math.log2(h);
+    vnx = (hx < 0n ? -ax : ax) / h;
+    vny = (hy < 0n ? -ay : ay) / h;
   }
-  const panBy = (dx, dy) => setV(vH[0] + H(dx), vH[1] + H(dy));
+  // move the view by (px, py) CSS pixels, y up
+  const panPx = (px, py) => setV(vH[0] + Hl(px, ls), vH[1] + Hl(py, ls));
   // exact: look for the Misiurewicz point this double is the rounding of (start, URL)
   function setC(x, y, exact) {
     cMx = x;
@@ -317,15 +344,23 @@ void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
   // pixels iterate only dz = z - Z. Inside |w| <= 1: c = cM + r w; outside:
   // c = cM + r / conj(w) (circle inversion, continuous on |w| = 1).
   // Every pixel gets its dc as mantissa * 2^ec. While dz is below float range it is
-  // carried the same way (dz = w 2^E, rescaled by 2^16 steps), so depth is not bound
-  // by float32; once |dz| > 2^-100 the loop runs on plain floats.
-  // Mode 0 (origin in view): reference cM, u = w / s.
+  // carried the same way (dz = w 2^E, the exponent an int without bound), so depth is not
+  // bound by float32; once |dz| > 2^-100 the loop runs on plain floats.
+  // BLA: where dz is small enough, 2^l steps of the orbit at once as dz -> A dz + B dc
+  // (tables per reference, built below); the loop counts n in orbit steps either way.
+  // Mode 0 (origin near the view): reference cM, u = w / s.
   // Mode 1: reference near the view center vc; pixel offsets relative to vc, with
   // D0I / D0O = c(vc) - cRef on the inner / outer branch, done exactly in JS.
   const FS = `#version 300 es
 precision highp float;
 precision highp int;
 uniform sampler2D uRef;
+uniform sampler2D uBlaAB;
+uniform sampler2D uBlaR;
+uniform int uBlaOff[28];
+uniform int uBlaCnt[28];
+uniform int uBlaTop;
+uniform float uLc;
 uniform int uRefLen;
 uniform int uMaxit;
 uniform vec2 uRes;
@@ -356,7 +391,8 @@ vec2 invConj(vec2 w) {
   vec2 u = w / m;
   return u / (dot(u, u) * m);
 }
-vec2 refAt(int m) { return texelFetch(uRef, ivec2(m & 4095, m >> 12), 0).rg; }
+ivec2 at(int i) { return ivec2(i & 4095, i >> 12); }
+vec2 refAt(int m) { return texelFetch(uRef, at(m), 0).rg; }
 
 void main() {
   vec2 p = gl_FragCoord.xy - 0.5 * uRes;
@@ -390,6 +426,8 @@ void main() {
       ec = uEI;
     }
   }
+  // the tables hold for |dc| up to 2^uLc
+  bool bla = uBlaTop > 0 && log2(length(dcm)) + float(ec) <= uLc;
 
   // D = dz/dc * |dc/dp|: the derivative in pixels, so neither it nor the pixel size overflows
   vec2 dz = vec2(0.0), D = vec2(0.0), z = vec2(0.0), dc = vec2(0.0);
@@ -401,21 +439,56 @@ void main() {
     dc = dcm * exp2(float(ec));
     pc = pcm * exp2(float(ec));
   }
-  int m = 0;
+  int m = 0, n = 0;
   bool esc = false;
   float zz = 0.0;
-  for (int i = 0; i < 100000; i++) {
-    if (i >= uMaxit) break;
-    vec2 Z = refAt(m);
-    if (scaled) {
-      // dz and D carried as mantissas of 2^E; dz is negligible next to Z here
-      D = 2.0 * cmul(Z, D) + vec2(pcm * sc, 0.0);
-      dz = 2.0 * cmul(Z, dz) + se * cmul(dz, dz) + dcm * sc;
+  while (n < uMaxit) {
+    bool jump = false;
+    if (bla && m > 0) {
+      // the block of 2^l steps starting at m exists for every l up to the trailing zeros of m - 1
+      int mm = m - 1;
+      int top = mm == 0 ? uBlaTop : min(uBlaTop, int(round(log2(float(mm & -mm)))));
+      float ldz = log2(max(abs(dz.x), abs(dz.y))) + 0.5 + (scaled ? float(E) : 0.0);
+      for (int l = top; l >= 1; l--) {
+        int j = mm >> l;
+        if (j >= uBlaCnt[l - 1] || n + (1 << l) > uMaxit) continue;
+        int i = uBlaOff[l - 1] + j;
+        if (ldz >= texelFetch(uBlaR, at(i), 0).r) continue;
+        vec4 ab = texelFetch(uBlaAB, at(i), 0);
+        if (scaled) {
+          D = cmul(ab.xy, D) + ab.zw * (pcm * sc);
+          dz = cmul(ab.xy, dz) + cmul(ab.zw, dcm) * sc;
+        } else {
+          D = cmul(ab.xy, D) + ab.zw * pc;
+          dz = cmul(ab.xy, dz) + cmul(ab.zw, dc);
+        }
+        m += 1 << l;
+        n += 1 << l;
+        jump = true;
+        break;
+      }
+    }
+    if (!jump) {
+      vec2 Z = refAt(m);
+      if (scaled) {
+        // dz and D carried as mantissas of 2^E; dz is negligible next to Z here
+        D = 2.0 * cmul(Z, D) + vec2(pcm * sc, 0.0);
+        dz = 2.0 * cmul(Z, dz) + se * cmul(dz, dz) + dcm * sc;
+      } else {
+        z = Z + dz;
+        D = 2.0 * cmul(z, D) + vec2(pc, 0.0);
+        dz = 2.0 * cmul(Z, dz) + cmul(dz, dz) + dc;
+      }
       m++;
-      if (max(max(abs(dz.x), abs(dz.y)), max(abs(D.x), abs(D.y))) > 65536.0) {
-        dz *= 1.0 / 65536.0;
-        D *= 1.0 / 65536.0;
-        E += 16;
+      n++;
+    }
+    if (scaled) {
+      float mx = max(max(abs(dz.x), abs(dz.y)), max(abs(D.x), abs(D.y)));
+      if (mx > 65536.0) {
+        int k = int(log2(mx)) - 4;
+        dz *= exp2(float(-k));
+        D *= exp2(float(-k));
+        E += k;
         se = exp2(float(E));
         sc = exp2(float(ec - E));
       }
@@ -430,11 +503,6 @@ void main() {
       dc = dcm * exp2(float(ec));
       pc = pcm * exp2(float(ec));
       scaled = false;
-    } else {
-      z = Z + dz;
-      D = 2.0 * cmul(z, D) + vec2(pc, 0.0);
-      dz = 2.0 * cmul(Z, dz) + cmul(dz, dz) + dc;
-      m++;
     }
     z = refAt(m) + dz;
     zz = dot(z, z);
@@ -480,51 +548,89 @@ void main() {
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const U = {};
-  for (const n of ["uRef", "uRefLen", "uMaxit", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) U[n] = gl.getUniformLocation(prog, n);
-  const tex = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) U[n] = gl.getUniformLocation(prog, n);
   gl.uniform1i(U.uRef, 0);
+  gl.uniform1i(U.uBlaAB, 1);
+  gl.uniform1i(U.uBlaR, 2);
   gl.getExtension("EXT_color_buffer_float");
+  // orbits as long as the device's textures allow: the only bound on depth
+  const LMAX = 4096 * gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  const BLA_MAX = 28;
 
-  // reference orbit Z_0 = 0, Z_{m+1} = Z_m^2 + c, exact in fixed point (in doubles while
-  // the finest pixel is coarser than 1e-12); stops after escape
-  function orbit(cx, cy, maxit, exact) {
-    const L = maxit + 2;
-    const data = new Float32Array(4096 * Math.ceil(L / 4096) * 2);
-    let n = 1;
-    if (exact) {
-      const s1 = PBn - 1n, d = PBn - 60n, f = 2 ** -60;
-      let zx = 0n, zy = 0n;
-      for (; n < L; n++) {
-        const xx = (zx * zx) >> PBn, yy = (zy * zy) >> PBn;
-        zy = ((zx * zy) >> s1) + cy;
-        zx = xx - yy + cx;
-        const x = Number(zx >> d) * f, y = Number(zy >> d) * f;
-        data[2 * n] = x;
-        data[2 * n + 1] = y;
-        if (x * x + y * y > 1e6) { n++; break; }
-      }
-    } else {
-      const x0 = N(cx), y0 = N(cy);
-      let zx = 0, zy = 0;
-      for (; n < L; n++) {
-        const t = zx * zx - zy * zy + x0;
-        zy = 2 * zx * zy + y0;
-        zx = t;
-        data[2 * n] = zx;
-        data[2 * n + 1] = zy;
-        if (zx * zx + zy * zy > 1e6) { n++; break; }
-      }
+  function texture(fmt, data, ch, type) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, fmt, 4096, data.length / ch / 4096, 0, type, gl.FLOAT, data);
+    if (gl.getError() !== gl.NO_ERROR) fail("Grafikspeicher voll: " + data.length / ch + " Werte.");
+    return t;
+  }
+  // stands in on the BLA units while a reference has no tables
+  const leer = texture(gl.RGBA32F, new Float32Array(4096 * 4), 4, gl.RGBA);
+
+  // A reference: orbit Z_0 = 0, Z_{m+1} = Z_m^2 + c, exact (tools/workers/gespiegeltes-mandelbrot-bahn.js),
+  // with its own textures. cx, cy in fixed point at the PB it was made with.
+  // Two slots: the field and the lupe, so neither throws away the other's orbit.
+  const refs = { feld: null, lupe: null };
+  function machRef(o, spec, c, exact, pb) {
+    return { cx: c[0], cy: c[1], PB: pb, L: o.L, escaped: o.escaped, mode: spec.mode, exact, data: o.data, tex: texture(gl.RG32F, o.data, 2, gl.RG), bla: null };
+  }
+  function setRef(slot, o) {
+    const alt = refs[slot];
+    if (alt) {
+      gl.deleteTexture(alt.tex);
+      if (alt.bla) { gl.deleteTexture(alt.bla.ab); gl.deleteTexture(alt.bla.r); }
     }
-    return { cx, cy, data, L: n, maxit, escaped: n < L, PB };
+    refs[slot] = o;
   }
-  function useRef(o) {
-    ref = o;
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, 4096, o.data.length / 8192, 0, gl.RG, gl.FLOAT, o.data);
+
+  // BLA tables (bivariate linear approximation, Zhuoran; validity radii after Heiland-Allen):
+  // level l, entry j stands for the 2^l steps from m = 1 + j 2^l on, dz -> A dz + B dc,
+  // as long as |dz| < 2^R. Single steps (A = 2 Z_m, B = 1, R = log2 |2 Z_m| - 24, where dz^2
+  // drops below float precision) are left to the loop; level l merges two of level l - 1.
+  // lc = log2 of the largest |dc| the tables are made for.
+  function baueBla(o, lc) {
+    const d = o.data, n1 = o.L - 2;
+    if (o.bla) { gl.deleteTexture(o.bla.ab); gl.deleteTexture(o.bla.r); o.bla = null; }
+    if (n1 < 2) return;
+    const top = Math.min(BLA_MAX, Math.floor(Math.log2(n1)));
+    const ax = new Float64Array(n1), ay = new Float64Array(n1), bx = new Float64Array(n1), by = new Float64Array(n1), rr = new Float64Array(n1);
+    for (let i = 0; i < n1; i++) {
+      ax[i] = 2 * d[2 * i + 2];
+      ay[i] = 2 * d[2 * i + 3];
+      bx[i] = 1;
+      rr[i] = Math.log2(Math.hypot(ax[i], ay[i])) - 24;
+    }
+    let total = 0;
+    for (let l = 1; l <= top; l++) total += Math.floor(n1 / 2 ** l);
+    const rows = Math.max(1, Math.ceil(total / 4096));
+    const AB = new Float32Array(4096 * rows * 4), RR = new Float32Array(4096 * rows);
+    const off = new Int32Array(BLA_MAX), cnt = new Int32Array(BLA_MAX);
+    let pos = 0, n = n1;
+    for (let l = 1; l <= top; l++) {
+      const c = n >> 1;
+      off[l - 1] = pos;
+      cnt[l - 1] = c;
+      for (let j = 0; j < c; j++) {
+        const x = 2 * j, y = x + 1;
+        let Ax = ax[y] * ax[x] - ay[y] * ay[x], Ay = ax[y] * ay[x] + ay[y] * ax[x];
+        let Bx = ax[y] * bx[x] - ay[y] * by[x] + bx[y], By = ax[y] * by[x] + ay[y] * bx[x] + by[y];
+        // after x, dz has grown to at most |Ax| |dz| + |Bx| |dc|; y needs that below its radius
+        const lB = Math.log2(Math.hypot(bx[x], by[x])) + lc, Ry = rr[y];
+        let R = Math.min(rr[x], (lB < Ry ? Ry + Math.log2(1 - 2 ** (lB - Ry)) : -Infinity) - Math.log2(Math.hypot(ax[x], ay[x])));
+        if (!(R > -Infinity && Math.hypot(Ax, Ay) < 2 ** 60 && Math.hypot(Bx, By) < 2 ** 60)) { Ax = Ay = Bx = By = 0; R = -Infinity; }
+        ax[j] = Ax; ay[j] = Ay; bx[j] = Bx; by[j] = By; rr[j] = R;
+        const q = pos + j;
+        AB[4 * q] = Ax; AB[4 * q + 1] = Ay; AB[4 * q + 2] = Bx; AB[4 * q + 3] = By;
+        RR[q] = R > -1e30 ? R : -1e30;
+      }
+      pos += c;
+      n = c;
+    }
+    o.bla = { lc, top, off, cnt, ab: texture(gl.RGBA32F, AB, 4, gl.RGBA), r: texture(gl.R32F, RR, 1, gl.RED) };
   }
+
   // c of a w-plane point, exact: inner branch cM + r w, outer branch cM + r / conj(w)
   function cIn(wx, wy, rH) { return [cH[0] + mul(rH, wx), cH[1] + mul(rH, wy)]; }
   function cOut(wx, wy, rH) {
@@ -532,104 +638,235 @@ void main() {
     if (d2 === 0n) return [cH[0], cH[1]];
     return [cH[0] + mul(rH, (wx << PBn) / d2), cH[1] + mul(rH, (wy << PBn) / d2)];
   }
-  // mantissa and exponent of x > 0 (exponent 0 when x >= 1: such scales stay plain floats)
-  function split(x) {
-    if (!(x < 1)) return [Math.min(x, 3e38), 0];
-    const e = Math.floor(Math.log2(x));
-    return [ldexp(x, -e), e];
+  // mantissa and exponent of 2^l (exponent 0 when 2^l >= 1: such scales stay plain floats)
+  function splitL(l) {
+    if (l >= 0) return [Math.min(2 ** l, 3e38), 0];
+    const e = Math.floor(l);
+    return [2 ** (l - e), e];
   }
   const f32 = (x) => Math.max(-3e38, Math.min(3e38, x));
+  // distance from t to the nearest of n pixel centres (at k + 1/2 - n/2)
+  const naechst = (t, n) => Math.min(n - 1, Math.max(0, Math.round(t + n / 2 - 0.5))) + 0.5 - n / 2 - t;
+  // microseconds per orbit step (measured: BigInt products grow with the square of the bits)
+  const schritt = (exact) => (exact ? 0.6 + 1.6e-6 * PB * PB : 0.02);
 
-  // lp > 0: the lupe pass, an lp x lp square in the lower left of the canvas
-  function drawView(lp) {
-    const W = lp || Math.max(1, Math.round(cssW * dpr * quality));
-    const Hc = lp || Math.max(1, Math.round(cssH * dpr * quality));
-    if (!lp && (bild.width !== W || bild.height !== Hc)) { bild.width = W; bild.height = Hc; }
+  // The orbit worker: one per job, a newer view ends it mid-orbit (terminate).
+  let job = null;
+  function starteJob(spec, L, exact, want) {
+    if (job && job.PB === PB && job.mode === spec.mode && job.L >= want + 2 && !spec.weit(job)) return;
+    if (job) job.w.terminate();
+    const w = new Worker("/tools/workers/gespiegeltes-mandelbrot-bahn.js");
+    const pb = PB;
+    job = { w, PB: pb, mode: spec.mode, L, cx: spec.c[0][0], cy: spec.c[0][1] };
+    w.onerror = (e) => { e.preventDefault(); fail("Bahn-Worker: " + (e.message || "Fehler")); };
+    w.onmessage = (e) => {
+      if (!job || job.w !== w) return;
+      w.terminate();
+      job = null;
+      setRef("feld", machRef(e.data, spec, spec.c[e.data.i], exact, pb));
+      request(false);
+    };
+    w.postMessage({ cands: spec.c, L, PB: pb, exact, per: spec.per, want });
+  }
+
+  // one pass of the view into the bound framebuffer, W x Hc pixels; false when there is
+  // no reference for it yet (the worker is on it)
+  function drawView(W, Hc, slot) {
     gl.viewport(0, 0, W, Hc);
-    if (!lp) ensurePB();
-    const s = sw * cssW / W;   // w units per canvas pixel
-    const hd = Math.hypot(W, Hc) / 2;
+    const lsc = ls + Math.log2(cssW / W);   // log2 of w units per pixel
+    const hd = Math.hypot(W, Hc) / 2, lhd = Math.log2(hd);
+    const lr = Math.log2(Math.max(r, 1e-9));
+    const lw = logadd(lv, lsc + lhd);
+    const lpcMin = lr + lsc - 2 * Math.max(0, lw);
+    const maxit = Math.min(LMAX - 2, Math.round(250 + 45 * Math.max(0, -lpcMin)));
+    const exact = lpcMin < -40;
+    // orbits are made a bit longer than needed, so zooming keeps them for a while
+    const longer = Math.min(LMAX, Math.ceil((maxit * 1.1 + 2900) / 4096) * 4096);
+    // the origin, in pixels from the centre; around a Misiurewicz point cM is the reference
+    // for everything within 2^16 pixels: its orbit only goes round, any depth costs nothing
+    const lu0 = lv - lsc;
+    const mode = lu0 <= lhd || (mis && lu0 <= 16) ? 0 : 1;
+    const rH = mode ? H(r) : 0n;
+    const vcOut = lv > 0;
+    const lrs = lr + lsc;
+    const eb = Math.floor(lrs - (vcOut ? 2 * lv : 0));
+    const kI = f32(2 ** (lrs - eb)), aM = 2 ** Math.min(120, lrs - 2 * lv - eb);
+    let spec;
+    if (mode === 0) {
+      spec = { mode, c: [[cH[0], cH[1]]], per: mis, weit: (o) => o.cx !== cH[0] || o.cy !== cH[1] };
+    } else {
+      const ci = cIn(vH[0], vH[1], rH), co = cOut(vH[0], vH[1], rH), target = vcOut ? co : ci;
+      const scale = vcOut ? aM : kI;
+      // an orbit that escapes early leaves later pixels without reference:
+      // a few points around the view stand by, the longest orbit wins
+      const c = [target];
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4, wx = vH[0] + Hl(0.5 * hd * Math.cos(a), lsc), wy = vH[1] + Hl(0.5 * hd * Math.sin(a), lsc);
+        c.push(lg2((wx * wx + wy * wy) >> PBn) > 0 ? cOut(wx, wy, rH) : cIn(wx, wy, rH));
+      }
+      spec = { mode, c, per: null, ci, co, weit: (o) => Math.hypot(N(target[0] - o.cx, eb), N(target[1] - o.cy, eb)) / scale > 64 * hd };
+    }
+    let o = refs[slot];
+    const lag = (q) => q && { cx: zuPB(q.cx, q.PB), cy: zuPB(q.cy, q.PB) };
+    let brauchbar = o && o.mode === mode && !spec.weit(lag(o));
+    const gut = brauchbar && o.PB === PB && (o.L >= maxit + 2 || o.escaped) && (o.exact || !exact);
+    if (!gut) {
+      const ms = (spec.per ? spec.per.k + spec.per.p : longer) * schritt(exact) / 1000;
+      if (slot === "lupe" || ms < 30) {
+        const q = spiegelBahnen(spec.c, longer, PB, exact, spec.per, maxit);
+        setRef(slot, o = machRef(q, spec, spec.c[q.i], exact, PB));
+        brauchbar = true;
+      } else {
+        starteJob(spec, longer, exact, maxit);
+      }
+    }
+    if (!brauchbar) return false;
+    const ox = zuPB(o.cx, o.PB), oy = zuPB(o.cy, o.PB);
 
-    const half = hd * s;
-    const vAbs = Math.hypot(vx, vy);
-    const wmax = vAbs + half;
-    const pcMin = Math.max(1e-300, r * s / Math.max(1, wmax * wmax));
-    const maxit = Math.round(Math.min(50000, Math.max(250, 250 + 45 * Math.log2(1 / pcMin))));
-    const exact = pcMin < 1e-12;
-    // orbits are computed a bit longer than needed, so zooming reuses them for a while
-    const want = (o) => o && o.PB === PB && (o.maxit >= maxit || o.escaped) && (o.L > 2 || o.escaped);
-    const longer = Math.min(50000, Math.ceil(maxit * 1.25 / 256) * 256);
-
+    // the largest |dc| in view, for the BLA tables
+    let lc;
     gl.uniform2f(U.uRes, W, Hc);
     gl.uniform1i(U.uMaxit, maxit);
-    if (vAbs <= half) {
-      // origin in view: reference cM itself, u = w / s in pixels
-      // an exact orbit also serves where doubles would do (the lupe reuses the field's)
-      if (!want(ref) || ref.mode !== 0 || ref.cx !== cH[0] || ref.cy !== cH[1] || (exact && !ref.exact)) {
-        const o = orbit(cH[0], cH[1], longer, exact);
-        o.mode = 0;
-        o.exact = exact;
-        useRef(o);
-      }
-      const [kI, eI] = split(r * s), [kO, eO] = split(r / s);
+    if (mode === 0) {
+      const u0 = 2 ** lu0;
+      // log2 |w| at the pixel centre nearest the origin: zoomed far out the inner disk falls
+      // between pixels, and the largest |dc| is that of this pixel on the outer branch
+      const lmin = lsc + Math.log2(Math.hypot(naechst(N(vH[0], lsc), W), naechst(N(vH[1], lsc), Hc)));
+      const innen = lmin <= 0, aussen = lsc + Math.log2(u0 + hd) > 0;
+      lc = Math.max(innen ? lr + Math.min(0, lsc + Math.log2(u0 + hd)) : -Infinity,
+        aussen ? lr - Math.max(0, lmin) : -Infinity);
+      const [kI0, eI] = splitL(lr + lsc), [kO, eO] = splitL(lr - lsc);
       gl.uniform1i(U.uMode, 0);
-      gl.uniform2f(U.uU0, vx / s, vy / s);
-      gl.uniform1f(U.uInvS2, f32(1 / (s * s)));
-      gl.uniform1f(U.uKI, kI);
+      gl.uniform2f(U.uU0, f32(N(vH[0], lsc)), f32(N(vH[1], lsc)));
+      gl.uniform1f(U.uInvS2, f32(2 ** (-2 * lsc)));
+      gl.uniform1f(U.uKI, kI0);
       gl.uniform1i(U.uEI, eI);
       gl.uniform1f(U.uKO, kO);
       gl.uniform1i(U.uEO, eO);
     } else {
-      // view center away from the origin: everything relative to vc, exact where it cancels
-      const vcOut = vAbs > 1;
-      const rH = H(r);
-      const ci = cIn(vH[0], vH[1], rH), co = cOut(vH[0], vH[1], rH);
-      const target = vcOut ? co : ci;
-      const lrs = Math.log2(r * s), lv = Math.log2(vAbs);
-      const eb = Math.floor(lrs - (vcOut ? 2 * lv : 0));
-      const kI = f32(2 ** (lrs - eb)), aM = 2 ** (lrs - 2 * lv - eb);
-      const vnx = vx / vAbs, vny = vy / vAbs;
-      const scale = vcOut ? aM : kI;
-      const far = (o) => Math.hypot(N(target[0] - o.cx, eb), N(target[1] - o.cy, eb)) / scale > 64 * hd;
-      if (!want(ref) || ref.mode !== 1 || ref.exact !== exact || far(ref)) {
-        let o = orbit(target[0], target[1], longer, exact);
-        // an orbit that escapes early leaves later pixels without reference:
-        // take the longest of a few points around the view instead
-        for (let k = 0; o.escaped && o.L < maxit && k < 8; k++) {
-          const a = k * Math.PI / 4, dx = H(0.5 * half * Math.cos(a)), dy = H(0.5 * half * Math.sin(a));
-          const wx = vH[0] + dx, wy = vH[1] + dy;
-          const c = N((wx * wx + wy * wy) >> PBn) > 1 ? cOut(wx, wy, rH) : cIn(wx, wy, rH);
-          const q = orbit(c[0], c[1], longer, exact);
-          if (q.L > o.L) o = q;
-        }
-        o.mode = 1;
-        o.exact = exact;
-        useRef(o);
-      }
       const h = (vH[0] * vH[0] + vH[1] * vH[1] >> PBn) - (1n << PBn);
+      const d0i = [f32(N(spec.ci[0] - ox, eb)), f32(N(spec.ci[1] - oy, eb))];
+      const d0o = [f32(N(spec.co[0] - ox, eb)), f32(N(spec.co[1] - oy, eb))];
+      const lhalf = lsc + lhd;
+      const innen = lv < logadd(0, lhalf), aussen = logadd(lv, lhalf) > 0;
+      lc = eb + Math.log2(Math.max(innen ? Math.hypot(...d0i) + kI * hd : 0, aussen ? Math.hypot(...d0o) + 2 * aM * hd : 0));
+      const eps = 2 ** (lsc - lv);
       gl.uniform1i(U.uMode, 1);
-      // far out |vc|^2 overflows a double, and the 1 no longer counts there
-      gl.uniform1f(U.uH, f32(vAbs > 1e100 ? vAbs / s : N(h) / (s * vAbs)));
+      gl.uniform1f(U.uH, f32(N(h, lsc + lv)));
       gl.uniform2f(U.uVn, vnx, vny);
-      gl.uniform1f(U.uEps, s / vAbs);
-      gl.uniform2f(U.uE, s / vAbs * vnx, -s / vAbs * vny);
-      gl.uniform2f(U.uA, aM * (vnx * vnx - vny * vny), aM * 2 * vnx * vny);
+      gl.uniform1f(U.uEps, eps);
+      gl.uniform2f(U.uE, eps * vnx, -eps * vny);
+      gl.uniform2f(U.uA, f32(aM * (vnx * vnx - vny * vny)), f32(aM * 2 * vnx * vny));
       gl.uniform1f(U.uKI, kI);
       gl.uniform1i(U.uEI, eb);
       gl.uniform1i(U.uEO, eb);
-      gl.uniform2f(U.uD0I, f32(N(ci[0] - ref.cx, eb)), f32(N(ci[1] - ref.cy, eb)));
-      gl.uniform2f(U.uD0O, f32(N(co[0] - ref.cx, eb)), f32(N(co[1] - ref.cy, eb)));
+      gl.uniform2f(U.uD0I, ...d0i);
+      gl.uniform2f(U.uD0O, ...d0o);
     }
-    gl.uniform1i(U.uRefLen, ref.L);
+    // tables for a much larger |dc| than in view hold, but jump less: remade every 8 octaves
+    lc = Math.max(-1e5, Math.ceil(lc / 4) * 4);
+    // shallow (maxit in the low thousands) the lookups cost more than the steps they save
+    const mitBla = exact && o.L > 4;
+    if (mitBla && (!o.bla || o.bla.lc < lc || o.bla.lc > lc + 8)) baueBla(o, lc);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, o.tex);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, mitBla ? o.bla.ab : leer);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, mitBla ? o.bla.r : leer);
+    gl.uniform1i(U.uBlaTop, mitBla ? o.bla.top : 0);
+    if (mitBla) {
+      gl.uniform1iv(U.uBlaOff, o.bla.off);
+      gl.uniform1iv(U.uBlaCnt, o.bla.cnt);
+      gl.uniform1f(U.uLc, o.bla.lc);
+    }
+    gl.uniform1i(U.uRefLen, o.L);
+    gpuT0 = performance.now();
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    if (!lp) drawDeko();
+    return true;
   }
+  let gpuT0 = 0;
 
-  function draw() {
+  // ---- passes: coarse into a small framebuffer, stretched onto the canvas; sharp in bands ----
+  function rahmen() {
+    const fb = gl.createFramebuffer(), rb = gl.createRenderbuffer();
+    let w = 0, h = 0;
+    return {
+      fb,
+      an(W, Hc) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        if (W === w && Hc === h) return;
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, W, Hc);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rb);
+        w = W;
+        h = Hc;
+      },
+    };
+  }
+  const grobFbo = rahmen(), lupeFbo = rahmen();
+  // ms per pixel, from the last passes: a fence says when the GPU is through with one
+  let pxMs = 2e-5;
+  function messe(n, dann) {
+    const t0 = gpuT0, f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    const warte = () => {
+      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) return void setTimeout(warte, 1);
+      gl.deleteSync(f);
+      pxMs = 0.5 * pxMs + 0.5 * (performance.now() - t0) / Math.max(1, n);
+      if (dann) dann();
+    };
+    warte();
+  }
+  // what the canvas shows: the view it was drawn for
+  let gezeigt = null;
+  function vollW() { return [Math.max(1, Math.round(cssW * dpr)), Math.max(1, Math.round(cssH * dpr))]; }
+  function leinwand() {
+    const [W, Hc] = vollW();
+    if (bild.width !== W || bild.height !== Hc) { bild.width = W; bild.height = Hc; gezeigt = null; }
+    return [W, Hc];
+  }
+  // wechsel counts every change asked for (request): the canvas is current when it was drawn since
+  let wechsel = 0;
+  function gezeichnet(q) {
+    gezeigt = { ls, vH, PB, q, w: wechsel };
+    bild.style.transform = "";
+  }
+  const gleich = () => gezeigt && gezeigt.w === wechsel;
+  // no reference yet: the last picture, moved and scaled to where the view went
+  function altesBild() {
+    if (!gezeigt) return;
+    const k = 2 ** (gezeigt.ls - ls);
+    const tx = N(zuPB(gezeigt.vH[0], gezeigt.PB) - vH[0], ls), ty = -N(zuPB(gezeigt.vH[1], gezeigt.PB) - vH[1], ls);
+    bild.style.transform = `translate(${f32(tx)}px, ${f32(ty)}px) scale(${f32(k)})`;
+  }
+  // the whole view at quality q (<= 1), at once
+  function grob(q) {
+    const [W, Hc] = leinwand();
+    const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
+    if (w === W && h === Hc) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (!drawView(W, Hc, "feld")) { altesBild(); return false; }
+    } else {
+      grobFbo.an(w, h);
+      if (!drawView(w, h, "feld")) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); altesBild(); return false; }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, grobFbo.fb);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    messe(w * h);
+    gezeichnet(w === W && h === Hc ? 1 : q);
+    return true;
+  }
+  function draw(q) {
     takt(performance.now());
-    drawView(0);
+    ensurePB();
+    const ok = grob(q);
+    drawDeko();
     lupe.hidden = !(lupeOn && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe();
+    return ok;
   }
 
   // The lupe: the start view, there whenever the field is zoomed far out.
@@ -644,22 +881,31 @@ void main() {
     if (key === lupeKey) return;
     lupeKey = key;
     if (lupe.width !== lp || lupe.height !== lp) { lupe.width = lp; lupe.height = lp; }
-    const keep = { vx, vy, vH, sw, cssW, cssH };
-    vx = 0; vy = 0; vH = [0n, 0n];
+    const keep = { ls, sw, lv, vnx, vny, vH, cssW, cssH };
+    setV(0n, 0n);
     cssW = cssH = Lc;
-    sw = LUPE_FIT / Lc;
+    setS(Math.log2(LUPE_FIT / Lc));
+    // drawn into the field's bottom left corner, copied over, the corner put back:
+    // reading pixels back would make the page wait for the GPU
+    const kopie = (von, nach) => {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, von);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, nach);
+      gl.blitFramebuffer(0, 0, lp, lp, 0, 0, lp, lp, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    };
+    lupeFbo.an(lp, lp);
+    kopie(null, lupeFbo.fb);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     try {
-      drawView(lp);
+      drawView(lp, lp, "lupe");
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.clearRect(0, 0, lp, lp);
+      lctx.drawImage(bild, 0, bild.height - lp, lp, lp, 0, 0, lp, lp);
     } finally {
-      ({ vx, vy, vH, sw, cssW, cssH } = keep);
+      kopie(lupeFbo.fb, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, bild.width, bild.height);
+      ({ ls, sw, lv, vnx, vny, vH, cssW, cssH } = keep);
     }
-    lctx.setTransform(1, 0, 0, 1, 0, 0);
-    lctx.drawImage(bild, 0, bild.height - lp, lp, lp, 0, 0, lp, lp);
-    // paint the field back over the corner the lupe borrowed (same orbit, no new reference)
-    gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(0, 0, lp, lp);
-    drawView(0);
-    gl.disable(gl.SCISSOR_TEST);
     const k = lp / Lc;
     lctx.setTransform(k, 0, 0, k, 0, 0);
     lctx.beginPath();
@@ -720,15 +966,14 @@ void main() {
     else if (links && nearLeft) lupe.classList.remove("links");
   }
 
-  // w -> CSS pixel
-  const toScreen = (wx, wy) => [cssW / 2 + (wx - vx) / sw, cssH / 2 - (wy - vy) / sw];
-  const toW = (x, y) => [vx + (x - cssW / 2) * sw, vy - (y - cssH / 2) * sw];
+  // the origin in CSS pixels (far away it stays just as far off screen)
+  const origin = () => [cssW / 2 - f32(N(vH[0], ls)), cssH / 2 + f32(N(vH[1], ls))];
 
   function drawDeko() {
     deko.width = Math.round(cssW * dpr);
     deko.height = Math.round(cssH * dpr);
     dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const [ox, oy] = toScreen(0, 0);
+    const [ox, oy] = origin();
     const rad = 1 / sw;
     if (rad > 4 && rad < 1e6) {
       dctx.beginPath();
@@ -761,13 +1006,45 @@ void main() {
     requestAnimationFrame(step);
   }
 
-  // ---- scheduling: low resolution while moving, full resolution when idle ----
-  let raf = 0, idle = 0;
+  // ---- scheduling: a coarse frame at once (about 16 ms of work), the sharp one in bands
+  // from the top down while nothing moves; anything new stops the bands ----
+  let raf = 0, idle = 0, lauf = 0;
+  function qGrob() {
+    const [W, Hc] = vollW();
+    return Math.min(1, Math.max(0.06, Math.sqrt(16 / (pxMs * W * Hc))));
+  }
   function request(moving) {
-    if (moving) quality = 0.5;
-    if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
+    lauf++;
+    wechsel++;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(qGrob()); });
     clearTimeout(idle);
-    idle = setTimeout(() => { quality = 1; draw(); saveUrl(); meldeOrt(); }, moving ? 160 : 0);
+    idle = setTimeout(scharf, moving ? 160 : 0);
+  }
+  function scharf() {
+    const nr = ++lauf;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    const fertig = () => { saveUrl(); meldeOrt(); };
+    if (!gleich() && !draw(qGrob())) return;
+    if (gezeigt.q >= 1) return fertig();
+    const [W, Hc] = leinwand();
+    let y = Hc;
+    const band = () => {
+      if (nr !== lauf) return;
+      const h = Math.max(8, Math.min(y, Math.round(40 / (pxMs * W))));
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(0, y - h, W, h);
+      const ok = drawView(W, Hc, "feld");
+      gl.disable(gl.SCISSOR_TEST);
+      if (!ok) return;
+      y -= h;
+      messe(W * h, () => {
+        if (nr !== lauf) return;
+        if (y > 0) return band();
+        gezeigt.q = 1;
+        fertig();
+      });
+    };
+    band();
   }
 
   // ---- readout and URL ----
@@ -782,10 +1059,27 @@ void main() {
     const u = new URL(location.href);
     u.searchParams.set("c", cMx + "," + cMy);
     u.searchParams.set("r", String(r));
-    // deep views need more digits than a double has
-    const dig = Math.ceil(-Math.log10(sw)) + 6;
-    u.searchParams.set("w", sw < 1e-10 ? toDec(vH[0], dig) + "," + toDec(vH[1], dig) : vx + "," + vy);
-    u.searchParams.set("s", String(sw));
+    // deep views need more digits than a double has; far out the centre is a number with
+    // as many digits as the view is wide, written as mantissa and exponent
+    const L10 = Math.log10(2);
+    let w;
+    if (lv > 60) {
+      const sig = Math.ceil((lv - ls) * L10) + 6;
+      w = vH.map((b) => (lg2(b) >= 0 ? toSci(b, sig) : toDec(b, Math.max(0, Math.ceil(-ls * L10) + 6)))).join();
+    } else if (ls < Math.log2(1e-10)) {
+      const dig = Math.ceil(-ls * L10) + 6;
+      w = toDec(vH[0], dig) + "," + toDec(vH[1], dig);
+    } else {
+      w = N(vH[0]) + "," + N(vH[1]);
+    }
+    u.searchParams.set("w", w);
+    // s = sw; beyond doubles as mantissa e exponent (decimal)
+    let s = String(sw);
+    if (Math.abs(ls) >= 1000) {
+      const e10 = ls * L10, e = Math.floor(e10);
+      s = (10 ** (e10 - e)).toPrecision(15).replace(/\.?0+$/, "") + "e" + e;
+    }
+    u.searchParams.set("s", s);
     u.searchParams.delete("frei");
     if (snapOn) u.searchParams.delete("rasten"); else u.searchParams.set("rasten", "0");
     if (lupeOn) u.searchParams.delete("lupe"); else u.searchParams.set("lupe", "0");
@@ -797,19 +1091,25 @@ void main() {
       const v = (q.get(k) || "").split(",").map(Number);
       return v.length === 2 && v.every(Number.isFinite) ? v : null;
     };
-    const c = pair("c"), w = pair("w");
-    const rr = Number(q.get("r")), ss = Number(q.get("s"));
+    const c = pair("c");
+    const rr = Number(q.get("r"));
     if (rr > 0 && Number.isFinite(rr)) r = rr;
-    if (ss > 0 && Number.isFinite(ss)) sw = Math.min(SW_MAX, Math.max(SW_MIN, ss));
-    if (w) {
-      vx = w[0];
-      vy = w[1];
-      ensurePB();
-      const [a, b] = q.get("w").split(",").map(fromDec);
-      setV(a ?? H(w[0]), b ?? H(w[1]));
+    // before the bits grow: the Misiurewicz point is found at start precision, setPB refines it
+    if (c) setC(c[0], c[1], true);
+    // s as mantissa and exponent, so 1e-5000 is a scale too
+    const sm = /^\s*(\d*\.?\d+)(?:e([+-]?\d+))?\s*$/i.exec(q.get("s") || "");
+    if (sm && Number(sm[1]) > 0) setS(Math.log2(Number(sm[1])) + (Number(sm[2]) || 0) / Math.log10(2));
+    const ws = (q.get("w") || "").split(",");
+    if (ws.length === 2) {
+      // twice: the first guess at the centre tells how many bits it needs
+      for (let i = 0; i < 2; i++) {
+        const [a, b] = ws.map(fromDec);
+        if (a === null || b === null) break;
+        setV(a, b);
+        ensurePB();
+      }
     }
     ensurePB();
-    if (c) setC(c[0], c[1], true);
     if (q.has("rasten")) snapOn = q.get("rasten") !== "0";
     if (q.has("lupe")) lupeOn = q.get("lupe") !== "0";
   }
@@ -1062,7 +1362,7 @@ void main() {
   }
   function meldeOrt(x = cMx, y = cMy) {
     if (!sucher || !snapOn) return;
-    let k = r * Math.min(sw, fitSw());
+    let k = Math.max(1e-300, r * Math.min(sw, fitSw()));
     if (!lupe.hidden) k = Math.min(k, r * LUPE_FIT / lupe.clientWidth);
     const D = Math.min(cssW, cssH), key = [x, y, k, D].join();
     if (key === sucherOrt || !(k > 0)) return;
@@ -1144,33 +1444,35 @@ void main() {
   const pts = new Map();
   let dragging = null;
 
+  // the point under (x, y) stays put
   function zoomAt(f, x, y) {
-    const old = sw;
-    sw = Math.min(SW_MAX, Math.max(SW_MIN, sw * f));
+    const l0 = ls, px = x - cssW / 2, py = -(y - cssH / 2);
+    setS(ls + Math.log2(f));
     ensurePB();
-    panBy((x - cssW / 2) * (old - sw), -(y - cssH / 2) * (old - sw));
+    setV(vH[0] + Hl(px, l0) - Hl(px, ls), vH[1] + Hl(py, l0) - Hl(py, ls));
   }
 
-  // Far out everything lies near the origin. Beyond |v| = L (half the view) the view
+  // Far out everything lies near the origin. Beyond L (half the view) from it the view
   // goes stiff the further it gets, and springs back on release: the origin stays in reach.
-  const reach = () => Math.min(cssW, cssH) / 2 * sw;
+  // All in pixels, so it holds at any scale.
+  const reach = () => Math.min(cssW, cssH) / 2;
+  const frei = () => ls + Math.log2(reach()) <= 0;
   function rubberPan(dx, dy) {
-    const L = reach(), o = Math.hypot(vx, vy);
-    if (L <= 1 || Math.hypot(vx + dx, vy + dy) <= Math.max(o, L)) return panBy(dx, dy);
+    const L = reach(), o = 2 ** (lv - ls);
+    if (frei() || Math.hypot(vnx * o + dx, vny * o + dy) <= Math.max(o, L)) return panPx(dx, dy);
     const k = (1 - Math.min(1, Math.max(0, o - L) / (0.5 * L))) ** 2;
-    panBy(dx * k, dy * k);
+    panPx(dx * k, dy * k);
     // k is taken where the step starts: one hard flick must not shoot past the stiff end
-    const n = Math.hypot(vx, vy);
-    if (n > 1.5 * L) setV(H(vx * (1.5 * L / n)), H(vy * (1.5 * L / n)));
+    if (2 ** (lv - ls) > 1.5 * L) setV(Hl(vnx * 1.5 * L, ls), Hl(vny * 1.5 * L, ls));
   }
   function springBack() {
-    const L = reach(), n = Math.hypot(vx, vy);
-    if (L <= 1 || n <= L) return;
-    const fx = vx, fy = vy, t0 = performance.now();
+    const L = reach(), n = 2 ** (lv - ls), l0 = ls;
+    if (frei() || !(n > L) || !Number.isFinite(n)) return;
+    const fx = vnx * n, fy = vny * n, t0 = performance.now();
     const step = (t) => {
       if (pts.size) return;
       const a = Math.min(1, (t - t0) / 200), f = 1 - (1 - L / n) * (1 - (1 - a) ** 3);
-      setV(H(fx * f), H(fy * f));
+      setV(Hl(fx * f, l0), Hl(fy * f, l0));
       request(a < 1);
       if (a < 1) requestAnimationFrame(step);
     };
@@ -1189,7 +1491,7 @@ void main() {
     const b = feld.getBoundingClientRect();
     const x = e.clientX - b.left, y = e.clientY - b.top;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const [hx, hy] = toScreen(0, 0);
+    const [hx, hy] = origin();
     // the ring may be tiny, the spot to grab stays finger sized at every zoom
     if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
       // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
@@ -1211,7 +1513,7 @@ void main() {
       return;
     }
     if (pts.size === 1) {
-      rubberPan(-(e.clientX - p.x) * sw, (e.clientY - p.y) * sw);
+      rubberPan(-(e.clientX - p.x), e.clientY - p.y);
     } else if (pts.size === 2) {
       const [a, c] = [...pts.values()];
       const before = Math.hypot(a.x - c.x, a.y - c.y);
@@ -1340,7 +1642,7 @@ void main() {
       // the panel already put r and rasten back; the rest of the start state is the
       // start point in the fitted view, with no trace left in the URL
       afterReset: () => {
-        const vorher = { cMx, cMy, r, sw, snapOn, lupeOn, cH, vH, mis, PB, lupePos };
+        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, cH, vH, mis, PB, lupePos };
         lupeOn = !!panel.get("lupe");
         setLupePos(null);
         fitView();
@@ -1351,11 +1653,11 @@ void main() {
         for (const k of ["c", "r", "w", "s", "rasten", "lupe", "frei"]) u.searchParams.delete(k);
         history.replaceState(history.state, "", u);
         return () => {
-          ({ cMx, cMy, r, sw, snapOn, lupeOn, cH, mis } = vorher);
+          ({ cMx, cMy, r, snapOn, lupeOn, cH, mis } = vorher);
+          setS(vorher.ls);
           setLupePos(vorher.lupePos);
           PB = vorher.PB;
           PBn = BigInt(PB);
-          ref = null;
           setV(...vorher.vH);
           showValues();
           zeichneJetzt();
@@ -1368,13 +1670,14 @@ void main() {
   function zeichneJetzt() {
     clearTimeout(idle);
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    quality = 1;
-    draw();
+    lauf++;
+    wechsel++;
+    draw(1);
   }
 
   function fitSw() { return (2 * 1.6) / Math.min(cssW, cssH); }
   function fitView() {
-    sw = fitSw();
+    setS(Math.log2(fitSw()));
     setV(0n, 0n);
     ensurePB();
   }
@@ -1388,36 +1691,38 @@ void main() {
   const lnsinh = (x) => x + Math.log1p(-Math.exp(-2 * x)) - Math.LN2;
   function ranZoomen() {
     cancelAnimationFrame(ranZug);
-    const s0 = sw, s1 = fitSw(), v0 = vH, P0 = PB, u1 = Math.hypot(vx, vy);
+    // lengths in units of the start scale s0 = 2^l0, so no depth overflows them
+    const l0 = ls, l1 = Math.log2(fitSw()), b = l1 - l0, v0 = vH, P0 = PB, u1 = 2 ** (lv - l0);
     const D = Math.min(cssW, cssH);
-    const sh = (b) => (PB > P0 ? b << BigInt(PB - P0) : b >> BigInt(P0 - PB));
+    const sh = (q) => (PB > P0 ? q << BigInt(PB - P0) : q >> BigInt(P0 - PB));
     // where the fixed point sits on screen, in pixels from the centre
-    const fest = u1 / Math.abs(s1 - s0);
+    const fest = u1 / Math.abs(2 ** b - 1);
     let pose = null, weg;
     if (fest > D / 2 && u1 > 0) {
-      const R = Math.SQRT2, R2 = 2, w0 = s0 * D, w1 = s1 * D;
+      const R = Math.SQRT2, R2 = 2, w0 = D, w1 = D * 2 ** b;
       const r0 = -Math.asinh((w1 * w1 - w0 * w0 + R2 * R2 * u1 * u1) / (2 * w0 * R2 * u1));
       const r1 = -Math.asinh((w1 * w1 - w0 * w0 - R2 * R2 * u1 * u1) / (2 * w1 * R2 * u1));
       const S = (r1 - r0) / R;
       if (Number.isFinite(S) && S > 0) {
         weg = S * R;
-        const ux = -vx / u1, uy = -vy / u1, lc0 = lncosh(r0);
+        const ux = -vnx, uy = -vny, lc0 = lncosh(r0);
         pose = (e) => {
           const x = R * S * e;
-          sw = Math.exp(Math.log(s0) + lc0 - lncosh(x + r0));
+          setS(l0 + (lc0 - lncosh(x + r0)) / Math.LN2);
           ensurePB();
           const u = x > 0 ? Math.exp(Math.log(w0) - Math.log(R2) + lnsinh(x) - lncosh(x + r0)) : 0;
-          setV(sh(v0[0]) + H(u * ux), sh(v0[1]) + H(u * uy));
+          setV(sh(v0[0]) + Hl(u * ux, l0),sh(v0[1]) + Hl(u * uy, l0));
         };
       }
     }
     if (!pose) {
-      weg = Math.abs(Math.log(s1 / s0));
+      weg = Math.abs(b) * Math.LN2;
       pose = (e) => {
-        sw = Math.exp(Math.log(s0) + Math.log(s1 / s0) * e);
+        setS(l0 + b * e);
         ensurePB();
         // v = v0 (s1 - sw) / (s1 - s0), with the shrinking part kept to 60 bits
-        const g = (sw - s0) / (s1 - s0);
+        const a = ls - l0;
+        const g = b > 0 ? (2 ** (a - b) - 2 ** -b) / (1 - 2 ** -b) : (1 - 2 ** a) / (1 - 2 ** b);
         if (!(g > 0)) return setV(sh(v0[0]), sh(v0[1]));
         const E = 60 - Math.floor(Math.log2(g)), G = BigInt(Math.round(ldexp(g, E))), En = BigInt(E);
         setV(sh(v0[0] - ((v0[0] * G) >> En)), sh(v0[1] - ((v0[1] * G) >> En)));
@@ -1448,7 +1753,7 @@ void main() {
     const old = Math.min(cssW, cssH);
     cssW = Math.max(1, b.width);
     cssH = Math.max(1, b.height);
-    if (sw > 0) sw *= old / Math.min(cssW, cssH);
+    if (Number.isFinite(ls)) setS(ls + Math.log2(old / Math.min(cssW, cssH)));
     if (lupePos) setLupePos(lupePos);
     request(false);
   }
@@ -1470,9 +1775,7 @@ void main() {
   setC(cMx, cMy, true);
   loadUrl();
   showValues();
-  quality = 1;
-  draw();
-  saveUrl();
+  request(false);
   requestAnimationFrame(() => setTimeout(ladeRasten, 0));
 })();
 </script>
