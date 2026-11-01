@@ -12252,7 +12252,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Canvas/WebGL-Rendering
 
 ### WebGL2-Mandelbrot mit Perturbation (Shader)
-`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus ohne feste Grenze (Maßstab als log2, BLA-Sprünge nach Zhuoran/Heiland-Allen, tiefe Bahnen im abbrechbaren Worker `tools/workers/gespiegeltes-mandelbrot-bahn.js`, scharf in Bändern), Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung, Rückflug zur Startansicht als reine Ähnlichkeit um den Fixpunkt beider Ansichten, weit daneben van Wijk–Nuij (`ranZoomen()`), Einrast-Schienen aus ~100k vorab berechneten Misiurewicz-Punkten (Morton-Varints, deflate-raw per `DecompressionStream`, Raster-NN in µs, `naechste()`/`aufSchiene()`) plus Worker, der im Leerlauf um den Ausschnitt verdichtet (`tools/workers/gespiegeltes-mandelbrot-worker.js`). Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
+`gespiegeltes-mandelbrot.html` (Fragment-Shader `FS`, `orbit()`, `draw()`, `probe()`, `snap()`, `misSearch()`/`misRefine()`, `zoomAt()`, `rubberPan()`): Referenzorbit als Float-Textur (RG32F, 4096 breit), bei Bedarf in BigInt-Festkomma (Bitzahl wächst mit der Tiefe), Pixel iterieren nur die Differenz mit Rebasing, Deltas als Mantisse mal 2^E (unter float32 hinaus), Kreisinversion fürs Äußere, skalierte Distanzschätzung, Zoom rein und raus ohne feste Grenze (Maßstab als log2, BLA-Sprünge nach Zhuoran/Heiland-Allen, tiefe Bahnen im abbrechbaren Worker `tools/workers/gespiegeltes-mandelbrot-bahn.js`, scharf in Bändern), Ansichtszentrum exakt (BigInt), Newton auf Misiurewicz-Punkte (Doubles, dann Festkomma), Gummiband beim Verschieben weit draußen, Kontextverlust-Meldung, Zustand in URL, rAF-Bündelung, Rückflug zur Startansicht als reine Ähnlichkeit um den Fixpunkt beider Ansichten, weit daneben van Wijk–Nuij (`ranZoomen()`), Einrast-Schienen aus ~100k vorab berechneten Misiurewicz-Punkten (Morton-Varints, deflate-raw per `DecompressionStream`, Raster-NN in µs, `naechste()`/`aufSchiene()`) plus Worker, der im Leerlauf um den Ausschnitt verdichtet (`tools/workers/gespiegeltes-mandelbrot-worker.js`), Spiegelpunkt in jeder Tiefe ziehbar und einrastbar (exakt als BigInt, Misiurewicz-Suche nahe dem Finger im Worker: `nahe()` mit Störungs-Newton in Doubles, dann Festkomma-Newton mit Double-Ableitung), ohne BLA-Tabelle ein eigenes Shader-Programm ohne Sprungcode (flach doppelt so schnell). Ausgefeilt; Shader-String plus `orbit`/`draw` als Modul herauslösbar.
 
 ### Raymarching mit zusammensetzbarer GLSL-Fold-Pipeline
 `fractal0ne.html` (`buildFragmentShader()`, `buildProgram()`, `camBasis()`, `euler3x3Inv()`, `rayThroughCursor()`, `buildPanel()`/`renderPipeline()`, `encodeState()/decodeState()`; Tabelle `FOLDS`): Fragment-Shader wird zur Laufzeit aus einer Liste von Faltungs-Bausteinen zusammengesetzt, Marsch über Text-SDF, freie Kamera, Mausstrahl-Pick, Presets, Zustand in URL. Brauchbar; Shader-Generator-Muster.
@@ -45575,6 +45575,7 @@ gespiegeltes-mandelbrot.html
     cMx = x;
     cMy = y;
     mis = null;
+    cGenau = false;
     cH = [H(x), H(y)];
     if (!exact) return;
     const m = misFind(x, y, 1e-12 * (1 + Math.hypot(x, y)));
@@ -45582,6 +45583,16 @@ gespiegeltes-mandelbrot.html
       mis = { k: m.k, p: m.p };
       cH = m.e;
     }
+  }
+
+  // c exactly at h, below what a double resolves (dragged deep down); m: Misiurewicz point
+  let cGenau = false;
+  function setCH(h, m) {
+    cH = h;
+    mis = m;
+    cMx = N(h[0]);
+    cMy = N(h[1]);
+    cGenau = true;
   }
 
   // ---- Misiurewicz points: z_{k+p} = z_k for the orbit of 0, k >= 1 ----
@@ -45658,7 +45669,8 @@ gespiegeltes-mandelbrot.html
     const h2 = (hx * hx + hy * hy) >> PBn;
     if (h2 === 0n || !(lam >= p / 16)) return false;
     const sx = ((gx * hx + gy * hy) >> PBn << PBn) / h2, sy = ((gy * hx - gx * hy) >> PBn << PBn) / h2;
-    return N(ab(sx) + ab(sy)) < 2 ** (-PB / 2);
+    // in log2: 2^(-PB/2) itself is 0 as a double from PB = 2150 on
+    return lg2(ab(sx) + ab(sy)) < -PB / 2;
   }
   // a verified Misiurewicz point within R of c (double in, exact out), smallest preperiod first
   function misFind(cx, cy, R) {
@@ -45795,7 +45807,11 @@ void main() {
     }
   }
   // the tables hold for |dc| up to 2^uLc
+#ifdef BLA
   bool bla = uBlaTop > 0 && log2(length(dcm)) + float(ec) <= uLc;
+#else
+  const bool bla = false;
+#endif
 
   // D = dz/dc * |dc/dp|: the derivative in pixels, so neither it nor the pixel size overflows
   vec2 dz = vec2(0.0), D = vec2(0.0), z = vec2(0.0), dc = vec2(0.0);
@@ -45897,29 +45913,35 @@ void main() {
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
     return s;
   }
-  let prog;
+  // two programs: with the BLA jumps, and without them for shallow views. The unused jump
+  // code alone costs the plain one half its speed (measured, e5abca86 had none)
+  const programme = {};
   try {
-    prog = gl.createProgram();
-    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    for (const bla of [false, true]) {
+      const prog = gl.createProgram();
+      gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
+      gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, bla ? FS.replace("\n", "\n#define BLA\n") : FS));
+      gl.bindAttribLocation(prog, 0, "p");
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      const u = {};
+      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) u[n] = gl.getUniformLocation(prog, n);
+      gl.useProgram(prog);
+      gl.uniform1i(u.uRef, 0);
+      gl.uniform1i(u.uBlaAB, 1);
+      gl.uniform1i(u.uBlaR, 2);
+      programme[bla] = { prog, u };
+    }
   } catch (e) {
     fail("Shader-Fehler: " + e.message);
     return;
   }
-  gl.useProgram(prog);
+  let U = programme[false].u;
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, "p");
-  gl.enableVertexAttribArray(loc);
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  const U = {};
-  for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) U[n] = gl.getUniformLocation(prog, n);
-  gl.uniform1i(U.uRef, 0);
-  gl.uniform1i(U.uBlaAB, 1);
-  gl.uniform1i(U.uBlaR, 2);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   gl.getExtension("EXT_color_buffer_float");
   // orbits as long as the device's textures allow: the only bound on depth
   const LMAX = 4096 * gl.getParameter(gl.MAX_TEXTURE_SIZE);
@@ -46091,6 +46113,10 @@ void main() {
     if (!brauchbar) return false;
     const ox = zuPB(o.cx, o.PB), oy = zuPB(o.cy, o.PB);
 
+    // shallow (maxit below about 4500) the lookups cost more than the steps they save
+    const mitBla = exact && o.L > 4 && maxit > 4500;
+    gl.useProgram(programme[mitBla].prog);
+    U = programme[mitBla].u;
     // the largest |dc| in view, for the BLA tables
     let lc;
     gl.uniform2f(U.uRes, W, Hc);
@@ -46133,8 +46159,6 @@ void main() {
     }
     // tables for a much larger |dc| than in view hold, but jump less: remade every 8 octaves
     lc = Math.max(-1e5, Math.ceil(lc / 4) * 4);
-    // shallow (maxit in the low thousands) the lookups cost more than the steps they save
-    const mitBla = exact && o.L > 4;
     if (mitBla && (!o.bla || o.bla.lc < lc || o.bla.lc > lc + 8)) baueBla(o, lc);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, o.tex);
@@ -46425,11 +46449,18 @@ void main() {
   }
   function saveUrl() {
     const u = new URL(location.href);
-    u.searchParams.set("c", cMx + "," + cMy);
+    const L10 = Math.log10(2);
+    // dragged deep down: c with as many digits as it has bits, then k and p if it is a
+    // Misiurewicz point (found again in a moment from there)
+    let c = cMx + "," + cMy;
+    if (cGenau) {
+      const n = Math.ceil(PB * L10) + 2;
+      c = toDec(cH[0], n) + "," + toDec(cH[1], n) + (mis ? "," + mis.k + "," + mis.p : "");
+    }
+    u.searchParams.set("c", c);
     u.searchParams.set("r", String(r));
     // deep views need more digits than a double has; far out the centre is a number with
     // as many digits as the view is wide, written as mantissa and exponent
-    const L10 = Math.log10(2);
     let w;
     if (lv > 60) {
       const sig = Math.ceil((lv - ls) * L10) + 6;
@@ -46460,10 +46491,12 @@ void main() {
       return v.length === 2 && v.every(Number.isFinite) ? v : null;
     };
     const c = pair("c");
+    const cs = (q.get("c") || "").split(",");
+    const genau = cs.length >= 2 && cs[0].length + cs[1].length > 48;
     const rr = Number(q.get("r"));
     if (rr > 0 && Number.isFinite(rr)) r = rr;
     // before the bits grow: the Misiurewicz point is found at start precision, setPB refines it
-    if (c) setC(c[0], c[1], true);
+    if (c) setC(c[0], c[1], !genau);
     // s as mantissa and exponent, so 1e-5000 is a scale too
     const sm = /^\s*(\d*\.?\d+)(?:e([+-]?\d+))?\s*$/i.exec(q.get("s") || "");
     if (sm && Number(sm[1]) > 0) setS(Math.log2(Number(sm[1])) + (Number(sm[2]) || 0) / Math.log10(2));
@@ -46478,6 +46511,15 @@ void main() {
       }
     }
     ensurePB();
+    // more digits than a double: read at the bits the view needs
+    if (genau) {
+      const h = [fromDec(cs[0]), fromDec(cs[1])];
+      if (h[0] !== null && h[1] !== null) {
+        const k = Number(cs[2]), p = Number(cs[3]);
+        const e = k >= 1 && p >= 1 && misRefine(h[0], h[1], k, p);
+        setCH(e && misVerify(e[0], e[1], k, p) ? e : h, e && misVerify(e[0], e[1], k, p) ? { k, p } : null);
+      }
+    }
     if (q.has("rasten")) snapOn = q.get("rasten") !== "0";
     if (q.has("lupe")) lupeOn = q.get("lupe") !== "0";
   }
@@ -46536,14 +46578,20 @@ void main() {
   // after the boundary snap: a Misiurewicz point close by, so the mirror point is
   // exact and the pattern outside goes on without end. A boundary point alone would
   // close up far out, so without one the point stays put and the marker shakes its head.
-  function snapC() {
+  // lk: log2 of c per pixel where the point was moved (the view, or the lupe); in log2,
+  // since deep down c per pixel is no double any more
+  function snapC(lk = proPixel()) {
     if (mis) return true;
+    if (lk < TIEF) {
+      sucheNahe(cH, lk + 3, true);
+      return true;
+    }
     if (tab) {
       if (aufSchiene(cMx, cMy)) return true;
       wackeln();
       return false;
     }
-    const tol = Math.max(1e-15, r * Math.min(sw, fitSw()));
+    const tol = Math.max(1e-15, 2 ** lk);
     const [x, y] = snap(cMx, cMy, tol * 0.25);
     const m = misFind(x, y, 8 * tol);
     if (!m) { wackeln(); return false; }
@@ -46863,7 +46911,7 @@ void main() {
     // the ring may be tiny, the spot to grab stays finger sized at every zoom
     if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
       // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()) };
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()), lk: proPixel(), h: cH, PB };
       if (!lupe.hidden) ausweichen(x, y);
       drawDeko();
     } else if (dragging) {
@@ -46900,6 +46948,19 @@ void main() {
   // M slides under the fixed mirror: the point under the finger moves with it,
   // out of M only until the circle holds nothing
   function ziehe(e) {
+    if (dragging.lk < TIEF) {
+      const t = zielH(e);
+      if (!snapOn) {
+        setCH(t, null);
+        showValues();
+        request(true);
+        return;
+      }
+      // only when the finger is more than a pixel away from where the point sits
+      const lR = abstand(cH, t) - 0.05;
+      if (lR > dragging.lk) sucheNahe(t, mis ? lR : dragging.lk + 3, false);
+      return;
+    }
     if (snapOn && tab) {
       const tx = dragging.cx - dragging.k * (e.clientX - dragging.x), ty = dragging.cy + dragging.k * (e.clientY - dragging.y);
       // the worker looks where the finger is, the point follows on the rails
@@ -46919,12 +46980,57 @@ void main() {
     request(true);
   }
   function lasseLos() {
+    const { lk } = dragging;
     dragging = null;
     if (snapOn) {
-      snapC();
+      snapC(lk);
       showValues();
     }
     request(false);
+  }
+
+  // ---- deep down: Misiurewicz points near the finger, found exactly ----
+  // Below double resolution (c-pixel under 2^TIEF) the rails are far too coarse and doubles
+  // cannot even say where the finger is. The finger's target is then the exact start point
+  // plus its pixels, and a worker looks for a Misiurewicz point near it (nahe in the bahn
+  // file). The point stays where it sits until one turns up nearer to the finger than it
+  // is. One search at a time; the newest finger position waits for it.
+  const TIEF = -45;
+  const proPixel = () => Math.log2(r) + Math.min(ls, Math.log2(fitSw()));
+  function zielH(e) {
+    const { lk } = dragging, h = dragging.h.map((b) => zuPB(b, dragging.PB));
+    return [h[0] - Hl(e.clientX - dragging.x, lk), h[1] + Hl(e.clientY - dragging.y, lk)];
+  }
+  const abstand = (a, b) => logadd(2 * lg2(a[0] - b[0]), 2 * lg2(a[1] - b[1])) / 2;
+  let sucheW = null, sucheLauf = null, sucheNext = null;
+  // look within 2^lR of t; wackelt: shake if nothing turns up and the point is still free
+  function sucheNahe(t, lR, wackelt) {
+    const auftrag = { t, lR, wackelt, PB };
+    if (sucheLauf) { sucheNext = auftrag; return; }
+    if (!sucheW) {
+      sucheW = new Worker("/tools/workers/gespiegeltes-mandelbrot-bahn.js");
+      sucheW.onerror = (e) => { e.preventDefault(); fail("Such-Worker: " + (e.message || "Fehler")); };
+      sucheW.onmessage = (e) => {
+        const a = sucheLauf, m = e.data.nahe;
+        sucheLauf = null;
+        // same bits still, and nearer to where the finger is now than the point is
+        const ziel = sucheNext ? sucheNext.t : a.t;
+        if (m && m.PB === PB && (!mis || abstand(m.e, ziel) < abstand(cH, ziel))) {
+          setCH(m.e, { k: m.k, p: m.p });
+          showValues();
+          request(!!dragging);
+        } else if (!m && a.wackelt && !mis && !sucheNext) {
+          wackeln();
+        }
+        if (sucheNext) {
+          const n = sucheNext;
+          sucheNext = null;
+          if (n.PB === PB) sucheNahe(n.t, n.lR, n.wackelt);
+        }
+      };
+    }
+    sucheLauf = auftrag;
+    sucheW.postMessage({ nahe: { tx: t[0], ty: t[1], lR, PB } });
   }
   feld.addEventListener("pointerup", up);
   feld.addEventListener("pointercancel", up);
@@ -46943,7 +47049,7 @@ void main() {
     const lb = lupe.getBoundingClientRect();
     const Lc = lb.width;
     if (Math.hypot(e.clientX - lb.left - Lc / 2, e.clientY - lb.top - Lc / 2) <= 24) {
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc };
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc, lk: Math.log2(r * LUPE_FIT / Lc), h: cH, PB };
       drawDeko();
       return;
     }
@@ -47010,7 +47116,7 @@ void main() {
       // the panel already put r and rasten back; the rest of the start state is the
       // start point in the fitted view, with no trace left in the URL
       afterReset: () => {
-        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, cH, vH, mis, PB, lupePos };
+        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, cH, vH, mis, PB, lupePos, cGenau };
         lupeOn = !!panel.get("lupe");
         setLupePos(null);
         fitView();
@@ -47021,7 +47127,7 @@ void main() {
         for (const k of ["c", "r", "w", "s", "rasten", "lupe", "frei"]) u.searchParams.delete(k);
         history.replaceState(history.state, "", u);
         return () => {
-          ({ cMx, cMy, r, snapOn, lupeOn, cH, mis } = vorher);
+          ({ cMx, cMy, r, snapOn, lupeOn, cH, mis, cGenau } = vorher);
           setS(vorher.ls);
           setLupePos(vorher.lupePos);
           PB = vorher.PB;
@@ -91187,6 +91293,8 @@ self.onmessage = function(e) {
 tools/workers/gespiegeltes-mandelbrot-bahn.js
 // Reference orbits for gespiegeltes-mandelbrot: Z_0 = 0, Z_{n+1} = Z_n^2 + c, exact in
 // BigInt fixed point (value = b / 2^PB), handed over as float32 pairs.
+// Also the exact Misiurewicz points (z_{k+p} = z_k): refining, checking, and finding one
+// near any point at any depth.
 // The page loads this file as a script (cheap orbits, right away) and as a worker (deep
 // ones: thousands of bits times as many steps as the view is deep, too long for the thread
 // that keeps drag and pinch smooth). A newer view makes the page drop the worker mid-orbit.
@@ -91234,6 +91342,15 @@ tools/workers/gespiegeltes-mandelbrot-bahn.js
     while (n < -1000) { x *= 2 ** -1000; n += 1000; }
     return x * 2 ** n;
   }
+  const ab = (b) => (b < 0n ? -b : b);
+  const bitLen = (b) => ab(b).toString(16).length * 4;
+  // log2 |b / 2^PB|, for any size
+  function lg2(b, PB) {
+    if (b === 0n) return -Infinity;
+    b = ab(b);
+    const drop = Math.max(0, bitLen(b) - 64);
+    return Math.log2(Number(b >> BigInt(drop))) + drop - PB;
+  }
 
   // the first candidate that does not escape before `want` steps, else the longest;
   // i says which one it is. Only the first may be the Misiurewicz point itself.
@@ -91248,14 +91365,223 @@ tools/workers/gespiegeltes-mandelbrot-bahn.js
     return best;
   }
 
+  // ---- Misiurewicz points: z_{k+p} = z_k for the orbit of 0, k >= 1 ----
+  // One Newton step for z_{k+p} - z_k at c, exact orbit in fixed point; dz/dc only as a
+  // double times 2^e (Newton needs it to a few digits, not to all PB bits: a third of the
+  // cost). Also log2 of the cycle's multiplier. null if the orbit escapes.
+  function schritt(cx, cy, k, p, PB) {
+    const PBn = BigInt(PB), s1 = PBn - 1n, d = PBn - 60n, f = 2 ** -60, esc = 8n << PBn;
+    let zx = 0n, zy = 0n, ax = 0n, ay = 0n, mx = 0, my = 0, e = 0, bx = 0, by = 0, be = 0, lam = 0, g = 1;
+    for (let n = 1; n <= k + p; n++) {
+      const x = Number(zx >> d) * f, y = Number(zy >> d) * f;
+      if (n > k) lam += 1 + Math.log2(x * x + y * y) / 2;
+      const nx = 2 * (x * mx - y * my) + g;
+      my = 2 * (x * my + y * mx);
+      mx = nx;
+      if (Math.max(Math.abs(mx), Math.abs(my)) > 2 ** 200) { mx *= 2 ** -200; my *= 2 ** -200; e += 200; g = 2 ** -e; }
+      const xx = (zx * zx) >> PBn, yy = (zy * zy) >> PBn;
+      zy = ((zx * zy) >> s1) + cy;
+      zx = xx - yy + cx;
+      if (ab(zx) + ab(zy) > esc) return null;
+      if (n === k) { ax = zx; ay = zy; bx = mx; by = my; be = e; }
+    }
+    const gx = zx - ax, gy = zy - ay, q = 2 ** (be - e), hx = mx - bx * q, hy = my - by * q;
+    const h2 = hx * hx + hy * hy;
+    if (!(h2 > 0) || !Number.isFinite(h2)) return { sx: 0n, sy: 0n, lam, flach: true };
+    // step = g / h = g * conj(h) / |h|^2, the double factor as a 53-bit integer
+    const ux = hx / h2, uy = -hy / h2, m = Math.floor(Math.log2(Math.max(Math.abs(ux), Math.abs(uy))));
+    const Ux = BigInt(Math.round(ux * 2 ** (52 - m))), Uy = BigInt(Math.round(uy * 2 ** (52 - m)));
+    const sh = 52 - m + e;
+    const rx = gx * Ux - gy * Uy, ry = gx * Uy + gy * Ux;
+    return sh >= 0 ? { sx: rx >> BigInt(sh), sy: ry >> BigInt(sh), lam } : { sx: rx << BigInt(-sh), sy: ry << BigInt(-sh), lam };
+  }
+  // Newton from a nearby start; null if the orbit escapes.
+  // lmax: no step longer than 2^lmax (far from the root Newton jumps wildly with large k)
+  function refine(cx, cy, k, p, PB, lmax = Infinity) {
+    for (let it = 0; it < 40; it++) {
+      const s = schritt(cx, cy, k, p, PB);
+      if (!s) return null;
+      if (s.flach) break;
+      let { sx, sy } = s;
+      const over = Math.ceil(lg2(ab(sx) + ab(sy), PB) - lmax);
+      if (over > 0) { sx >>= BigInt(over); sy >>= BigInt(over); }
+      cx -= sx;
+      cy -= sy;
+      if (ab(sx) + ab(sy) < 256n) break;
+    }
+    return [cx, cy];
+  }
+  // exact check of a refined root: the next Newton step is below half the working
+  // precision, and the cycle repels (a centre has 0 on its cycle and attracts: finite).
+  // Barely repelling cycles are endless too, but grow so slowly per turn that far out
+  // the iteration limit runs out first and the view goes flat: at least 1/16 bit per step.
+  function verify(cx, cy, k, p, PB) {
+    const s = schritt(cx, cy, k, p, PB);
+    if (!s || s.flach || !(s.lam >= p / 16)) return false;
+    // in log2: 2^(-PB/2) itself is 0 as a double from PB = 2150 on
+    return lg2(ab(s.sx) + ab(s.sy), PB) < -PB / 2;
+  }
+  const logadd = (a, b) => {
+    const m = Math.max(a, b);
+    return m === -Infinity ? m : m + Math.log2(2 ** (a - m) + 2 ** (b - m));
+  };
+
+  // A Misiurewicz point less than 2^lR from t = (tx, ty), exact, at any depth.
+  // The orbit of t exactly, z_n as doubles (|z| < 2: plenty), dz_n/dc as mantissa * 2^e.
+  // Where z_{k+p} - z_k divided by its derivative is short, a root of z_{k+p} = z_k lies
+  // about that far away: the shortest such steps are refined and checked. Only steps where
+  // that difference is above double rounding and 2^lR times dz/dc still small (linear) count;
+  // the orbit stops where the latter ends.
+  function nahe(tx, ty, lR, PB, kmax = 1e5) {
+    const PBn = BigInt(PB), s1 = PBn - 1n, d = PBn - 60n, f = 2 ** -60;
+    const zs = [0, 0], ds = [0, 0], es = [0];
+    let zx = 0n, zy = 0n, mx = 0, my = 0, e = 0;
+    for (let n = 1; n <= kmax; n++) {
+      const x = Number(zx >> d) * f, y = Number(zy >> d) * f, one = 2 ** -e;
+      const nx = 2 * (x * mx - y * my) + one;
+      my = 2 * (x * my + y * mx);
+      mx = nx;
+      const a = Math.max(Math.abs(mx), Math.abs(my));
+      if (a > 2 ** 200) { const k = Math.round(Math.log2(a)); mx *= 2 ** -k; my *= 2 ** -k; e += k; }
+      const xx = (zx * zx) >> PBn, yy = (zy * zy) >> PBn;
+      zy = ((zx * zy) >> s1) + ty;
+      zx = xx - yy + tx;
+      const X = Number(zx >> d) * f, Y = Number(zy >> d) * f;
+      if (!(X * X + Y * Y < 64)) break;
+      zs.push(X, Y);
+      ds.push(mx, my);
+      es.push(e);
+      if (Math.log2(Math.hypot(mx, my)) + e + lR > 60) break;
+    }
+    const L = es.length, cands = [];
+    for (let k = 1; k < L; k++)
+      for (let p = 1; p <= 8 && k + p < L; p++) {
+        const i = k, j = k + p;
+        const gx = zs[2 * j] - zs[2 * i], gy = zs[2 * j + 1] - zs[2 * i + 1];
+        // below that the difference of two doubles is rounding, not distance
+        if (Math.hypot(gx, gy) < 2 ** -40) continue;
+        // h = ds_j 2^es_j - ds_i 2^es_i in the larger exponent
+        const E = es[j], q = 2 ** (es[i] - E);
+        const hx = ds[2 * j] - ds[2 * i] * q, hy = ds[2 * j + 1] - ds[2 * i + 1] * q;
+        const ls = Math.log2(Math.hypot(gx, gy)) - Math.log2(Math.hypot(hx, hy)) - E;
+        if (ls < lR) cands.push({ k, p, ls });
+      }
+    cands.sort((u, v) => u.ls - v.ls);
+    // Newton in doubles first (cheap), for many candidates; the roots it reaches within
+    // 2^lR, nearest first, then exactly: from there one or two full-precision steps
+    const roots = [], seen = new Set();
+    for (const { k, p } of cands.slice(0, 64)) {
+      const q = nahNewton(zs, k, p, lR);
+      if (!q) continue;
+      const key = q[0].toPrecision(6) + "," + q[1].toPrecision(6) + "," + q[2];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const l = Math.log2(Math.hypot(q[0], q[1])) + q[2];
+      if (l < lR) roots.push({ k, p, q, l });
+    }
+    roots.sort((u, v) => u.l - v.l);
+    for (const { k, p, q } of roots.slice(0, 6)) {
+      const big = (m) => { const e = q[2] + PB - 52; const b = BigInt(Math.round(m * 2 ** 52)); return e >= 0 ? b << BigInt(e) : b >> BigInt(-e); };
+      const c = refine(tx + big(q[0]), ty + big(q[1]), k, p, PB, lR - 2);
+      if (!c) continue;
+      if (logadd(2 * lg2(c[0] - tx, PB), 2 * lg2(c[1] - ty, PB)) / 2 >= lR) continue;
+      if (!verify(c[0], c[1], k, p, PB)) continue;
+      return kurz(c, k, p, PB, lR);
+    }
+    return null;
+  }
+  // Newton for z_{k+p} = z_k at c = t + d, in doubles around the exact orbit Z of t (zs):
+  // z = Z + e with e' = 2 Z e + e^2 + d. d, e and dz/dc as mantissa * 2^exponent, so they
+  // hold at any depth. d as [x, y, exponent], or null if it leaves 2^lR or does not settle.
+  function nahNewton(zs, k, p, lR) {
+    let qx = 0, qy = 0, qe = Math.floor(lR), lsAlt = Infinity;
+    const norm = (x, y, e) => {
+      const a = Math.max(Math.abs(x), Math.abs(y));
+      if (a === 0) return [0, 0, e];
+      const s = Math.floor(Math.log2(a));
+      return [x * 2 ** -s, y * 2 ** -s, e + s];
+    };
+    for (let it = 0; it < 40; it++) {
+      let ex = 0, ey = 0, ee = qe, Dx = 0, Dy = 0, De = 0;
+      let ax = 0, ay = 0, ae = 0, bx = 0, by = 0, be = 0;
+      // the powers of two change only when an exponent does
+      let f = 2 ** ee, g = 1, h = 1;
+      for (let n = 0; n < k + p; n++) {
+        const Zx = zs[2 * n], Zy = zs[2 * n + 1];
+        const zx = Zx + ex * f, zy = Zy + ey * f;
+        // dz/dc: 2 z D + 1
+        const nDx = 2 * (zx * Dx - zy * Dy) + g;
+        Dy = 2 * (zx * Dy + zy * Dx);
+        Dx = nDx;
+        // e: 2 Z e + e^2 + d, all in units of 2^ee
+        const nex = 2 * (Zx * ex - Zy * ey) + (ex * ex - ey * ey) * f + qx * h;
+        ey = 2 * (Zx * ey + Zy * ex) + 2 * ex * ey * f + qy * h;
+        ex = nex;
+        if (!(zx * zx + zy * zy < 64)) return null;
+        const a = Math.max(Math.abs(ex), Math.abs(ey));
+        if (a > 2 ** 60 || (a < 2 ** -60 && a > 0)) { [ex, ey, ee] = norm(ex, ey, ee); f = 2 ** ee; h = 2 ** (qe - ee); }
+        if (Math.max(Math.abs(Dx), Math.abs(Dy)) > 2 ** 60) { [Dx, Dy, De] = norm(Dx, Dy, De); g = 2 ** -De; }
+        if (n + 1 === k) { ax = ex; ay = ey; ae = ee; bx = Dx; by = Dy; be = De; }
+      }
+      // G = Z_{k+p} - Z_k + e_{k+p} - e_k (O(1) or less: plain doubles); H = D_{k+p} - D_k
+      const j = k + p, fj = 2 ** ee, fk = 2 ** ae;
+      const Gx = zs[2 * j] - zs[2 * k] + ex * fj - ax * fk, Gy = zs[2 * j + 1] - zs[2 * k + 1] + ey * fj - ay * fk;
+      const r = 2 ** (be - De), Hx = Dx - bx * r, Hy = Dy - by * r, H2 = Hx * Hx + Hy * Hy;
+      if (!(H2 > 0)) return null;
+      // step = G / H, at 2^-De; d -= step
+      let [sx, sy, se] = norm((Gx * Hx + Gy * Hy) / H2, (Gy * Hx - Gx * Hy) / H2, -De);
+      if (!Number.isFinite(sx + sy)) return null;
+      // far from the root Newton jumps wildly: no step longer than a quarter of the radius
+      se = Math.min(se, Math.floor(lR) - 3);
+      const E = Math.max(qe, se);
+      [qx, qy, qe] = norm(qx * 2 ** (qe - E) - sx * 2 ** (se - E), qy * 2 ** (qe - E) - sy * 2 ** (se - E), E);
+      const lq = Math.log2(Math.hypot(qx, qy)) + qe;
+      if (lq > lR + 1) return null;
+      // settled: tiny against d, or small and no longer shrinking (rounding of G); the
+      // exact steps afterwards do the rest
+      const ls = Math.log2(Math.hypot(sx, sy)) + se;
+      if (ls < Math.max(lq, lR - 30) - 100 || (ls < lR - 30 && ls > lsAlt - 1)) return [qx, qy, qe];
+      lsAlt = ls;
+    }
+    return null;
+  }
+  // found as a root with some k and p: the smallest preperiod and period it really has
+  function kurz(c, k, p, PB, lR) {
+    const PBn = BigInt(PB), s1 = PBn - 1n, zs = [0n, 0n];
+    let zx = 0n, zy = 0n;
+    for (let n = 1; n <= k + p; n++) {
+      const xx = (zx * zx) >> PBn, yy = (zy * zy) >> PBn;
+      zy = ((zx * zy) >> s1) + c[1];
+      zx = xx - yy + c[0];
+      zs.push(zx, zy);
+    }
+    const gleich = (i, j) => logadd(2 * lg2(zs[2 * i] - zs[2 * j], PB), 2 * lg2(zs[2 * i + 1] - zs[2 * j + 1], PB)) / 2 < -PB / 3;
+    // rounding grows along the repelling cycle: compare early, where the orbit is still exact
+    let kk = 1;
+    while (kk < k && !gleich(kk, kk + p)) kk++;
+    let pp = p;
+    for (let q = 1; q < p; q++) if (p % q === 0 && gleich(kk, kk + q)) { pp = q; break; }
+    if (kk === k && pp === p) return { e: c, k, p, PB };
+    const e = refine(c[0], c[1], kk, pp, PB);
+    // a root that close but elsewhere has other (k, p): then the found ones stay
+    const da = e && logadd(2 * lg2(e[0] - c[0], PB), 2 * lg2(e[1] - c[1], PB)) / 2;
+    return e && da < Math.min(-PB / 2, lR - 20) && verify(e[0], e[1], kk, pp, PB) ? { e, k: kk, p: pp, PB } : { e: c, k, p, PB };
+  }
+
   if (typeof document === "undefined") {
     self.onmessage = (e) => {
+      if (e.data.nahe) {
+        const { tx, ty, lR, PB, id } = e.data.nahe;
+        self.postMessage({ nahe: nahe(tx, ty, lR, PB), id });
+        return;
+      }
       const { cands, L, PB, exact, per, want } = e.data;
       const o = beste(cands, L, PB, exact, per, want);
       self.postMessage(o, [o.data.buffer]);
     };
   } else {
     window.spiegelBahnen = beste;
+    window.spiegelMis = { refine, verify, nahe, lg2 };
   }
 })();
 
