@@ -46242,7 +46242,7 @@ void main() {
   // never start over. Another c_M at the same view: the old picture stays and is overwritten
   // in bands from the bottom up. null when the canvas is of no use.
   const kopieFbo = rahmen();
-  let rollY = 0;
+  let rollY = 0;   // the band runs down to 0 and starts over at the top: the picture never gets finished, only newer
   const KOSTEN_MS = 40;
   function plan(W, Hc) {
     const g = gezeigt;
