@@ -3807,6 +3807,7 @@
                 placeholder = '',
                 type = 'search',
                 inputmode = '',
+                commit = 'input',
                 onChange
             } = config;
 
@@ -3822,10 +3823,13 @@
             `;
 
             const input = row.querySelector('.ctrl-input');
-            input.addEventListener('input', () => {
+            // commit: 'enter' reports the text only when it is finished (Enter or leaving the field),
+            // for values that mean nothing half typed
+            input.addEventListener(commit === 'enter' ? 'change' : 'input', () => {
                 this.params[key] = input.value;
                 if (this.callbacks[key]) this.callbacks[key](input.value, key);
             });
+            if (commit === 'enter') input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
 
             this._currentContainer.appendChild(row);
             return this;

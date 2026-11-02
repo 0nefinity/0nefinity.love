@@ -45482,7 +45482,8 @@ html, body { touch-action: pan-x pan-y; }
   // and 0 and ∞ are the two ends of the same line, both out of reach, neither a wall.
   // sw itself is only a shadow and may round to 0 or ∞.
   let ls = NaN, sw = NaN;
-  const setS = (l) => { ls = l; sw = 2 ** l; };
+  let zoomZeit = 0;
+  const setS = (l) => { ls = l; sw = 2 ** l; if (typeof zoomLauf === "function" && !zoomZeit) zoomZeit = requestAnimationFrame(zoomLauf); };
   let snapOn = true;
   let cssW = 1, cssH = 1, dpr = 1;
 
@@ -47494,6 +47495,7 @@ void main() {
     if (panel.get("r") !== r) panel.set("r", r);
     if (panel.get("rasten") !== snapOn) panel.set("rasten", snapOn);
     if (panel.get("lupe") !== lupeOn) panel.set("lupe", lupeOn);
+    zeigeZoom(false);
   }
   function saveUrl() {
     const u = new URL(location.href);
@@ -48239,6 +48241,58 @@ void main() {
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
   panel.bodyEl.querySelector('[data-key="r"]').after(panel.bodyEl.querySelector('[data-key="tempo"]'));
+
+  // ---- zoom factor: how far the view is in or out, 1 is the start view. Counted in octaves like
+  // everything else here, shown as mantissa and exponent so 1e-300 and what lies beyond stay readable.
+  // Typed in, the view zooms about its centre; 0 is as far out as the line goes, nothing is a wall
+  // but the memory of the machine. ----
+  const ZOOM_GRENZE = 1e6; // octaves either way (1e301029), BigInt memory is the end of the line
+  const L2_10 = Math.log2(10);
+  function zoomText() {
+    const L = (Math.log2(fitSw()) - ls) / L2_10;
+    let e = Math.floor(L), m = 10 ** (L - e);
+    if (m >= 9.9995) { m = 1; e += 1; }
+    return m.toFixed(3) + "e" + (e < 0 ? "−" : "+") + Math.abs(e);
+  }
+  // text -> octaves in (positive: zoomed in), or NaN if it is no number
+  function zoomOktaven(text) {
+    const t = String(text).trim().toLowerCase().replace(",", ".").replace("−", "-");
+    const mt = /^\+?(\d*\.?\d*)(?:e([+-]?\d+))?$/.exec(t);
+    if (!mt || !/\d/.test(mt[1])) return NaN;
+    const m = Number(mt[1]), ex = mt[2] === undefined ? 0 : Number(mt[2]);
+    if (m === 0) return -ZOOM_GRENZE;
+    const o = (Math.log2(m) + ex * L2_10);
+    return Number.isFinite(o) ? Math.max(-ZOOM_GRENZE, Math.min(ZOOM_GRENZE, o)) : (ex > 0 ? ZOOM_GRENZE : -ZOOM_GRENZE);
+  }
+  panel.addInput("zoomfaktor", {
+    label: "zoomfaktor", commit: "enter", inputmode: "decimal", value: "",
+    onChange: (text) => {
+      const o = zoomOktaven(text);
+      if (Number.isFinite(o)) {
+        const jetzt = Math.log2(fitSw()) - ls;
+        const ziel = Math.max(-ZOOM_GRENZE, Math.min(ZOOM_GRENZE, o));
+        if (ziel !== jetzt) {
+          zoomLog(jetzt - ziel, cssW / 2, cssH / 2);
+          request(true);
+        }
+      }
+      zeigeZoom(true);
+    },
+  });
+  panel.bodyEl.querySelector('[data-key="tempo"]').after(panel.bodyEl.querySelector('[data-key="zoomfaktor"]'));
+  const zoomEl = panel.bodyEl.querySelector('[data-key="zoomfaktor"] .ctrl-input');
+  // the digits keep their width, so the field does not tremble while the zoom runs
+  zoomEl.style.fontVariantNumeric = "tabular-nums";
+  function zeigeZoom(erzwingen) {
+    if (document.activeElement === zoomEl && !erzwingen) return;
+    const t = zoomText();
+    if (t !== zoomEl.value) { zoomEl.value = t; panel.params.zoomfaktor = t; }
+  }
+  zoomEl.addEventListener("blur", () => zeigeZoom(true));
+  function zoomLauf() {
+    zoomZeit = 0;
+    zeigeZoom(false);
+  }
 
   // full-quality frame now, without the delayed saveUrl of request()
   function zeichneJetzt() {
@@ -83663,6 +83717,7 @@ tools/controls.js
                 placeholder = '',
                 type = 'search',
                 inputmode = '',
+                commit = 'input',
                 onChange
             } = config;
 
@@ -83678,10 +83733,13 @@ tools/controls.js
             `;
 
             const input = row.querySelector('.ctrl-input');
-            input.addEventListener('input', () => {
+            // commit: 'enter' reports the text only when it is finished (Enter or leaving the field),
+            // for values that mean nothing half typed
+            input.addEventListener(commit === 'enter' ? 'change' : 'input', () => {
                 this.params[key] = input.value;
                 if (this.callbacks[key]) this.callbacks[key](input.value, key);
             });
+            if (commit === 'enter') input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
 
             this._currentContainer.appendChild(row);
             return this;
