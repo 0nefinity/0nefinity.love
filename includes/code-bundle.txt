@@ -48199,7 +48199,7 @@ void main() {
   // octaves per second, any number). The thumb stands for u, the speed is EINS * u^3: slow
   // speeds sit wide apart, near 0, and the far end is reached with a small step. Typed in,
   // anything past 1 stays 1. 0 is rest, 1 is EINS, and the way to infinity is the slider. ----
-  const EINS = 8;
+  const EINS = 1000;
   const tempoSkala = {
     toSliderValue(v, cfg) {
       const lim = v > 0 ? cfg.max : -cfg.min;
