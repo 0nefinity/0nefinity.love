@@ -45373,6 +45373,7 @@ gespiegeltes-mandelbrot.html
 <meta charset="UTF-8">
 <title>gespiegeltes Mandelbrot</title>
 <style>
+html, body { touch-action: pan-x pan-y; }
 #feld { touch-action: none; cursor: grab; }
 #feld:active { cursor: grabbing; }
 #feld canvas {
@@ -47649,11 +47650,11 @@ void main() {
     // the ring may be tiny, the spot to grab stays finger sized at every zoom
     if (pts.size === 1 && Math.hypot(x - hx, y - hy) <= 30) {
       // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()), lk: proPixel(), h: cH, PB };
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()), lk: proPixel(), h: cH, PB, mis, cGenau };
       if (!lupe.hidden) ausweichen(x, y);
       drawDeko();
     } else if (dragging) {
-      dragging = null;
+      zurueck();
     }
   });
   feld.addEventListener("pointermove", (e) => {
@@ -47683,6 +47684,21 @@ void main() {
     p.x = e.clientX; p.y = e.clientY;
     request(true);
   });
+  // a second finger turns the grab into a pinch: the mirror point goes back to where it was before the grab
+  function zurueck() {
+    const v = dragging;
+    dragging = null;
+    if (sucheLauf) sucheLauf.verworfen = true;
+    sucheNext = null;
+    cH = v.h.map((b) => zuPB(b, v.PB));
+    mis = v.mis;
+    cGenau = v.cGenau;
+    cMx = v.cx;
+    cMy = v.cy;
+    showValues();
+    request(false);
+    drawDeko();
+  }
   const up = (e) => {
     pts.delete(e.pointerId);
     if (dragging && dragging.id === e.pointerId) lasseLos();
@@ -47753,7 +47769,7 @@ void main() {
       sucheW = new Worker("/tools/workers/gespiegeltes-mandelbrot-bahn.js");
       sucheW.onerror = (e) => { e.preventDefault(); fail("Such-Worker: " + (e.message || "Fehler")); };
       sucheW.onmessage = (e) => {
-        const a = sucheLauf, m = e.data.nahe;
+        const a = sucheLauf, m = a.verworfen ? null : e.data.nahe;
         sucheLauf = null;
         // same bits still, and nearer to where the finger is now than the point is
         const ziel = sucheNext ? sucheNext.t : a.t;
@@ -47761,7 +47777,7 @@ void main() {
           setCH(m.e, { k: m.k, p: m.p });
           showValues();
           request(!!dragging);
-        } else if (!m && a.wackelt && !mis && !sucheNext) {
+        } else if (!m && !a.verworfen && a.wackelt && !mis && !sucheNext) {
           wackeln();
         }
         if (sucheNext) {
@@ -47791,7 +47807,7 @@ void main() {
     const lb = lupe.getBoundingClientRect();
     const Lc = lb.width;
     if (Math.hypot(e.clientX - lb.left - Lc / 2, e.clientY - lb.top - Lc / 2) <= 24) {
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc, lk: Math.log2(r * LUPE_FIT / Lc), h: cH, PB };
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc, lk: Math.log2(r * LUPE_FIT / Lc), h: cH, PB, mis, cGenau, lupe: true };
       drawDeko();
       return;
     }
@@ -48007,7 +48023,10 @@ void main() {
     ranZug = requestAnimationFrame(step);
   }
 
+  let resizeT = 0, resizeN = 0;
   function resize() {
+    resizeT = performance.now();
+    resizeN++;
     dpr = Math.min(1.5, window.devicePixelRatio || 1);
     const b = feld.getBoundingClientRect();
     const old = Math.min(cssW, cssH);
@@ -48020,6 +48039,29 @@ void main() {
   // the field also changes size without a window resize (controls.js sets
   // --controls-mobile-occlusion after the panel is built or dragged)
   new ResizeObserver(resize).observe(feld);
+
+  // ?diag: small print of what the device reports, for hunting phone-only glitches; nothing without the parameter
+  if (new URLSearchParams(location.search).has("diag")) {
+    const dg = document.createElement("pre");
+    dg.id = "diag";
+    dg.style.cssText = "position:fixed;left:4px;top:4px;margin:0;padding:2px 4px;font:9px/1.15 monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none;z-index:99999;white-space:pre";
+    document.body.appendChild(dg);
+    const modus = () => (dragging ? (dragging.lupe ? "lupe" : "punkt") : pts.size >= 2 ? "pinch" : pts.size === 1 ? "pan" : lupeZug ? "lupe" : "-");
+    const tick = () => {
+      const vv = window.visualViewport;
+      dg.textContent = [
+        `mode ${modus()} fingers ${pts.size}`,
+        `dpr ${window.devicePixelRatio} used ${dpr}`,
+        `canvas ${bild.width}x${bild.height} px, css ${cssW.toFixed(1)}x${cssH.toFixed(1)}`,
+        `inner ${window.innerWidth}x${window.innerHeight} vv ${vv ? vv.width.toFixed(1) + "x" + vv.height.toFixed(1) + " scale " + vv.scale : "-"}`,
+        `resize #${resizeN} ${resizeN ? ((performance.now() - resizeT) / 1000).toFixed(1) + "s ago" : "-"}`,
+        `ls ${ls.toFixed(4)} sw ${sw} c ${cMx.toFixed(6)},${cMy.toFixed(6)}`,
+        `v ${N(vH[0])},${N(vH[1])}`,
+      ].join("\n");
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }
 
   bild.addEventListener("webglcontextlost", (e) => { e.preventDefault(); fail("Grafikkontext verloren, Seite neu laden."); });
 
