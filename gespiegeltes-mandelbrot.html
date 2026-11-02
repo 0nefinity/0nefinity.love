@@ -2854,9 +2854,19 @@ void main() {
       const u = Math.max(-1, Math.min(1, n));
       return Math.sign(u) * (u > 0 ? cfg.max : -cfg.min) * Math.abs(u) ** 3;
     },
+    // a click on + / - moves the thumb by cfg.step (in the units the field shows, -1 .. 1) to the next multiple of it
+    nudge(v, dir, cfg) {
+      const st = Math.abs(cfg.step);
+      if (!dir || !(st > 0)) return v;
+      const lim = v > 0 ? cfg.max : v < 0 ? -cfg.min : (dir > 0 ? cfg.max : -cfg.min);
+      const u = v && lim > 0 ? Math.sign(v) * Math.min(1, Math.cbrt(Math.abs(v) / lim)) : 0;
+      const k = u / st, e = 1e-9;
+      const un = Math.max(-1, Math.min(1, (dir > 0 ? Math.floor(k + e) + 1 : Math.ceil(k - e) - 1) * st));
+      return Math.sign(un) * (un > 0 ? cfg.max : -cfg.min) * Math.abs(un) ** 3;
+    },
   };
   panel.addSlider("tempo", {
-    label: "", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
+    label: "", min: -EINS, max: EINS, step: 0.05, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
     value: 0,
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
