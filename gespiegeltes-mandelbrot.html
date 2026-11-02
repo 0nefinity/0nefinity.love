@@ -1914,7 +1914,10 @@ void main() {
     const lp = Math.max(1, Math.min(Math.round(Lc * dpr), bild.width, bild.height));
     // the lupe only changes with the mirror point and r: panning and zooming far out leave it be.
     // A new precision alone does not change the picture, so it waits for a still moment.
-    const key = [cH[0], cH[1], r, lp].join();
+    // cH gets more digits with PB, the mirror point stays: the key keeps its first 64 bits, far
+    // below what a lupe pixel can show
+    const kurz = (x) => (PBn > 64n ? x >> (PBn - 64n) : x);
+    const key = [kurz(cH[0]), kurz(cH[1]), r, lp].join();
     if (key === lupeKey && (PB === lupePB || !still)) return;
     lupeKey = key;
     lupePB = PB;
