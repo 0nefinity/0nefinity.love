@@ -287,7 +287,15 @@
     function fitSliderValueInput(input, config, value, decimals) {
         if (!input) return;
         const candidates = [value];
-        if (config) candidates.push(config.min, config.max);
+        if (config) {
+            candidates.push(config.min, config.max);
+            // Eigene Anzeige-Umrechnung (transform): die Ziffernzahl schwankt entlang der Bahn, Enden allein reichen nicht.
+            // Darum die ganze Bahn abtasten, damit die Feldbreite (und mit ihr die Spur) beim Ziehen nicht springt.
+            const { min, max } = getProjectedSliderBounds(config, Number(value));
+            if (getSliderTransform(config) && max > min) {
+                for (let i = 0; i <= 64; i++) candidates.push(fromSliderRangeValue(min + (max - min) * i / 64, config));
+            }
+        }
         let chars = 1;
         for (const v of candidates) {
             if (!Number.isFinite(Number(v))) continue;
