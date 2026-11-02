@@ -45472,7 +45472,9 @@ html, body { touch-action: pan-x pan-y; }
   const SPIEGEL = new URLSearchParams(location.search).get("spiegel");
   const kind = SPIEGEL ? KINDS[SPIEGEL] || 0 : 0;
   if (SPIEGEL && !kind) console.error("spiegel: unbekannter Wert " + SPIEGEL);
-  const START = kind === 2 ? { c: [-0.75, 0], r: 1.2 } : { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 };
+  const START = kind === 2 ? { c: [-0.75, 0], r: 1.2 }
+    : kind === 3 ? { c: [0.37458872600429492, 0.08835724479480638], r: 0.0045 }
+    : { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 };
 
   // state: mirror point cM, radius r; view in the w-plane: center vH (exact, below), scale ls.
   // cMx/cMy are double shadows of the exact cH. The view center is known as log2|v| (lv)
@@ -45792,6 +45794,9 @@ uniform vec2 uMu0;
 uniform vec2 uMp0;
 uniform vec2 uS0;
 uniform float uEb;
+#ifdef KIND
+uniform vec4 uSt[82];
+#endif
 out vec4 o;
 
 vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
@@ -45827,6 +45832,9 @@ void main() {
   vec2 dcm;
   float pcm;
   int ec;
+#ifdef KIND
+  bool dead = false, weg = false;
+#endif
   if (uMode == 0) {
     vec2 u = uU0 + p;
     if (dot(u, u) > uInvS2) {
@@ -45868,6 +45876,40 @@ void main() {
       pcm = uKI;
       ec = uEO;
     }
+  } else if (uMode == 3) {
+    // B1: two disjoint mirror circles (centres a_i, radius R). A pixel inside one is reflected, again and
+    // again, until it is outside both (or the stages run out: the Cantor dust, drawn as inside). The view
+    // centre's own chain is known exactly (JS); the pixel is carried as its offset d from the centre's point,
+    // stage k in units E_k. Row 2k / 2k+1 = disc 0 / 1: (u0, h, R^2 | f) with u0 = centre - a_i, h = |u0|^2 - R^2
+    // (h < 0: the centre is inside), f = E_k / E_k+1. A pixel is inside iff h + 2 u0.d + |d|^2 < 0.
+    vec2 d = uKI * p;
+    float pm = uKI;
+    if (uH > 0.5) dead = true;
+    for (int k = 0; k < 40 && !dead; k++) {
+      vec4 A = uSt[2 * k], B = uSt[2 * k + 1];
+      float hp0 = A.z + 2.0 * dot(A.xy, d) + dot(d, d);
+      float hp1 = B.z + 2.0 * dot(B.xy, d) + dot(d, d);
+      int ip = hp0 < 0.0 ? 0 : hp1 < 0.0 ? 1 : -1;
+      int ic = A.z < 0.0 ? 0 : B.z < 0.0 ? 1 : -1;
+      if (ip < 0 && ic < 0) continue;
+      vec2 uc = ic == 0 ? A.xy : B.xy;
+      float hc = ic == 0 ? A.z : B.z;
+      vec2 up = ip == 0 ? A.xy : B.xy;
+      float hs = ip == 0 ? hp0 : hp1;
+      vec2 dn;
+      if (ip >= 0 && ic == ip) dn = -A.w * cdiv(cconj(d), cmul(cconj(uc), cconj(uc + d)));
+      else if (ip >= 0 && ic < 0) dn = d - cdiv(vec2(hs, 0.0), cconj(up + d));
+      else if (ip < 0) dn = d + cdiv(vec2(hc, 0.0), cconj(uc));
+      else dn = (uc - up) + A.w * (invConj(up + d) - invConj(uc));
+      if (ip >= 0) pm *= A.w / dot(up + d, up + d);
+      d = dn * B.w;
+      pm *= B.w;
+    }
+    if (uSt[80].z < 0.0 || uSt[81].z < 0.0) dead = true;
+    if (!(abs(d.x) < 1.0e30 && abs(d.y) < 1.0e30 && pm < 1.0e30)) weg = true;
+    dcm = uD0O + d;
+    pcm = pm;
+    ec = uEI;
 #endif
   } else {
     // |vc + s p|^2 > 1, divided by s |vc|
@@ -45883,6 +45925,10 @@ void main() {
       ec = uEI;
     }
   }
+#ifdef KIND
+  if (dead) { o = uRoh ? vec4(-1.0) : vec4(vec3(18.0 / 255.0), 1.0); return; }
+  if (weg) { o = uRoh ? vec4(0.0) : vec4(vec3(6.0 / 255.0), 1.0); return; }
+#endif
   // the tables hold for |dc| up to 2^uLc
 #ifdef BLA
   bool bla = uBlaTop > 0 && log2(length(dcm)) + float(ec) <= uLc;
@@ -46004,7 +46050,7 @@ void main() {
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
       const u = {};
-      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRoh", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O", "uMu0", "uMp0", "uS0", "uEb"]) u[n] = gl.getUniformLocation(prog, n);
+      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRoh", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O", "uMu0", "uMp0", "uS0", "uEb", "uSt"]) u[n] = gl.getUniformLocation(prog, n);
       gl.useProgram(prog);
       gl.uniform1i(u.uRef, 0);
       gl.uniform1i(u.uBlaAB, 1);
@@ -46206,6 +46252,81 @@ void main() {
       },
     };
   }
+  // B1: two disjoint circles around the Misiurewicz points k9alpha8 and M_{12,1} (Forschungsheft (i)),
+  // a point inside one is reflected again and again until it is outside both. The view centre's chain
+  // is made here, exactly; the shader carries each pixel as its offset from the centre's point.
+  const B1 = { a: [[0.3721377054495765, 0.09039823315817287], [0.37703974655901334, 0.08631625643143989]], R: 0.0024 };
+  const B1_NS = 40, B1_CHAIN = 32;
+  function kindB1(c0, eb, kI, hd) {
+    const aH = B1.a.map(([x, y]) => [H(x), H(y)]);
+    const Rb = H(B1.R), R2 = mul(Rb, Rb);
+    const n2Of = (z, i) => {
+      const ux = z[0] - aH[i][0], uy = z[1] - aH[i][1];
+      return [ux, uy, (ux * ux + uy * uy) >> PBn];
+    };
+    const which = (z) => {
+      for (let i = 0; i < 2; i++) if (n2Of(z, i)[2] < R2) return i;
+      return -1;
+    };
+    const refl = (z, i) => {
+      const [ux, uy, n2] = n2Of(z, i);
+      return n2 === 0n ? null : [aH[i][0] + (R2 * ux) / n2, aH[i][1] + (R2 * uy) / n2];
+    };
+    const zs = [c0];
+    let limit = false;
+    for (;;) {
+      const z = zs[zs.length - 1], i = which(z);
+      if (i < 0) break;
+      const w = zs.length > B1_CHAIN ? null : refl(z, i);
+      if (!w) { limit = true; break; }
+      zs.push(w);
+    }
+    // rows: per stage the two discs; the unit E_k = 2^e grows with the chain (the reflection magnifies)
+    const rows = new Float32Array(4 * 2 * (B1_NS + 1));
+    const cl = (x, m) => Math.max(-m, Math.min(m, x));
+    let e = eb;
+    for (let k = 0; k <= B1_NS; k++) {
+      const z = zs[Math.min(k, zs.length - 1)];
+      let f = 1, en = e;
+      const ic = k < zs.length - 1 ? which(z) : -1;
+      for (let i = 0; i < 2; i++) {
+        const [ux, uy, n2] = n2Of(z, i);
+        const h = n2 - R2;
+        let hm = cl(N(h, 2 * e), 1e30);
+        if (h < 0n) hm = Math.min(hm, -1e-30);
+        rows.set([cl(N(ux, e), 1e15), cl(N(uy, e), 1e15), hm, i ? 0 : cl(N(R2, 2 * e), 1e30)], 8 * k + 4 * i);
+        if (i === ic) en = e + Math.round(lg2(R2) - lg2(n2));
+      }
+      f = 2 ** (e - en);
+      rows[8 * k + 7] = f;
+      e = en;
+    }
+    const eK = e, zK = zs[zs.length - 1];
+    const fold = (c) => {
+      let z = c;
+      for (let k = 0; k < 2 * B1_NS; k++) {
+        const i = which(z);
+        if (i < 0) return z;
+        z = refl(z, i) || c;
+      }
+      return z;
+    };
+    return {
+      target: zK,
+      jac: Math.min(2 ** (eK - eb), 1e300),
+      disp: fold,
+      uniforms(ox, oy) {
+        gl.uniform1i(U.uMode, 3);
+        gl.uniform1f(U.uKI, kI);
+        gl.uniform1i(U.uEI, eK);
+        gl.uniform1i(U.uEO, eK);
+        gl.uniform1f(U.uH, limit ? 1 : 0);
+        gl.uniform4fv(U.uSt, rows);
+        gl.uniform2f(U.uD0O, f32(N(zK[0] - ox, eK)), f32(N(zK[1] - oy, eK)));
+        return -Infinity;
+      },
+    };
+  }
   function drawKind(W, Hc, slot) {
     gl.viewport(0, 0, W, Hc);
     const lsc = ls + Math.log2(cssW / W);
@@ -46219,7 +46340,7 @@ void main() {
     const kI = f32(2 ** (lrs - eb));
     const rH = H(r);
     const c0 = cIn(vH[0], vH[1], rH);
-    const K = kindA2(c0, eb, kI, hd);
+    const K = kind === 3 ? kindB1(c0, eb, kI, hd) : kindA2(c0, eb, kI, hd);
     const spec = { mode: kind, per: null, weit: (o) => Math.hypot(N(K.target[0] - o.cx, eb), N(K.target[1] - o.cy, eb)) / (kI * K.jac) > 64 * hd };
     let o = refs[slot];
     const lag = (q) => q && { cx: zuPB(q.cx, q.PB), cy: zuPB(q.cy, q.PB) };
@@ -46243,7 +46364,8 @@ void main() {
     }
     if (!brauchbar) return false;
     const ox = zuPB(o.cx, o.PB), oy = zuPB(o.cy, o.PB);
-    const mitBla = exact && o.L > 4 && maxit > 4500;
+    // B1 has no bound on |dc| at hand, so no tables
+    const mitBla = kind !== 3 && exact && o.L > 4 && maxit > 4500;
     gl.useProgram(programme[mitBla].prog);
     U = programme[mitBla].u;
     gl.uniform2f(U.uRes, W, Hc);
@@ -47852,7 +47974,7 @@ void main() {
     })
     .addToggle("rasten", {
       label: "einrasten",
-      value: kind !== 2,
+      value: !kind,
       onChange: (on) => {
         snapOn = !!on;
         if (snapOn) snapC();
