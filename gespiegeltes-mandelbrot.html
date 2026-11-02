@@ -1431,13 +1431,34 @@ void main() {
     if (!alt || (w === W && h === Hc)) ankerNeu(W, Hc);
     return true;
   }
+  // The ring is a 2D canvas on the main thread, the picture comes out of the GPU queue. Drawn at
+  // once, the ring ran ahead of a slow GPU: the phone showed a picture of an older view under the
+  // ring of the new one. So the ring waits for the GPU to be through with the picture it belongs
+  // to, and no new picture is started while one is still in the queue (imFlug).
+  let imFlug = 0, dekoGen = 0;
+  function nachGpu(dann) {
+    const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), t0 = performance.now();
+    gl.flush();
+    const warte = () => {
+      const fertig = gl.getSyncParameter(f, gl.SYNC_STATUS) === gl.SIGNALED;
+      if (!fertig && performance.now() - t0 < 3000) return void setTimeout(warte, 1);
+      if (!fertig) console.error("GPU needed more than 3 s for one picture");
+      gl.deleteSync(f);
+      dann();
+    };
+    warte();
+  }
   function draw(q, schieben = true) {
     takt(performance.now());
     ensurePB();
     const ok = grob(q, schieben);
-    drawDeko();
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe(false);
+    const gen = ++dekoGen;
+    if (ok) {
+      imFlug++;
+      nachGpu(() => { imFlug--; if (gen === dekoGen) drawDeko(); });
+    } else drawDeko();
     return ok;
   }
 
@@ -2000,8 +2021,9 @@ void main() {
     dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // the further mirrors have no point to hold: the deko stays empty
     if (kind) return;
-    const [ox, oy] = origin();
-    const rad = 1 / sw;
+    const g = gezeigt && bild.style.transform === "" && gezeigt.W === vollW()[0] && gezeigt.Hc === vollW()[1] ? gezeigt : null;
+    const [ox, oy] = g ? [cssW / 2 - f32(N(zuPB(g.vH[0], g.PB), g.ls)), cssH / 2 + f32(N(zuPB(g.vH[1], g.PB), g.ls))] : origin();
+    const rad = 1 / (g ? 2 ** g.ls : sw);
     if (rad > 4 && rad < 1e6) {
       dctx.beginPath();
       dctx.arc(ox, oy, rad, 0, 2 * Math.PI);
@@ -2040,10 +2062,15 @@ void main() {
     const [W, Hc] = vollW();
     return Math.min(1, Math.max(0.06, Math.sqrt(16 / (pxMs * W * Hc))));
   }
+  function rafDraw() {
+    raf = 0;
+    if (imFlug > 0) return void (raf = requestAnimationFrame(rafDraw));
+    draw(qGrob());
+  }
   function request(moving) {
     lauf++;
     wechsel++;
-    if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(qGrob()); });
+    if (!raf) raf = requestAnimationFrame(rafDraw);
     clearTimeout(idle);
     idle = setTimeout(scharf, moving ? 160 : 0);
   }
