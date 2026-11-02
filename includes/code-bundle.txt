@@ -45464,7 +45464,13 @@ gespiegeltes-mandelbrot.html
   };
 
   // the start: a Misiurewicz point from the Forschungsheft, section (h)
-  const START = { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 };
+  // Further mirrors from Forschungsheft (i), chosen by URL only: ?spiegel=a2 | b1 | c2.
+  // Without it kind stays 0 and nothing below this line changes (the shader is the same text).
+  const KINDS = { a2: 2, b1: 3, c2: 4 };
+  const SPIEGEL = new URLSearchParams(location.search).get("spiegel");
+  const kind = SPIEGEL ? KINDS[SPIEGEL] || 0 : 0;
+  if (SPIEGEL && !kind) console.error("spiegel: unbekannter Wert " + SPIEGEL);
+  const START = kind === 2 ? { c: [-0.75, 0], r: 1.2 } : { c: [-0.7214150803581202, 0.25918596703287955], r: 1.5 };
 
   // state: mirror point cM, radius r; view in the w-plane: center vH (exact, below), scale ls.
   // cMx/cMy are double shadows of the exact cH. The view center is known as log2|v| (lv)
@@ -45576,7 +45582,7 @@ gespiegeltes-mandelbrot.html
   // bits for the finest c-pixel of the current view, plus 64 to spare
   function ensurePB() {
     const lw = logadd(lv, Math.log2(Math.hypot(cssW, cssH) / 2) + ls);
-    const lpc = Math.log2(Math.max(r, 1e-9)) + ls - 2 * Math.max(0, lw);
+    const lpc = Math.log2(Math.max(r, 1e-9)) + ls - (kind ? 0 : 2 * Math.max(0, lw));
     const need = Math.max(128, Math.ceil((64 + Math.max(0, -lpc, -ls)) / 64) * 64);
     if (need > PB || need < PB - 128) setPB(need);
   }
@@ -45780,6 +45786,10 @@ uniform vec2 uE;
 uniform vec2 uA;
 uniform vec2 uD0I;
 uniform vec2 uD0O;
+uniform vec2 uMu0;
+uniform vec2 uMp0;
+uniform vec2 uS0;
+uniform float uEb;
 out vec4 o;
 
 vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
@@ -45793,6 +45803,19 @@ vec2 invConj(vec2 w) {
   vec2 u = w / m;
   return u / (dot(u, u) * m);
 }
+#ifdef KIND
+// principal square root, without the cancellation of the textbook form
+vec2 csqrt(vec2 z) {
+  float m = length(z);
+  if (z.x >= 0.0) {
+    float a = sqrt(0.5 * (m + z.x));
+    return a > 0.0 ? vec2(a, z.y / (2.0 * a)) : vec2(0.0);
+  }
+  float b = sqrt(0.5 * (m - z.x));
+  return vec2(abs(z.y) / (2.0 * b), z.y < 0.0 ? -b : b);
+}
+vec2 cconj(vec2 z) { return vec2(z.x, -z.y); }
+#endif
 ivec2 at(int i) { return ivec2(i & 4095, i >> 12); }
 vec2 refAt(int m) { return texelFetch(uRef, at(m), 0).rg; }
 
@@ -45814,6 +45837,36 @@ void main() {
       pcm = uKI;
       ec = uEI;
     }
+#ifdef KIND
+  } else if (uMode == 2) {
+    // A2: Schwarz reflection at the main cardioid. mu = 1 - sqrt(1 - 4c); inside |mu| < 1 the pixel
+    // shows c' = mu'(2 - mu')/4 with mu' = 1/conj(mu). Everything relative to the view center
+    // (mu0, s0): differences are formed without subtracting near equal numbers.
+    vec2 d = uKI * p;
+    vec2 em = -4.0 * cdiv(d, cmul(uS0, uS0));
+    vec2 qs = csqrt(vec2(1.0, 0.0) + uEb * em) + vec2(1.0, 0.0);
+    vec2 dsm = cmul(uS0, cdiv(em, qs));
+    vec2 dmu = -dsm;
+    if (uH + 2.0 * dot(uMu0, dmu) + uEb * dot(dmu, dmu) < 0.0) {
+      vec2 mu = uMu0 + uEb * dmu;
+      float m2 = dot(mu, mu);
+      if (m2 < 1.0e-30) {
+        dcm = vec2(1.0e4, 0.0);
+        pcm = 1.0e-30;
+        ec = 0;
+      } else {
+        vec2 mup = invConj(mu);
+        vec2 dmup = -cdiv(cconj(dmu), cmul(cconj(mu), cconj(uMu0)));
+        dcm = uD0I + 0.25 * cmul(dmup, vec2(2.0, 0.0) - mup - uMp0);
+        pcm = uKI * length(vec2(1.0, 0.0) - mup) / (m2 * max(length(uS0 + uEb * dsm), 1.0e-30));
+        ec = uEI;
+      }
+    } else {
+      dcm = uD0O + d;
+      pcm = uKI;
+      ec = uEO;
+    }
+#endif
   } else {
     // |vc + s p|^2 > 1, divided by s |vc|
     if (uH + 2.0 * dot(uVn, p) + uEps * dot(p, p) > 0.0) {
@@ -45944,12 +45997,12 @@ void main() {
     for (const bla of [false, true]) {
       const prog = gl.createProgram();
       gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-      gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, bla ? FS.replace("\n", "\n#define BLA\n") : FS));
+      gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, bla ? FS.replace("\n", "\n" + (kind ? "#define KIND\n" : "") + "#define BLA\n") : kind ? FS.replace("\n", "\n#define KIND\n") : FS));
       gl.bindAttribLocation(prog, 0, "p");
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
       const u = {};
-      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRoh", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O"]) u[n] = gl.getUniformLocation(prog, n);
+      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRoh", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O", "uMu0", "uMp0", "uS0", "uEb"]) u[n] = gl.getUniformLocation(prog, n);
       gl.useProgram(prog);
       gl.uniform1i(u.uRef, 0);
       gl.uniform1i(u.uBlaAB, 1);
@@ -46084,9 +46137,141 @@ void main() {
     w.postMessage({ cands: spec.c, L, PB: pb, exact, per: spec.per, want });
   }
 
+  // ---- the further mirrors (kind != 0, ?spiegel=): the view is the plane c = cM + r w, no
+  // inversion; the mirror itself lives in the shader (A2) or in tables made here ----
+  function isqrt(n) {
+    if (n < 2n) return n;
+    let x = 1n << BigInt((bitLen(n) >> 1) + 1);
+    for (;;) {
+      const y = (x + n / x) >> 1n;
+      if (y >= x) return x;
+      x = y;
+    }
+  }
+  // principal square root of a + ib (fixed point); the small part from the big one, so no cancellation
+  function csqrtH(a, b) {
+    const m = isqrt(a * a + b * b);
+    if (m === 0n) return [0n, 0n];
+    if (a >= 0n) {
+      const re = isqrt(((m + a) >> 1n) << PBn);
+      return [re, re ? (b << PBn) / (2n * re) : 0n];
+    }
+    const im = isqrt(((m - a) >> 1n) << PBn);
+    return [im ? ((b < 0n ? -b : b) << PBn) / (2n * im) : 0n, b < 0n ? -im : im];
+  }
+  // A2 at c: s = sqrt(1 - 4c), mu = 1 - s, mu' = 1 / conj(mu), c' = mu'(2 - mu')/4 (null where mu = 0)
+  function a2At(cx, cy) {
+    const one = 1n << PBn;
+    const [sx, sy] = csqrtH(one - 4n * cx, -4n * cy);
+    const mx = one - sx, my = -sy, m2 = (mx * mx + my * my) >> PBn;
+    if (m2 === 0n) return { s: [sx, sy], mu: [mx, my], m2, mp: null, cp: null };
+    const px = (mx << PBn) / m2, py = (my << PBn) / m2;
+    const tx = (2n << PBn) - px, ty = -py;
+    return { s: [sx, sy], mu: [mx, my], m2, mp: [px, py], cp: [(px * tx - py * ty) >> (PBn + 2n), (px * ty + py * tx) >> (PBn + 2n)] };
+  }
+  // what the kind needs of one view: target (the c shown at the view center), jac (its
+  // magnification there), disp (c shown at another c), uniforms (set them, return log2 of the
+  // largest |dc| against the reference at ox, oy)
+  function kindA2(c0, eb, kI, hd) {
+    const one = 1n << PBn;
+    const A = a2At(c0[0], c0[1]);
+    const innen = A.cp && A.m2 < one;
+    const f = (x) => N(x);
+    let jac = 1;
+    if (innen) {
+      const j = Math.hypot(1 - f(A.mp[0]), f(A.mp[1])) / (f(A.m2) * Math.hypot(f(A.s[0]), f(A.s[1])));
+      if (isFinite(j)) jac = Math.max(1, j);
+    }
+    return {
+      target: innen ? A.cp : c0,
+      jac,
+      disp: (c) => { const B = a2At(c[0], c[1]); return B.cp && B.m2 < one ? B.cp : c; },
+      uniforms(ox, oy) {
+        const d0i = A.cp ? [f32(N(A.cp[0] - ox, eb)), f32(N(A.cp[1] - oy, eb))] : [0, 0];
+        const d0o = [f32(N(c0[0] - ox, eb)), f32(N(c0[1] - oy, eb))];
+        gl.uniform1i(U.uMode, 2);
+        gl.uniform1f(U.uKI, kI);
+        gl.uniform1i(U.uEI, eb);
+        gl.uniform1i(U.uEO, eb);
+        gl.uniform1f(U.uH, f32(N(A.m2 - one, eb)));
+        gl.uniform2f(U.uMu0, f(A.mu[0]), f(A.mu[1]));
+        gl.uniform2f(U.uMp0, ...(A.mp ? A.mp.map(f) : [0, 0]));
+        gl.uniform2f(U.uS0, f(A.s[0]), f(A.s[1]));
+        gl.uniform1f(U.uEb, 2 ** eb);
+        gl.uniform2f(U.uD0I, ...d0i);
+        gl.uniform2f(U.uD0O, ...d0o);
+        return eb + Math.log2(Math.max(Math.hypot(...d0i) + 2 * kI * hd * jac, Math.hypot(...d0o) + 2 * kI * hd, 1e-300));
+      },
+    };
+  }
+  function drawKind(W, Hc, slot) {
+    gl.viewport(0, 0, W, Hc);
+    const lsc = ls + Math.log2(cssW / W);
+    const hd = Math.hypot(W, Hc) / 2;
+    const lrs = Math.log2(Math.max(r, 1e-9)) + lsc;
+    const maxit = Math.min(LMAX - 2, Math.round(250 + 45 * Math.max(0, -lrs)));
+    const exact = lrs < -40;
+    const longer = Math.min(LMAX, Math.ceil((maxit * 1.1 + 2900) / 4096) * 4096);
+    const mode = kind;
+    const eb = Math.floor(lrs);
+    const kI = f32(2 ** (lrs - eb));
+    const rH = H(r);
+    const c0 = cIn(vH[0], vH[1], rH);
+    const K = kindA2(c0, eb, kI, hd);
+    const spec = { mode: kind, per: null, weit: (o) => Math.hypot(N(K.target[0] - o.cx, eb), N(K.target[1] - o.cy, eb)) / (kI * K.jac) > 64 * hd };
+    let o = refs[slot];
+    const lag = (q) => q && { cx: zuPB(q.cx, q.PB), cy: zuPB(q.cy, q.PB) };
+    let brauchbar = o && o.mode === kind && !spec.weit(lag(o));
+    const gut = brauchbar && o.PB === PB && (o.L >= maxit + 2 || o.escaped) && (o.exact || !exact);
+    if (!gut) {
+      // an orbit that escapes early leaves later pixels without reference: a few points stand by
+      spec.c = [K.target];
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4;
+        spec.c.push(K.disp(cIn(vH[0] + Hl(0.5 * hd * Math.cos(a), lsc), vH[1] + Hl(0.5 * hd * Math.sin(a), lsc), rH)));
+      }
+      const ms = longer * schritt(exact) / 1000;
+      if (slot !== "feld" || ms < 30) {
+        const q = spiegelBahnen(spec.c, longer, PB, exact, null, maxit);
+        setRef(slot, o = machRef(q, spec, spec.c[q.i], exact, PB));
+        brauchbar = true;
+      } else {
+        starteJob(spec, longer, exact, maxit);
+      }
+    }
+    if (!brauchbar) return false;
+    const ox = zuPB(o.cx, o.PB), oy = zuPB(o.cy, o.PB);
+    const mitBla = exact && o.L > 4 && maxit > 4500;
+    gl.useProgram(programme[mitBla].prog);
+    U = programme[mitBla].u;
+    gl.uniform2f(U.uRes, W, Hc);
+    gl.uniform1i(U.uMaxit, maxit);
+    let lc = K.uniforms(ox, oy);
+    lc = Math.max(-1e5, Math.ceil(lc / 4) * 4);
+    if (mitBla && (!o.bla || o.bla.lc < lc || o.bla.lc > lc + 8)) baueBla(o, lc);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, o.tex);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, mitBla ? o.bla.ab : leer);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, mitBla ? o.bla.r : leer);
+    gl.uniform1i(U.uBlaTop, mitBla ? o.bla.top : 0);
+    if (mitBla) {
+      gl.uniform1iv(U.uBlaOff, o.bla.off);
+      gl.uniform1iv(U.uBlaCnt, o.bla.cnt);
+      gl.uniform1f(U.uLc, o.bla.lc);
+    }
+    gl.uniform1i(U.uRefLen, o.L);
+    gl.uniform1i(U.uRoh, 0);
+    gpuT0 = performance.now();
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    return true;
+  }
+
   // one pass of the view into the bound framebuffer, W x Hc pixels; false when there is
   // no reference for it yet (the worker is on it)
   function drawView(W, Hc, slot) {
+    if (kind) return drawKind(W, Hc, slot);
     gl.viewport(0, 0, W, Hc);
     const lsc = ls + Math.log2(cssW / W);   // log2 of w units per pixel
     const hd = Math.hypot(W, Hc) / 2, lhd = Math.log2(hd);
@@ -46718,7 +46903,7 @@ void main() {
   // the copy for the current view, if a tower serves it: the sharp one, else the coarse one.
   // Starts a tower where one would serve, the coarse one first.
   function haeck(W, Hc) {
-    if (!mis) return null;
+    if (!mis || kind === 2 || kind === 3) return null;
     if (turm && !turmGilt()) turmWeg();
     const lsc = ls + Math.log2(cssW / W), hd = Math.hypot(W, Hc) / 2;
     const ux = f32(N(vH[0], lsc)), uy = f32(N(vH[1], lsc)), ext = Math.hypot(ux, uy) + hd;
@@ -46748,7 +46933,7 @@ void main() {
   // while nothing moves: the towers not yet there, the side last looked at first, so zooming
   // either way finds its copies waiting
   function bauWeiter() {
-    if (!mis) return;
+    if (!mis || kind === 2 || kind === 3) return;
     neuTurm();
     if (turm.bau) return;
     const o = turmSeite === "innen" ? "aussen" : "innen";
@@ -47643,7 +47828,7 @@ void main() {
     })
     .addToggle("rasten", {
       label: "einrasten",
-      value: true,
+      value: kind !== 2,
       onChange: (on) => {
         snapOn = !!on;
         if (snapOn) snapC();
