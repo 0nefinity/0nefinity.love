@@ -1603,8 +1603,18 @@
             this._closeConfigPopup();
 
             // Popup-Inhalt aktualisieren
-            popup.innerHTML = `
-                <div class="ctrl-config-row">
+            const symLabel = cfg.symmetric ? String(cfg.symmetric).replace(/[<>&"]/g, '') : '';
+            const configRows = symLabel
+                ? `                <div class="ctrl-config-row">
+                    <span class="ctrl-config-label">${symLabel}</span>
+                    <div class="ctrl-config-input-wrap">
+                        <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="down" aria-label="Max verringern">&#9662;</button>
+                        <input type="search" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
+                        <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="up" aria-label="Max erhöhen">&#9652;</button>
+                    </div>
+                </div>
+`
+                : `                <div class="ctrl-config-row">
                     <span class="ctrl-config-label">Min</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="down" aria-label="Min verringern">&#9662;</button>
@@ -1628,6 +1638,8 @@
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
+`;
+            popup.innerHTML = `${configRows}
                 <div class="ctrl-config-actions">
                     <button type="button" class="ctrl-config-cancel">Cancel</button>
                     <button type="button" class="ctrl-config-save">Save</button>
@@ -1655,6 +1667,7 @@
 
             const applyConfigValue = (configType, nextValue) => {
                 cfg[configType] = nextValue;
+                if (cfg.symmetric && configType === 'max') cfg.min = -nextValue;
                 syncSliderDecimals(cfg, cfg.defaultDecimals ?? 0);
                 syncConfigInputs();
                 this._updateSliderFromConfig(key);
@@ -3220,7 +3233,8 @@
                 defaultMin: min,
                 defaultMax: max,
                 defaultStep: step,
-                defaultDecimals: decimals
+                defaultDecimals: decimals,
+                symmetric: config.symmetric || ''
             };
             if (config.grow) {
                 const buffer = Number.isFinite(config.grow.buffer) && config.grow.buffer > 1 ? config.grow.buffer : 2;
