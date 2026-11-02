@@ -47228,7 +47228,18 @@ void main() {
   // tempo(v) zooms on and on at v octaves per second (v < 0 in, v > 0 out, no bound either way),
   // tempo(0) stops. The middle of the view stays put, wherever it is. Every frame is drawn at
   // once: where the tower serves, a turned copy, the same cost at any depth.
-  let tempoV = 0, tempoRaf = 0, tempoT = 0;
+  let tempoV = 0, tempoRaf = 0, tempoT = 0, vsync = 1000 / 60;
+  // The progress of a frame is the time that really passed, as in a game: the clock of the frame
+  // (rAF) is rounded to whole vsync periods, so a frame that came a hair early or late does not
+  // make the zoom stutter, and a hitch is made good in the next frame, the view then stands
+  // exactly where the curve says. Only a pause (tab hidden, over a second) counts as one frame.
+  function frameZeit(t) {
+    const d = t - tempoT;
+    if (d > 4 && d < 40) vsync += (d - vsync) * 0.1;
+    if (d >= 1000) return tempoT + vsync;
+    const n = Math.max(1, Math.round(d / vsync));
+    return Math.abs(d - n * vsync) < 0.2 * vsync && d > 0 ? tempoT + n * vsync : Math.max(tempoT, t);
+  }
   function tempo(v) {
     if (!Number.isFinite(v)) throw new Error("tempo(" + v + "): keine Zahl");
     tempoV = v;
@@ -47237,8 +47248,8 @@ void main() {
     const step = (t) => {
       tempoRaf = 0;
       if (!tempoV) return;
-      const dt = Math.min(0.1, Math.max(0, t - tempoT) / 1000);
-      tempoT = t;
+      const tf = frameZeit(t), dt = (tf - tempoT) / 1000;
+      tempoT = tf;
       zoomLog(tempoV * dt, cssW / 2, cssH / 2);
       lauf++;
       wechsel++;
