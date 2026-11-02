@@ -46803,7 +46803,7 @@ void main() {
   // once, the ring ran ahead of a slow GPU: the phone showed a picture of an older view under the
   // ring of the new one. So the ring waits for the GPU to be through with the picture it belongs
   // to, and no new picture is started while one is still in the queue (imFlug).
-  let imFlug = 0, dekoGen = 0;
+  let imFlug = 0;
   function nachGpu(dann) {
     const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), t0 = performance.now();
     gl.flush();
@@ -46822,10 +46822,12 @@ void main() {
     const ok = grob(q, schieben);
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe(false);
-    const gen = ++dekoGen;
     if (ok) {
+      // the ring of THIS picture, drawn when the GPU has it: never skipped for a newer picture
+      // (that starved the ring while the picture ran on) and never taken from a newer view
+      const gz = gezeigt;
       imFlug++;
-      nachGpu(() => { imFlug--; if (gen === dekoGen) drawDeko(); });
+      nachGpu(() => { imFlug--; drawDeko(gz); });
     } else drawDeko();
     return ok;
   }
@@ -47261,7 +47263,7 @@ void main() {
       zoomLog(tempoV * dt, cssW / 2, cssH / 2);
       lauf++;
       wechsel++;
-      draw(qGrob());
+      if (imFlug === 0) draw(qGrob());
       clearTimeout(idle);
       idle = setTimeout(scharf, 160);
       tempoRaf = requestAnimationFrame(step);
@@ -47383,13 +47385,14 @@ void main() {
   // the origin in CSS pixels (far away it stays just as far off screen)
   const origin = () => [cssW / 2 - f32(N(vH[0], ls)), cssH / 2 + f32(N(vH[1], ls))];
 
-  function drawDeko() {
+  function drawDeko(gz) {
     deko.width = Math.round(cssW * dpr);
     deko.height = Math.round(cssH * dpr);
     dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // the further mirrors have no point to hold: the deko stays empty
     if (kind) return;
-    const g = gezeigt && bild.style.transform === "" && gezeigt.W === vollW()[0] && gezeigt.Hc === vollW()[1] ? gezeigt : null;
+    const gs = gz || gezeigt;
+    const g = gs && (gz || bild.style.transform === "") && gs.W === vollW()[0] && gs.Hc === vollW()[1] ? gs : null;
     const [ox, oy] = g ? [cssW / 2 - f32(N(zuPB(g.vH[0], g.PB), g.ls)), cssH / 2 + f32(N(zuPB(g.vH[1], g.PB), g.ls))] : origin();
     const rad = 1 / (g ? 2 ** g.ls : sw);
     if (rad > 4 && rad < 1e6) {
