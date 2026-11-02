@@ -65,6 +65,8 @@
 /* the speed slider has no label: its track takes the whole width of the panel */
 .ctrl-panel:not(.bar-mode) .ctrl-row[data-key="tempo"] { grid-template-columns: minmax(0, 1fr); }
 .ctrl-row[data-key="tempo"] .ctrl-label { display: none; }
+/* the number beside the track keeps one width (controls.js sizes it to the digits shown, and the track would breathe with every digit) */
+.ctrl-row[data-key="tempo"] .ctrl-value-input { width: 7ch !important; font-variant-numeric: tabular-nums; }
 .ctrl-panel:not(.bar-mode) .ctrl-row[data-key="tempo"] .ctrl-slider-group { grid-column: 1; }
 </style>
 </head>
@@ -2299,10 +2301,15 @@ void main() {
       panPx(-(e.clientX - p.x), e.clientY - p.y);
     } else if (pts.size === 2) {
       const [a, c] = [...pts.values()];
+      // the point under the midpoint of the fingers goes along with it: scaled by the change of
+      // the distance about where the midpoint was, then moved to where it is now
       const before = Math.hypot(a.x - c.x, a.y - c.y);
+      const mx0 = (a.x + c.x) / 2, my0 = (a.y + c.y) / 2;
       p.x = e.clientX; p.y = e.clientY;
       const after = Math.hypot(a.x - c.x, a.y - c.y);
-      if (before > 0 && after > 0) zoomAt(before / after, (a.x + c.x) / 2 - b.left, (a.y + c.y) / 2 - b.top);
+      const mx1 = (a.x + c.x) / 2, my1 = (a.y + c.y) / 2;
+      if (before > 0 && after > 0) zoomAt(before / after, mx0 - b.left, my0 - b.top);
+      panPx(-(mx1 - mx0), my1 - my0);
     }
     p.x = e.clientX; p.y = e.clientY;
     request(true);
@@ -2515,7 +2522,7 @@ void main() {
   panel.bodyEl.prepend(wert);
 
   // ---- tempo slider (#416): right zooms in, left out, until it is set back to 0. The
-  // slider goes from -1 over 0 to 1 and no further, what 1 means is set in its menu (Max,
+  // slider goes from -1 over 0 to 1 and no further, what 1 means is set in its menu ("how fast is 1",
   // octaves per second, any number). The thumb stands for u, the speed is EINS * u^3: slow
   // speeds sit wide apart, near 0, and the far end is reached with a small step. Typed in,
   // anything past 1 stays 1. 0 is rest, 1 is EINS, and the way to infinity is the slider. ----
@@ -2544,7 +2551,7 @@ void main() {
     },
   };
   panel.addSlider("tempo", {
-    label: "", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala,
+    label: "", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
     value: 0,
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
