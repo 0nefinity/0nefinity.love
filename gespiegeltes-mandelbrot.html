@@ -1337,20 +1337,24 @@ void main() {
   const ANKER_Q = 0.5;
   function ankerNeu(W, Hc) {
     kopiere(W, Hc);
-    anker = { ...gezeigt };
+    anker = { ...gezeigt, grob: [] };
   }
+  const gleichK = (g) => g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
+    && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
   function plan(W, Hc) {
     const g0 = gezeigt;
     if (!g0 || g0.W !== W || g0.Hc !== Hc) return null;
     const lsc = ls + Math.log2(cssW / W);
-    const gleichK = (g) => g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
-      && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
     const versatz = (g) => [g.ls - ls, N(zuPB(g.vH[0], g.PB) - vH[0], lsc), N(zuPB(g.vH[1], g.PB) - vH[1], lsc)];
     if (!gleichK(g0)) return null;
     const g = anker;
-    if (!g || g.W !== W || g.Hc !== Hc || !(g.q >= ANKER_Q) || !gleichK(g)) return null;
+    if (!g || g.W !== W || g.Hc !== Hc || !gleichK(g)) return null;
     let [dl, dx, dy] = versatz(g);
-    if (!(Math.abs(dl) <= 1)) return null;
+    // magnified, the anchor is only 2^-dl as sharp as it was; it stays the base for as long as
+    // that is no worse than the view could be drawn whole in the time (then it is the better
+    // base, and costs nothing). An anchor drawn that coarse is no worse than the time allows.
+    const qb = qGrob(), qe = g.q * Math.min(1, 2 ** -dl);
+    if (!(dl >= -1 && dl < 5) || !(qe >= Math.min(ANKER_Q, 0.8 * qb))) return null;
     const k = 2 ** dl;
     if (!isFinite(dx) || !isFinite(dy)) return null;
     const still = Math.abs(dl) < 1e-9;
@@ -1365,8 +1369,15 @@ void main() {
     if (cy1 < Hc) rects.push([0, cy1, W, Hc - cy1]);
     if (cx0 > 0) rects.push([0, cy0, cx0, cy1 - cy0]);
     if (cx1 < W) rects.push([cx1, cy0, W - cx1, cy1 - cy0]);
+    // what the anchor itself still holds coarse counts as uncovered too, moved like the anchor
+    const sx = (x1 - x0) / W, sy = (y1 - y0) / Hc, rand = exakt ? 0 : 1;
+    for (const d of g.grob || []) {
+      const ax = Math.max(0, Math.floor(x0 + d[0] * sx) - rand), ay = Math.max(0, Math.floor(y0 + d[1] * sy) - rand);
+      const bx = Math.min(W, Math.ceil(x0 + (d[0] + d[2]) * sx) + rand), by = Math.min(Hc, Math.ceil(y0 + (d[1] + d[3]) * sy) + rand);
+      if (bx > ax && by > ay) rects.push([ax, ay, bx - ax, by - ay]);
+    }
     const flaeche = rects.reduce((a, t) => a + t[2] * t[3], 0);
-    return { x0, x1, y0, y1, exakt, rects, kosten: flaeche * pxMs, qs: g.q };
+    return { x0, x1, y0, y1, exakt, rects, kosten: flaeche * pxMs, qs: qe };
   }
   function kopiere(W, Hc) {
     kopieFbo.an(W, Hc);
@@ -1381,22 +1392,85 @@ void main() {
     gl.blitFramebuffer(0, 0, W, Hc, a.x0, a.y0, a.x1, a.y1, gl.COLOR_BUFFER_BIT, a.exakt ? gl.NEAREST : gl.LINEAR);
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
-  // true / false (no reference: nothing was touched) / null (not applicable)
+  // true / false (no reference: nothing was touched). The anchor goes in first; what it leaves
+  // open (new strips, and parts it holds coarse itself) is then filled centre first, sharp as far
+  // as the time allows (a piece is cut to fit), the rest in one coarse go at the quality that
+  // fits STREIFEN_MS. An exact shift loses nothing, so that picture becomes the next anchor and
+  // remembers its coarse parts: the open area stays as small as the movement, and what a fast
+  // swipe left coarse gets sharp while the swipe goes on.
+  const STREIFEN_MS = 16;
   function umschieben(a, W, Hc) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-    if (a.kosten > KOSTEN_MS) return null;
+    setzeEin(a, W, Hc);
+    const mx = W / 2, my = Hc / 2;
+    const ab = (t) => Math.hypot(t[0] + t[2] / 2 - mx, t[1] + t[3] / 2 - my);
+    const offen = a.rects.slice().sort((t, u) => ab(t) - ab(u));
+    const scharf = [], grobe = [];
+    let rest = KOSTEN_MS;
+    for (const t of offen) {
+      const c = t[2] * t[3] * pxMs;
+      if (c <= rest) { scharf.push(t); rest -= c; continue; }
+      const f = rest / c;
+      if (f >= 0.2) {
+        const breit = t[2] >= t[3], len = breit ? t[2] : t[3], l1 = Math.floor(len * f);
+        const vorn = breit ? mx < t[0] + t[2] / 2 : my < t[1] + t[3] / 2;
+        const o = breit ? t[0] : t[1];
+        const a1 = vorn ? o : o + len - l1, a2 = vorn ? o + l1 : o;
+        const stuck = (von, l) => breit ? [von, t[1], l, t[3]] : [t[0], von, t[2], l];
+        scharf.push(stuck(a1, l1));
+        grobe.push(stuck(a2, len - l1));
+      } else grobe.push(t);
+      rest = 0;
+    }
     let n = 0;
     gl.enable(gl.SCISSOR_TEST);
-    for (const t of a.rects) {
+    for (const t of scharf) {
       gl.scissor(t[0], t[1], t[2], t[3]);
       if (!drawView(W, Hc, "feld")) { gl.disable(gl.SCISSOR_TEST); altesBild(); return false; }
       n += t[2] * t[3];
     }
+    let q = 1;
+    if (grobe.length) {
+      const flaeche = grobe.reduce((s, t) => s + t[2] * t[3], 0);
+      q = Math.max(0.06, Math.min(1, Math.sqrt(STREIFEN_MS / (flaeche * pxMs))));
+      if (q > 0.99) q = 1;
+    }
+    if (grobe.length && q === 1) {
+      for (const t of grobe) {
+        gl.scissor(t[0], t[1], t[2], t[3]);
+        if (!drawView(W, Hc, "feld")) { gl.disable(gl.SCISSOR_TEST); altesBild(); return false; }
+        n += t[2] * t[3];
+      }
+      grobe.length = 0;
+    } else if (grobe.length) {
+      const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q)), sx = w / W, sy = h / Hc;
+      grobFbo.an(w, h);
+      const kl = [];
+      for (const t of grobe) {
+        // one pixel more all round, so the stretching below finds neighbours to blend with
+        const r4 = [Math.max(0, Math.floor(t[0] * sx) - 1), Math.max(0, Math.floor(t[1] * sy) - 1),
+          Math.min(w, Math.ceil((t[0] + t[2]) * sx) + 1), Math.min(h, Math.ceil((t[1] + t[3]) * sy) + 1)];
+        gl.scissor(r4[0], r4[1], r4[2] - r4[0], r4[3] - r4[1]);
+        if (!drawView(w, h, "feld")) { gl.disable(gl.SCISSOR_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb); altesBild(); return false; }
+        n += (r4[2] - r4[0]) * (r4[3] - r4[1]);
+        kl.push([r4, t]);
+      }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, grobFbo.fb);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, bildFbo.fb);
+      for (const [r4, t] of kl) {
+        gl.scissor(t[0], t[1], t[2], t[3]);
+        gl.blitFramebuffer(r4[0], r4[1], r4[2], r4[3], Math.round(r4[0] / sx), Math.round(r4[1] / sy), Math.round(r4[2] / sx), Math.round(r4[3] / sy), gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    }
     gl.disable(gl.SCISSOR_TEST);
-    setzeEin(a, W, Hc);
     if (n) messe(n);
-    gezeichnet(a.exakt ? a.qs : Math.min(a.qs, 0.99));
-    if (a.exakt) ankerNeu(W, Hc);
+    gezeichnet(grobe.length ? Math.min(a.qs, q * 0.99) : a.exakt ? a.qs : Math.min(a.qs, 0.99));
+    if (a.exakt) {
+      ankerNeu(W, Hc);
+      anker.q = 1;
+      anker.grob = grobe;
+    }
     return true;
   }
   // the whole view at quality q (<= 1), at once
@@ -1411,10 +1485,7 @@ void main() {
       return true;
     }
     const alt = schieben ? plan(W, Hc) : null;
-    if (alt) {
-      const e = umschieben(alt, W, Hc);
-      if (e !== null) return e;
-    }
+    if (alt) return umschieben(alt, W, Hc);
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
     if (w === W && h === Hc) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
