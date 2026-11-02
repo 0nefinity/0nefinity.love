@@ -45383,7 +45383,6 @@ html, body { touch-action: pan-x pan-y; }
   height: 100%;
   display: block;
 }
-#deko { pointer-events: none; }
 #feld #lupe {
   inset: auto;
   /* below the menu and back buttons in the top corners */
@@ -45441,7 +45440,6 @@ html, body { touch-action: pan-x pan-y; }
 <body>
 <div id="feld" class="_018-canvas">
   <canvas id="bild" aria-label="Mandelbrot-Menge, innen echt, außen am Kreis gespiegelt; Spiegelpunkt verschiebbar"></canvas>
-  <canvas id="deko" aria-hidden="true"></canvas>
   <canvas id="lupe" aria-hidden="true" hidden></canvas>
 </div>
 <p id="wert" aria-live="off"></p>
@@ -45452,8 +45450,6 @@ html, body { touch-action: pan-x pan-y; }
 (() => {
   const feld = document.getElementById("feld");
   const bild = document.getElementById("bild");
-  const deko = document.getElementById("deko");
-  const dctx = deko.getContext("2d");
   const lupe = document.getElementById("lupe");
   const lctx = lupe.getContext("2d");
   const wert = document.getElementById("wert");
@@ -46651,9 +46647,13 @@ void main() {
         w = W;
         h = Hc;
       },
+      passt: (W, Hc) => W === w && Hc === h,
     };
   }
   const grobFbo = rahmen(), lupeFbo = rahmen();
+  // the picture lives here, never in the canvas itself: the canvas only ever gets a copy of it
+  // with the ring and the marker on top (zeige), so a copy of the picture never holds a ring
+  const bildFbo = rahmen();
   // ms per pixel, from the last passes: a fence says when the GPU is through with one
   let pxMs = 2e-5;
   function messe(n, dann) {
@@ -46673,6 +46673,7 @@ void main() {
   function leinwand() {
     const [W, Hc] = vollW();
     if (bild.width !== W || bild.height !== Hc) { bild.width = W; bild.height = Hc; gezeigt = null; }
+    bildFbo.an(W, Hc);
     return [W, Hc];
   }
   // wechsel counts every change asked for (request): the canvas is current when it was drawn since
@@ -46736,20 +46737,20 @@ void main() {
   }
   function kopiere(W, Hc) {
     kopieFbo.an(W, Hc);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, bildFbo.fb);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, kopieFbo.fb);
     gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
   function setzeEin(a, W, Hc) {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, kopieFbo.fb);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, bildFbo.fb);
     gl.blitFramebuffer(0, 0, W, Hc, a.x0, a.y0, a.x1, a.y1, gl.COLOR_BUFFER_BIT, a.exakt ? gl.NEAREST : gl.LINEAR);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
   // true / false (no reference: nothing was touched) / null (not applicable)
   function umschieben(a, W, Hc) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     if (a.kosten > KOSTEN_MS) return null;
     let n = 0;
     gl.enable(gl.SCISSOR_TEST);
@@ -46770,7 +46771,7 @@ void main() {
     const [W, Hc] = leinwand();
     const kopie = haeck(W, Hc);
     if (kopie) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       zeigeTurm(kopie, W, Hc);
       gezeichnet(1 / kopie.B.f);
       turmKontrolle(kopie, W, Hc);
@@ -46783,15 +46784,15 @@ void main() {
     }
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
     if (w === W && h === Hc) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       if (!drawView(W, Hc, "feld")) { altesBild(); return false; }
     } else {
       grobFbo.an(w, h);
-      if (!drawView(w, h, "feld")) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); altesBild(); return false; }
+      if (!drawView(w, h, "feld")) { gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb); altesBild(); return false; }
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, grobFbo.fb);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, bildFbo.fb);
       gl.blitFramebuffer(0, 0, w, h, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.LINEAR);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       if (alt) setzeEin(alt, W, Hc);
     }
     messe(w * h);
@@ -46799,36 +46800,13 @@ void main() {
     if (!alt || (w === W && h === Hc)) ankerNeu(W, Hc);
     return true;
   }
-  // The ring is a 2D canvas on the main thread, the picture comes out of the GPU queue. Drawn at
-  // once, the ring ran ahead of a slow GPU: the phone showed a picture of an older view under the
-  // ring of the new one. So the ring waits for the GPU to be through with the picture it belongs
-  // to, and no new picture is started while one is still in the queue (imFlug).
-  let imFlug = 0;
-  function nachGpu(dann) {
-    const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), t0 = performance.now();
-    gl.flush();
-    const warte = () => {
-      const fertig = gl.getSyncParameter(f, gl.SYNC_STATUS) === gl.SIGNALED;
-      if (!fertig && performance.now() - t0 < 3000) return void setTimeout(warte, 1);
-      if (!fertig) console.error("GPU needed more than 3 s for one picture");
-      gl.deleteSync(f);
-      dann();
-    };
-    warte();
-  }
   function draw(q, schieben = true) {
     takt(performance.now());
     ensurePB();
     const ok = grob(q, schieben);
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe(false);
-    if (ok) {
-      // the ring of THIS picture, drawn when the GPU has it: never skipped for a newer picture
-      // (that starved the ring while the picture ran on) and never taken from a newer view
-      const gz = gezeigt;
-      imFlug++;
-      nachGpu(() => { imFlug--; drawDeko(gz); });
-    } else drawDeko();
+    zeige();
     return ok;
   }
 
@@ -46923,7 +46901,7 @@ void main() {
       return fn();
     } finally {
       ({ ls, sw, lv, vnx, vny, vH, cssW, cssH } = keep);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     }
   }
   // real passes into fb, one rectangle [x, y, w, h] per wait for the GPU, so the page stays
@@ -47026,7 +47004,7 @@ void main() {
       return [b, w * h * 4];
     });
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, bildFbo.fb);
     gpuDann(() => {
       dann(bufs.map(([b, n]) => {
         const px = new Uint8Array(n);
@@ -47046,7 +47024,7 @@ void main() {
     const g = an.g || 1, plan = turmPlan(B, an.l - Math.log2(g), f32(N(an.v[0], an.l + an.vb - PB)), f32(N(an.v[1], an.l + an.vb - PB)), an.ext, g);
     if (!plan) throw new Error("Turm-Vergleich ausserhalb des Turms");
     zeigeTurm(plan, W, Hc);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     // a third to a half pixel along both axes
     const e = BigInt(Math.max(0, Math.floor(an.l + an.vb - 1))), neben = { ...an, v: [an.v[0] + (1n << e), an.v[1] + (1n << e)] };
     verdeckt(pruefFbo.fb, W, Hc, an, rects, weg, () => verdeckt(nebenFbo.fb, W, Hc, neben, rects, weg, () => {
@@ -47123,7 +47101,7 @@ void main() {
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
       const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       B.l.push(l);
       B.tex.push(tex);
       B.fb.push(fb);
@@ -47263,7 +47241,7 @@ void main() {
       zoomLog(tempoV * dt, cssW / 2, cssH / 2);
       lauf++;
       wechsel++;
-      if (imFlug === 0) draw(qGrob());
+      draw(qGrob());
       clearTimeout(idle);
       idle = setTimeout(scharf, 160);
       tempoRaf = requestAnimationFrame(step);
@@ -47309,18 +47287,20 @@ void main() {
       gl.blitFramebuffer(0, 0, lp, lp, 0, 0, lp, lp, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     };
     lupeFbo.an(lp, lp);
-    kopie(null, lupeFbo.fb);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    kopie(bildFbo.fb, lupeFbo.fb);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     try {
       drawView(lp, lp, "lupe");
+      kopie(bildFbo.fb, null);
       lctx.setTransform(1, 0, 0, 1, 0, 0);
       lctx.clearRect(0, 0, lp, lp);
       lctx.drawImage(bild, 0, bild.height - lp, lp, lp, 0, 0, lp, lp);
     } finally {
-      kopie(lupeFbo.fb, null);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      kopie(lupeFbo.fb, bildFbo.fb);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       gl.viewport(0, 0, bild.width, bild.height);
       ({ ls, sw, lv, vnx, vny, vH, cssW, cssH } = keep);
+      zeige();
     }
     const k = lp / Lc;
     lctx.setTransform(k, 0, 0, k, 0, 0);
@@ -47385,32 +47365,66 @@ void main() {
   // the origin in CSS pixels (far away it stays just as far off screen)
   const origin = () => [cssW / 2 - f32(N(vH[0], ls)), cssH / 2 + f32(N(vH[1], ls))];
 
-  function drawDeko(gz) {
-    deko.width = Math.round(cssW * dpr);
-    deko.height = Math.round(cssH * dpr);
-    dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // the further mirrors have no point to hold: the deko stays empty
-    if (kind) return;
-    const gs = gz || gezeigt;
-    const g = gs && (gz || bild.style.transform === "") && gs.W === vollW()[0] && gs.Hc === vollW()[1] ? gs : null;
-    const [ox, oy] = g ? [cssW / 2 - f32(N(zuPB(g.vH[0], g.PB), g.ls)), cssH / 2 + f32(N(zuPB(g.vH[1], g.PB), g.ls))] : origin();
-    const rad = 1 / (g ? 2 ** g.ls : sw);
-    if (rad > 4 && rad < 1e6) {
-      dctx.beginPath();
-      dctx.arc(ox, oy, rad, 0, 2 * Math.PI);
-      dctx.lineWidth = 1;
-      dctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
-      dctx.stroke();
+  // Ring and marker are drawn into the canvas itself, in the same task and from the same view as
+  // the picture they sit on: the picture (bildFbo) is copied to the canvas and the ring drawn over
+  // that copy, so the two cannot come from different moments. The ring is the seam |w| = 1 of the
+  // picture: radius 1/sw, it scales with the zoom.
+  const RFS = `#version 300 es
+precision highp float;
+uniform vec2 uO;
+uniform vec2 uM;
+uniform float uR;
+uniform float uDpr;
+uniform float uAM;
+const float RW = 1.0;
+const vec4 RC = vec4(1.0, 1.0, 1.0, 0.28);
+out vec4 o;
+void main() {
+  vec2 d0 = gl_FragCoord.xy - uO, d1 = gl_FragCoord.xy - uM;
+  float ring = uR > 0.0 ? clamp(0.5 * RW * uDpr + 0.5 - abs(length(d0) - uR), 0.0, 1.0) * RC.a : 0.0;
+  float l1 = length(d1);
+  float mr = clamp(uDpr + 0.5 - abs(l1 - 11.0 * uDpr), 0.0, 1.0) * uAM;
+  float pt = clamp(2.0 * uDpr + 0.5 - l1, 0.0, 1.0) * 0.85;
+  float m = 1.0 - (1.0 - mr) * (1.0 - pt);
+  o = vec4(RC.rgb * ring * (1.0 - m) + vec3(m), ring * (1.0 - m) + m);
+}`;
+  const ringProg = gl.createProgram();
+  gl.attachShader(ringProg, shader(gl.VERTEX_SHADER, VS));
+  gl.attachShader(ringProg, shader(gl.FRAGMENT_SHADER, RFS));
+  gl.bindAttribLocation(ringProg, 0, "p");
+  gl.linkProgram(ringProg);
+  if (!gl.getProgramParameter(ringProg, gl.LINK_STATUS)) fail("Shader-Fehler: " + gl.getProgramInfoLog(ringProg));
+  const RU = {};
+  for (const n of ["uO", "uM", "uR", "uDpr", "uAM"]) RU[n] = gl.getUniformLocation(ringProg, n);
+
+  // the picture onto the canvas, with the ring and the marker over it
+  function zeige() {
+    const W = bild.width, Hc = bild.height;
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, bildFbo.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    if (bildFbo.passt(W, Hc)) gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    else { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // the further mirrors have no point to hold: nothing over the picture
+    if (!kind) {
+      const gs = gezeigt;
+      const g = gs && gs.W === W && gs.Hc === Hc ? gs : null;
+      const [ox, oy] = g ? [cssW / 2 - f32(N(zuPB(g.vH[0], g.PB), g.ls)), cssH / 2 + f32(N(zuPB(g.vH[1], g.PB), g.ls))] : origin();
+      const rad = 1 / (g ? 2 ** g.ls : sw);
+      gl.viewport(0, 0, W, Hc);
+      gl.useProgram(ringProg);
+      gl.uniform2f(RU.uO, ox * dpr, Hc - oy * dpr);
+      gl.uniform2f(RU.uM, (ox + shake) * dpr, Hc - oy * dpr);
+      gl.uniform1f(RU.uR, rad > 4 && rad < 1e6 ? rad * dpr : 0);
+      gl.uniform1f(RU.uDpr, dpr);
+      gl.uniform1f(RU.uAM, dragging ? 1 : 0.85);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.disable(gl.BLEND);
     }
-    dctx.beginPath();
-    dctx.arc(ox + shake, oy, 11, 0, 2 * Math.PI);
-    dctx.lineWidth = 2;
-    dctx.strokeStyle = dragging ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.85)";
-    dctx.stroke();
-    dctx.beginPath();
-    dctx.arc(ox + shake, oy, 2, 0, 2 * Math.PI);
-    dctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    dctx.fill();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
 
   // no: the marker shakes its head (no snap target near)
@@ -47420,7 +47434,7 @@ void main() {
     const step = (t) => {
       const a = Math.max(0, (t - t0) / 360);
       shake = a < 1 ? 5 * Math.sin(a * 6 * Math.PI) * (1 - a) : 0;
-      drawDeko();
+      zeige();
       if (a < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -47435,7 +47449,6 @@ void main() {
   }
   function rafDraw() {
     raf = 0;
-    if (imFlug > 0) return void (raf = requestAnimationFrame(rafDraw));
     draw(qGrob());
   }
   function request(moving) {
@@ -47461,6 +47474,7 @@ void main() {
       const ok = drawView(W, Hc, "feld");
       gl.disable(gl.SCISSOR_TEST);
       if (!ok) return;
+      zeige();
       y -= h;
       messe(W * h, () => {
         if (nr !== lauf) return;
@@ -47926,7 +47940,7 @@ void main() {
       // zoomed in the point follows the finger exactly; zoomed out it moves as in the start view
       dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * Math.min(sw, fitSw()), lk: proPixel(), h: cH, PB, mis, cGenau };
       if (!lupe.hidden) ausweichen(x, y);
-      drawDeko();
+      zeige();
     } else if (dragging) {
       zurueck();
     }
@@ -47971,7 +47985,7 @@ void main() {
     cMy = v.cy;
     showValues();
     request(false);
-    drawDeko();
+    zeige();
   }
   const up = (e) => {
     pts.delete(e.pointerId);
@@ -48082,7 +48096,7 @@ void main() {
     const Lc = lb.width;
     if (Math.hypot(e.clientX - lb.left - Lc / 2, e.clientY - lb.top - Lc / 2) <= 24) {
       dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cMx, cy: cMy, k: r * LUPE_FIT / Lc, lk: Math.log2(r * LUPE_FIT / Lc), h: cH, PB, mis, cGenau, lupe: true };
-      drawDeko();
+      zeige();
       return;
     }
     lupeZug = { id: e.pointerId, dx: e.clientX - lb.left, dy: e.clientY - lb.top };
