@@ -47122,6 +47122,8 @@ void main() {
     deko.width = Math.round(cssW * dpr);
     deko.height = Math.round(cssH * dpr);
     dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // the further mirrors have no point to hold: the deko stays empty
+    if (kind) return;
     const [ox, oy] = origin();
     const rad = 1 / sw;
     if (rad > 4 && rad < 1e6) {
