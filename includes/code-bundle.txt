@@ -46696,7 +46696,6 @@ void main() {
   // never start over. Another c_M: no part of the old picture is of use (a seam of two c_M
   // in one frame would lie). null when the canvas is of no use.
   const kopieFbo = rahmen();
-  const KOSTEN_MS = 40;
   // the anchor: the last picture that was computed in one go (not moved, not scaled), kept in
   // kopieFbo. Every moved frame is cut from it, never from the frame before: a chain of
   // moved pictures adds a blur and a rounding of up to half a pixel at every step, the
@@ -46705,7 +46704,7 @@ void main() {
   const ANKER_Q = 0.5;
   function ankerNeu(W, Hc) {
     kopiere(W, Hc);
-    anker = { ...gezeigt, grob: [] };
+    anker = { ...gezeigt };
   }
   const gleichK = (g) => g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
     && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
@@ -46737,15 +46736,7 @@ void main() {
     if (cy1 < Hc) rects.push([0, cy1, W, Hc - cy1]);
     if (cx0 > 0) rects.push([0, cy0, cx0, cy1 - cy0]);
     if (cx1 < W) rects.push([cx1, cy0, W - cx1, cy1 - cy0]);
-    // what the anchor itself still holds coarse counts as uncovered too, moved like the anchor
-    const sx = (x1 - x0) / W, sy = (y1 - y0) / Hc, rand = exakt ? 0 : 1;
-    for (const d of g.grob || []) {
-      const ax = Math.max(0, Math.floor(x0 + d[0] * sx) - rand), ay = Math.max(0, Math.floor(y0 + d[1] * sy) - rand);
-      const bx = Math.min(W, Math.ceil(x0 + (d[0] + d[2]) * sx) + rand), by = Math.min(Hc, Math.ceil(y0 + (d[1] + d[3]) * sy) + rand);
-      if (bx > ax && by > ay) rects.push([ax, ay, bx - ax, by - ay]);
-    }
-    const flaeche = rects.reduce((a, t) => a + t[2] * t[3], 0);
-    return { x0, x1, y0, y1, exakt, rects, kosten: flaeche * pxMs, qs: qe };
+    return { x0, x1, y0, y1, exakt, rects, qs: qe };
   }
   function kopiere(W, Hc) {
     kopieFbo.an(W, Hc);
@@ -46760,61 +46751,32 @@ void main() {
     gl.blitFramebuffer(0, 0, W, Hc, a.x0, a.y0, a.x1, a.y1, gl.COLOR_BUFFER_BIT, a.exakt ? gl.NEAREST : gl.LINEAR);
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
-  // true / false (no reference: nothing was touched). The anchor goes in first; what it leaves
-  // open (new strips, and parts it holds coarse itself) is then filled centre first, sharp as far
-  // as the time allows (a piece is cut to fit), the rest in one coarse go at the quality that
-  // fits STREIFEN_MS. An exact shift loses nothing, so that picture becomes the next anchor and
-  // remembers its coarse parts: the open area stays as small as the movement, and what a fast
-  // swipe left coarse gets sharp while the swipe goes on.
+  // true / false (no reference: nothing was touched), null (the anchor is of no use). One frame,
+  // one sharpness: what the anchor leaves open is drawn as sharp as the anchor shows, never
+  // sharper (a sharp piece beside a soft one is a patch), coarser only as far as STREIFEN_MS
+  // needs. Far coarser than the anchor and the anchor is of no use: the view is drawn whole.
+  // An exact shift loses nothing, so that picture becomes the next anchor.
   const STREIFEN_MS = 16;
   function umschieben(a, W, Hc) {
+    const flaeche = a.rects.reduce((s, t) => s + t[2] * t[3], 0);
+    let q = Math.min(a.qs, flaeche ? Math.sqrt(STREIFEN_MS / (flaeche * pxMs)) : 1);
+    if (q > 0.99) q = 1;
+    if (q < a.qs / 1.5) return null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     setzeEin(a, W, Hc);
-    const mx = W / 2, my = Hc / 2;
-    const ab = (t) => Math.hypot(t[0] + t[2] / 2 - mx, t[1] + t[3] / 2 - my);
-    const offen = a.rects.slice().sort((t, u) => ab(t) - ab(u));
-    const scharf = [], grobe = [];
-    let rest = KOSTEN_MS;
-    for (const t of offen) {
-      const c = t[2] * t[3] * pxMs;
-      if (c <= rest) { scharf.push(t); rest -= c; continue; }
-      const f = rest / c;
-      if (f >= 0.2) {
-        const breit = t[2] >= t[3], len = breit ? t[2] : t[3], l1 = Math.floor(len * f);
-        const vorn = breit ? mx < t[0] + t[2] / 2 : my < t[1] + t[3] / 2;
-        const o = breit ? t[0] : t[1];
-        const a1 = vorn ? o : o + len - l1, a2 = vorn ? o + l1 : o;
-        const stuck = (von, l) => breit ? [von, t[1], l, t[3]] : [t[0], von, t[2], l];
-        scharf.push(stuck(a1, l1));
-        grobe.push(stuck(a2, len - l1));
-      } else grobe.push(t);
-      rest = 0;
-    }
     let n = 0;
     gl.enable(gl.SCISSOR_TEST);
-    for (const t of scharf) {
-      gl.scissor(t[0], t[1], t[2], t[3]);
-      if (!drawView(W, Hc, "feld")) { gl.disable(gl.SCISSOR_TEST); altesBild(); return false; }
-      n += t[2] * t[3];
-    }
-    let q = 1;
-    if (grobe.length) {
-      const flaeche = grobe.reduce((s, t) => s + t[2] * t[3], 0);
-      q = Math.max(0.06, Math.min(1, Math.sqrt(STREIFEN_MS / (flaeche * pxMs))));
-      if (q > 0.99) q = 1;
-    }
-    if (grobe.length && q === 1) {
-      for (const t of grobe) {
+    if (q === 1) {
+      for (const t of a.rects) {
         gl.scissor(t[0], t[1], t[2], t[3]);
         if (!drawView(W, Hc, "feld")) { gl.disable(gl.SCISSOR_TEST); altesBild(); return false; }
         n += t[2] * t[3];
       }
-      grobe.length = 0;
-    } else if (grobe.length) {
+    } else if (a.rects.length) {
       const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q)), sx = w / W, sy = h / Hc;
       grobFbo.an(w, h);
       const kl = [];
-      for (const t of grobe) {
+      for (const t of a.rects) {
         // one pixel more all round, so the stretching below finds neighbours to blend with
         const r4 = [Math.max(0, Math.floor(t[0] * sx) - 1), Math.max(0, Math.floor(t[1] * sy) - 1),
           Math.min(w, Math.ceil((t[0] + t[2]) * sx) + 1), Math.min(h, Math.ceil((t[1] + t[3]) * sy) + 1)];
@@ -46833,12 +46795,9 @@ void main() {
     }
     gl.disable(gl.SCISSOR_TEST);
     if (n) messe(n);
-    gezeichnet(grobe.length ? Math.min(a.qs, q * 0.99) : a.exakt ? a.qs : Math.min(a.qs, 0.99));
-    if (a.exakt) {
-      ankerNeu(W, Hc);
-      anker.q = 1;
-      anker.grob = grobe;
-    }
+    const qf = Math.min(a.qs, q);
+    gezeichnet(a.exakt ? qf : Math.min(qf, 0.99));
+    if (a.exakt) ankerNeu(W, Hc);
     return true;
   }
   // the whole view at quality q (<= 1), at once
@@ -46853,7 +46812,10 @@ void main() {
       return true;
     }
     const alt = schieben ? plan(W, Hc) : null;
-    if (alt) return umschieben(alt, W, Hc);
+    if (alt) {
+      const e = umschieben(alt, W, Hc);
+      if (e !== null) return e;
+    }
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
     if (w === W && h === Hc) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
@@ -46865,11 +46827,10 @@ void main() {
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, bildFbo.fb);
       gl.blitFramebuffer(0, 0, w, h, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.LINEAR);
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-      if (alt) setzeEin(alt, W, Hc);
     }
     messe(w * h);
-    gezeichnet(w === W && h === Hc ? 1 : alt ? Math.min(q, alt.qs) : q);
-    if (!alt || (w === W && h === Hc)) ankerNeu(W, Hc);
+    gezeichnet(w === W && h === Hc ? 1 : q);
+    ankerNeu(W, Hc);
     return true;
   }
   function draw(q, schieben = true) {
@@ -47297,7 +47258,7 @@ void main() {
 
   // ---- tempo: the interface for the speed slider (#416) ----
   // tempo(v) zooms on and on at v octaves per second (v < 0 in, v > 0 out, no bound either way),
-  // tempo(0) stops. The middle of the view stays put, wherever it is. Every frame is drawn at
+  // tempo(0) stops. The marker stays put while it is on screen, else the middle. Every frame is drawn at
   // once: where the tower serves, a turned copy, the same cost at any depth.
   let tempoV = 0, tempoRaf = 0, tempoT = 0;
   // The progress of a frame is the time that really passed, as in a game: the clock of the frame
@@ -47316,7 +47277,10 @@ void main() {
       if (!tempoV) return;
       const tf = frameZeit(t), dt = (tf - tempoT) / 1000;
       tempoT = tf;
-      zoomLog(tempoV * dt, cssW / 2, cssH / 2);
+      // the marker stays put while it is on screen (zoomed about the middle it flew off and
+      // the M point jumped from frame to frame); off screen the middle of the view does
+      const [ox, oy] = origin(), da = ox >= 0 && ox <= cssW && oy >= 0 && oy <= cssH;
+      zoomLog(tempoV * dt, da ? ox : cssW / 2, da ? oy : cssH / 2);
       lauf++;
       wechsel++;
       draw(qGrob());
