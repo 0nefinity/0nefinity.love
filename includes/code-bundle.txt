@@ -25200,17 +25200,19 @@ void main() {
     gl.blitFramebuffer(0, 0, W, Hc, a.x0, a.y0, a.x1, a.y1, gl.COLOR_BUFFER_BIT, a.exakt ? gl.NEAREST : gl.LINEAR);
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
-  // true / false (no reference: nothing was touched), null (the anchor is of no use). One frame,
-  // one sharpness: what the anchor leaves open is drawn as sharp as the anchor shows, never
-  // sharper (a sharp piece beside a soft one is a patch), coarser only as far as STREIFEN_MS
-  // needs. Far coarser than the anchor and the anchor is of no use: the view is drawn whole.
-  // An exact shift loses nothing, so that picture becomes the next anchor.
+  // true / false (no reference: nothing was touched). The anchor is moved where the view went and
+  // stays as sharp as it is; only what it leaves open is computed, sharp when that fits
+  // STREIFEN_MS, else coarse. Coarse is only ever the new edge, never the whole view: drawing the
+  // whole view coarse because the edge is dear threw the sharp picture away while moving (a
+  // phone saw nothing but blocks). Only a shift that lost nothing becomes the next anchor.
   const STREIFEN_MS = 16;
+  // how the last frame came about, for ?diag: k scale of the moved anchor (1 whole view drawn
+  // afresh, 0 a tower copy), rand the share computed anew, qr its sharpness
+  let rahmenArt = null;
   function umschieben(a, W, Hc) {
     const flaeche = a.rects.reduce((s, t) => s + t[2] * t[3], 0);
-    let q = Math.min(a.qs, flaeche ? Math.sqrt(STREIFEN_MS / (flaeche * pxMs)) : 1);
+    let q = flaeche ? Math.max(0.06, Math.min(1, Math.sqrt(STREIFEN_MS / (flaeche * pxMs)))) : 1;
     if (q > 0.99) q = 1;
-    if (q < a.qs / 1.5) return null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     setzeEin(a, W, Hc);
     let n = 0;
@@ -25246,7 +25248,8 @@ void main() {
     if (n) messe(n);
     const qf = Math.min(a.qs, q);
     gezeichnet(a.exakt ? qf : Math.min(qf, 0.99));
-    if (a.exakt) ankerNeu(W, Hc);
+    rahmenArt = { k: (a.x1 - a.x0) / W, rand: flaeche / (W * Hc), qr: q };
+    if (a.exakt && q === 1) ankerNeu(W, Hc);
     return true;
   }
   // the whole view at quality q (<= 1), at once
@@ -25257,14 +25260,13 @@ void main() {
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       zeigeTurm(kopie, W, Hc);
       gezeichnet(1 / kopie.B.f);
+      rahmenArt = { k: 0, rand: 0, qr: 1 / kopie.B.f };
       turmKontrolle(kopie, W, Hc);
       return true;
     }
     const alt = schieben ? plan(W, Hc) : null;
-    if (alt) {
-      const e = umschieben(alt, W, Hc);
-      if (e !== null) return e;
-    }
+    if (alt) return umschieben(alt, W, Hc);
+    rahmenArt = { k: 1, rand: 1, qr: q };
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
     if (w === W && h === Hc) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
@@ -25282,10 +25284,68 @@ void main() {
     ankerNeu(W, Hc);
     return true;
   }
+  // the Nachzug: while the view moves, a sharp picture of it grows a few rows per frame off screen
+  // (NACHZUG_MS of work), and once whole it is the new anchor. So a long zoom never runs on one
+  // picture stretched ever further until it is thrown away for a coarse one: the anchor is
+  // never older than one Nachzug. Under tempo it is drawn for where the view will be when it is
+  // done, the marker held still as tempo holds it.
+  const NACHZUG_MS = 8;
+  const nachFbo = rahmen();
+  let nach = null, nachT = 0, nachDt = 1000 / 60;
+  function mitAnsicht(a, f) {
+    const alt = [ls, sw, vH, lv, vnx, vny];
+    ls = a.ls; sw = 2 ** a.ls; vH = a.vH; lv = a.lv; vnx = a.vnx; vny = a.vny;
+    try { return f(); } finally { [ls, sw, vH, lv, vnx, vny] = alt; }
+  }
+  function nachziehen(W, Hc) {
+    if (kind) return;
+    const t = performance.now();
+    if (t - nachT < 500) nachDt = 0.8 * nachDt + 0.2 * (t - nachT);
+    nachT = t;
+    if (nach && (nach.W !== W || nach.Hc !== Hc || nach.PB !== PB || !gleichK(nach.g))) nach = null;
+    if (!nach) {
+      if (gezeigt.q >= 1 && rahmenArt.qr >= 1 && Math.abs(Math.log2(rahmenArt.k)) < 0.5) return;
+      const h = Math.max(4, Math.round(NACHZUG_MS / (pxMs * W)));
+      // octaves tempo goes while the rows come in, at the frame rate of late; PB has 64 bits to spare
+      const d = Math.max(-16, Math.min(16, tempoV * Math.ceil(Hc / h) * nachDt / 1000));
+      const [ox, oy] = origin(), da = ox >= 0 && ox <= cssW && oy >= 0 && oy <= cssH;
+      const px = (da ? ox : cssW / 2) - cssW / 2, py = -((da ? oy : cssH / 2) - cssH / 2), l1 = ls + d;
+      const jetzt = [vH, lv, vnx, vny];
+      setV(vH[0] + Hl(px, ls) - Hl(px, l1), vH[1] + Hl(py, ls) - Hl(py, l1));
+      const ziel = { ls: l1, vH, lv, vnx, vny };
+      [vH, lv, vnx, vny] = jetzt;
+      nach = { W, Hc, PB, ziel, y: Hc, h, g: { ls: l1, vH: ziel.vH, PB, q: 1, w: -1, W, Hc, cx: cH[0], cy: cH[1], r, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 } };
+    }
+    nachFbo.an(W, Hc);
+    const h = Math.min(nach.y, nach.h);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, nach.y - h, W, h);
+    const ok = mitAnsicht(nach.ziel, () => drawView(W, Hc, "feld"));
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    if (!ok) { nach = null; return; }
+    nach.y -= h;
+    if (nach.y > 0) return;
+    kopieFbo.an(W, Hc);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, nachFbo.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, kopieFbo.fb);
+    gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    anker = nach.g;
+    nach = null;
+  }
+  // ?diag: the last frames, kept only with the parameter
+  const rahmenLog = new URLSearchParams(location.search).has("diag") ? [] : null;
   function draw(q, schieben = true) {
     takt(performance.now());
     ensurePB();
     const ok = grob(q, schieben);
+    if (ok && schieben && rahmenArt && rahmenArt.k !== 0) nachziehen(bild.width, bild.height);
+    if (rahmenLog) {
+      const t = performance.now(), [ox, oy] = origin();
+      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy });
+      if (rahmenLog.length > 120) rahmenLog.shift();
+    }
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
     if (!lupe.hidden) drawLupe(false);
     zeige();
@@ -25957,6 +26017,8 @@ void main() {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const fertig = () => { saveUrl(); meldeOrt(); if (lupeOn && lupeG > 0) drawLupe(true); bauWeiter(); };
     if (!gleich() && !draw(qGrob())) return;
+    // a slow frame under tempo lets this run between two frames: the Nachzug goes on then
+    if (!tempoV) nach = null;
     if (gezeigt.q >= 1) return fertig();
     const [W, Hc] = leinwand();
     let y = Hc;
@@ -26891,6 +26953,22 @@ void main() {
     dg.id = "diag";
     dg.style.cssText = "position:fixed;left:4px;top:4px;margin:0;padding:2px 4px;font:9px/1.15 monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none;z-index:99999;white-space:pre";
     document.body.appendChild(dg);
+    // the last 60 drawn frames as bars: sharpness q, frame time dt (full bar 50 ms), and the
+    // marker's step on screen from frame to frame (full bar 8 px)
+    const BALKEN = "▁▂▃▄▅▆▇█";
+    const balken = (xs, voll) => xs.map((x) => BALKEN[Math.max(0, Math.min(7, Math.round((x / voll) * 7)))]).join("");
+    const rahmenZeilen = () => {
+      const L = rahmenLog.slice(-60);
+      if (!L.length) return ["frames -"];
+      const z = L[L.length - 1];
+      const schritt = L.map((f, i) => (i ? Math.hypot(f.ox - L[i - 1].ox, f.oy - L[i - 1].oy) : 0));
+      return [
+        `q  ${balken(L.map((f) => f.q), 1)}`,
+        `dt ${balken(L.map((f) => f.dt), 50)}`,
+        `mk ${balken(schritt, 8)}`,
+        `last dt ${z.dt.toFixed(1)} q ${z.q.toFixed(2)} k ${z.k == null ? "-" : z.k.toFixed(3)} edge ${z.rand == null ? "-" : (100 * z.rand).toFixed(0) + "%"} @${z.qr == null ? "-" : z.qr.toFixed(2)} mk ${z.ox.toFixed(1)},${z.oy.toFixed(1)} nach ${nach ? (100 - 100 * nach.y / nach.Hc).toFixed(0) + "%" : "-"}`,
+      ];
+    };
     const modus = () => (dragging ? (dragging.lupe ? "lupe" : "punkt") : pts.size >= 2 ? "pinch" : pts.size === 1 ? "pan" : lupeZug ? "lupe" : "-");
     const tick = () => {
       const vv = window.visualViewport;
@@ -26902,6 +26980,7 @@ void main() {
         `resize #${resizeN} ${resizeN ? ((performance.now() - resizeT) / 1000).toFixed(1) + "s ago" : "-"}`,
         `ls ${ls.toFixed(4)} sw ${sw} c ${cMx.toFixed(6)},${cMy.toFixed(6)}`,
         `v ${N(vH[0])},${N(vH[1])}`,
+        ...rahmenZeilen(),
       ].join("\n");
       requestAnimationFrame(tick);
     };
