@@ -1,4 +1,4 @@
-// Reference orbits for gespiegeltes-mandelbrot: Z_0 = 0, Z_{n+1} = Z_n^2 + c, exact in
+// Reference orbits for beidseitig-belegtes-mandelbrot: Z_0 = 0, Z_{n+1} = Z_n^2 + c, exact in
 // BigInt fixed point (value = b / 2^PB), handed over as float32 pairs.
 // Also the exact Misiurewicz points (z_{k+p} = z_k): refining, checking, and finding one
 // near any point at any depth.

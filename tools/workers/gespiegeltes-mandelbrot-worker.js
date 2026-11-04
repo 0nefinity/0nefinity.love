@@ -1,4 +1,4 @@
-// Snap points for gespiegeltes-mandelbrot.html, found on the device while it idles:
+// Snap points for beidseitig-belegtes-mandelbrot.html, found on the device while it idles:
 // verified Misiurewicz points (z_{k+p} = z_k for the orbit of 0, k >= 1) around the
 // mirror point, first coarse, then finer and finer, nearest first. In doubles; the page
 // refines a point exactly only when it snaps to it.
