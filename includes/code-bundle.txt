@@ -21114,8 +21114,8 @@ irgendwas¹
     irgendwas +∞0 *∞1¹ -∞0 /∞1
 
     Mathematisch gesehen dürfen diese sogenannten Identitätsoperationen jederzeit und in einer beliebigen Anzahl und Variation auf alles beliebig angewendet werden, da sie mathematisch gesehen nichts verändern.
-    In mathematisch produktiver Umgebung wird dies gelegentlich genutzt um in bei einem Problem irgendwie zu tricksen.
-    In der Kunst lassen sich damit nachweislich Hühner malen.
+    In mathematisch produktiver Umgebung wird dies gelegentlich genutzt um bei gewissen Problemen irgendwie zu tricksen.
+    In der mathematisch künstlerischer Umgebung lassen sich damit nachweislich Hühner malen.
 
 
     Mathematisch gesehen ist nichts geschehen, wenn man eine Identitätsoperation durchführt. Es ist es als hätte man es nicht getan.
@@ -75068,7 +75068,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -92717,6 +92728,12 @@ tools/zoom.js
           isDragging = false;
           return;
         }
+        // Not cancelable = the browser already scrolls this gesture (e.g. the page is
+        // still gliding). Dragging too would move symbol and page at once.
+        if (!e.cancelable) {
+          isDragging = false;
+          return;
+        }
         e.preventDefault();
         isDragging = true;
         lastX = e.touches[0].clientX;
@@ -92752,6 +92769,10 @@ tools/zoom.js
       }
 
       if (!pinch.active && e.touches.length === 1 && isDragging) {
+        if (!e.cancelable) {
+          isDragging = false;
+          return;
+        }
         e.preventDefault();
         const t = e.touches[0];
         targetOffsetX += t.clientX - lastX;
