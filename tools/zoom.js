@@ -224,6 +224,12 @@
           isDragging = false;
           return;
         }
+        // Not cancelable = the browser already scrolls this gesture (e.g. the page is
+        // still gliding). Dragging too would move symbol and page at once.
+        if (!e.cancelable) {
+          isDragging = false;
+          return;
+        }
         e.preventDefault();
         isDragging = true;
         lastX = e.touches[0].clientX;
@@ -259,6 +265,10 @@
       }
 
       if (!pinch.active && e.touches.length === 1 && isDragging) {
+        if (!e.cancelable) {
+          isDragging = false;
+          return;
+        }
         e.preventDefault();
         const t = e.touches[0];
         targetOffsetX += t.clientX - lastX;
