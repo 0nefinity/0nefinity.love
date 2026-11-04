@@ -48280,7 +48280,7 @@ void main() {
     },
   };
   panel.addSlider("tempo", {
-    label: "", min: -EINS, max: EINS, step: 0.05, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
+    label: "", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
     value: 0,
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
