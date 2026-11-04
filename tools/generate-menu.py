@@ -15,7 +15,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_FILE = os.path.join(ROOT_DIR, 'includes', 'something-in-the-body.html')
 INDEX_FILE = os.path.join(ROOT_DIR, 'includes', 'search-index.json')
 # Gezielte Uebersetzungen, nur in Tims Wortlaut (AGENTS.md, "Uebersetzungen")
-TRANSLATIONS_FILE = os.path.join(ROOT_DIR, 'includes', 'uebersetzungen.json')
+TRANSLATIONS_FILE = os.path.join(ROOT_DIR, 'includes', 'some-uebersetzungen.json')
 HTACCESS_FILE = os.path.join(ROOT_DIR, '.htaccess')
 
 # Volltext-Index: sichtbarer Text der Seiten im Menue, geladen von meta.js beim
@@ -213,7 +213,7 @@ def build_search_index(structure):
     # a page is also found by its other names, without them being printed anywhere
     for path, langs in load_translations().items():
         if path not in index:
-            raise SystemExit(f'uebersetzungen.json: {path} steht nicht im Menue')
+            raise SystemExit(f'some-uebersetzungen.json: {path} steht nicht im Menue')
         for tr in langs.values():
             if tr.get('title'):
                 index[path] = (tr['title'] + ' ' + index[path])[:INDEX_CAP]
@@ -235,7 +235,7 @@ def load_translations():
                 continue
             slug = re.escape(alias.strip('/'))
             if not any(re.search(r'\^' + slug + r'\b', r) and target in r for r in rules):
-                raise SystemExit(f'uebersetzungen.json: {lang}-Alias {alias} fehlt in .htaccess (Weiterleitung auf {target})')
+                raise SystemExit(f'some-uebersetzungen.json: {lang}-Alias {alias} fehlt in .htaccess (Weiterleitung auf {target})')
     return translations
 
 
