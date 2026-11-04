@@ -78,6 +78,14 @@ Für die Arbeit daran heißt das:
 - **Texte nur im Wortlaut des Projektinhabers.** Keine Hilfe-, Hinweis- oder Fehlertexte ergänzen; Rückmeldungen lieber wortlos (Wackeln, Dimmen).
 - **Schwarz und Weiß.** Keine farbigen Icons, keine Emoji. Symbole werden aus 0 und 1 zusammengesetzt, wie Lupe und Logout.
 
+## Übersetzungen
+
+Es wird nichts automatisch übersetzt. Einzelne Dinge bekommen gezielte Übersetzungen, und zwar nur im Wortlaut des Projektinhabers. Übersetzungen als Gag sind willkommen, wenn er sie vorgibt: Das beidseitig belegte Mandelbrot heißt auf Englisch "double sided almondsandwich", weil es belegte Brote im Englischen nicht gibt.
+
+- Alle Übersetzungen stehen in `includes/uebersetzungen.json`, je Seite und Sprache: `{"/seite.html": {"en": {"title": "...", "alias": "/..."}}}`. Spätere Einträge für einzelne Texte kommen in dieselbe Datei.
+- `tools/generate-menu.py` (pre-commit) nimmt den Titel unsichtbar in den Suchindex auf. Jeder `alias` muss als `RewriteRule` auf die Seite in `.htaccess` stehen, sonst bricht der Lauf ab.
+- Es gibt keine sichtbare Sprachumschaltung.
+
 ## Philosophische Konventionen
 
 Deutsch-Englisch-Mix, unkonventionelle Interpunktion und metaphorische Variablennamen sind Absicht, keine Fehler. Die "Unvollkommenheiten" gehören zur Ästhetik des Projekts.

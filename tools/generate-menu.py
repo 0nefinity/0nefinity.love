@@ -14,6 +14,9 @@ from html.parser import HTMLParser
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_FILE = os.path.join(ROOT_DIR, 'includes', 'something-in-the-body.html')
 INDEX_FILE = os.path.join(ROOT_DIR, 'includes', 'search-index.json')
+# Gezielte Uebersetzungen, nur in Tims Wortlaut (AGENTS.md, "Uebersetzungen")
+TRANSLATIONS_FILE = os.path.join(ROOT_DIR, 'includes', 'uebersetzungen.json')
+HTACCESS_FILE = os.path.join(ROOT_DIR, '.htaccess')
 
 # Volltext-Index: sichtbarer Text der Seiten im Menue, geladen von meta.js beim
 # ersten Tastendruck in der Suche. Je Datei auf INDEX_CAP Zeichen begrenzt.
@@ -207,7 +210,33 @@ def build_search_index(structure):
             text = visible_text(item['path'])
             if text is not None:
                 index['/' + item['path']] = text
+    # a page is also found by its other names, without them being printed anywhere
+    for path, langs in load_translations().items():
+        if path not in index:
+            raise SystemExit(f'uebersetzungen.json: {path} steht nicht im Menue')
+        for tr in langs.values():
+            if tr.get('title'):
+                index[path] = (tr['title'] + ' ' + index[path])[:INDEX_CAP]
     return index
+
+
+def load_translations():
+    """{ '/seite.html': { 'en': { 'title': ..., 'alias': '/...' } } }; jeder Alias muss als
+    Weiterleitung auf die Seite in .htaccess stehen, sonst bricht der Lauf ab."""
+    with open(TRANSLATIONS_FILE, encoding='utf-8') as fh:
+        translations = json.load(fh)
+    with open(HTACCESS_FILE, encoding='utf-8') as fh:
+        rules = [l for l in fh if l.lstrip().startswith('RewriteRule')]
+    for path, langs in translations.items():
+        target = '/' + os.path.splitext(path.lstrip('/'))[0]
+        for lang, tr in langs.items():
+            alias = tr.get('alias')
+            if not alias:
+                continue
+            slug = re.escape(alias.strip('/'))
+            if not any(re.search(r'\^' + slug + r'\b', r) and target in r for r in rules):
+                raise SystemExit(f'uebersetzungen.json: {lang}-Alias {alias} fehlt in .htaccess (Weiterleitung auf {target})')
+    return translations
 
 
 def render_file(f):
