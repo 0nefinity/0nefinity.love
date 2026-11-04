@@ -63,7 +63,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 `018-transform.js` (`getNextSymbol()`): Zeichen bei Hover in Spans gewickelt und durch 0, 1, ∞ rotiert, CSS-Puls. Brauchbar, direkt einbindbar.
 
 ### Fuzzy-Menüsuche mit Aliasen und Phonetik
-`meta.js` (`initMenuSearch()`, `compact()`, `fuzzyDist()` nach Sellers, `termScore()`, `search()`, `renderLabel()`, Inhaltssuche `loadContent()/contentMatch()/renderSnippet()`): normalisiert Akzente/Umlaute/π/∞, Wortanfang, Teilstring, Tippfehler bis Distanz 2, k/c, s/z, 0/o gleich, Aliasgruppen (inf = unendlich), Hervorhebung mit `<mark>`, Snippets. Ausgefeilt; `compact`, `fuzzyDist`, `termScore`, `search` arbeiten auf einer Eintragsliste und sind aus dem DOM-Teil herauslösbar. Andere Namen einer Seite (gezielte Übersetzungen aus `includes/uebersetzungen.json`, Meta-Keywords) landen per `tools/generate-menu.py` unsichtbar im Suchindex.
+`meta.js` (`initMenuSearch()`, `compact()`, `fuzzyDist()` nach Sellers, `termScore()`, `search()`, `renderLabel()`, Inhaltssuche `loadContent()/contentMatch()/renderSnippet()`): normalisiert Akzente/Umlaute/π/∞, Wortanfang, Teilstring, Tippfehler bis Distanz 2, k/c, s/z, 0/o gleich, Aliasgruppen (inf = unendlich), Hervorhebung mit `<mark>`, Snippets. Ausgefeilt; `compact`, `fuzzyDist`, `termScore`, `search` arbeiten auf einer Eintragsliste und sind aus dem DOM-Teil herauslösbar. Andere Namen einer Seite (gezielte Übersetzungen aus `includes/some-uebersetzungen.json`, Meta-Keywords) landen per `tools/generate-menu.py` unsichtbar im Suchindex.
 
 ## Canvas/WebGL-Rendering
 
