@@ -791,6 +791,9 @@ void main() {
   // Three slots: the field, the lupe and the tower (der Häck, below), so none throws away another's orbit.
   const refs = { feld: null, lupe: null, turm: null };
   let turmRoh = false;
+  // tower frames are built shallow but shown (and checked) at any depth, where the real view runs
+  // many more iterations; with fewer the copy loses the pixels near the boundary (dark specks)
+  const turmMinIt = 8000;
   function machRef(o, spec, c, exact, pb) {
     return { cx: c[0], cy: c[1], PB: pb, L: o.L, escaped: o.escaped, mode: spec.mode, exact, data: o.data, tex: texture(gl.RG32F, o.data, 2, gl.RG), bla: null };
   }
@@ -1163,7 +1166,7 @@ void main() {
     const lr = Math.log2(Math.max(r, 1e-9));
     const lw = logadd(lv, lsc + lhd);
     const lpcMin = lr + lsc - 2 * Math.max(0, lw);
-    const maxit = Math.min(LMAX - 2, Math.round(250 + 45 * Math.max(0, -lpcMin)));
+    const maxit = Math.min(LMAX - 2, Math.max(turmRoh ? turmMinIt : 0, Math.round(250 + 45 * Math.max(0, -lpcMin))));
     const exact = lpcMin < -40;
     // orbits are made a bit longer than needed, so zooming keeps them for a while
     const longer = Math.min(LMAX, Math.ceil((maxit * 1.1 + 2900) / 4096) * 4096);
