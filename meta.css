@@ -3219,7 +3219,13 @@ html.oe-editing .ctrl-panel .ctrl-button {
         overflow: hidden;
     }
 
+    /* Griff mittig, Knoepfe rechts, beide auf einer Hoehe. Werden die Knoepfe so viele, dass sie bis zur Mitte reichen,
+       waechst die rechte Spalte und der Griff rueckt nach links, statt unter den Knoepfen zu liegen. */
     .ctrl-panel-header {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        column-gap: 8px;
+        align-items: center;
         min-height: 42px;
         padding: 0 10px 2px;
         margin-bottom: 0;
@@ -3229,8 +3235,14 @@ html.oe-editing .ctrl-panel .ctrl-button {
         box-sizing: border-box;
     }
 
+    .ctrl-drag-handle {
+        grid-area: 1 / 2;
+    }
+
     .ctrl-header-buttons {
-        right: 10px;
+        grid-area: 1 / 3;
+        justify-self: end;
+        position: static;
         gap: 8px;
     }
 
