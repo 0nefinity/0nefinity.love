@@ -110,6 +110,7 @@
     }
 
     function getSliderDecimals(config, fallback = 0) {
+        if (typeof config?.transform?.nudge === 'function' && Number.isFinite(config.baseDecimals)) return Math.max(0, config.baseDecimals);
         const stepValue = Number.isFinite(config?.step) ? Math.abs(config.step) : NaN;
         if (stepValue > 0) return countFractionDigits(stepValue);
 
@@ -244,8 +245,20 @@
         return min + (((value - min) % period) + period) % period;
     }
 
-    function getProjectedSliderStep(step) {
+    // Eine Skala mit transform.nudge zaehlt ihre Klick-Schritte selbst (in Anzeigeeinheiten); die Spur bleibt dann stufenlos.
+    function getProjectedSliderStep(step, config) {
+        if (typeof config?.transform?.nudge === 'function') return 'any';
         return Number.isFinite(step) && step > 0 ? String(step) : 'any';
+    }
+
+    // Naechster Wert nach einem Klick auf + / -: transform.nudge(wert, richtung, cfg) falls vorhanden, sonst wert + delta.
+    function stepSliderValue(config, value, delta, decimals) {
+        const nudge = config?.transform?.nudge;
+        if (typeof nudge === 'function') {
+            const next = Number(nudge(value, Math.sign(delta), config));
+            if (Number.isFinite(next)) return next;
+        }
+        return preciseAdd(value, delta, decimals);
     }
 
     function getSliderTransform(config) {
@@ -287,7 +300,15 @@
     function fitSliderValueInput(input, config, value, decimals) {
         if (!input) return;
         const candidates = [value];
-        if (config) candidates.push(config.min, config.max);
+        if (config) {
+            candidates.push(config.min, config.max);
+            // Eigene Anzeige-Umrechnung (transform): die Ziffernzahl schwankt entlang der Bahn, Enden allein reichen nicht.
+            // Darum die ganze Bahn abtasten, damit die Feldbreite (und mit ihr die Spur) beim Ziehen nicht springt.
+            const { min, max } = getProjectedSliderBounds(config, Number(value));
+            if (getSliderTransform(config) && max > min) {
+                for (let i = 0; i <= 64; i++) candidates.push(fromSliderRangeValue(min + (max - min) * i / 64, config));
+            }
+        }
         let chars = 1;
         for (const v of candidates) {
             if (!Number.isFinite(Number(v))) continue;
@@ -1603,8 +1624,26 @@
             this._closeConfigPopup();
 
             // Popup-Inhalt aktualisieren
-            popup.innerHTML = `
+            const symLabel = cfg.symmetric ? String(cfg.symmetric).replace(/[<>&"]/g, '') : '';
+            const configRows = symLabel
+                ? `                <div class="ctrl-config-row">
+                    <span class="ctrl-config-label">${symLabel}</span>
+                    <div class="ctrl-config-input-wrap">
+                        <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="down" aria-label="Max verringern">&#9662;</button>
+                        <input type="search" class="ctrl-config-input" data-config="max" value="${formatConfigFieldValue(cfg, 'max')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
+                        <button type="button" class="ctrl-config-arrow" data-config="max" data-direction="up" aria-label="Max erhöhen">&#9652;</button>
+                    </div>
+                </div>
                 <div class="ctrl-config-row">
+                    <span class="ctrl-config-label">Step</span>
+                    <div class="ctrl-config-input-wrap">
+                        <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="down" aria-label="Step verkleinern">&#9662;</button>
+                        <input type="search" class="ctrl-config-input" data-config="step" value="${formatConfigFieldValue(cfg, 'step')}" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" enterkeyhint="done">
+                        <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
+                    </div>
+                </div>
+`
+                : `                <div class="ctrl-config-row">
                     <span class="ctrl-config-label">Min</span>
                     <div class="ctrl-config-input-wrap">
                         <button type="button" class="ctrl-config-arrow" data-config="min" data-direction="down" aria-label="Min verringern">&#9662;</button>
@@ -1628,6 +1667,8 @@
                         <button type="button" class="ctrl-config-arrow" data-config="step" data-direction="up" aria-label="Step vergrößern">&#9652;</button>
                     </div>
                 </div>
+`;
+            popup.innerHTML = `${configRows}
                 <div class="ctrl-config-actions">
                     <button type="button" class="ctrl-config-cancel">Cancel</button>
                     <button type="button" class="ctrl-config-save">Save</button>
@@ -1655,6 +1696,7 @@
 
             const applyConfigValue = (configType, nextValue) => {
                 cfg[configType] = nextValue;
+                if (cfg.symmetric && configType === 'max') cfg.min = -nextValue;
                 syncSliderDecimals(cfg, cfg.defaultDecimals ?? 0);
                 syncConfigInputs();
                 this._updateSliderFromConfig(key);
@@ -1836,7 +1878,7 @@
             if (range) {
                 range.min = min;
                 range.max = max;
-                range.step = getProjectedSliderStep(cfg.step);
+                range.step = getProjectedSliderStep(cfg.step, cfg);
                 range.value = clamp(toSliderRangeValue(currentValue, cfg), min, max);
             }
 
@@ -3216,11 +3258,12 @@
                 transform,
                 wrap: !!wrap,
                 baseDecimals: decimals,
-                decimals: getSliderDecimals({ step, baseDecimals: decimals }, decimals),
+                decimals: getSliderDecimals({ step, baseDecimals: decimals, transform }, decimals),
                 defaultMin: min,
                 defaultMax: max,
                 defaultStep: step,
-                defaultDecimals: decimals
+                defaultDecimals: decimals,
+                symmetric: config.symmetric || ''
             };
             if (config.grow) {
                 const buffer = Number.isFinite(config.grow.buffer) && config.grow.buffer > 1 ? config.grow.buffer : 2;
@@ -3242,7 +3285,7 @@
                 <label class="ctrl-label">${label}</label>
                 <div class="ctrl-slider-group">
                     <button class="ctrl-stepper-btn" data-action="dec">&#8722;</button>
-                    ${wrap ? '<span class="ctrl-range-wrap">' : ''}<input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step)}" value="${initialRangeValue}">${wrap ? '</span>' : ''}
+                    ${wrap ? '<span class="ctrl-range-wrap">' : ''}<input type="range" class="ctrl-range" min="${initialBounds.min}" max="${initialBounds.max}" step="${getProjectedSliderStep(step, sliderCfg)}" value="${initialRangeValue}">${wrap ? '</span>' : ''}
                     <button class="ctrl-stepper-btn" data-action="inc">+</button>
                     <input type="search" class="ctrl-value-input" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" value="${formatSliderControlValue(initialValue, sliderCfg.decimals, sliderCfg)}">
                     <button class="ctrl-config-trigger" title="Einstellungen">&#8942;</button>
@@ -3267,7 +3310,7 @@
                 range.min = bounds.min;
                 // Waehrend des Ziehens bleibt die Skala stehen (Daumen unter dem Finger), ausser der Rand wird erreicht.
                 if (!(cfg && cfg.grow && cfg.grow.dragging) || grew) range.max = bounds.max;
-                range.step = getProjectedSliderStep(cfg ? cfg.step : step);
+                range.step = getProjectedSliderStep(cfg ? cfg.step : step, cfg);
                 range.value = clamp(toSliderRangeValue(currentValue, cfg), bounds.min, bounds.max);
 
                 if (updateInput) {
@@ -3341,7 +3384,7 @@
                 // Nicht starten wenn wir schon am Minimum/Maximum sind
                 const cfg = this._sliderConfigs[key];
                 const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
-                const newVal = preciseAdd(this.params[key], delta, decs);
+                const newVal = stepSliderValue(cfg, this.params[key], delta, decs);
                 const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
                 const wraps = !!(cfg && cfg.wrap);
                 if (!wraps && (newVal < currentMin || (newVal > currentMax && !(cfg && cfg.grow)))) return;
@@ -3350,7 +3393,7 @@
                 // Sofort ein erster Schritt
                 updateValue(newVal);
                 holdInterval = setInterval(() => {
-                    const nextVal = preciseAdd(this.params[key], delta, decs);
+                    const nextVal = stepSliderValue(cfg, this.params[key], delta, decs);
                     if (!wraps && (nextVal < currentMin || (nextVal > currentMax && !(cfg && cfg.grow)))) {
                         stopHold();
                         return;
@@ -3382,7 +3425,7 @@
                     const delta = getDelta();
                     const cfg = this._sliderConfigs[key];
                     const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
-                    const newVal = preciseAdd(this.params[key], delta, decs);
+                    const newVal = stepSliderValue(cfg, this.params[key], delta, decs);
                     const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
                     if (!(cfg && cfg.wrap) && (newVal < currentMin || (newVal > currentMax && !(cfg && cfg.grow)))) return;
 
@@ -3396,7 +3439,7 @@
                         const delta = getDelta();
                         const cfg = this._sliderConfigs[key];
                         const decs = cfg ? getCurrentSliderDecimals(cfg, cfg.defaultDecimals ?? decimals) : decimals;
-                        const newVal = preciseAdd(this.params[key], delta, decs);
+                        const newVal = stepSliderValue(cfg, this.params[key], delta, decs);
                         const { min: currentMin, max: currentMax } = getProjectedSliderBounds(cfg, this.params[key]);
                         if ((cfg && cfg.wrap) || (newVal >= currentMin && (newVal <= currentMax || cfg.grow))) {
                             updateValue(newVal);
@@ -3764,6 +3807,7 @@
                 placeholder = '',
                 type = 'search',
                 inputmode = '',
+                commit = 'input',
                 onChange
             } = config;
 
@@ -3779,10 +3823,13 @@
             `;
 
             const input = row.querySelector('.ctrl-input');
-            input.addEventListener('input', () => {
+            // commit: 'enter' reports the text only when it is finished (Enter or leaving the field),
+            // for values that mean nothing half typed
+            input.addEventListener(commit === 'enter' ? 'change' : 'input', () => {
                 this.params[key] = input.value;
                 if (this.callbacks[key]) this.callbacks[key](input.value, key);
             });
+            if (commit === 'enter') input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
 
             this._currentContainer.appendChild(row);
             return this;
@@ -4815,7 +4862,7 @@
                 if (range) {
                     range.min = bounds.min;
                     if (!(cfg && cfg.grow && cfg.grow.dragging) || grew) range.max = bounds.max;
-                    range.step = getProjectedSliderStep(cfg ? cfg.step : undefined);
+                    range.step = getProjectedSliderStep(cfg ? cfg.step : undefined, cfg);
                     range.value = clamp(toSliderRangeValue(numericValue, cfg), bounds.min, bounds.max);
                 }
                 if (valueInput) {
