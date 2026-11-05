@@ -86356,8 +86356,15 @@ tools/editor.js
   }
 
   // Ein Platz je Seite und Weg: der neuere Entwurf ersetzt den aelteren, er baut auf demselben Stand auf.
+  // Kommentare je Kommentar (sein gespeicherter Text): sie ersetzen weder den Seitenentwurf noch einander.
   function outboxKey(route, body) {
-    return body.path + '\n' + route;
+    const key = body.path + '\n' + route;
+    return body.changes ? key + '\n' + body.changes.map((c) => c.orig).join('\n') : key;
+  }
+
+  function outboxForget(key) {
+    const box = outboxRead();
+    if (key in box) { delete box[key]; outboxWrite(box); }
   }
 
   function outboxDrop(key, id) {
@@ -86390,8 +86397,7 @@ tools/editor.js
       if (body && typeof body === 'object' && 'path' in body) body = { ...body, path: pagePath };
     }
     let kept = null;
-    // Kommentare (changes) nicht: ein zweites Mal angekommen fehlt ihr alter Text, das gaebe einen falschen Alarm.
-    if (body && OUTBOX_ROUTES.has(route) && !body.changes) {
+    if (body && OUTBOX_ROUTES.has(route)) {
       kept = { key: outboxKey(route, body), id: Date.now() + '-' + Math.random() };
       const box = outboxRead();
       box[kept.key] = { id: kept.id, route, body, t: Date.now() };
@@ -87707,9 +87713,7 @@ tools/editor.js
     if (!dirty()) {
       // Zurueck auf den gespeicherten Stand (z. B. per Rueckgaengig nach einem Fehler): dann ist nichts offen,
       // auch kein Entwurf, der beim naechsten Besuch die zurueckgenommene Aenderung nachschicken wuerde.
-      const box = outboxRead();
-      const key = outboxKey('save', { path: pagePath });
-      if (key in box) { delete box[key]; outboxWrite(box); }
+      outboxForget(outboxKey('save', { path: pagePath }));
       saveOk();
       render();
       return;
@@ -88050,7 +88054,12 @@ tools/editor.js
       }
       return;
     }
-    if (info.text !== info.shown) commitItem(info); else pendingItems.delete(info);
+    if (info.text !== info.shown) commitItem(info);
+    else {
+      // Zurueck auf den gespeicherten Text: auch kein Entwurf mehr, der die Aenderung spaeter nachschickt.
+      pendingItems.delete(info);
+      if (!info.busy) outboxForget(outboxKey('save', { path: pagePath, changes: [{ orig: info.raw }] }));
+    }
   }
 
   function flushItems() {
