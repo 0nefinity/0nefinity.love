@@ -75148,7 +75148,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -86226,8 +86237,13 @@ tools/editor.js
   let docBase = null;
   let islandSeq = 0;
   const islandBase = new Map();
-  let startEls = new WeakSet();
-  let styledAtStart = new WeakSet();
+  // Attribute jedes Elements beim Start: Skripte der Seite aendern style/class laufend (Animation), das ist keine
+  // Bearbeitung. Gespeichert werden fuer diese Elemente immer die Start-Attribute.
+  let startAttrs = new WeakMap();
+  // Elemente, die ein Skript der Seite eingefuegt hat (nicht Tim): gehoeren nicht ins Dokument.
+  let foreignEls = new WeakSet();
+  // Kopie jedes Start-Elements im Startzustand: Grundzustand, wenn ein Skript einen Bereich ohne Textstelle umbaut.
+  let startTwin = new WeakMap();
   let pagePath = location.pathname;
   let busy = 0;
   let overlay = null;
@@ -86424,6 +86440,8 @@ tools/editor.js
       opts.headers['X-0ne-Edit'] = '1';
       if (csrf) opts.headers['X-0ne-Csrf'] = csrf;
       opts.body = JSON.stringify(body);
+      // keepalive traegt hoechstens 64 KiB, groessere Anfragen lehnt der Browser sofort ab: dann ohne.
+      if (new Blob([opts.body]).size > 60000) opts.keepalive = false;
     }
     let res;
     try {
@@ -86736,6 +86754,7 @@ tools/editor.js
   function serial(mode) {
     for (const n of root.querySelectorAll(UI_ISL)) if (!n.hasAttribute('data-oe-isl')) n.setAttribute('data-oe-isl', 'u' + ++islandSeq);
     const c = root.cloneNode(true);
+    dropScriptChanges(c);
     if (mode === 'skel') looseUi(c).forEach((n) => n.remove());
     c.querySelectorAll('[data-oe-ui]').forEach((n) => { if (mode === 'doc' || !n.matches(UI_ISL)) n.remove(); });
     for (const n of c.querySelectorAll('[data-oe-isl]')) {
@@ -86831,8 +86850,24 @@ tools/editor.js
   function makeHunks(base, cur, ctx) {
     const A = tokenize(base);
     const B = tokenize(cur);
+    // Inselgrenzen zaehlen nicht als Abweichung: friert ein Skript hunderte Tabellenzellen ein, kaemen sonst
+    // hunderte Grenzen dazu, der Diff gaebe auf und schickte die ganze Seite als einen Bereich.
+    const keep = (T) => T.reduce((ix, t, i) => (t !== SENT && ix.push(i), ix), []);
+    const ia = keep(A);
+    const ib = keep(B);
+    // Zurueck auf die vollen Token. Umfasst ein Bereich genau eine ganze Insel, gehoeren ihre Grenzen dazu,
+    // damit unten auffaellt, wer eine Insel loescht. Grenzen kommen paarweise: gerade Nummer oeffnet.
+    const opens = new Set();
+    for (let i = 0, k = 0; i < A.length; i++) if (A[i] === SENT && k++ % 2 === 0) opens.add(i);
+    const span = (ix, T, k0, k1) => [k0 < ix.length ? ix[k0] : T.length, k1 > k0 ? ix[k1 - 1] + 1 : (k0 < ix.length ? ix[k0] : T.length)];
+    const regions = diffRegions(ia.map((i) => A[i]), ib.map((i) => B[i])).map((r) => {
+      let [a0, a1] = span(ia, A, r.a0, r.a1);
+      const [b0, b1] = span(ib, B, r.b0, r.b1);
+      if (a1 > a0 && opens.has(a0 - 1) && A[a1] === SENT && !opens.has(a1)) { a0--; a1++; }
+      return { a0, a1, b0, b1 };
+    });
     const merged = [];
-    for (const r of diffRegions(A, B)) {
+    for (const r of regions) {
       const last = merged[merged.length - 1];
       if (last && r.a0 - last.a1 < 4) { last.a1 = r.a1; last.b1 = r.b1; } else merged.push({ ...r });
     }
@@ -87253,7 +87288,7 @@ tools/editor.js
         arm(info, 1500);
       }
     }
-    markDirty();
+    markDirty(true);
   }
 
   // Die Wurzel, wenn der Knoten im bearbeitbaren Dokument liegt (nicht in einer Insel, nicht in der Oberflaeche).
@@ -87267,20 +87302,60 @@ tools/editor.js
   // Browser setzen beim Zusammenfuegen und Einfuegen gern style-Attribute und leere span/font: was nicht schon
   // beim Start da war, wird entfernt, damit nur der Text in die Datei kommt.
   function markStart() {
-    startEls = new WeakSet();
-    styledAtStart = new WeakSet();
+    startAttrs = new WeakMap();
+    foreignEls = new WeakSet();
     if (!root) return;
-    for (const n of root.querySelectorAll('*')) {
-      startEls.add(n);
-      if (n.hasAttribute('style')) styledAtStart.add(n);
+    startTwin = new WeakMap();
+    const src = root.querySelectorAll('*');
+    const twins = root.cloneNode(true).querySelectorAll('*');
+    for (let i = 0; i < src.length; i++) {
+      keepAttrs(src[i]);
+      startTwin.set(src[i], twins[i]);
     }
   }
 
+  const ownAttr = (name) => name === 'contenteditable' || name.startsWith('data-oe');
+
+  function keepAttrs(n) {
+    const list = [];
+    for (const a of n.attributes) {
+      if (ownAttr(a.name)) continue;
+      const v = a.name === 'class' ? a.value.split(/\s+/).filter((x) => x && x !== 'oe-cur').join(' ') : a.value;
+      if (a.name !== 'class' || v) list.push([a.name, v]);
+    }
+    startAttrs.set(n, list);
+  }
+
+  const attrMap = (n) => new Map([...n.attributes].map((a) => [a.name, a.value]));
+
+  // Auf der Kopie (serial): Start-Elemente mit ihren Start-Attributen, Skript-Elemente weg. Kopie und Wurzel
+  // haben direkt nach cloneNode dieselbe Reihenfolge.
+  function dropScriptChanges(c) {
+    const src = root.querySelectorAll('*');
+    const dst = c.querySelectorAll('*');
+    const drop = [];
+    for (let i = 0; i < src.length; i++) {
+      if (foreignEls.has(src[i])) { drop.push(dst[i]); continue; }
+      startAttrsOn(src[i], dst[i]);
+    }
+    for (const d of drop) d.remove();
+  }
+
+  function startAttrsOn(src, d) {
+    const list = startAttrs.get(src);
+    if (!list) return d;
+    for (const a of [...d.attributes]) if (!ownAttr(a.name)) d.removeAttribute(a.name);
+    for (const [k, v] of list) d.setAttribute(k, v);
+    return d;
+  }
+
+  // Browser setzen beim Zusammenfuegen und Einfuegen style an neue Elemente; Start-Elemente behalten ihr style,
+  // das ein Skript gerade setzt (es zaehlt ohnehin nicht).
   function tidyStyles() {
     for (const n of root.querySelectorAll('[style],span,font')) {
-      if (n.closest('[data-oe-isl],[data-oe-ui]')) continue;
-      if (n.hasAttribute('style') && !styledAtStart.has(n)) n.removeAttribute('style');
-      if (!startEls.has(n) && (n.localName === 'span' || n.localName === 'font') && !n.attributes.length) n.replaceWith(...n.childNodes);
+      if (n.closest('[data-oe-isl],[data-oe-ui]') || startAttrs.has(n)) continue;
+      n.removeAttribute('style');
+      if ((n.localName === 'span' || n.localName === 'font') && !n.attributes.length) n.replaceWith(...n.childNodes);
     }
   }
 
@@ -87290,8 +87365,19 @@ tools/editor.js
     const el = sel.rangeCount && editHost(sel.anchorNode);
     if (!el || el !== editHost(sel.focusNode)) return;
     snap('force');
+    // Tims Formatierung darf Attribute bestehender Elemente aendern (Link-Ziel): genau diese gelten ab jetzt als Stand.
+    const olds = [el, ...el.querySelectorAll('*')].filter((n) => startAttrs.has(n)).map((n) => [n, attrMap(n)]);
     document.execCommand(cmd, false, value);
     if (cmd === 'removeFormat') document.execCommand('unlink');
+    for (const [n, before] of olds) {
+      const after = attrMap(n);
+      const list = new Map(startAttrs.get(n));
+      for (const k of new Set([...before.keys(), ...after.keys()])) {
+        if (ownAttr(k) || before.get(k) === after.get(k)) continue;
+        if (after.has(k)) list.set(k, after.get(k)); else list.delete(k);
+      }
+      startAttrs.set(n, [...list]);
+    }
     markDirty();
     syncSelBar();
   }
@@ -87581,7 +87667,7 @@ tools/editor.js
     let base;
     if (el.localName === 'oe-run') base = start;
     else {
-      const c = el.cloneNode(false);
+      const c = startAttrsOn(el, el.cloneNode(false));
       c.innerHTML = start;
       base = scrubClone(c).outerHTML;
     }
@@ -87620,25 +87706,48 @@ tools/editor.js
 
   const FOREIGN_BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, pre, figcaption, dd, dt, oe-run';
 
-  function onForeignChange(muts) {
+  function onForeignChange(muts, how) {
+    const mine = how === true; // der Observer reicht sich selbst als zweites Argument
     const now = performance.now();
-    if (now - ownAt < 300) return;
+    const own = mine || now - ownAt < 300;
     const ui = (n) => n.nodeType === 1 && n.matches('[data-oe-ui]');
     const gone = new Set();
+    const region = new Set();
+    // Tims Eingabe landet am Cursor: im Block, in dem er tippt, oder als Geschwister des neuen Knotens mit dem Cursor
+    // (Enter, Einfuegen). Was ein Skript waehrenddessen anderswo anhaengt (Hilfsfenster, Messelemente), ist fremd.
+    const sn = now - lastTypeAt < 2000 ? getSelection().anchorNode : null;
+    const se = sn && (sn.nodeType === 1 ? sn : sn.parentElement);
+    const blk = se && se.closest('[data-oe], ' + FOREIGN_BLOCKS);
+    const atCaret = new Set();
+    if (sn) for (const m of muts) for (const n of m.addedNodes) if (n.contains(sn)) atCaret.add(n.parentNode);
+    const tims = (n) => !!sn && (atCaret.has(n.parentNode) || (!!blk && blk !== root && blk.contains(n)));
     for (const m of muts) {
       const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
       if (t && t.closest('[data-oe-ui]')) continue;
       if ([...m.addedNodes, ...m.removedNodes].some(ui)) continue;
-      if (!root || !t || t.closest('[data-oe-isl]') || t === root) continue;
+      if (!root || !t || t.closest('[data-oe-isl]')) continue;
+      // Was ein Skript einfuegt, kommt nicht ins Dokument (z.B. Nullen bei jedem Klick). Eigene Einfuegungen des
+      // Editors laufen ueber markDirty (lastTypeAt, am Cursor) oder markStart (startAttrs).
+      for (const n of m.addedNodes) {
+        if (n.nodeType === 1 && root.contains(n) && !startAttrs.has(n) && !mine && !tims(n)) foreignEls.add(n);
+      }
+      if (own || t === root) continue;
       let host = t.closest('[data-oe]');
       if (!host || !root.contains(host)) host = t.closest(FOREIGN_BLOCKS);
-      if (!host || host === root || !root.contains(host) || host.closest('[data-oe-ui]') || host.closest('[data-oe-isl]')) continue;
+      if (!host || host === root || !root.contains(host) || host.closest('[data-oe-ui]') || host.closest('[data-oe-isl]')) {
+        // Ein Skript baut einen Bereich ohne Textstelle um (Anzeige, Regler-Wert): der Bereich zaehlt wie am Start.
+        if (startTwin.has(t) && !t.querySelector('[data-oe]')) region.add(t);
+        continue;
+      }
       // Wer gerade tippt, wird nie ausgesperrt (Handy: Tippen in Text mit Animation).
       const sn = getSelection().anchorNode;
       if (sn && host.contains(sn) && now - lastTypeAt < 2000) continue;
       gone.add(host);
     }
     for (const el of gone) freeze(el);
+    for (const el of region) {
+      if (el.isConnected && !el.closest('[data-oe-isl]')) island(el, cleanOuter(startTwin.get(el)));
+    }
     if (!gone.size) return;
     render();
   }
@@ -87696,7 +87805,10 @@ tools/editor.js
     return true;
   }
 
-  function markDirty() {
+  function markDirty(typed) {
+    // Eine Aktion des Editors (Format, Block, Einfuegen): alles, was sie gerade eingefuegt hat, ist Tims.
+    // Getipptes laeuft ueber onForeignChange, dort zaehlt nur, was am Cursor landet.
+    if (!typed && watcher) onForeignChange(watcher.takeRecords(), true);
     ownAt = lastTypeAt = performance.now();
     clearTimeout(saveTimer);
     if (!dirty()) {
