@@ -119,6 +119,8 @@
     const known = new WeakMap();
 
     const md = () => !!(opts.md && opts.md());
+    // Textdateien kennen keine Formatierung: alle Knoepfe aus, Tastenkuerzel tun nichts.
+    const plain = () => !!(opts.plain && opts.plain());
 
     function guard(fn) {
       return () => {
@@ -309,7 +311,7 @@
       const within = (sel2) => !!(anchorEl && anchorEl.closest(sel2) && host.contains(anchorEl.closest(sel2)));
       for (const b of ctl) {
         const k = b.dataset.fmt;
-        let off = !host || !editing;
+        let off = !host || !editing || plain();
         let pressed = false;
         let why = '';
         if (k === 'bold') pressed = !!host && document.queryCommandState('bold');
@@ -382,6 +384,7 @@
 
     function key(e) {
       if (!(e.ctrlKey || e.metaKey)) return null;
+      if (plain()) return /^(?:Digit|Numpad)[0-3]$/.test(e.code || '') && e.altKey || /^[biu]$/i.test(e.key) || e.code === 'Period' || e.code === 'Comma' ? () => {} : null;
       if (e.altKey) {
         // Deutsche Tastatur: AltGr meldet Strg+Alt und tippt }, ², ³; nur echte Ziffer-Taste zaehlt.
         if (e.getModifierState && e.getModifierState('AltGraph')) return null;

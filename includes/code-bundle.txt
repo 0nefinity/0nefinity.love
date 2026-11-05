@@ -75148,7 +75148,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -85081,6 +85092,8 @@ tools/editor-format.js
     const known = new WeakMap();
 
     const md = () => !!(opts.md && opts.md());
+    // Textdateien kennen keine Formatierung: alle Knoepfe aus, Tastenkuerzel tun nichts.
+    const plain = () => !!(opts.plain && opts.plain());
 
     function guard(fn) {
       return () => {
@@ -85271,7 +85284,7 @@ tools/editor-format.js
       const within = (sel2) => !!(anchorEl && anchorEl.closest(sel2) && host.contains(anchorEl.closest(sel2)));
       for (const b of ctl) {
         const k = b.dataset.fmt;
-        let off = !host || !editing;
+        let off = !host || !editing || plain();
         let pressed = false;
         let why = '';
         if (k === 'bold') pressed = !!host && document.queryCommandState('bold');
@@ -85344,6 +85357,7 @@ tools/editor-format.js
 
     function key(e) {
       if (!(e.ctrlKey || e.metaKey)) return null;
+      if (plain()) return /^(?:Digit|Numpad)[0-3]$/.test(e.code || '') && e.altKey || /^[biu]$/i.test(e.key) || e.code === 'Period' || e.code === 'Comma' ? () => {} : null;
       if (e.altKey) {
         // Deutsche Tastatur: AltGr meldet Strg+Alt und tippt }, ², ³; nur echte Ziffer-Taste zaehlt.
         if (e.getModifierState && e.getModifierState('AltGraph')) return null;
@@ -85896,11 +85910,44 @@ tools/editor-md.js
   /* ---------------------------------------------------------------- API */
 
   function contentRoot() {
-    return document.querySelector('.text-viewer-content[data-format="markdown"]');
+    return document.querySelector('.text-viewer-content[data-format="markdown"], .text-viewer-content[data-format="text"]');
   }
 
   function isMdPage() {
-    return !!contentRoot();
+    return !!document.querySelector('.text-viewer-content[data-format="markdown"]');
+  }
+
+  // Plain text (txt, files without extension): the viewer shows the file as it is (white-space: pre-wrap), so the
+  // text is the characters plus line breaks, however the browser has written them (\n, <br>, <div> per line).
+  const TEXT_BLOCK = new Set(['div', 'p']);
+  const TEXT_TRANSPARENT = new Set(['span', 'font']);
+
+  function plainText(root) {
+    let out = '';
+    let pendingBreak = false;
+    const put = (s) => {
+      if (pendingBreak && out && !out.endsWith('\n')) out += '\n';
+      pendingBreak = false;
+      out += s;
+    };
+    const walk = (node) => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === 3) { put(c.data); continue; }
+        if (c.nodeType !== 1 || isIgnored(c)) continue;
+        const tag = c.tagName.toLowerCase();
+        if (tag === 'br') put('\n');
+        else if (TEXT_BLOCK.has(tag)) {
+          if (out && !out.endsWith('\n')) out += '\n';
+          pendingBreak = false;
+          walk(c);
+          pendingBreak = true;
+        } else if (TEXT_TRANSPARENT.has(tag)) walk(c);
+        else fail('<' + tag + '> cannot be stored in a text file', c);
+      }
+    };
+    walk(root);
+    // the viewer prints the file's last line break inside the box; base and text both drop it
+    return out.endsWith('\n') ? out.slice(0, -1) : out;
   }
 
   function serialize(root) {
@@ -85910,6 +85957,7 @@ tools/editor-md.js
     const copy = root.cloneNode(true);
     for (const w of copy.querySelectorAll('oe-run')) w.replaceWith(...w.childNodes);
     copy.normalize();
+    if (root.dataset.format === 'text') return plainText(copy);
     return joinBlocks(blocks(copy, {}));
   }
 
@@ -86391,10 +86439,12 @@ tools/editor.js
     } catch (e) { say('Entwurfsstand: ' + e.message, 'error'); }
   }
 
-  // Markdown-Seiten: Der Browser schickt base (Serialisierung beim Laden) und text (jetzt); der Server fuehrt
-  // beides mit der Datei zusammen (editor/md_save.py). Serialisierer: tools/editor-md.js.
+  // Markdown- und Textseiten (txt, Dateien ohne Endung): Der Browser schickt base (Serialisierung beim Laden) und
+  // text (jetzt); der Server fuehrt beides mit der Datei zusammen (editor/md_save.py). Serialisierer: tools/editor-md.js.
   let mdBase = null;
   const isMd = () => source?.format === 'markdown';
+  const isPlain = () => source?.format === 'text';
+  const isMerged = () => isMd() || isPlain();
   async function loadMd() {
     if (!window._018EditorMd) {
       await new Promise((ok, no) => {
@@ -86434,7 +86484,7 @@ tools/editor.js
       marks: window.OneEditorMarks.mount({ bar: moreIn, root: () => root || document.querySelector('main') || document.body }),
       fmt: window.OneEditorFormat.mount({
         host: selHost, before: () => snap('force'), after: () => { markDirty(); syncSelBar(); },
-        blockOf, setBlock: (t) => setBlock(t), md: isMd, bar: () => bar, fail: (m) => say(m, 'error'),
+        blockOf, setBlock: (t) => setBlock(t), md: isMd, plain: isPlain, bar: () => bar, fail: (m) => say(m, 'error'),
       }),
     };
     extras.marks.btn.classList.add('oe-nar');
@@ -86496,7 +86546,7 @@ tools/editor.js
 
   // Texte, die nicht im Quelltext stehen (von Skripten erzeugt, in Animationen zerlegt), sind nicht bearbeitbar.
   async function dropUnlocatable(hosts) {
-    if (isMd()) return;
+    if (isMerged()) return;
     let r;
     try { r = await api('POST', 'check', { path: pagePath, origs: hosts.map((h) => hostStart.get(h)) }); } catch (e) {
       // Nur eine Vorabprüfung: ist der Dienst weg, meldet das Speichern es laut; ein altes Backend ohne Route ebenso still.
@@ -87558,7 +87608,7 @@ tools/editor.js
     let md = null;
     let hunks = null;
     try {
-      if (isMd()) md = window._018EditorMd.payload(mdBase);
+      if (isMerged()) md = window._018EditorMd.payload(mdBase);
       else hunks = makeHunks(docBase, cur, 80);
     } catch (e) { saveTimer = saveFail(e, save); return false; }
     if (hunks && !hunks.length) { docBase = cur; saveOk(); render(); return true; }
@@ -88895,7 +88945,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       await loadSource();
       st.ready = true;
       st.inline = !!source.inline;
-      if (isMd()) await loadMd();
+      if (isMerged()) await loadMd();
       await loadExtras().catch((e) => say(e.message, 'error'));
       render();
       refreshDraft();

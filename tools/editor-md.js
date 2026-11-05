@@ -343,11 +343,44 @@
   /* ---------------------------------------------------------------- API */
 
   function contentRoot() {
-    return document.querySelector('.text-viewer-content[data-format="markdown"]');
+    return document.querySelector('.text-viewer-content[data-format="markdown"], .text-viewer-content[data-format="text"]');
   }
 
   function isMdPage() {
-    return !!contentRoot();
+    return !!document.querySelector('.text-viewer-content[data-format="markdown"]');
+  }
+
+  // Plain text (txt, files without extension): the viewer shows the file as it is (white-space: pre-wrap), so the
+  // text is the characters plus line breaks, however the browser has written them (\n, <br>, <div> per line).
+  const TEXT_BLOCK = new Set(['div', 'p']);
+  const TEXT_TRANSPARENT = new Set(['span', 'font']);
+
+  function plainText(root) {
+    let out = '';
+    let pendingBreak = false;
+    const put = (s) => {
+      if (pendingBreak && out && !out.endsWith('\n')) out += '\n';
+      pendingBreak = false;
+      out += s;
+    };
+    const walk = (node) => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === 3) { put(c.data); continue; }
+        if (c.nodeType !== 1 || isIgnored(c)) continue;
+        const tag = c.tagName.toLowerCase();
+        if (tag === 'br') put('\n');
+        else if (TEXT_BLOCK.has(tag)) {
+          if (out && !out.endsWith('\n')) out += '\n';
+          pendingBreak = false;
+          walk(c);
+          pendingBreak = true;
+        } else if (TEXT_TRANSPARENT.has(tag)) walk(c);
+        else fail('<' + tag + '> cannot be stored in a text file', c);
+      }
+    };
+    walk(root);
+    // the viewer prints the file's last line break inside the box; base and text both drop it
+    return out.endsWith('\n') ? out.slice(0, -1) : out;
   }
 
   function serialize(root) {
@@ -357,6 +390,7 @@
     const copy = root.cloneNode(true);
     for (const w of copy.querySelectorAll('oe-run')) w.replaceWith(...w.childNodes);
     copy.normalize();
+    if (root.dataset.format === 'text') return plainText(copy);
     return joinBlocks(blocks(copy, {}));
   }
 
