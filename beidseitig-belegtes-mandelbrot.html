@@ -118,6 +118,14 @@ html, body { touch-action: pan-x pan-y; }
   let zoomZeit = 0;
   const setS = (l) => { ls = l; sw = 2 ** l; if (typeof zoomLauf === "function" && !zoomZeit) zoomZeit = requestAnimationFrame(zoomLauf); };
   let snapOn = true;
+  // ?diag: what happened when (towers built, checked, thrown away; anchors swapped in; old
+  // pictures stretched while an orbit is missing), the last 400, for hunting phone-only glitches
+  const ereignisse = new URLSearchParams(location.search).has("diag") ? [] : null;
+  function ereignis(art, x) {
+    if (!ereignisse) return;
+    ereignisse.push({ t: performance.now(), art, ls, ...x });
+    if (ereignisse.length > 400) ereignisse.shift();
+  }
   let cssW = 1, cssH = 1, dpr = 1;
 
   // ---- exact numbers: BigInt fixed point, value = b / 2^PB ----
@@ -865,6 +873,7 @@ void main() {
   function starteJob(spec, L, exact, want) {
     if (job && job.PB === PB && job.mode === spec.mode && job.L >= want + 2 && !spec.weit(job)) return;
     if (job) job.w.terminate();
+    ereignis("bahn", { mode: spec.mode, L, exact });
     const w = new Worker("/tools/workers/gespiegeltes-mandelbrot-bahn.js");
     const pb = PB;
     job = { w, PB: pb, mode: spec.mode, L, cx: spec.c[0][0], cy: spec.c[0][1] };
@@ -1319,6 +1328,7 @@ void main() {
   const gleich = () => gezeigt && gezeigt.w === wechsel;
   // no reference yet: the last picture, moved and scaled to where the view went
   function altesBild() {
+    ereignis("altes-bild", { da: !!gezeigt });
     if (!gezeigt) return;
     const k = 2 ** (gezeigt.ls - ls);
     const tx = N(zuPB(gezeigt.vH[0], gezeigt.PB) - vH[0], ls), ty = -N(zuPB(gezeigt.vH[1], gezeigt.PB) - vH[1], ls);
@@ -1338,6 +1348,7 @@ void main() {
   function ankerNeu(W, Hc) {
     kopiere(W, Hc);
     anker = { ...gezeigt };
+    ereignis("anker", { q: anker.q });
   }
   const gleichK = (g) => g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
     && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
@@ -1378,11 +1389,50 @@ void main() {
     gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
   }
+  // the anchor is drawn into its rectangle, not blitted: magnified, the rectangle reaches past the
+  // canvas, and a phone GPU blitted that from the canvas corner instead of cutting it (the picture
+  // grew out of the bottom left corner, and the next fresh frame jumped back: the "Mittelpunkt
+  // springt" of the video of 2026-11-05)
+  const ankerProg = gl.createProgram();
+  gl.attachShader(ankerProg, shader(gl.VERTEX_SHADER, VS));
+  gl.attachShader(ankerProg, shader(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+uniform sampler2D uT;
+uniform vec4 uZiel;
+out vec4 o;
+void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.xy)); }`));
+  gl.bindAttribLocation(ankerProg, 0, "p");
+  gl.linkProgram(ankerProg);
+  if (!gl.getProgramParameter(ankerProg, gl.LINK_STATUS)) fail("Shader-Fehler: " + gl.getProgramInfoLog(ankerProg));
+  const AU = { uT: gl.getUniformLocation(ankerProg, "uT"), uZiel: gl.getUniformLocation(ankerProg, "uZiel") };
+  const kopieTex = gl.createTexture();
+  let kopieGr = "";
   function setzeEin(a, W, Hc) {
+    // the anchor into a texture of its own (kopieFbo stays the renderbuffer the blits fill)
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, kopieTex);
+    if (kopieGr !== W + "x" + Hc) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, Hc, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      kopieGr = W + "x" + Hc;
+    }
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, kopieFbo.fb);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, bildFbo.fb);
-    gl.blitFramebuffer(0, 0, W, Hc, a.x0, a.y0, a.x1, a.y1, gl.COLOR_BUFFER_BIT, a.exakt ? gl.NEAREST : gl.LINEAR);
+    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, W, Hc);
+    const f = a.exakt ? gl.NEAREST : gl.LINEAR;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
+    const cx0 = Math.max(0, a.x0), cy0 = Math.max(0, a.y0), cx1 = Math.min(W, a.x1), cy1 = Math.min(Hc, a.y1);
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    if (cx1 <= cx0 || cy1 <= cy0) return;
+    gl.viewport(0, 0, W, Hc);
+    gl.useProgram(ankerProg);
+    gl.uniform1i(AU.uT, 4);
+    gl.uniform4f(AU.uZiel, a.x0, a.y0, a.x1, a.y1);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(cx0, cy0, cx1 - cx0, cy1 - cy0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.disable(gl.SCISSOR_TEST);
   }
   // true / false (no reference: nothing was touched). The anchor is moved where the view went and
   // stays as sharp as it is; only what it leaves open is computed, sharp when that fits
@@ -1444,7 +1494,7 @@ void main() {
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       zeigeTurm(kopie, W, Hc);
       gezeichnet(1 / kopie.B.f);
-      rahmenArt = { k: 0, rand: 0, qr: 1 / kopie.B.f };
+      rahmenArt = { k: 0, rand: 0, qr: 1 / kopie.B.f, br: kopie.br, n: kopie.n, j: kopie.j, kt: kopie.k, rx: kopie.rx, ry: kopie.ry, ux: kopie.ux, uy: kopie.uy };
       turmKontrolle(kopie, W, Hc);
       return true;
     }
@@ -1516,6 +1566,7 @@ void main() {
     gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
     anker = nach.g;
+    ereignis("nachzug", { zu: nach.g.ls });
     nach = null;
   }
   // ?diag: the last frames, kept only with the parameter
@@ -1527,7 +1578,7 @@ void main() {
     if (ok && schieben && rahmenArt && rahmenArt.k !== 0) nachziehen(bild.width, bild.height);
     if (rahmenLog) {
       const t = performance.now(), [ox, oy] = origin();
-      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy });
+      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy, ls, ok });
       if (rahmenLog.length > 120) rahmenLog.shift();
     }
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
@@ -1801,9 +1852,11 @@ void main() {
     const B = { innen, f, t, A, J, D, side, R, l: [], tex: [], fb: [], ok: null, pruef: [] };
     T[br] = B;
     T.bau = true;
+    ereignis("turm-bau", { br, t, side, A, lam: T.lam, th: T.th });
     const weg = () => turm !== T || T[br] !== B;
     const ende = (ok) => {
       T.bau = false;
+      ereignis(ok ? "turm-fertig" : "turm-fehl", { br, t, pruef: B.pruef.map((p) => ({ l: p.l, anteil: p.anteil, basis: p.basis, max: p.max })) });
       if (ok) {
         B.ok = true;
         if (br.startsWith(turmSeite)) request(false);
@@ -1833,6 +1886,7 @@ void main() {
       B.fb.push(fb);
       if (st !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
         console.error("Selbstähnlichkeit: kein Grafikspeicher für " + side + "² Pixel oder R16F nicht als Ziel erlaubt");
+        ereignis("turm-kein-speicher", { br, side });
         T.bau = false;
         turmFrei(B);
         T[br] = { ok: "nein", t, R };
@@ -1938,6 +1992,7 @@ void main() {
       T.prueft = false;
       T.geprueft = performance.now();
       T.kontrollen.push(Object.assign(st, { l: an.l, br }));
+      ereignis("turm-kontrolle", { br, ok: st.ok, anteil: st.anteil, basis: st.basis, max: st.max, mittel: st.mittel, n: plan.n, j: plan.j });
       if (st.ok) return;
       console.error(`Selbstähnlichkeit: Kopie weicht von der echten Rechnung ab (${(100 * st.anteil).toFixed(2)} % der Pixel, bis ${st.max} Graustufen), Turm verworfen`);
       turmFrei(B);
@@ -3150,8 +3205,16 @@ void main() {
         `q  ${balken(L.map((f) => f.q), 1)}`,
         `dt ${balken(L.map((f) => f.dt), 50)}`,
         `mk ${balken(schritt, 8)}`,
+        // the way each frame came about: t tower copy, s moved anchor, n drawn whole, a old picture stretched
+        `way ${L.map((f) => (!f.ok ? "a" : f.k === 0 ? "t" : f.k === 1 ? "n" : "s")).join("")}`,
         `last dt ${z.dt.toFixed(1)} q ${z.q.toFixed(2)} k ${z.k == null ? "-" : z.k.toFixed(3)} edge ${z.rand == null ? "-" : (100 * z.rand).toFixed(0) + "%"} @${z.qr == null ? "-" : z.qr.toFixed(2)} mk ${z.ox.toFixed(1)},${z.oy.toFixed(1)} nach ${nach ? (100 - 100 * nach.y / nach.Hc).toFixed(0) + "%" : "-"}`,
       ];
+    };
+    const turmZeile = () => {
+      if (!turm) return "tower -";
+      const st = (k) => { const B = turm[k]; return B ? (B.ok === true ? "ok" : B.ok === null ? "…" : String(B.ok)) + "/" + B.t : "-"; };
+      const kl = turm.kontrollen[turm.kontrollen.length - 1];
+      return `tower ${TURM_FOLGE.map((k) => k + " " + st(k)).join(" ")} | check ${kl ? (kl.ok ? "ok " : "MISS ") + (100 * kl.anteil).toFixed(2) + "% max " + kl.max : "-"}`;
     };
     const modus = () => (dragging ? (dragging.lupe ? "lupe" : "punkt") : pts.size >= 2 ? "pinch" : pts.size === 1 ? "pan" : lupeZug ? "lupe" : "-");
     const tick = () => {
@@ -3165,10 +3228,24 @@ void main() {
         `ls ${ls.toFixed(4)} sw ${sw} c ${cMx.toFixed(6)},${cMy.toFixed(6)}`,
         `v ${N(vH[0])},${N(vH[1])}`,
         ...rahmenZeilen(),
+        turmZeile(),
       ].join("\n");
       requestAnimationFrame(tick);
     };
     tick();
+    // read by tools/aufnahme.js (recording trace, and sent along on unlocked pages)
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    const geraet = {
+      renderer: gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER),
+      maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE), maxViewport: [...gl.getParameter(gl.MAX_VIEWPORT_DIMS)],
+      maxRb: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), floatZiel: !!gl.getExtension("EXT_color_buffer_float"),
+      hp: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision,
+    };
+    window.__diag = () => ({
+      text: dg.textContent, geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
+      turm: turm && { lam: turm.lam, th: turm.th, seite: turmSeite, protokoll: turm.protokoll.slice(-20),
+        ...Object.fromEntries(TURM_FOLGE.map((k) => [k, turm[k] && { ok: turm[k].ok, t: turm[k].t, side: turm[k].side, f: turm[k].f, A: turm[k].A }])) },
+    });
   }
 
   bild.addEventListener("webglcontextlost", (e) => { e.preventDefault(); fail("Grafikkontext verloren, Seite neu laden."); });
