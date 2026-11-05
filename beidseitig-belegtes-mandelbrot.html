@@ -3037,7 +3037,7 @@ void main() {
     value: 0,
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
-  panel.bodyEl.querySelector('[data-key="r"]').after(panel.bodyEl.querySelector('[data-key="tempo"]'));
+  panel.bodyEl.querySelector('[data-key="r"]').before(panel.bodyEl.querySelector('[data-key="tempo"]'));
 
   // ---- zoom factor: how far the view is in or out, 1 is the start view. Counted in octaves like
   // everything else here, shown as mantissa and exponent so 1e-300 and what lies beyond stay readable.
@@ -3076,7 +3076,7 @@ void main() {
       zeigeZoom(true);
     },
   });
-  panel.bodyEl.querySelector('[data-key="tempo"]').after(panel.bodyEl.querySelector('[data-key="zoomfaktor"]'));
+  panel.bodyEl.querySelector('[data-key="r"]').after(panel.bodyEl.querySelector('[data-key="zoomfaktor"]'));
   const zoomEl = panel.bodyEl.querySelector('[data-key="zoomfaktor"] .ctrl-input');
   // the digits keep their width, so the field does not tremble while the zoom runs
   zoomEl.style.fontVariantNumeric = "tabular-nums";
