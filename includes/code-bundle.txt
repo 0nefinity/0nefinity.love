@@ -59245,7 +59245,7 @@ normales-mandelbrot.html
 </html>
 
 nullgeteiltdurchnull.html
-<!-- nullgeteiltdurchnull.html -->
+<!-- nullgeteiltdurchnull.html QREALCMT -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
