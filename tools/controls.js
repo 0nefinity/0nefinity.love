@@ -557,11 +557,28 @@
         sync();
     }
 
-    async function editApi(method, route, body) {
+    // Schreibende Aufrufe tragen das CSRF-Token der Editor-Sitzung (X-0ne-Csrf). Es kommt aus /api/edit/me und wird
+    // neu geholt, wenn der Dienst es ablehnt (neue Sitzung, Neustart); der Aufruf laeuft dann einmal von selbst nochmal.
+    let editCsrf = null;
+    async function freshCsrf() {
+        let res;
+        try {
+            res = await fetch('/api/edit/me', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        } catch (e) {
+            throw new Error('Editor-Dienst nicht erreichbar');
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data.error || 'HTTP ' + res.status));
+        editCsrf = data.csrf || '';
+    }
+
+    async function editApi(method, route, body, again = true) {
         const opts = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
         if (body) {
+            if (editCsrf === null) await freshCsrf();
             opts.headers['Content-Type'] = 'application/json';
             opts.headers['X-0ne-Edit'] = '1';
+            if (editCsrf) opts.headers['X-0ne-Csrf'] = editCsrf;
             opts.body = JSON.stringify(body);
         }
         let res;
@@ -571,6 +588,10 @@
             throw new Error('Editor-Dienst nicht erreichbar');
         }
         const data = await res.json().catch(() => ({}));
+        if (body && again && res.status === 403 && data.error === 'csrf') {
+            await freshCsrf();
+            return editApi(method, route, body, false);
+        }
         if (!res.ok) throw new Error((data.error || 'HTTP ' + res.status) + (data.detail ? ' (' + data.detail + ')' : ''));
         return data;
     }
