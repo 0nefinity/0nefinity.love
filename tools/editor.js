@@ -158,15 +158,78 @@
   // (sonst traf ein Autosave den alten Namen: 404 "keine bearbeitbare Datei").
   let renaming = null;
 
+  // Entwurf im Browser: jeder Schreibweg, der Text traegt, liegt hier, bis der Server ihn bestaetigt. Geht die
+  // Antwort verloren (Netz weg, Tab zu, Login abgelaufen), schickt der naechste Besuch ihn nach; doppelt
+  // ankommen schadet nicht, der Server erkennt schon Gespeichertes.
+  const OUTBOX = 'oe-outbox';
+  const OUTBOX_ROUTES = new Set(['save', 'source']);
+
+  function outboxRead() {
+    try {
+      return JSON.parse(localStorage.getItem(OUTBOX) || '{}');
+    } catch (e) {
+      console.error('[editor] Entwurf im Browser unlesbar: ' + e.message);
+      return {};
+    }
+  }
+
+  function outboxWrite(box) {
+    try {
+      if (Object.keys(box).length) localStorage.setItem(OUTBOX, JSON.stringify(box));
+      else localStorage.removeItem(OUTBOX);
+    } catch (e) {
+      console.error('[editor] Entwurf nicht im Browser gesichert: ' + e.message);
+    }
+  }
+
+  // Ein Platz je Seite und Weg: der neuere Entwurf ersetzt den aelteren, er baut auf demselben Stand auf.
+  function outboxKey(route, body) {
+    return body.path + '\n' + route;
+  }
+
+  function outboxDrop(key, id) {
+    const box = outboxRead();
+    if (box[key] && box[key].id === id) { delete box[key]; outboxWrite(box); }
+  }
+
+  // Beim Laden: was ein frueherer Besuch nicht bestaetigt bekam, geht jetzt raus. true = diese Seite hat sich
+  // dadurch geaendert und muss neu geladen werden.
+  async function resendOutbox() {
+    const box = outboxRead();
+    let here = false;
+    for (const [key, e] of Object.entries(box)) {
+      try {
+        const r = await request('POST', e.route, e.body);
+        outboxDrop(key, e.id);
+        if (!r.noop && e.body.path === location.pathname) here = true;
+      } catch (err) {
+        showToast('nicht gespeichert: ' + e.body.path + ' (' + err.message + ')', 'erneut',
+          async () => { if (await resendOutbox()) location.reload(); }, 0, 'error');
+        return here;
+      }
+    }
+    return here;
+  }
+
   async function api(method, route, body) {
     if (route !== 'rename') {
       while (renaming) await renaming;
       if (body && typeof body === 'object' && 'path' in body) body = { ...body, path: pagePath };
     }
+    let kept = null;
+    // Kommentare (changes) nicht: ein zweites Mal angekommen fehlt ihr alter Text, das gaebe einen falschen Alarm.
+    if (body && OUTBOX_ROUTES.has(route) && !body.changes) {
+      kept = { key: outboxKey(route, body), id: Date.now() + '-' + Math.random() };
+      const box = outboxRead();
+      box[kept.key] = { id: kept.id, route, body, t: Date.now() };
+      outboxWrite(box);
+    }
     busy++;
     syncPause();
     try {
-      return await request(method, route, body);
+      const r = await request(method, route, body);
+      if (kept) outboxDrop(kept.key, kept.id);
+      return r;
     } finally {
       busy--;
       if (window.__oneReloadResync) window.__oneReloadResync();
@@ -174,7 +237,19 @@
     }
   }
 
-  async function request(method, route, body) {
+  // Token frisch vom Server: nach neuem Login (anderer Tab, Passkey) gilt das alte nicht mehr.
+  async function renewCsrf() {
+    const me = await fetch(CFG.me, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (!me.ok) return false;
+    const info = await me.json().catch(() => ({}));
+    if (!info.csrf) return false;
+    csrf = info.csrf;
+    return true;
+  }
+
+  // Einziger Weg zum Server: jeder Schreibweg (Speichern, Veroeffentlichen, Umbenennen, Neue Seite, Loeschen,
+  // Kommentare, Chat) laeuft hier durch. Abgelehntes Token wird einmal erneuert und die Anfrage wiederholt.
+  async function request(method, route, body, renewed) {
     const opts = { method, credentials: 'same-origin', keepalive: route === 'save' || route === 'publish' || route === 'publish-all', headers: { Accept: 'application/json' } };
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
@@ -189,6 +264,11 @@
       throw new Error('Editor-Dienst nicht erreichbar');
     }
     const data = await res.json().catch(() => ({}));
+    if (res.status === 403 && data.error === 'csrf' && body && !renewed) {
+      let ok = false;
+      try { ok = await renewCsrf(); } catch (e) { /* Meldung folgt unten mit dem urspruenglichen Fehler */ }
+      if (ok) return request(method, route, body, true);
+    }
     if (!res.ok) {
       const msg = ERRORS[data.error] || data.error || ('HTTP ' + res.status);
       throw new Error(data.detail ? msg + ' (' + data.detail + ')' : msg);
@@ -216,11 +296,24 @@
   }
 
   // Fehlschlag: Meldung bleibt, bis es klappt; der Wiederholungsversuch laeuft von selbst (1 s, 2 s, ... 30 s).
+  const retries = new Map();
   function saveFail(e, again) {
     saveFailed = true;
     if (!leaving) say('nicht gespeichert, erneuter Versuch … (' + e.message + ')', 'error');
     retryN++;
-    return setTimeout(again, Math.min(30000, 1000 * 2 ** Math.min(retryN, 5)));
+    const t = setTimeout(() => { retries.delete(t); again(); }, Math.min(30000, 1000 * 2 ** Math.min(retryN, 5)));
+    retries.set(t, again);
+    return t;
+  }
+
+  function retrySaveNow() {
+    if (!saveFailed) return;
+    retryN = 0;
+    for (const [t, again] of retries) {
+      clearTimeout(t);
+      retries.delete(t);
+      again();
+    }
   }
 
   // Klicks auf Editor-Knoepfe duerfen das Seitenmenue nicht auf- oder zuklappen.
@@ -293,6 +386,7 @@
   const isMd = () => source?.format === 'markdown';
   const isPlain = () => source?.format === 'text';
   const isMerged = () => isMd() || isPlain();
+  const mergedRoot = () => (isMerged() && window._018EditorMd ? window._018EditorMd.contentRoot() : null);
   async function loadMd() {
     if (!window._018EditorMd) {
       await new Promise((ok, no) => {
@@ -388,7 +482,8 @@
       }
       flush(run);
     };
-    walk(document.body);
+    // Markdown/Text: gespeichert wird nur der Inhalt des Viewers, also ist auch nur er bearbeitbar (Titel, Kopf: Inseln).
+    walk(mergedRoot() || document.body);
     return out;
   }
 
@@ -1280,7 +1375,7 @@
   let islands = [];
 
   function claimRoot(hosts) {
-    let r = hosts.length ? hosts[0].parentElement : document.body;
+    let r = mergedRoot() || (hosts.length ? hosts[0].parentElement : document.body);
     while (r !== document.body && !hosts.every((h) => r.contains(h))) r = r.parentElement;
     root = r;
     islands = [];
@@ -1437,7 +1532,11 @@
     ownAt = lastTypeAt = performance.now();
     clearTimeout(saveTimer);
     if (!dirty()) {
-      // Zurueck auf den gespeicherten Stand (z. B. per Rueckgaengig nach einem Fehler): dann ist nichts offen.
+      // Zurueck auf den gespeicherten Stand (z. B. per Rueckgaengig nach einem Fehler): dann ist nichts offen,
+      // auch kein Entwurf, der beim naechsten Besuch die zurueckgenommene Aenderung nachschicken wuerde.
+      const box = outboxRead();
+      const key = outboxKey('save', { path: pagePath });
+      if (key in box) { delete box[key]; outboxWrite(box); }
       saveOk();
       render();
       return;
@@ -2768,6 +2867,8 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     if (!me.ok) { console.error('[editor] ' + CFG.me + ' HTTP ' + me.status); return; }
     const info = await me.json();
     csrf = info.csrf || '';
+    // Vor allem anderen: liegt fuer diese Seite ein unbestaetigter Entwurf, zeigt erst das Neuladen ihn.
+    if (await resendOutbox()) { location.reload(); return; }
     // Eingeloggt: Live-Reload laedt nie von selbst neu. Autosave und andere Sitzungen aendern laufend
     // Dateien, ein Reload zwischen zwei Eingaben riss Tim aus dem Text.
     window.__oneEditor = true;
@@ -2788,6 +2889,9 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       if (dirty()) save();
     });
     window.addEventListener('pagehide', flushOnLeave);
+    // Netz wieder da: nicht auf den naechsten Takt der Wiederholung warten.
+    window.addEventListener('online', retrySaveNow);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') retrySaveNow(); });
 
     try {
       await loadSource();
