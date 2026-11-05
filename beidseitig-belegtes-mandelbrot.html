@@ -63,10 +63,9 @@ html, body { touch-action: pan-x pan-y; }
 @media (max-width: 420px) {
   #wert { font-size: 1rem; }
 }
-/* 𝑟 and the speed slider are one pair, line for line: the label column only as wide as 𝑟 (empty
-   for the speed), both tracks over the whole width, both numbers in a box of one width */
+/* 𝑟 and the speed slider 𝑧 are one pair, line for line: the label column only as wide as the
+   letter, both tracks over the whole width, both numbers in a box of one width */
 .ctrl-panel:not(.bar-mode) .ctrl-row:is([data-key="r"], [data-key="tempo"]) { grid-template-columns: 1em minmax(0, 1fr); }
-.ctrl-panel.bar-mode .ctrl-row[data-key="tempo"] .ctrl-label { display: none; }
 .ctrl-row:is([data-key="r"], [data-key="tempo"]) .ctrl-value-input { min-width: calc(6ch + 0.4em); }
 </style>
 </head>
@@ -1175,7 +1174,7 @@ void main() {
     const lu0 = lv - lsc;
     const mode = lu0 <= lhd || (mis && lu0 <= 16) ? 0 : 1;
     const rH = mode ? H(r) : 0n;
-    const vcOut = lv > 0;
+    const vcOut = spiegelOn && lv > 0;
     const lrs = lr + lsc;
     const eb = Math.floor(lrs - (vcOut ? 2 * lv : 0));
     const kI = f32(2 ** (lrs - eb)), aM = 2 ** Math.min(120, lrs - 2 * lv - eb);
@@ -1190,7 +1189,7 @@ void main() {
       const c = [target];
       for (let k = 0; k < 8; k++) {
         const a = k * Math.PI / 4, wx = vH[0] + Hl(0.5 * hd * Math.cos(a), lsc), wy = vH[1] + Hl(0.5 * hd * Math.sin(a), lsc);
-        c.push(lg2((wx * wx + wy * wy) >> PBn) > 0 ? cOut(wx, wy, rH) : cIn(wx, wy, rH));
+        c.push(spiegelOn && lg2((wx * wx + wy * wy) >> PBn) > 0 ? cOut(wx, wy, rH) : cIn(wx, wy, rH));
       }
       spec = { mode, c, per: null, ci, co, weit: (o) => Math.hypot(N(target[0] - o.cx, eb), N(target[1] - o.cy, eb)) / scale > 64 * hd };
     }
@@ -1224,13 +1223,14 @@ void main() {
       // log2 |w| at the pixel centre nearest the origin: zoomed far out the inner disk falls
       // between pixels, and the largest |dc| is that of this pixel on the outer branch
       const lmin = lsc + Math.log2(Math.hypot(naechst(N(vH[0], lsc), W), naechst(N(vH[1], lsc), Hc)));
-      const innen = lmin <= 0, aussen = lsc + Math.log2(u0 + hd) > 0;
-      lc = Math.max(innen ? lr + Math.min(0, lsc + Math.log2(u0 + hd)) : -Infinity,
+      // without the mirror the inside is all there is, however far out
+      const innen = !spiegelOn || lmin <= 0, aussen = spiegelOn && lsc + Math.log2(u0 + hd) > 0;
+      lc = Math.max(innen ? lr + (spiegelOn ? Math.min(0, lsc + Math.log2(u0 + hd)) : lsc + Math.log2(u0 + hd)) : -Infinity,
         aussen ? lr - Math.max(0, lmin) : -Infinity);
       const [kI0, eI] = splitL(lr + lsc), [kO, eO] = splitL(lr - lsc);
       gl.uniform1i(U.uMode, 0);
       gl.uniform2f(U.uU0, f32(N(vH[0], lsc)), f32(N(vH[1], lsc)));
-      gl.uniform1f(U.uInvS2, f32(2 ** (-2 * lsc)));
+      gl.uniform1f(U.uInvS2, spiegelOn ? f32(2 ** (-2 * lsc)) : 3e38);
       gl.uniform1f(U.uKI, kI0);
       gl.uniform1i(U.uEI, eI);
       gl.uniform1f(U.uKO, kO);
@@ -1240,11 +1240,11 @@ void main() {
       const d0i = [f32(N(spec.ci[0] - ox, eb)), f32(N(spec.ci[1] - oy, eb))];
       const d0o = [f32(N(spec.co[0] - ox, eb)), f32(N(spec.co[1] - oy, eb))];
       const lhalf = lsc + lhd;
-      const innen = lv < logadd(0, lhalf), aussen = logadd(lv, lhalf) > 0;
+      const innen = !spiegelOn || lv < logadd(0, lhalf), aussen = spiegelOn && logadd(lv, lhalf) > 0;
       lc = eb + Math.log2(Math.max(innen ? Math.hypot(...d0i) + kI * hd : 0, aussen ? Math.hypot(...d0o) + 2 * aM * hd : 0));
       const eps = 2 ** (lsc - lv);
       gl.uniform1i(U.uMode, 1);
-      gl.uniform1f(U.uH, f32(N(h, lsc + lv)));
+      gl.uniform1f(U.uH, spiegelOn ? f32(N(h, lsc + lv)) : -3e38);
       gl.uniform2f(U.uVn, vnx, vny);
       gl.uniform1f(U.uEps, eps);
       gl.uniform2f(U.uE, eps * vnx, -eps * vny);
@@ -1325,7 +1325,7 @@ void main() {
   // wechsel counts every change asked for (request): the canvas is current when it was drawn since
   let wechsel = 0;
   function gezeichnet(q) {
-    gezeigt = { ls, vH, PB, q, w: wechsel, W: bild.width, Hc: bild.height, cx: cH[0], cy: cH[1], r, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 };
+    gezeigt = { ls, vH, PB, q, w: wechsel, W: bild.width, Hc: bild.height, cx: cH[0], cy: cH[1], r, sp: spiegelOn, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 };
     bild.style.transform = "";
   }
   const gleich = () => gezeigt && gezeigt.w === wechsel;
@@ -1353,7 +1353,7 @@ void main() {
     anker = { ...gezeigt };
     ereignis("anker", { q: anker.q });
   }
-  const gleichK = (g) => g.r === r && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
+  const gleichK = (g) => g.r === r && g.sp === spiegelOn && g.mk === (mis ? mis.k : -1) && g.mp === (mis ? mis.p : -1)
     && gleichC(g.cx, g.PB, cH[0], PB) && gleichC(g.cy, g.PB, cH[1], PB);
   function plan(W, Hc) {
     const g0 = gezeigt;
@@ -1553,7 +1553,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       setV(vH[0] + Hl(px, ls) - Hl(px, l1), vH[1] + Hl(py, ls) - Hl(py, l1));
       const ziel = { ls: l1, vH, lv, vnx, vny };
       [vH, lv, vnx, vny] = jetzt;
-      nach = { W, Hc, PB, ziel, y: Hc, h, g: { ls: l1, vH: ziel.vH, PB, q: 1, w: -1, W, Hc, cx: cH[0], cy: cH[1], r, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 } };
+      nach = { W, Hc, PB, ziel, y: Hc, h, g: { ls: l1, vH: ziel.vH, PB, q: 1, w: -1, W, Hc, cx: cH[0], cy: cH[1], r, sp: spiegelOn, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 } };
     }
     if (nach.y > 0) {
       nachFbo.an(W, Hc);
@@ -1947,7 +1947,7 @@ void main() {
     const ux = f32(N(vH[0], lsc)), uy = f32(N(vH[1], lsc)), ext = Math.hypot(ux, uy) + hd;
     // far from cM the frames would have to be huge: the plain way is as good there
     if (!(ext < 4 * hd)) return null;
-    const br = lsc + Math.log2(ext) < 0 ? "innen" : lsc + Math.log2(Math.hypot(naechst(ux, W), naechst(uy, Hc))) > 0 ? "aussen" : null;
+    const br = lsc + Math.log2(ext) < 0 ? "innen" : spiegelOn && lsc + Math.log2(Math.hypot(naechst(ux, W), naechst(uy, Hc))) > 0 ? "aussen" : null;
     if (!br) return null;
     turmSeite = br;
     neuTurm();
@@ -1976,6 +1976,7 @@ void main() {
     if (turm.bau) return;
     const o = turmSeite === "innen" ? "aussen" : "innen";
     for (const key of [turmSeite + "Grob", turmSeite, o + "Grob", o]) {
+      if (!spiegelOn && key.startsWith("aussen")) continue;
       const B = turm[key];
       if (B && (B.ok === true || B.ok === "nein")) continue;
       if (B) turmFrei(B);
@@ -2055,6 +2056,8 @@ void main() {
   const LUPE_FIT = 2 * 1.6;
   // css pixels across; on wide screens it may take more room
   const LUPE_G = matchMedia("(min-width: 769px)").matches ? 264 : 132;
+  // the mirror at the circle: off, all that is left is the plain Mandelbrot, c = cM + r·w everywhere
+  let spiegelOn = !!kind;
   let lupeOn = true, lupeKey = "", lupePB = 0, lupeG = LUPE_G;
   function setLupeG(g) {
     lupeG = Math.max(0, g);
@@ -2074,7 +2077,7 @@ void main() {
     // cH gets more digits with PB, the mirror point stays: the key keeps its first 64 bits, far
     // below what a lupe pixel can show
     const kurz = (x) => (PBn > 64n ? x >> (PBn - 64n) : x);
-    const key = [kurz(cH[0]), kurz(cH[1]), r, lp].join();
+    const key = [kurz(cH[0]), kurz(cH[1]), r, spiegelOn, lp].join();
     if (key === lupeKey && (PB === lupePB || !still)) return;
     lupeKey = key;
     lupePB = PB;
@@ -2108,11 +2111,13 @@ void main() {
     }
     const k = lp / Lc;
     lctx.setTransform(k, 0, 0, k, 0, 0);
-    lctx.beginPath();
-    lctx.arc(Lc / 2, Lc / 2, Lc / LUPE_FIT, 0, 2 * Math.PI);
-    lctx.lineWidth = 1;
-    lctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
-    lctx.stroke();
+    if (spiegelOn) {
+      lctx.beginPath();
+      lctx.arc(Lc / 2, Lc / 2, Lc / LUPE_FIT, 0, 2 * Math.PI);
+      lctx.lineWidth = 1;
+      lctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+      lctx.stroke();
+    }
     lctx.beginPath();
     lctx.arc(Lc / 2, Lc / 2, 6, 0, 2 * Math.PI);
     lctx.lineWidth = 1.5;
@@ -2220,7 +2225,7 @@ void main() {
       gl.useProgram(ringProg);
       gl.uniform2f(RU.uO, ox * dpr, Hc - oy * dpr);
       gl.uniform2f(RU.uM, (ox + shake) * dpr, Hc - oy * dpr);
-      gl.uniform1f(RU.uR, rad > 4 && rad < 1e6 ? rad * dpr : 0);
+      gl.uniform1f(RU.uR, spiegelOn && rad > 4 && rad < 1e6 ? rad * dpr : 0);
       gl.uniform1f(RU.uDpr, dpr);
       gl.uniform1f(RU.uAM, dragging ? 1 : 0.85);
       gl.enable(gl.BLEND);
@@ -2300,6 +2305,7 @@ void main() {
     if (panel.get("r") !== r) panel.set("r", r);
     if (panel.get("rasten") !== snapOn) panel.set("rasten", snapOn);
     if (panel.get("lupe") !== lupeOn) panel.set("lupe", lupeOn);
+    if (!kind && panel.get("spiegelung") !== spiegelOn) panel.set("spiegelung", spiegelOn);
     zeigeZoom(false);
   }
   function saveUrl() {
@@ -2337,6 +2343,7 @@ void main() {
     u.searchParams.delete("frei");
     if (snapOn) u.searchParams.delete("rasten"); else u.searchParams.set("rasten", "0");
     if (lupeOn) u.searchParams.delete("lupe"); else u.searchParams.set("lupe", "0");
+    if (kind || !spiegelOn) u.searchParams.delete("spiegelung"); else u.searchParams.set("spiegelung", "1");
     history.replaceState(null, "", u);
   }
   function loadUrl() {
@@ -2377,6 +2384,7 @@ void main() {
     }
     if (q.has("rasten")) snapOn = q.get("rasten") !== "0";
     if (q.has("lupe")) lupeOn = q.get("lupe") !== "0";
+    if (!kind && q.has("spiegelung")) spiegelOn = q.get("spiegelung") !== "0";
   }
 
   // ---- snap to the boundary of M (doubles) ----
@@ -2977,18 +2985,19 @@ void main() {
       // the panel already put r and rasten back; the rest of the start state is the
       // start point in the fitted view, with no trace left in the URL
       afterReset: () => {
-        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, cH, vH, mis, PB, lupePos, cGenau };
+        const vorher = { cMx, cMy, r, ls, snapOn, lupeOn, spiegelOn, cH, vH, mis, PB, lupePos, cGenau };
         lupeOn = !!panel.get("lupe");
+        if (!kind) spiegelOn = !!panel.get("spiegelung");
         setLupePos(null);
         fitView();
         setC(START.c[0], START.c[1], true);
         showValues();
         zeichneJetzt();
         const u = new URL(location.href);
-        for (const k of ["c", "r", "w", "s", "rasten", "lupe", "frei"]) u.searchParams.delete(k);
+        for (const k of ["c", "r", "w", "s", "rasten", "lupe", "spiegelung", "frei"]) u.searchParams.delete(k);
         history.replaceState(history.state, "", u);
         return () => {
-          ({ cMx, cMy, r, snapOn, lupeOn, cH, mis, cGenau } = vorher);
+          ({ cMx, cMy, r, snapOn, lupeOn, spiegelOn, cH, mis, cGenau } = vorher);
           setS(vorher.ls);
           setLupePos(vorher.lupePos);
           PB = vorher.PB;
@@ -3041,11 +3050,24 @@ void main() {
     },
   };
   panel.addSlider("tempo", {
-    label: "", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
+    label: "𝑧", min: -EINS, max: EINS, step: 0.01, decimals: 12, transform: tempoSkala, symmetric: "how fast is 1",
     value: 0,
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
   panel.bodyEl.querySelector('[data-key="r"]').before(panel.bodyEl.querySelector('[data-key="tempo"]'));
+  // the mirror at the circle, above the zoom; the further mirrors (?spiegel=) are mirrors through and through
+  if (!kind) {
+    panel.addToggle("spiegelung", {
+      label: "Spiegelung",
+      value: false,
+      onChange: (on) => {
+        spiegelOn = !!on;
+        showValues();
+        request(false);
+      },
+    });
+    panel.bodyEl.querySelector('[data-key="tempo"]').before(panel.bodyEl.querySelector('[data-key="spiegelung"]'));
+  }
 
   // ---- zoom factor: how far the view is in or out, 1 is the start view. Counted in octaves like
   // everything else here, shown as mantissa and exponent so 1e-300 and what lies beyond stay readable.
