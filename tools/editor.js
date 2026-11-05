@@ -287,10 +287,12 @@
     } catch (e) { say('Entwurfsstand: ' + e.message, 'error'); }
   }
 
-  // Markdown-Seiten: Der Browser schickt base (Serialisierung beim Laden) und text (jetzt); der Server fuehrt
-  // beides mit der Datei zusammen (editor/md_save.py). Serialisierer: tools/editor-md.js.
+  // Markdown- und Textseiten (txt, Dateien ohne Endung): Der Browser schickt base (Serialisierung beim Laden) und
+  // text (jetzt); der Server fuehrt beides mit der Datei zusammen (editor/md_save.py). Serialisierer: tools/editor-md.js.
   let mdBase = null;
   const isMd = () => source?.format === 'markdown';
+  const isPlain = () => source?.format === 'text';
+  const isMerged = () => isMd() || isPlain();
   async function loadMd() {
     if (!window._018EditorMd) {
       await new Promise((ok, no) => {
@@ -330,7 +332,7 @@
       marks: window.OneEditorMarks.mount({ bar: moreIn, root: () => root || document.querySelector('main') || document.body }),
       fmt: window.OneEditorFormat.mount({
         host: selHost, before: () => snap('force'), after: () => { markDirty(); syncSelBar(); },
-        blockOf, setBlock: (t) => setBlock(t), md: isMd, bar: () => bar, fail: (m) => say(m, 'error'),
+        blockOf, setBlock: (t) => setBlock(t), md: isMd, plain: isPlain, bar: () => bar, fail: (m) => say(m, 'error'),
       }),
     };
     extras.marks.btn.classList.add('oe-nar');
@@ -392,7 +394,7 @@
 
   // Texte, die nicht im Quelltext stehen (von Skripten erzeugt, in Animationen zerlegt), sind nicht bearbeitbar.
   async function dropUnlocatable(hosts) {
-    if (isMd()) return;
+    if (isMerged()) return;
     let r;
     try { r = await api('POST', 'check', { path: pagePath, origs: hosts.map((h) => hostStart.get(h)) }); } catch (e) {
       // Nur eine Vorabprüfung: ist der Dienst weg, meldet das Speichern es laut; ein altes Backend ohne Route ebenso still.
@@ -1454,7 +1456,7 @@
     let md = null;
     let hunks = null;
     try {
-      if (isMd()) md = window._018EditorMd.payload(mdBase);
+      if (isMerged()) md = window._018EditorMd.payload(mdBase);
       else hunks = makeHunks(docBase, cur, 80);
     } catch (e) { saveTimer = saveFail(e, save); return false; }
     if (hunks && !hunks.length) { docBase = cur; saveOk(); render(); return true; }
@@ -2791,7 +2793,7 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
       await loadSource();
       st.ready = true;
       st.inline = !!source.inline;
-      if (isMd()) await loadMd();
+      if (isMerged()) await loadMd();
       await loadExtras().catch((e) => say(e.message, 'error'));
       render();
       refreshDraft();
