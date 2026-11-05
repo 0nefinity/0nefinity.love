@@ -75148,18 +75148,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -78908,7 +78897,7 @@ tools/aufnahme.js
   const NULL = 'M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5Z';
   const RING = 'M261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z';
   const INNEN = 'transform="translate(260 -207) scale(0.5) translate(-260 207)"';
-  const symbol = (voll) => `<svg viewBox="-20 -600 560 640" aria-hidden="true"><path d="${NULL}${RING}"/><path d="${NULL}${voll ? '' : RING}" ${INNEN}/></svg>`;
+  const symbol = (voll) => `<svg viewBox="-40 -507 600 600" aria-hidden="true"><path d="${NULL}${RING}"/><path d="${NULL}${voll ? '' : RING}" ${INNEN}/></svg>`;
 
   let knopf = null;
   let zustand = 'aus'; // aus | an | hoch | fehler
@@ -78950,11 +78939,44 @@ tools/aufnahme.js
   // Platz: die Kopfleiste des Control-Panels (links vom Breit-Knopf). Hat die Seite kein Panel, schwebt der Knopf wie frueher unten links.
   const kopfleiste = () => document.querySelector('.ctrl-panel-header .ctrl-header-buttons');
 
+  // Die Kopfleisten-Symbole sind Schriftzeichen, ihre Tinte sitzt je nach Schrift und Geraet 1-2 px neben der Mitte.
+  // Hier (nur wo der Aufnahme-Knopf in der Leiste sitzt) wird jede Glyphe per Tinten-Messung in die Mitte ihrer Flaeche gerueckt.
+  const tinte = document.createElement('canvas').getContext('2d');
+  function glyphMitte(b) {
+    b.style.padding = '';
+    const t = b.firstChild;
+    if (!t || t.nodeType !== 3 || !t.data.trim()) return;
+    const bb = b.getBoundingClientRect();
+    if (!bb.width) return;
+    const cs = getComputedStyle(b);
+    tinte.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const m = tinte.measureText(t.data.trim());
+    const rg = document.createRange();
+    rg.selectNodeContents(t);
+    const r = rg.getBoundingClientRect();
+    const grund = r.top + (r.height - m.fontBoundingBoxAscent - m.fontBoundingBoxDescent) / 2 + m.fontBoundingBoxAscent;
+    const dx = bb.left + bb.width / 2 - (r.left + (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2);
+    const dy = bb.top + bb.height / 2 - (grund + (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2);
+    b.style.padding = `${Math.max(0, 2 * dy)}px ${Math.max(0, -2 * dx)}px ${Math.max(0, -2 * dy)}px ${Math.max(0, 2 * dx)}px`;
+  }
+  function leisteMitten() {
+    const k = kopfleiste();
+    if (k) for (const b of k.children) glyphMitte(b);
+  }
+  let leisteMo = null;
+
   function knopfPlatzieren() {
     const k = kopfleiste();
     if (k) {
       knopf.classList.remove('schwebt');
       k.insertBefore(knopf, k.querySelector('.ctrl-layout-toggle'));
+      leisteMitten();
+      if (!leisteMo) {
+        leisteMo = new MutationObserver(leisteMitten);
+        leisteMo.observe(k, { childList: true, characterData: true, subtree: true });
+        addEventListener('resize', leisteMitten);
+        document.fonts?.ready.then(leisteMitten);
+      }
     } else if (!knopf.isConnected) {
       knopf.classList.add('schwebt');
       document.body.appendChild(knopf);
@@ -78970,8 +78992,8 @@ tools/aufnahme.js
   background:transparent;border:0;padding:0;font-size:2.25rem;line-height:1;
   cursor:pointer;opacity:.55;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 #aufnahme-knopf.schwebt:hover,#aufnahme-knopf.schwebt:focus-visible{opacity:1}
-#aufnahme-knopf svg{width:18px;height:18px;fill:currentColor;display:block}
-#aufnahme-knopf.schwebt svg{width:2rem;height:2rem}
+#aufnahme-knopf svg{width:1em;height:1em;fill:currentColor;display:block}
+#aufnahme-knopf.schwebt svg{width:1.875rem;height:1.875rem}
 #aufnahme-knopf[data-z=an]{opacity:1;text-shadow:none}
 #aufnahme-knopf[data-z=an] svg{animation:aufnahme-puls 1.4s ease-in-out infinite}
 #aufnahme-knopf[data-z=hoch]{animation:aufnahme-atmen 1.6s ease-in-out infinite}
