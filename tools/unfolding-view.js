@@ -811,7 +811,7 @@
       if (cands.length) return cands.reduce((a, c) => (c[1] < a[1] ? c : a))[0];
       return x > L && x < R ? 'swipe' : null;
     }
-    // Tap: Touch/Stift, hoechstens TAP_SLOP px Weg und TAP_MS lang. Erst jenseits von TAP_SLOP beginnt das Ziehen.
+    // Tap: Touch/Stift/Maus, hoechstens TAP_SLOP px Weg (Touch/Stift auch hoechstens TAP_MS lang). Erst jenseits von TAP_SLOP beginnt das Ziehen.
     const TAP_SLOP = 8, TAP_MS = 500;
     let tap = null;
     function setHover(x) {
@@ -823,8 +823,9 @@
     function tapAt(x, touch) { setHover(x); if (touch) pinOn = true; flashReq = true; dirty = true; }
     function onDown(e) {
       const x = local(e);
-      if (e.pointerType !== 'mouse') tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
-      if (e.pointerType === 'mouse') tapAt(x);
+      // Maus wie Touch: aufgeleuchtet wird erst beim Loslassen und nur ohne Weg; Greifen und Ziehen eines Endes leuchtet nicht.
+      tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
+      if (e.pointerType === 'mouse') setHover(x);
       if (drag || locked) return;
       const mode = hitTest(x);
       if (!mode) return;
@@ -878,7 +879,7 @@
     }
     function onUp(e) {
       if (tap && tap.id === e.pointerId) {
-        const ok = performance.now() - tap.t < TAP_MS;
+        const ok = e.pointerType === 'mouse' || performance.now() - tap.t < TAP_MS;
         const x = tap.x;
         tap = null;
         if (ok) tapAt(x, e.pointerType !== 'mouse');
