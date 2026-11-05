@@ -219,7 +219,7 @@ $bodyHtml = renderSsiInclude('/includes/something-in-the-body.html', (string)($_
     <?php endif; ?>
   </div>
 
-  <div class="text-viewer-content"<?php echo $isMarkdown ? ' data-format="markdown"' : ''; ?>><?php echo $renderedContent; ?></div>
+  <div class="text-viewer-content" data-format="<?php echo $isMarkdown ? 'markdown' : 'text'; ?>"><?php echo $renderedContent; ?></div>
 </main>
 
 <?php echo $bodyHtml; ?>
