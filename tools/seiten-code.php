@@ -128,6 +128,11 @@ function references($content, $fromRel, $isDev) {
     if (preg_match_all('/<link\b[^>]*?\bhref="([^"]+)"/i', $content, $m)) {
         $refs = array_merge($refs, $m[1]);
     }
+    return localPaths($refs, $fromRel);
+}
+
+// Aus Strings lokale Pfade relativ zum Wurzelverzeichnis; externe URLs fallen weg.
+function localPaths($refs, $fromRel) {
     $out = [];
     foreach ($refs as $ref) {
         $ref = preg_split('/[?#<]/', $ref)[0];
@@ -141,6 +146,55 @@ function references($content, $fromRel, $isDev) {
         $out[] = rawurldecode($ref);
     }
     return $out;
+}
+
+// Wert eines Aufruf-Arguments: String-Literal direkt, Bezeichner ueber "const NAME = '...'" in derselben Datei.
+// Template-Strings mit ${...} und berechnete Werte bleiben aussen vor.
+const ARG = '\(\s*(?:([\'"`])([^\'"`$\n]+)\1|([A-Za-z_$][\w$]*)\s*[,)])';
+
+function argValues($content, $calls) {
+    $values = [];
+    foreach ($calls as $call) {
+        if (!preg_match_all('/' . $call . ARG . '/', $content, $m, PREG_SET_ORDER)) {
+            continue;
+        }
+        foreach ($m as $hit) {
+            if (($hit[2] ?? '') !== '') {
+                $values[] = $hit[2];
+            } elseif (preg_match('/\b(?:const|let|var)\s+' . preg_quote($hit[3], '/') . '\s*=\s*([\'"`])([^\'"`$\n]+)\1/', $content, $c) === 1) {
+                $values[] = $c[2];
+            }
+        }
+    }
+    return $values;
+}
+
+// Was eine Datei erst zur Laufzeit nachlaedt: Worker, importScripts, per createElement('script') gesetzte .src.
+function runtimeRefs($content, $fromRel) {
+    $refs = argValues($content, ['\bnew\s+(?:Shared)?Worker', '\bimportScripts']);
+    if (preg_match('/createElement\(\s*[\'"]script[\'"]\s*\)/', $content) === 1
+        && preg_match_all('/\.src\s*=\s*([^;\n]+)/', $content, $m)) {
+        foreach ($m[1] as $expr) {
+            if (preg_match_all('/([\'"`])([^\'"`$\n]+\.m?js)\1/', $expr, $lit)) {
+                $refs = array_merge($refs, $lit[2]);
+            }
+            // 'praefix-' + n + '.js' mit n aus ['a', 'b'].map((n) => ...) / .forEach
+            if (preg_match_all('/([\'"])([\w.\/-]+)\1\s*\+\s*([A-Za-z_$][\w$]*)\s*\+\s*([\'"])(\.m?js)\4/', $expr, $cat, PREG_SET_ORDER)) {
+                foreach ($cat as $c) {
+                    $loop = '/\[([^\]\n]*)\]\s*\.(?:map|forEach)\(\s*\(?\s*' . preg_quote($c[3], '/') . '\b/';
+                    if (preg_match_all($loop, $content, $arr)) {
+                        foreach ($arr[1] as $list) {
+                            preg_match_all('/([\'"])([\w.-]+)\1/', $list, $names);
+                            foreach ($names[2] as $name) {
+                                $refs[] = $c[2] . $name . $c[5];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return localPaths($refs, $fromRel);
 }
 
 $root = realpath((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
@@ -158,6 +212,7 @@ $queue = [$pageRel];
 $seen = [$pageRel => true];
 $files = [];
 $linked = [];
+$fetched = [];
 while ($queue) {
     $rel = array_shift($queue);
     $content = @file_get_contents($root . '/' . $rel);
@@ -165,10 +220,18 @@ while ($queue) {
         failServer('read failed ' . $rel);
     }
     $files[$rel] = $content;
-    if (preg_match('/\.(html?|md)$/i', $rel) !== 1) {
+    $isMarkup = preg_match('/\.(html?|md)$/i', $rel) === 1;
+    if (!$isMarkup && preg_match('/\.m?js$/i', $rel) !== 1) {
         continue;
     }
-    foreach (references($content, $rel, $isDev) as $ref) {
+    foreach (localPaths(argValues($content, ['\bfetch']), $rel) as $ref) {
+        $fetched[] = $ref;
+    }
+    $refs = runtimeRefs($content, $rel);
+    if ($isMarkup) {
+        $refs = array_merge(references($content, $rel, $isDev), $refs);
+    }
+    foreach ($refs as $ref) {
         $refRel = publicFile($root, $ref, $intern);
         if ($refRel === null || isset($seen[$refRel])) {
             continue;
@@ -198,4 +261,21 @@ foreach ($files as $rel => $content) {
 }
 foreach ($linked as $rel) {
     echo '===== /' . $rel . " (nur verlinkt) =====\n\n";
+}
+
+// Daten per fetch (nur oeffentliche Dateien, die nicht schon oben stehen) und die Login-Skripte:
+// auf dev stehen editor.js und aufnahme.js schon im Head, auf live setzt nginx sie nur mit Login-Cookie ein.
+$laufzeit = [];
+foreach ($fetched as $ref) {
+    $refRel = publicFile($root, $ref, $intern);
+    if ($refRel !== null && !isset($seen[$refRel])) {
+        $seen[$refRel] = true;
+        $laufzeit[] = '/' . $refRel;
+    }
+}
+if (!$isDev) {
+    $laufzeit[] = '/api/edit/editor.js, /api/edit/chat.js, /tools/aufnahme.js (nur mit Login)';
+}
+if ($laufzeit) {
+    echo 'wird zur Laufzeit geladen: ' . implode(', ', $laufzeit) . "\n";
 }
