@@ -22737,7 +22737,7 @@ add0.html
     <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>Infinity Zeros Game</title>
-    <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt -->
+    <!-- meta.css regelt Hintergrund- und Objekt-Farben etc.. Sonstiges CSS wird häufig nicht benötigt, es sei denn es wird doch benötigt QREALCMT -->
     <!-- meta.js regelt das Menü und den Zurückbutton und evt. sonstige zukünftige Metafunktionen -->
     
     <style>
@@ -75148,18 +75148,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
