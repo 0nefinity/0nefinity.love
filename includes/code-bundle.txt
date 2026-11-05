@@ -12217,7 +12217,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Text-Layout und Textdarstellung
 
 ### Gedrehte Textzeilen aus Bitmaps
-`EinNullgespräch.html` (`wrap()`, `layout(force)`, `makeSprite()`, `buildChunk()`, `fold(j)`, `place(k)`, `draw()`, `drawReference()`). Wortumbruch per `measureText` (überlange Wörter zeichenweise), Ankerzeile bleibt beim Umbruch, Zeilen-Bitmaps in 6-ms-Häppchen per `setTimeout`, pixelgenaue Geräte-Ausrichtung, Zeilen gedreht und versetzt mit periodischem Falten, exaktes Culling gedrehter Rechtecke, `fillText`-Fallback, Vorbau beim Laden (Schrift abwarten, Shader und Probezeichnung früh, alle Atlanten vorab in nötiger Höhe, Zeilen auf CPU-Leinwand gesetzt und als Alpha-Bytes hochgeladen statt Canvas-Upload, Neuzeichnen im Aufbau gedrosselt, Zähler `counters()` belegen: beim Bewegen kein Bau). `drawReference()` ist die Testgrundwahrheit, Testhaken in `window.einNullgespraech`, Fehler brechen sichtbar ab (`fail()`). Ausgefeilt, herauslösen.
+`EinNullgespräch.html` (`wrap()`, `layout(force)`, `makeSprite()`, `buildChunk()`, `fold(j)`, `place(k)`, `draw()`, `drawReference()`). Wortumbruch per `measureText` (überlange Wörter zeichenweise), Ankerzeile bleibt beim Umbruch, Zeilen-Bitmaps in 6-ms-Häppchen per `setTimeout`, pixelgenaue Geräte-Ausrichtung, Zeilen gedreht und versetzt mit periodischem Falten, exaktes Culling gedrehter Rechtecke, `fillText`-Fallback, Vorbau beim Laden (Schrift abwarten, Shader und Probezeichnung früh, alle Atlanten vorab in nötiger Höhe, Zeilen auf CPU-Leinwand gesetzt und als Alpha-Bytes hochgeladen statt Canvas-Upload, Neuzeichnen im Aufbau gedrosselt, Zähler `counters()` belegen: beim Bewegen kein Bau). `drawReference()` ist die Testgrundwahrheit, Testhaken in `window.einNullgespraech`, Fehler brechen sichtbar ab (`fail()`). Zoom 0.1 bis 8 (`zoomBy()`, `pickScale()`, `settleScale()`): die GPU skaliert beim Zoomen den vorhandenen Atlas (Uniform `u_m`), nach dem Loslassen baut ein entprellter Vorbau einmal in `dpr * zoom`, gedeckelt durch MAX_TEXTURE_SIZE und `TEX_BUDGET`. Ausgefeilt, herauslösen.
 
 ### Text in Kreisform setzen
 `bibelaufdenpunkt.html` (`solveCircleRadius()` findet per Bisektion den kleinsten Radius für N Zeichen, `allocateCircleRowCharCounts()` verteilt nach Größte-Reste-Verfahren, `buildCircleLayout()`, `buildLineLayout()`, `getVirtualLineRowAt()` für Millionen Zeichen): ausgefeilt, die beiden Rechenfunktionen direkt kopierbar, Layout hängt am globalen `state`. Einfachere Variante: `Kuriositäten/bibleegg.html` (`generateLines()`, Sehnenlänge `sqrt(r²-y²)`, automatische Schriftverkleinerung, Kürzung nach Zoomstufe). Ähnlich auch in: `kreisausdingen.html` (`draw()`, n Zeichen gleichmäßig auf Kreis, je Zeichen `translate/rotate`, Radius relativ zur kürzeren Seite; `startHold()`), `Kuriositäten/kreisausdingen-goes-spiral.html` (Zeichen auf Spirale, Radius = base + progress*spiralFactor, URL-Parameter `anzahl`/`zeichen`; Variante `-anotherone.html`).
@@ -12325,7 +12325,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 `kreisausdingen.html` (`startHold()` 500 ms, dann 100 ms), `tools/controls.js` (Haltetaste 400/80 ms), `tools/cookies-banner.js` (`holdable()`), `Kuriositäten/kreisausdingen-goes-spiral.html` (`startHold(action, 500, 100)`, `getAngleBetweenTouches()`, Wheel/Shift-Wheel, `resizeCanvas()` über `getBoundingClientRect` für Firefox Mobile). Brauchbar; `holdable()` und `startHold` direkt kopierbar.
 
 ### Drehknopf-Geste
-`EinNullgespräch.html` (`polar()`, `knobMove()`, Zwei-Finger- und Mausrad-Scroll): Winkelzuwachs normalisiert (Sprung über 180° abgefangen), Abstand vom Zentrum schiebt zusätzlich. Ausgefeilt, herauslösen.
+`EinNullgespräch.html` (`polar()`, `knobMove()`, Zwei-Finger- und Mausrad-Scroll, Strg-Rad/Pinch-Zoom um die Stapelmitte): Winkelzuwachs normalisiert (Sprung über 180° abgefangen), Abstand vom Zentrum schiebt zusätzlich. Ausgefeilt, herauslösen.
 
 ### Multitouch-Halter mit Gleiten
 `0klang.html` (`halter`-Map, `greifen()`, `loslassen()`, Zähler pro Note, `gleite()`): Pointer-Multitouch für Tasten und Akkord-Pads, Zähler verhindert vorzeitiges Abschalten bei mehreren Haltern. Brauchbar, herauslösen.
@@ -13629,7 +13629,12 @@ EinNullgespräch.html
     // Im GL-Modus liegt #gespraech als durchsichtige Deckschicht darueber und zeigt nur Zeilen, deren Atlasreihe noch nicht gebaut ist (fillText, nie fehlender Text).
     let mode = '2d', gl = null, glName = '';
 
-    const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0 };
+    const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0, zoom: 1 };
+    const ZOOM_MIN = 0.1, ZOOM_MAX = 8;
+    // Zoom skaliert die ganze Anordnung um die Bildmitte (Layout, Umbruch und Zeilenzahl bleiben gleich). Waehrend der Geste skaliert die GPU die fertigen
+    // Atlanten; nach dem Loslassen baut der Atlas einmal in der neuen Aufloesung bs (Geraetepixel je Layout-Pixel = dpr * zoom, begrenzt durch Textur und Speicher).
+    const TEX_BUDGET = 192e6;   // Bytes Alpha-Atlas insgesamt (1 Byte je Pixel)
+    let bs = 1, settleTimer = 0;
     let messages = null;
     let lines = [];            // { text, wer, msg, img, sw, w (CSS-px) } oder null fuer die Leerzeile zwischen zwei Nachrichten
     let W = 0, H = 0, dpr = 1, fontPx = 16, lh = 24, colW = 300;
@@ -13715,9 +13720,9 @@ EinNullgespräch.html
           for (const t of wrap(m.text)) lines.push(t ? { text: t, wer: m.wer, msg: i, img: null, sw: 0, w: ctx.measureText(t).width, wp: 0, row: -1, sx: 0 } : null);
         });
       }
-      for (const l of lines) if (l) l.wp = Math.ceil(l.w * dpr) + 2 * padPx() + 2;
-      if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg) + anchorIn + anchorOff;
+            if (anchor) st.stelle = lines.findIndex((l) => l && l.msg === anchor.msg) + anchorIn + anchorOff;
       st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), st.stelle));
+      pickScale();
       if (mode === 'gl') planAtlas();
       ready = false;
       scheduleBuild();
@@ -13743,14 +13748,56 @@ EinNullgespräch.html
     // Jede Zeile wird einmal als kleines Bitmap gesetzt (Textsatz, Antialiasing); im Frame bleibt nur das Aufbringen mit Transform.
     // Alles in Geraetepixeln: Bitmap-Hoehe gerade, Textstart ganzzahlig, Skalierung genau dpr (nie hoch- oder runterskaliert),
     // dann steht jede Zeile bei Drehung 0 pixelgenau dort, wo fillText sie hinsetzen wuerde.
-    const padPx = () => Math.ceil(2 * dpr);
-    const heightPx = () => 2 * Math.ceil(lh * dpr / 2);
+    const padPx = () => Math.ceil(2 * bs);
+    const heightPx = () => 2 * Math.ceil(lh * bs / 2);
+    // Breite jeder Zeile im Bitmap, gemessen mit genau der Schrift, in der sie gebaut wird (bs), nicht hochgerechnet.
+    function sizeLines() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = fontPx * bs + 'px ' + fontFamily;
+      const pad = padPx();
+      // Speicher wie planAtlas ihn belegt: Regalpackung, jede Reihe ist atlasS breit.
+      const S = atlasS || 8192;
+      let maxWp = 0, x = 0, nrows = 0;
+      for (const l of lines) if (l) {
+        l.wp = Math.ceil(ctx.measureText(l.text).width) + 2 * pad + 2; maxWp = Math.max(maxWp, l.wp);
+        if (!nrows || x + l.wp > S) { nrows++; x = 0; }
+        x += l.wp;
+      }
+      return { maxWp, bytes: nrows * heightPx() * S };
+    }
+    // Aufloesung des Vorbaus: dpr * zoom, bis jede Zeile in den Atlas passt (MAX_TEXTURE_SIZE) und der Speicher reicht; darueber skaliert die GPU.
+    // beyond the memory budget the GPU takes over, and the words only get softer, never fewer.
+    function pickScale() {
+      const want = Math.round(dpr * st.zoom * 1000) / 1000, S = atlasS || 8192;
+      bs = want;
+      for (let i = 0; i < 40; i++) {
+        const m = sizeLines();
+        if (m.maxWp <= S && m.bytes <= TEX_BUDGET) break;
+        bs = Math.max(0.05, bs * Math.min(0.95, Math.sqrt(TEX_BUDGET / m.bytes), (S - 1) / m.maxWp));
+      }
+      const mm = sizeLines();
+      cnt.bs = bs;
+      if (mm.maxWp > S) fail('Zeile breiter als der Atlas (' + mm.maxWp + ' px)');
+    }
+    // Nach dem Loslassen (entprellt): Atlas einmal vollstaendig in der neuen Aufloesung. Bis dahin steht das skalierte alte Bild, fehlende Reihen die Deckschicht.
+    function settleScale() {
+      settleTimer = 0;
+      if (!messages || !lines.length) return;
+      const old = bs;
+      pickScale();
+      if (Math.abs(bs / old - 1) < 0.02) { bs = old; sizeLines(); return; }
+      cnt.rescales = (cnt.rescales || 0) + 1;
+      if (mode === 'gl') planAtlas(); else dropSprites();
+      ready = false;
+      scheduleBuild();
+      dirty = true;
+    }
     function makeSprite(l) {
       const pad = padPx();
       const c = document.createElement('canvas');
-      c.width = Math.ceil(l.w * dpr) + 2 * pad + 2; c.height = heightPx();
+      c.width = l.wp; c.height = heightPx();
       const g = c.getContext('2d');
-      g.font = fontPx * dpr + 'px ' + fontFamily;
+      g.font = fontPx * bs + 'px ' + fontFamily;
       g.textBaseline = 'middle';
       g.fillStyle = color;
       g.fillText(l.text, pad, c.height / 2);
@@ -13840,11 +13887,11 @@ EinNullgespräch.html
         atlasS = Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE));
         const vs = compile(gl.VERTEX_SHADER, [
           'attribute vec2 a_corner; attribute vec4 a_geo; attribute vec4 a_src;',
-          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_x0; uniform float u_hp; uniform vec2 u_atlas;',
+          'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_m; uniform float u_x0; uniform float u_hp; uniform vec2 u_atlas;',
           'varying vec2 v_uv; varying float v_a;',
           'void main() {',
           '  vec2 loc = vec2(u_x0 + a_corner.x * a_src.z, a_geo.z + a_corner.y * u_hp);',
-          '  vec2 p = u_origin + vec2(loc.x * a_geo.x - loc.y * a_geo.y, loc.x * a_geo.y + loc.y * a_geo.x);',
+          '  vec2 p = u_origin + u_m * vec2(loc.x * a_geo.x - loc.y * a_geo.y, loc.x * a_geo.y + loc.y * a_geo.x);',
           '  gl_Position = vec4(p.x / u_res.x * 2.0 - 1.0, 1.0 - p.y / u_res.y * 2.0, 0.0, 1.0);',
           '  v_uv = (a_src.xy + a_corner * vec2(a_src.z, u_hp)) / u_atlas;',
           '  v_a = a_src.w;',
@@ -13857,7 +13904,7 @@ EinNullgespräch.html
         prog = gl.createProgram();
         gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
         if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Shader-Link: ' + gl.getProgramInfoLog(prog));
-        U = {}; for (const n of ['u_origin', 'u_res', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color']) U[n] = gl.getUniformLocation(prog, n);
+        U = {}; for (const n of ['u_origin', 'u_res', 'u_m', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color']) U[n] = gl.getUniformLocation(prog, n);
         A = { corner: gl.getAttribLocation(prog, 'a_corner'), geo: gl.getAttribLocation(prog, 'a_geo'), src: gl.getAttribLocation(prog, 'a_src') };
         cornerBuf = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
@@ -13885,7 +13932,7 @@ EinNullgespräch.html
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.useProgram(prog);
-      gl.uniform2f(U.u_origin, 0, 0); gl.uniform2f(U.u_res, 1, 1); gl.uniform1f(U.u_x0, 0); gl.uniform1f(U.u_hp, 1);
+      gl.uniform2f(U.u_origin, 0, 0); gl.uniform2f(U.u_res, 1, 1); gl.uniform1f(U.u_m, 1); gl.uniform1f(U.u_x0, 0); gl.uniform1f(U.u_hp, 1);
       gl.uniform2f(U.u_atlas, 1, 1); gl.uniform3f(U.u_color, 0, 0, 0); gl.uniform1i(U.u_tex, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
       gl.enableVertexAttribArray(A.corner); gl.vertexAttribPointer(A.corner, 2, gl.FLOAT, false, 0, 0); inst.div(A.corner, 0);
@@ -13953,7 +14000,7 @@ EinNullgespräch.html
         const g = scratchG || (scratchG = scratch.getContext('2d', { willReadFrequently: true }));
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, S, hp);
-        g.font = fontPx * dpr + 'px ' + fontFamily;
+        g.font = fontPx * bs + 'px ' + fontFamily;
         g.textBaseline = 'middle';
         g.fillStyle = color;
         for (const l of r.lines) g.fillText(l.text, l.sx + pad, hp / 2);
@@ -13987,8 +14034,8 @@ EinNullgespräch.html
       const off = j * st.verschiebung * lh;
       const s = Math.sin(a), c = Math.cos(a);
       // lokale x = -colW/2 (Zeilenanfang), lokale y = off; gedreht um a.
-      const lx = -colW / 2, ly = off;
-      return { x: W / 2 + lx * c - ly * s, y: H / 2 + lx * s + ly * c, a, j, off };
+      const lx = -colW / 2, ly = off, z = st.zoom;
+      return { x: W / 2 + z * (lx * c - ly * s), y: H / 2 + z * (lx * s + ly * c), a, j, off };
     }
 
     // ─── Zeichnen ───
@@ -14016,7 +14063,7 @@ EinNullgespräch.html
       return maxX < -2 || minX > cw + 2 || maxY < -2 || minY > ch + 2;
     }
     function drawText(l, x, y) {
-      ctx.font = fontPx * dpr + 'px ' + fontFamily;
+      ctx.font = fontPx * bs + 'px ' + fontFamily;
       ctx.textBaseline = 'middle';
       ctx.fillStyle = color;
       ctx.fillText(l.text, x, y);
@@ -14025,8 +14072,8 @@ EinNullgespräch.html
     function draw2d() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const c = dpr, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
-      const ox = Math.round(W / 2 * c), oy = Math.round(H / 2 * c), x0 = Math.round(-colW / 2 * c) - pad;
+      const c = bs, m = dpr * st.zoom / bs, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
+      const ox = Math.round(W / 2 * dpr), oy = Math.round(H / 2 * dpr), x0 = Math.round(-colW / 2 * c) - pad;
       let missing = false;
       lastKs = [];
       for (let k = 0; k < lines.length; k++) {
@@ -14034,7 +14081,7 @@ EinNullgespräch.html
         if (!l) continue;
         const j = fold(k - st.stelle);
         const a = j * st.winkel * DEG;
-        const cos = Math.cos(a), sin = Math.sin(a);
+        const cos = Math.cos(a) * m, sin = Math.sin(a) * m;
         const y0 = Math.round(j * st.verschiebung * lh * c) - hp / 2;
         if (outside(cos, sin, x0, y0, l.wp, hp, ox, oy, cw, ch)) continue;
         ctx.setTransform(cos, sin, -sin, cos, ox, oy);
@@ -14054,8 +14101,8 @@ EinNullgespräch.html
       if (missing) scheduleBuild();
     }
     function drawGL() {
-      const c = dpr, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
-      const ox = Math.round(W / 2 * c), oy = Math.round(H / 2 * c), x0 = Math.round(-colW / 2 * c) - pad;
+      const c = bs, m = dpr * st.zoom / bs, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
+      const ox = Math.round(W / 2 * dpr), oy = Math.round(H / 2 * dpr), x0 = Math.round(-colW / 2 * c) - pad;
       if (overlayUsed) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch); overlayUsed = false; }
       if (!instArr || instArr.length < lines.length * 8) instArr = new Float32Array(Math.max(8, lines.length * 8));
       let n = 0, segPage = -1, segStart = 0;
@@ -14068,13 +14115,13 @@ EinNullgespräch.html
         const a = j * st.winkel * DEG;
         const cos = Math.cos(a), sin = Math.sin(a);
         const y0 = Math.round(j * st.verschiebung * lh * c) - hp / 2;
-        if (outside(cos, sin, x0, y0, l.wp, hp, ox, oy, cw, ch)) continue;
+        if (outside(cos * m, sin * m, x0, y0, l.wp, hp, ox, oy, cw, ch)) continue;
         lastKs.push(k);
         const alpha = l.wer === 'claude' ? 0.58 : 0.94;
         const r = rows[l.row];
         if (!r || !r.done) {
           // Reihe noch nicht im Atlas: direkt setzen (Deckschicht), nie fehlender Text.
-          ctx.setTransform(cos, sin, -sin, cos, ox, oy);
+          ctx.setTransform(cos * m, sin * m, -sin * m, cos * m, ox, oy);
           ctx.globalAlpha = alpha;
           drawText(l, x0 + pad, y0 + hp / 2);
           cnt.fallbackLines++;
@@ -14100,7 +14147,7 @@ EinNullgespräch.html
       if (n) {
         gl.useProgram(prog);
         gl.uniform2f(U.u_origin, ox, oy); gl.uniform2f(U.u_res, cw, ch);
-        gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp);
+        gl.uniform1f(U.u_m, m); gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp);
         gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
         gl.uniform1i(U.u_tex, 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
@@ -14123,7 +14170,9 @@ EinNullgespräch.html
       if (wanted.length || overlayUsed) scheduleBuild();
     }
     // Grundwahrheit fuer Tests: jede Zeile (oder nur only) per fillText, ohne Bitmaps, ohne Auslassen; Ursprung und Zeilenversatz auf ganze Geraetepixel gesetzt, wie bei den Bitmaps.
-    function drawReference(g, c, only) {
+    function drawReference(g, c0, only) {
+      // c0 = Geraetepixel je CSS-Pixel des Zielbildes; gesetzt wird in der Aufloesung des Atlas (bs/dpr * c0), skaliert um zoom * dpr / bs.
+      const c = c0 * bs / dpr, m = st.zoom * dpr / bs;
       g.setTransform(1, 0, 0, 1, 0, 0);
       if (only === null) g.clearRect(0, 0, g.canvas.width, g.canvas.height);
       g.font = fontPx * c + 'px ' + fontFamily;
@@ -14134,7 +14183,7 @@ EinNullgespräch.html
         if (!l || (only !== null && only !== k)) continue;
         const j = fold(k - st.stelle);
         const a = j * st.winkel * DEG;
-        g.setTransform(Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), Math.round(W / 2 * c), Math.round(H / 2 * c));
+        g.setTransform(Math.cos(a) * m, Math.sin(a) * m, -Math.sin(a) * m, Math.cos(a) * m, Math.round(W / 2 * c0), Math.round(H / 2 * c0));
         g.globalAlpha = l.wer === 'claude' ? 0.58 : 0.94;
         g.fillText(l.text, Math.round(-colW / 2 * c), Math.round(j * st.verschiebung * lh * c));
       }
@@ -14154,6 +14203,7 @@ EinNullgespräch.html
         const v = Number(patch[k]);
         if (!Number.isFinite(v)) continue;
         if (k === 'periode') st.periode = Math.max(0, v);
+        else if (k === 'zoom') { const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v)); if (z !== st.zoom) { st.zoom = z; clearTimeout(settleTimer); settleTimer = setTimeout(settleScale, 350); } }
         else if (k === 'stelle') st.stelle = Math.max(0, Math.min(Math.max(0, lines.length - 1), v));
         else if (k in st) st[k] = v;
       }
@@ -14166,6 +14216,7 @@ EinNullgespräch.html
       panel.set('verschiebung', round(st.verschiebung, 3));
       panel.set('periode', st.periode);
       panel.set('stelle', round(st.stelle, 1));
+      panel.set('zoom', round(st.zoom, 3));
     }
     const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -14174,7 +14225,7 @@ EinNullgespräch.html
       clearTimeout(urlTimer);
       urlTimer = setTimeout(() => {
         const u = new URL(location.href);
-        const isNull = !st.winkel && !st.verschiebung && !st.periode && !st.stelle;
+        const isNull = !st.winkel && !st.verschiebung && !st.periode && !st.stelle && st.zoom === 1;
         for (const k of Object.keys(st)) {
           if (isNull) u.searchParams.delete(k);
           else u.searchParams.set(k, String(round(st[k], 4)));
@@ -14207,7 +14258,7 @@ EinNullgespräch.html
     // Der Zeiger kreist um die Bildmitte: der Winkelzuwachs je Ereignis (auf (-180, 180] normalisiert, aufsummiert)
     // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Zwei Finger, Mausrad: durch das Gespraech wandern.
     const pointers = new Map();
-    let lastTap = 0, moved = 0, pairY = null, knob = null;
+    let lastTap = 0, moved = 0, pairY = null, pairD = null, knob = null;
     const WINKEL_PRO_GRAD = 0.05, VERSCH_PRO_PX = 1 / 320;
 
     function polar(e) {
@@ -14230,6 +14281,7 @@ EinNullgespräch.html
       moved = 0;
       if (pointers.size === 1) knobStart(e);
       pairY = pointers.size === 2 ? avgY() : null;
+      pairD = pointers.size === 2 ? pairDist() : null;
       canvas.classList.add('zieht');
     });
     canvas.addEventListener('pointermove', (e) => {
@@ -14245,12 +14297,16 @@ EinNullgespräch.html
         const y = avgY();
         if (pairY !== null) scrollBy(-(y - pairY));
         pairY = y;
+        const d = pairDist();
+        if (pairD > 0 && d > 0) zoomBy(d / pairD);
+        pairD = d;
       }
     });
     const end = (e) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.delete(e.pointerId);
       pairY = pointers.size === 2 ? avgY() : null;
+      pairD = pointers.size === 2 ? pairDist() : null;
       if (pointers.size === 1) { const [rest] = pointers.values(); knob = polar({ clientX: rest.x, clientY: rest.y }); }
       if (!pointers.size) { knob = null; canvas.classList.remove('zieht'); }
       if (e.type === 'pointerup' && !pointers.size && moved < 8) {
@@ -14261,18 +14317,28 @@ EinNullgespräch.html
     };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
+    function pairDist() { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); }
     function avgY() { let s = 0; for (const p of pointers.values()) s += p.y; return s / pointers.size; }
     function scrollBy(px) {
-      const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh;
+      const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh * st.zoom;
       setState({ stelle: st.stelle + px / step });
     }
+    // Zoomen wie auf den anderen Seiten, ohne das Mausrad (= Wandern) anzutasten: Strg+Rad (Trackpad-Pinch kommt als Strg+Rad), Pinch mit zwei Fingern,
+    // Tasten + / - / 0. Mitte der Anordnung bleibt in der Bildmitte.
+    const zoomBy = (f) => setState({ zoom: st.zoom * f });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const px = e.deltaMode === 1 ? e.deltaY * lh : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
+      if (e.ctrlKey || e.metaKey) { zoomBy(Math.max(0.8, Math.min(1.25, Math.exp(-px * 0.005)))); return; }
       scrollBy(px);
     }, { passive: false });
     window.addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') { e.preventDefault(); zoomBy(1.25); return; }
+        if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') { e.preventDefault(); zoomBy(0.8); return; }
+        if (e.key === '0' || e.code === 'Numpad0') { e.preventDefault(); setState({ zoom: 1 }); return; }
+      }
       const k = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
       if (k) { e.preventDefault(); setState({ stelle: st.stelle + k }); }
     });
@@ -14284,6 +14350,7 @@ EinNullgespräch.html
       panel.addSlider('verschiebung', { label: 'Verschiebung', min: 0, max: 4, step: 0.001, value: st.verschiebung, decimals: 3, onChange: (v) => setState({ verschiebung: v }, true) });
       panel.addSlider('periode', { label: 'Periode', min: 0, max: Math.max(1, lines.length), step: 1, value: st.periode, decimals: 0, onChange: (v) => setState({ periode: v }, true) });
       panel.addSlider('stelle', { label: 'Stelle', min: 0, max: Math.max(1, lines.length - 1), step: 0.1, value: st.stelle, decimals: 1, onChange: (v) => setState({ stelle: v }, true) });
+      panel.addSlider('zoom', { label: 'Zoom', min: ZOOM_MIN, max: ZOOM_MAX, step: 0.01, value: st.zoom, decimals: 2, onChange: (v) => setState({ zoom: v }, true) });
       panel.addResetButton({ title: 'Nullgebilde', onClick: () => { setState({ periode: 0 }); animateTo(NULL, 700); } });
     }
 
@@ -14294,7 +14361,7 @@ EinNullgespräch.html
       render() { draw(); dirty = false; },
       reference() { drawReference(ctx, dpr, null); },
       renderer() { return mode === 'gl' ? glName : 'Canvas2D'; },
-      layoutInfo() { return { font: fontPx + 'px ' + fontFamily, colW, fontPx, lh, dpr, W, H, atlas: atlasS, pages: pages.length, rows: rows.length, rowsDone: rows.filter((r) => r.done).length }; },
+      layoutInfo() { return { font: fontPx + 'px ' + fontFamily, colW, fontPx, lh, dpr, W, H, atlas: atlasS, bs, zoom: st.zoom, bytes: pages.reduce((n, pg) => n + atlasS * pg.h, 0), pages: pages.length, rows: rows.length, rowsDone: rows.filter((r) => r.done).length }; },
       // Alles, was gerade auf dem Schirm steht (GL-Schicht plus Deckschicht), als ImageData; und die Grundwahrheit daneben.
       snapshot() {
         const c = document.createElement('canvas'); c.width = canvas.width; c.height = canvas.height;
@@ -14352,6 +14419,8 @@ EinNullgespräch.html
           throw new Error('Gespraechsdaten ungueltig');
         }
         messages = data;
+        const q0 = loadUrl();
+        if ('zoom' in q0) setState({ zoom: q0.zoom });   // vor dem ersten Vorbau, damit der Atlas gleich in der richtigen Aufloesung entsteht
         layout();
         buildPanel();
         setState(loadUrl());
@@ -94822,8 +94891,7 @@ unfoldingPi.html
       g.textAlign = 'center'; g.textBaseline = 'middle';   // wie die Ziffern; dy (dotMetrics) legt die Punkt-Unterkante auf die der Ziffern
       g.fillStyle = getComputedStyle(stage).color;
       if (!multi && !ONE_DOT) return;
-      // Der Punkt bleibt, wird aber ganz verdeckt, sobald Ziffern in ihn gefaltet sind: ihre Tinte steht dann auf ihm und er scheint nicht durch die Luecken (eine einzelne 3 hat Luecken)
-      if (!multi) { const st = view.state(); if (st.L >= st.fold.x - 0.5 || st.R <= st.fold.x + 0.5 || st.uLeft > 0) return; }
+      // Der Punkt wird immer gezeichnet (nur circle width 0 nimmt ihn weg): gefaltete Ziffern liegen als Strich auf ihm, ragt er darueber hinaus, bleibt der Rest sichtbar
       g.globalAlpha = DOT_ALPHA;
       // Kreis (rund bei jeder Groesse), Mitte = Mitte des Schriftpunkts (Standardgroesse sitzt auf der Grundlinie), Skalierung um diese Mitte
       const r = dotHalf();
@@ -95113,8 +95181,17 @@ unfoldingPi.html
         if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
       }
     });
+    // Reglerweg s ist die Kubikwurzel: unten fein, oben weit (s 10 = Standard 1, s 100 = 1000, der Punkt fuellt dann mehr als den Bildschirm)
+    const circleTransform = {
+      toSliderValue(v) { return Math.cbrt(Math.max(0, +v || 0) * 1000); },
+      fromSliderValue(s) { const x = Math.max(0, +s || 0); return x * x * x / 1000; },
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
+    };
     panel.addSlider('circle', {
-      label: 'your circle width', min: 0, max: 4, step: 0.01, value: 1, decimals: 2, grow: true,
+      label: 'your circle width', min: 0, max: 1000, step: 0.01, value: 1, decimals: 2, grow: true, transform: circleTransform,
       onChange: (v) => {
         dotScale = Math.max(0, +v || 0);
         if (multi) layoutMulti(); else centreSingle();
@@ -95179,6 +95256,8 @@ unfoldingPi.html
       },
       // Punkt-Canvas im Mehrgliedmodus (sonst null) und die Stellen der Punkte (CSS-px der Buehne)
       punkt() { return multi ? { canvas: multi.punkt, points: multi.points } : { canvas: single.punkt, points: single.points }; },
+      // Punkte (Mitte in Viewport-px) und Radius, wie gezeichnet
+      dot() { const T = multi || single, dm = dotMetrics(), sr = stage.getBoundingClientRect(); return { r: dotHalf(), points: (T.points || []).map((q) => ({ x: sr.left + PUNKT_X(q), y: sr.top + q.y + dm.dy + dm.bot - dm.half })) }; },
       controls: panel
     };
   })();
