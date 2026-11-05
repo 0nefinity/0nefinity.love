@@ -605,8 +605,7 @@
       g.textAlign = 'center'; g.textBaseline = 'middle';   // wie die Ziffern; dy (dotMetrics) legt die Punkt-Unterkante auf die der Ziffern
       g.fillStyle = getComputedStyle(stage).color;
       if (!multi && !ONE_DOT) return;
-      // Der Punkt bleibt, wird aber ganz verdeckt, sobald Ziffern in ihn gefaltet sind: ihre Tinte steht dann auf ihm und er scheint nicht durch die Luecken (eine einzelne 3 hat Luecken)
-      if (!multi) { const st = view.state(); if (st.L >= st.fold.x - 0.5 || st.R <= st.fold.x + 0.5 || st.uLeft > 0) return; }
+      // Der Punkt wird immer gezeichnet (nur circle width 0 nimmt ihn weg): gefaltete Ziffern liegen als Strich auf ihm, ragt er darueber hinaus, bleibt der Rest sichtbar
       g.globalAlpha = DOT_ALPHA;
       // Kreis (rund bei jeder Groesse), Mitte = Mitte des Schriftpunkts (Standardgroesse sitzt auf der Grundlinie), Skalierung um diese Mitte
       const r = dotHalf();
@@ -896,8 +895,17 @@
         if (multi) for (const it of multi.items) it.view.setFactor(factorValue);
       }
     });
+    // Reglerweg s ist die Kubikwurzel: unten fein, oben weit (s 10 = Standard 1, s 100 = 1000, der Punkt fuellt dann mehr als den Bildschirm)
+    const circleTransform = {
+      toSliderValue(v) { return Math.cbrt(Math.max(0, +v || 0) * 1000); },
+      fromSliderValue(s) { const x = Math.max(0, +s || 0); return x * x * x / 1000; },
+      formatDisplayValue(v, decimals) { return fmtDE(v, decimals); },
+      parseDisplayValue(text) { return parseDE(text); },
+      formatConfigValue(v) { return fmtDE(v, 20); },
+      parseConfigValue(text) { return parseDE(text); }
+    };
     panel.addSlider('circle', {
-      label: 'your circle width', min: 0, max: 4, step: 0.01, value: 1, decimals: 2, grow: true,
+      label: 'your circle width', min: 0, max: 1000, step: 0.01, value: 1, decimals: 2, grow: true, transform: circleTransform,
       onChange: (v) => {
         dotScale = Math.max(0, +v || 0);
         if (multi) layoutMulti(); else centreSingle();
@@ -962,6 +970,8 @@
       },
       // Punkt-Canvas im Mehrgliedmodus (sonst null) und die Stellen der Punkte (CSS-px der Buehne)
       punkt() { return multi ? { canvas: multi.punkt, points: multi.points } : { canvas: single.punkt, points: single.points }; },
+      // Punkte (Mitte in Viewport-px) und Radius, wie gezeichnet
+      dot() { const T = multi || single, dm = dotMetrics(), sr = stage.getBoundingClientRect(); return { r: dotHalf(), points: (T.points || []).map((q) => ({ x: sr.left + PUNKT_X(q), y: sr.top + q.y + dm.dy + dm.bot - dm.half })) }; },
       controls: panel
     };
   })();
