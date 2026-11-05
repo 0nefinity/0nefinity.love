@@ -25183,8 +25183,10 @@ void main() {
     // magnified, the anchor is only 2^-dl as sharp as it was; it stays the base for as long as
     // that is no worse than the view could be drawn whole in the time (then it is the better
     // base, and costs nothing). An anchor drawn that coarse is no worse than the time allows.
-    const qb = qGrob(), qe = g.q * Math.min(1, 2 ** -dl);
-    if (!(dl >= -1 && dl < 5) || !(qe >= Math.min(ANKER_Q, 0.8 * qb))) return null;
+    // Shrunk (zooming out) it loses nothing, however far, and grows as much sharper: what it
+    // leaves open is the edge, and dropping it for a whole coarse view threw the sharp middle away.
+    const qb = qGrob(), qe = Math.min(1, g.q * 2 ** -dl);
+    if (!(dl < 5) || !(qe >= Math.min(ANKER_Q, 0.8 * qb))) return null;
     const k = 2 ** dl;
     if (!isFinite(dx) || !isFinite(dy)) return null;
     const still = Math.abs(dl) < 1e-9;
@@ -25369,16 +25371,22 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       [vH, lv, vnx, vny] = jetzt;
       nach = { W, Hc, PB, ziel, y: Hc, h, g: { ls: l1, vH: ziel.vH, PB, q: 1, w: -1, W, Hc, cx: cH[0], cy: cH[1], r, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 } };
     }
-    nachFbo.an(W, Hc);
-    const h = Math.min(nach.y, nach.h);
-    gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(0, nach.y - h, W, h);
-    const ok = mitAnsicht(nach.ziel, () => drawView(W, Hc, "feld"));
-    gl.disable(gl.SCISSOR_TEST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-    if (!ok) { nach = null; return; }
-    nach.y -= h;
-    if (nach.y > 0) return;
+    if (nach.y > 0) {
+      nachFbo.an(W, Hc);
+      const h = Math.min(nach.y, nach.h);
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(0, nach.y - h, W, h);
+      const ok = mitAnsicht(nach.ziel, () => drawView(W, Hc, "feld"));
+      gl.disable(gl.SCISSOR_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+      if (!ok) { nach = null; return; }
+      nach.y -= h;
+      if (nach.y > 0) return;
+    }
+    // zooming out, a Nachzug done early lies further out than the view: taken now it would be
+    // shown magnified, blurred. It waits till the view gets there; the picture shown meanwhile
+    // only shrinks, and shrunk a computed picture stays exact.
+    if (tempoV > 0 && nach.g.ls > ls) return;
     kopieFbo.an(W, Hc);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, nachFbo.fb);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, kopieFbo.fb);
