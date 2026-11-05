@@ -23879,11 +23879,11 @@ html, body { touch-action: pan-x pan-y; }
 @media (max-width: 420px) {
   #wert { font-size: 1rem; }
 }
-/* the speed slider has no label: its track takes the whole width of the panel */
-.ctrl-panel:not(.bar-mode) .ctrl-row[data-key="tempo"] { grid-template-columns: minmax(0, 1fr); }
-.ctrl-row[data-key="tempo"] .ctrl-label { display: none; }
-/* the number beside the track keeps one width (controls.js sizes it to the digits shown, and the track would breathe with every digit) */
-.ctrl-panel:not(.bar-mode) .ctrl-row[data-key="tempo"] .ctrl-slider-group { grid-column: 1; }
+/* 𝑟 and the speed slider are one pair, line for line: the label column only as wide as 𝑟 (empty
+   for the speed), both tracks over the whole width, both numbers in a box of one width */
+.ctrl-panel:not(.bar-mode) .ctrl-row:is([data-key="r"], [data-key="tempo"]) { grid-template-columns: 1em minmax(0, 1fr); }
+.ctrl-panel.bar-mode .ctrl-row[data-key="tempo"] .ctrl-label { display: none; }
+.ctrl-row:is([data-key="r"], [data-key="tempo"]) .ctrl-value-input { min-width: calc(6ch + 0.4em); }
 </style>
 </head>
 <body>
@@ -75160,18 +75160,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
