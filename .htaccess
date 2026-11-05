@@ -57,7 +57,7 @@ RewriteCond %{REQUEST_URI} !^/buyPi$
 RewriteRule ^buypi$ https://%{HTTP_HOST}/buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ https://%{HTTP_HOST}/README [R=302,L]
 RewriteRule ^foldingpi/?$ https://%{HTTP_HOST}/unfoldingPi [R=302,L,NC]
-# the mirrored M took over the name, the old one went to the archive of fakes
+# the mirrored M took over the name; the old directory version went to the archive of fakes
 RewriteRule "^gespiegeltes-mandelbrot([.]html)?/?$" "https://%{HTTP_HOST}/beidseitig-belegtes-mandelbrot" [R=301,L]
 RewriteRule "^double-sided-almondsandwich/?$" "https://%{HTTP_HOST}/beidseitig-belegtes-mandelbrot" [R=302,L,NC]
 
