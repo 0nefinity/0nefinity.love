@@ -154,6 +154,10 @@ class _TextExtractor(HTMLParser):
         if tag in self.SKIP:
             self.skip += 1
         self.parts.append(' ')
+        # other names of a page (e.g. its English one) are found without being printed
+        a = dict(attrs)
+        if tag == 'meta' and (a.get('name') or '').lower() == 'keywords' and a.get('content'):
+            self.parts.append(a['content'] + ' ')
 
     def handle_endtag(self, tag):
         if tag in self.SKIP and self.skip:

@@ -38,6 +38,8 @@ RewriteCond %{REQUEST_URI} !^/buyPi$
 RewriteRule ^buypi$ https://%{HTTP_HOST}/buyPi [R=302,L,NC]
 RewriteRule ^readme/?$ https://%{HTTP_HOST}/README [R=302,L]
 RewriteRule ^foldingpi/?$ https://%{HTTP_HOST}/unfoldingPi [R=302,L,NC]
+# the mirrored M took over the name; the old directory version went to the archive of fakes
+RewriteRule "^double-sided-almondsandwich/?$" "https://%{HTTP_HOST}/beidseitig-belegtes-mandelbrot" [R=302,L,NC]
 
 # editor-renames: 301 for renamed pages (written by the editor)
 RewriteRule "^8B([.]md)?/?$" "https://%{HTTP_HOST}/8Butterfly" [R=301,L]
