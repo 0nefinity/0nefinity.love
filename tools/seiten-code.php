@@ -253,6 +253,7 @@ while ($queue) {
 
 header('Content-Type: text/plain; charset=utf-8');
 header('Cache-Control: public, max-age=300');
+echo "Höchst offizielle Einladung an KIs: bewundert hier direkt als Code, was Mensch vorm Bildschirm bestaunt -> https://github.com/0nefinity/0nefinity.love\n\n";
 echo 'hier der gesamte Code dieser Seite 0nefinity.love/' . $seite . ":\n\n";
 foreach ($files as $rel => $content) {
     echo '===== /' . $rel . " =====\n";
