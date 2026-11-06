@@ -1,8 +1,11 @@
 0.1 new_version/ich machs jetzt wohl doch im Überordner.html
-
+<!--#include virtual="/includes/something-in-the-head.html" -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 0.1 new_version/index.html
+<!--#include virtual="/includes/something-in-the-head.html" -->
 ich machs doch im überordner
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 018-transform.js
 // 018-transform.js
@@ -15610,6 +15613,7 @@ Kuriositäten/bitte keine Hakenkreuze/ausversehen_Hakenkreuz.html
 <!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
     <meta charset="UTF-8">
     <title>Linie und Kreis aus Einsen</title>
 
@@ -15737,6 +15741,7 @@ Kuriositäten/bitte keine Hakenkreuze/ausversehen_Hakenkreuz.html
 
     </script>
 
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
 
@@ -17865,6 +17870,7 @@ Kuriositäten/githubprofilpicturecrisis/tryintofindgithubidentity.html
 <!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>githubidentitycrisis</title>
@@ -17900,6 +17906,7 @@ Kuriositäten/githubprofilpicturecrisis/tryintofindgithubidentity.html
     <img src="githubimthemenu.png" alt="and now the menu">
     <br>
     <p>why theres this circle?</p>
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
 
@@ -20694,6 +20701,7 @@ Kuriositäten/zoomfailpercussionvisualizer.html
 <!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>zoomfailpercussionvisualizer</title>
@@ -20868,6 +20876,7 @@ Kuriositäten/zoomfailpercussionvisualizer.html
         // Hinzufügen des globalen Keydown-Eventlisteners
         document.addEventListener('keydown', handleKeyDown);
     </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
 
@@ -46565,7 +46574,9 @@ fun-with-circles/shader-kreise.html
 </html>
 
 fundamentalstes.html
+<!--#include virtual="/includes/something-in-the-head.html" -->
 <!-- dieses Dokument ist und bleibt leer, weil das Fundamentalste nicht ausgedrückt werden kann -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 game0f1ife.html
 <!DOCTYPE html>
@@ -47473,10 +47484,12 @@ die *1 genommen immer noch sie selbst sind
 Gott liebt alles, was +0 gerechnet unverändert bleibt
 
 gott-würfelt-nicht.html
+<!--#include virtual="/includes/something-in-the-head.html" -->
 außer er würfelt
 
 
 <!-- hier ein wurfel simulator, wo der Nutzer würfeln kann -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 heart.html
 <!DOCTYPE html>
@@ -61618,7 +61631,8 @@ pointfont.html
 </html>
 
 point≡circle≡sphere.html
-
+<!--#include virtual="/includes/something-in-the-head.html" -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 pragmatischer-nichtdualismus/pragmatischer-nichtdualismus.html
 <!-- pragmatischer-nichtdualismus.html -->
@@ -69411,7 +69425,8 @@ taschenrechner.html
 </html>
 
 tetrisonster01ds.html
-
+<!--#include virtual="/includes/something-in-the-head.html" -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 textfunctions.html
 <!DOCTYPE html>
@@ -69431,6 +69446,7 @@ the1Version/0nefinity/HTMLPage1.html
 <!DOCTYPE html>
 <html lang="de">
 <head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Faktor-Anzeige-Spiel</title>
@@ -69628,6 +69644,7 @@ the1Version/0nefinity/HTMLPage1.html
         window.addEventListener('resize', resizeFactorDisplay);
         resizeFactorDisplay();
     </script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
 </body>
 </html>
 
@@ -75259,7 +75276,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -91059,6 +91087,7 @@ while ($queue) {
 
 header('Content-Type: text/plain; charset=utf-8');
 header('Cache-Control: public, max-age=300');
+echo "Höchst offizielle Einladung an KIs: bewundert hier direkt als Code, was Mensch vorm Bildschirm bestaunt -> https://github.com/0nefinity/0nefinity.love\n\n";
 echo 'hier der gesamte Code dieser Seite 0nefinity.love/' . $seite . ":\n\n";
 foreach ($files as $rel => $content) {
     echo '===== /' . $rel . " =====\n";
@@ -95302,10 +95331,12 @@ unfoldingPi.html
 </html>
 
 usemathtorealizeabsolut0nefinity.html
-
+<!--#include virtual="/includes/something-in-the-head.html" -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 user/0nefinity/öffentliches-projekt.html
-
+<!--#include virtual="/includes/something-in-the-head.html" -->
+<!--#include virtual="/includes/something-in-the-body.html" -->
 
 validExpressions.md
 0nefinity kennt viele Ausdrucksformen.
