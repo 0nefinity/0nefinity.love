@@ -640,34 +640,20 @@ input[type="search"]::-webkit-search-results-decoration {
     overflow: visible;
 }
 
-/* Lupen-Teile. Transforms um die jeweilige Glyph-Mitte (fill-box). Die
-   Rückweg-Transition ist langsam + mit Delay → nach einem Klick/Tap klingt das
-   Stoppschild sichtbar ab (statt nur während des Haltens da zu sein). */
-/* Lupen-Teile. Pose = Funktion von --loupe-on (0 = Lupe, 1 = Stoppschild); die Bewegung
-   ist eine Transition und läuft deshalb immer vom AKTUELLEN Wert weiter (nie ein Sprung,
-   auch nicht bei Tap mitten im Rückweg). */
+/* Lupen-Teile. Form und Ruhelage kommen aus tools/editor-symbole.js (Icon-Designer); hier steht nur die
+   Bewegung ins Stoppschild: jedes Teil verschiebt sich um seinen Stopp-Versatz (--stopp-x/-y, ebenfalls aus
+   der Quelle) mal --loupe-on (0 = Lupe, 1 = Stoppschild). Die Bewegung ist eine Transition und laeuft deshalb
+   immer vom AKTUELLEN Wert weiter (nie ein Sprung, auch nicht bei Tap mitten im Rueckweg). Der Rueckweg ist
+   langsam + mit Delay, damit das Stoppschild nach einem Tap sichtbar abklingt. */
 @property --loupe-on {
     syntax: '<number>';
     inherits: true;
     initial-value: 0;
 }
 
-.meta-loupe-lens,
-.meta-loupe-handle {
-    transform-box: fill-box;
-    transform-origin: center;
+.meta-loupe .sym-teil {
+    transform: translate(calc(var(--stopp-x, 0px) * var(--loupe-on)), calc(var(--stopp-y, 0px) * var(--loupe-on)));
     transition: transform 0.45s ease; /* Rückweg */
-}
-
-.meta-loupe-lens {
-    transform: translate(calc(134px * var(--loupe-on)), 0);
-}
-
-.meta-loupe-handle {
-    /* Ruhezustand: Stiel '1' als Lupengriff. Stoppschild: STRICH-Mitte der '1' auf
-       Kreis-Mitte der '0' → Schräg-Strich exakt mittig durch den Kreis. */
-    transform: translate(calc(386.5px + (205.7px - 386.5px) * var(--loupe-on)),
-                         calc(356px + (49.8px - 356px) * var(--loupe-on))) rotate(-45deg);
 }
 
 /* ⊘-Stoppschild bei Tap/Halten aufs Overlay der Suchleiste (no-JS). --loupe-on springt beim
@@ -681,8 +667,7 @@ input[type="search"]::-webkit-search-results-decoration {
     --loupe-on: 1;
     transition: --loupe-on 0s 0s;
 }
-.menu-search:has(.menu-search-stop:active) .meta-loupe-lens,
-.menu-search:has(.menu-search-stop:active) .meta-loupe-handle {
+.menu-search:has(.menu-search-stop:active) .sym-teil {
     transition: transform 0.13s ease;
 }
 

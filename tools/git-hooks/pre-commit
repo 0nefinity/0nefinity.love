@@ -5,9 +5,10 @@ cd "$(git rev-parse --show-toplevel)"
 # index, so html/md/txt (and extensionless pages) count, not only .html.
 # The two generated files themselves do not trigger it; regeneration is
 # idempotent, so it also overwrites a stale hand-staged copy.
+# The menu loupe comes from tools/editor-symbole.js (icon designer), so that file counts too.
 staged=$(git diff --cached --name-only --diff-filter=ACMRD)
 if echo "$staged" | grep -vE '^includes/(something-in-the-body\.html|search-index\.json)$' \
-     | grep -qE '(\.(html|md|txt)$|(^|/)[^./]+$)'; then
+     | grep -qE '(\.(html|md|txt)$|(^|/)[^./]+$|^tools/editor-symbole\.js$)'; then
   python3 tools/generate-menu.py
   git add includes/something-in-the-body.html includes/search-index.json
 fi
