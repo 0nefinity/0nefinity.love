@@ -91215,6 +91215,17 @@ tools/unfolding-view.js
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
     let fw = 0;   // fold: Strichbreite in css px (setFoldWidth); 0 = Haarlinie
     const fwDev = () => (fold ? fw * dpr : 0);
+    // fold, Strich schmaler als ein Geraetepixel: gefaltete Tinte deckt hoechstens D + (1 - D) * Breite ihrer Ziffern.
+    // Bei D = 0 ist ein ganz gefalteter Strich so breit wie der Punkt: nichts. Stetig, kein ploetzliches Verschwinden.
+    // Nur am Punkt: ab 6 css px Abstand laeuft die Kappe ueber 6 px aus, ein offenes Ende behaelt seine gestauchte Tinte.
+    let cap = new Float32Array(0);
+    function thin(c, cov) {
+      const D = fwDev();
+      if (!fold || !(D < 1) || cov >= 1) return;
+      const u = (Math.abs((c + 0.5) / dpr - foldX()) - 6) / 6;
+      const k = D + (1 - D) * Math.min(1, Math.max(0, cov, u));
+      if (k < cap[c]) cap[c] = k;
+    }
     let dirty = true;
     let velocity = 0, drawnCount = 0;
     let locked = false;
@@ -91524,6 +91535,7 @@ tools/unfolding-view.js
             for (let t = 0; t < 10; t++) acc[o + t] += (cntC[t] + FILE_ALPHA * cntF[t]) * f;
             acc[o + 10] += cntC[10] * f;
             acc[o + AVG] += FILE_ALPHA * cntMiss * f;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
+            thin(cc, (posOf(b) - posOf(a)) * dpr);
             mark(zone, cc);
           }
           if (colLog) colLog.set(c, { c, a, b, zone: zone === zoneL ? 'L' : 'R', cntC: Array.from(cntC), cntF: Array.from(cntF), miss: cntMiss, inf: 0 });
@@ -91538,6 +91550,7 @@ tools/unfolding-view.js
       const c = Math.ceil(posOf(pN) * dpr) - 1;
       if (c < 0 || c >= accCols) return;
       acc[c * NGA + AVG] += INF_INK;
+      thin(c, 0);
       mark(zoneR, c);
       if (colLog) { const r = colLog.get(c) || { c, a: pN, b: pN, zone: 'R', cntC: new Array(NG).fill(0), cntF: new Array(10).fill(0), miss: 0, inf: 0 }; r.inf = INF_INK; colLog.set(c, r); }
     }
@@ -91654,8 +91667,9 @@ tools/unfolding-view.js
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       const mid = (Lg() + R) / 2;
       if (accCols !== canvas.width || ink.length !== canvas.width * hd) {
-        accCols = canvas.width; acc = new Float32Array(accCols * NGA); ink = new Float32Array(accCols * hd);
+        accCols = canvas.width; acc = new Float32Array(accCols * NGA); ink = new Float32Array(accCols * hd); cap = new Float32Array(accCols);
       }
+      cap.fill(1);
       let n = 0;
       const sN = Math.max(0, sHi - sLo + 1);
       if (shownCodes.length < sN) { shownCodes = new Uint8Array(Math.max(sN, shownCodes.length * 2)); shownMark = new Uint8Array(shownCodes.length); }
@@ -91790,6 +91804,7 @@ tools/unfolding-view.js
           const p1 = cum[a1 + y] + f1 * (cum[a1 + hd + y] - cum[a1 + y]);
           ink[o + y] += (p1 - p0) * al;
         }
+        thin(c, wDev);
         mark(zone, c);
       }
     }
@@ -91814,7 +91829,8 @@ tools/unfolding-view.js
           for (let y = 0; y < hd; y++) ink[o + y] += a * cu[off + y];
         }
         if (rec) { let s = 0, m = 0; for (let y = 0; y < hd; y++) { s += ink[o + y]; if (ink[o + y] > m) m = ink[o + y]; } rec.raw = s; rec.max = m; rec.y0 = y0; rec.rows = Array.from(ink.subarray(o, o + hd)); }
-        for (let y = 0; y < hd; y++) { const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = ink[o + y] * 255; }   // Uint8Clamped kappt bei 255
+        const k = cap[c];
+        for (let y = 0; y < hd; y++) { const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = Math.min(1, ink[o + y]) * k * 255; }
         acc.fill(0, base, base + NGA);
         ink.fill(0, o, o + hd);
       }
