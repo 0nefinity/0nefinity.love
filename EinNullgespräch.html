@@ -47,7 +47,10 @@
     let mode = '2d', gl = null, glName = '';
 
     const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0, zoom: 1 };
-    const ZOOM_MIN = 0.1, ZOOM_MAX = 8;
+    // Nach unten keine Grenze (wie bibelaufdenpunkt.html): ZOOM_MIN ist nur der kleinste positive Wert, der in 32-Bit-Gleitkomma nicht ueberlaeuft.
+    // Jede Zeile wird immer gezeichnet: unter ~1,5 Pixel Zeilenhoehe zeichnet der Shader sie als Streifen von mindestens 1 px mit der mittleren Tinte der Zeile.
+    const ZOOM_MIN = 1e-30, ZOOM_MAX = 8;
+    const BS_MIN = 0.125;   // kleinste Aufloesung des Atlas (Geraetepixel je Layout-Pixel); darunter skaliert die GPU, der Text bleibt scharf genug fuer den Uebergang
     // Zoom skaliert die ganze Anordnung um die Bildmitte (Layout, Umbruch und Zeilenzahl bleiben gleich). Waehrend der Geste skaliert die GPU die fertigen
     // Atlanten; nach dem Loslassen baut der Atlas einmal in der neuen Aufloesung bs (Geraetepixel je Layout-Pixel = dpr * zoom, begrenzt durch Textur und Speicher).
     const TEX_BUDGET = 192e6;   // Bytes Alpha-Atlas insgesamt (1 Byte je Pixel)
@@ -185,7 +188,7 @@
     // Aufloesung des Vorbaus: dpr * zoom, bis jede Zeile in den Atlas passt (MAX_TEXTURE_SIZE) und der Speicher reicht; darueber skaliert die GPU.
     // beyond the memory budget the GPU takes over, and the words only get softer, never fewer.
     function pickScale() {
-      const want = Math.round(dpr * st.zoom * 1000) / 1000, S = atlasS || 8192;
+      const want = Math.max(BS_MIN, Math.round(dpr * st.zoom * 1000) / 1000), S = atlasS || 8192;
       bs = want;
       for (let i = 0; i < 40; i++) {
         const m = sizeLines();
@@ -264,7 +267,7 @@
     // Plaetze werden beim Layout vergeben (Reihen gleicher Hoehe, Zeile fuer Zeile), gefuellt wird reihenweise im Hintergrund.
     // Je Atlas-Seite ein Draw-Call; die Zeilen einer Seite stehen im Instanzpuffer hintereinander.
     let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, scratchG = null, instBuf = null, instArr = null;
-    let prog = null, U = null, A = null, cornerBuf = null, inst = null, colorRGB = [0, 0, 0], overlayUsed = false;
+    let prog = null, U = null, A = null, cornerBuf = null, inst = null, accProg = null, accU = null, accTex = null, accFbo = null, accW = 0, accH = 0, floatOK = false, colorRGB = [0, 0, 0], overlayUsed = false;
 
     function setMode(m, why) {
       const was = mode;
@@ -305,24 +308,41 @@
         const vs = compile(gl.VERTEX_SHADER, [
           'attribute vec2 a_corner; attribute vec4 a_geo; attribute vec4 a_src;',
           'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_m; uniform float u_x0; uniform float u_hp; uniform vec2 u_atlas;',
-          'varying vec2 v_uv; varying float v_a;',
+          'varying vec2 v_uv; varying float v_a; varying float v_ink;',
           'void main() {',
           '  vec2 loc = vec2(u_x0 + a_corner.x * a_src.z, a_geo.z + a_corner.y * u_hp);',
-          '  vec2 p = u_origin + u_m * vec2(loc.x * a_geo.x - loc.y * a_geo.y, loc.x * a_geo.y + loc.y * a_geo.x);',
+          // Mindestgroesse 1 px je Achse (nichts faellt aus dem Raster); die Tinte bleibt erhalten, weil v_a mit dem Flaechenverhaeltnis abgeschwaecht wird.
+          '  vec2 size = u_m * vec2(a_src.z, u_hp);',
+          '  vec2 ext = max(size, vec2(1.0));',
+          '  vec2 q = u_m * loc + (a_corner - 0.5) * (ext - size);',
+          '  vec2 p = u_origin + vec2(q.x * a_geo.x - q.y * a_geo.y, q.x * a_geo.y + q.y * a_geo.x);',
           '  gl_Position = vec4(p.x / u_res.x * 2.0 - 1.0, 1.0 - p.y / u_res.y * 2.0, 0.0, 1.0);',
           '  v_uv = (a_src.xy + a_corner * vec2(a_src.z, u_hp)) / u_atlas;',
-          '  v_a = a_src.w;',
+          '  v_a = a_src.w * (size.x * size.y) / (ext.x * ext.y);',
+          '  v_ink = a_geo.w;',
           '}'].join('\n'));
         const fs = compile(gl.FRAGMENT_SHADER, [
           'precision highp float;',
-          'uniform sampler2D u_tex; uniform vec3 u_color;',
-          'varying vec2 v_uv; varying float v_a;',
-          'void main() { float a = texture2D(u_tex, v_uv).a * v_a; gl_FragColor = vec4(u_color * a, a); }'].join('\n'));
+          'uniform sampler2D u_tex; uniform vec3 u_color; uniform float u_t;',
+          'varying vec2 v_uv; varying float v_a; varying float v_ink;',
+          'void main() { float a = mix(v_ink, texture2D(u_tex, v_uv).a, u_t) * v_a; gl_FragColor = vec4(u_color * a, a); }'].join('\n'));
         prog = gl.createProgram();
         gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
         if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Shader-Link: ' + gl.getProgramInfoLog(prog));
-        U = {}; for (const n of ['u_origin', 'u_res', 'u_m', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color']) U[n] = gl.getUniformLocation(prog, n);
+        U = {}; for (const n of ['u_origin', 'u_res', 'u_m', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color', 'u_t']) U[n] = gl.getUniformLocation(prog, n);
         A = { corner: gl.getAttribLocation(prog, 'a_corner'), geo: gl.getAttribLocation(prog, 'a_geo'), src: gl.getAttribLocation(prog, 'a_src') };
+        // Winzige Zeilen (unter 1 px hoch) tragen je Quad weniger als eine 8-Bit-Stufe bei; damit die Summe nicht verloren geht, wird dort in Gleitkomma
+        // aufaddiert (R16F, additiv) und einmal in Deckkraft 1-exp(-Summe) umgesetzt. Ohne EXT_color_buffer_float bleibt es beim 8-Bit-Pfad.
+        floatOK = glName === 'WebGL2' && !!gl.getExtension('EXT_color_buffer_float');
+        if (floatOK) {
+          const avs = compile(gl.VERTEX_SHADER, 'attribute vec2 a_corner; varying vec2 v_p; void main() { v_p = a_corner; gl_Position = vec4(a_corner * 2.0 - 1.0, 0.0, 1.0); }');
+          const afs = compile(gl.FRAGMENT_SHADER, 'precision highp float; uniform sampler2D u_acc; uniform vec3 u_color; varying vec2 v_p; void main() { float a = 1.0 - exp(-texture2D(u_acc, v_p).r); gl_FragColor = vec4(u_color * a, a); }');
+          accProg = gl.createProgram();
+          gl.bindAttribLocation(accProg, 0, 'a_corner');
+          gl.attachShader(accProg, avs); gl.attachShader(accProg, afs); gl.linkProgram(accProg);
+          if (!gl.getProgramParameter(accProg, gl.LINK_STATUS)) throw new Error('Shader-Link (Summe): ' + gl.getProgramInfoLog(accProg));
+          accU = { u_acc: gl.getUniformLocation(accProg, 'u_acc'), u_color: gl.getUniformLocation(accProg, 'u_color') };
+        }
         cornerBuf = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
@@ -424,6 +444,12 @@
         const w = Math.min(S, Math.ceil(r.w)), rgba = g.getImageData(0, 0, w, hp).data;
         const a = new Uint8Array(w * hp);
         for (let i = 0, n = a.length; i < n; i++) a[i] = rgba[4 * i + 3];
+        for (const l of r.lines) {
+          let sum = 0;
+          const x1 = Math.min(w, l.sx + l.wp);
+          for (let y = 0; y < hp; y++) for (let x = l.sx, b = y * w; x < x1; x++) sum += a[b + x];
+          l.ink = sum / (255 * l.wp * hp);
+        }
         const pg = pages[r.page];
         gl.bindTexture(gl.TEXTURE_2D, pg.tex);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -517,6 +543,24 @@
       drawn = lastKs.length;
       if (missing) scheduleBuild();
     }
+    function ensureAcc(cw, ch) {
+      if (accTex && accW === cw && accH === ch) return;
+      if (accTex) { gl.deleteTexture(accTex); gl.deleteFramebuffer(accFbo); }
+      accTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, accTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, cw, ch, 0, gl.RGBA, gl.HALF_FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      accFbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, accTex, 0);
+      const st_ = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (st_ !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Summen-Puffer unvollstaendig: ' + st_);
+      accW = cw; accH = ch;
+    }
     function drawGL() {
       const c = bs, m = dpr * st.zoom / bs, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
       const ox = Math.round(W / 2 * dpr), oy = Math.round(H / 2 * dpr), x0 = Math.round(-colW / 2 * c) - pad;
@@ -551,7 +595,7 @@
           segPage = r.page; segStart = n;
         }
         const o = n * 8;
-        instArr[o] = cos; instArr[o + 1] = sin; instArr[o + 2] = y0; instArr[o + 3] = 0;
+        instArr[o] = cos; instArr[o + 1] = sin; instArr[o + 2] = y0; instArr[o + 3] = l.ink || 0;
         instArr[o + 4] = l.sx; instArr[o + 5] = r.y; instArr[o + 6] = l.wp; instArr[o + 7] = alpha;
         n++;
       }
@@ -562,10 +606,16 @@
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       if (n) {
+        const tiny = floatOK && m * hp < 1;
+        if (tiny) { ensureAcc(cw, ch); gl.bindFramebuffer(gl.FRAMEBUFFER, accFbo); gl.viewport(0, 0, cw, ch); gl.clear(gl.COLOR_BUFFER_BIT); gl.blendFunc(gl.ONE, gl.ONE); }
         gl.useProgram(prog);
         gl.uniform2f(U.u_origin, ox, oy); gl.uniform2f(U.u_res, cw, ch);
         gl.uniform1f(U.u_m, m); gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp);
-        gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
+        // Zeilenhoehe auf dem Schirm: ab 3 px Bitmap, unter 1,5 px nur die mittlere Tinte der Zeile (Rhythmus der Buchstaben ist dann unter einem Pixel).
+        // far out, a line is only a smudge: it melts into its own mean ink, so ten thousand words become one grey breath, and none is missing
+        const tu = Math.min(1, Math.max(0, (m * hp - 1.5) / 1.5));
+        gl.uniform1f(U.u_t, tu * tu * (3 - 2 * tu));
+        if (tiny) gl.uniform3f(U.u_color, 1, 1, 1); else gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
         gl.uniform1i(U.u_tex, 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
         gl.enableVertexAttribArray(A.corner); gl.vertexAttribPointer(A.corner, 2, gl.FLOAT, false, 0, 0); inst.div(A.corner, 0);
@@ -580,6 +630,17 @@
           gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, start * 32);
           gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, start * 32 + 16);
           inst.draw(count);
+        }
+        if (tiny) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+          gl.disableVertexAttribArray(A.geo); gl.disableVertexAttribArray(A.src);
+          gl.useProgram(accProg);
+          gl.uniform3f(accU.u_color, colorRGB[0], colorRGB[1], colorRGB[2]); gl.uniform1i(accU.u_acc, 0);
+          gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accTex);
+          gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+          gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); inst.div(0, 0);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
         const e = gl.getError();
         if (e !== gl.NO_ERROR) { console.error('[EinNullgespraech] WebGL-Fehler ' + e + ' beim Zeichnen'); setMode('2d', 'WebGL-Fehler ' + e); dirty = true; return; }
@@ -633,7 +694,7 @@
       panel.set('verschiebung', round(st.verschiebung, 3));
       panel.set('periode', st.periode);
       panel.set('stelle', round(st.stelle, 1));
-      panel.set('zoom', round(st.zoom, 3));
+      panel.set('zoom', Number(st.zoom.toPrecision(4)));
     }
     const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -645,7 +706,7 @@
         const isNull = !st.winkel && !st.verschiebung && !st.periode && !st.stelle && st.zoom === 1;
         for (const k of Object.keys(st)) {
           if (isNull) u.searchParams.delete(k);
-          else u.searchParams.set(k, String(round(st[k], 4)));
+          else u.searchParams.set(k, k === 'zoom' ? String(Number(st[k].toPrecision(6))) : String(round(st[k], 4)));
         }
         history.replaceState(null, '', u);
       }, 250);
@@ -673,9 +734,10 @@
 
     // ─── Ziehen: wie an einem Drehknopf ───
     // Der Zeiger kreist um die Bildmitte: der Winkelzuwachs je Ereignis (auf (-180, 180] normalisiert, aufsummiert)
-    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Zwei Finger, Mausrad: durch das Gespraech wandern.
+    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Fingerzahl entscheidet: ein Finger kreist, zwei Finger zoomen nur (kein Wandern); beim Wechsel mitten in der Geste wird neu angesetzt, es gibt keinen Sprung.
+    // Mausrad zoomt, Strg/Cmd+Rad wandert durch das Gespraech.
     const pointers = new Map();
-    let lastTap = 0, moved = 0, pairY = null, pairD = null, knob = null;
+    let lastTap = 0, moved = 0, pairD = null, knob = null;
     const WINKEL_PRO_GRAD = 0.05, VERSCH_PRO_PX = 1 / 320;
 
     function polar(e) {
@@ -697,7 +759,6 @@
       anim = null;
       moved = 0;
       if (pointers.size === 1) knobStart(e);
-      pairY = pointers.size === 2 ? avgY() : null;
       pairD = pointers.size === 2 ? pairDist() : null;
       canvas.classList.add('zieht');
     });
@@ -711,9 +772,6 @@
         if (!knob) knobStart(e);
         knobMove(e);
       } else if (pointers.size === 2) {
-        const y = avgY();
-        if (pairY !== null) scrollBy(-(y - pairY));
-        pairY = y;
         const d = pairDist();
         if (pairD > 0 && d > 0) zoomBy(d / pairD);
         pairD = d;
@@ -722,7 +780,6 @@
     const end = (e) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.delete(e.pointerId);
-      pairY = pointers.size === 2 ? avgY() : null;
       pairD = pointers.size === 2 ? pairDist() : null;
       if (pointers.size === 1) { const [rest] = pointers.values(); knob = polar({ clientX: rest.x, clientY: rest.y }); }
       if (!pointers.size) { knob = null; canvas.classList.remove('zieht'); }
@@ -735,19 +792,24 @@
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
     function pairDist() { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); }
-    function avgY() { let s = 0; for (const p of pointers.values()) s += p.y; return s / pointers.size; }
     function scrollBy(px) {
       const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh * st.zoom;
       setState({ stelle: st.stelle + px / step });
     }
-    // Zoomen wie auf den anderen Seiten, ohne das Mausrad (= Wandern) anzutasten: Strg+Rad (Trackpad-Pinch kommt als Strg+Rad), Pinch mit zwei Fingern,
-    // Tasten + / - / 0. Mitte der Anordnung bleibt in der Bildmitte.
+    // Zoomen: Mausrad, Pinch mit zwei Fingern, Trackpad-Pinch, Tasten + / - / 0. Mitte der Anordnung bleibt in der Bildmitte. Wandern: Strg/Cmd+Rad.
+    // Ein Trackpad-Pinch kommt als Rad-Ereignis mit ctrlKey=true, ohne dass eine Strg-Taste gedrueckt ist: nur wenn Strg wirklich gehalten wird
+    // (keydown/keyup mitgefuehrt), ist es Wandern, sonst Zoom. Cmd (metaKey) erzeugt keinen Pinch und wandert immer.
     const zoomBy = (f) => setState({ zoom: st.zoom * f });
+    let strgHeld = false;
+    const trackStrg = (e) => { strgHeld = e.ctrlKey; };
+    window.addEventListener('keydown', trackStrg, true);
+    window.addEventListener('keyup', trackStrg, true);
+    window.addEventListener('blur', () => { strgHeld = false; });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const px = e.deltaMode === 1 ? e.deltaY * lh : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
-      if (e.ctrlKey || e.metaKey) { zoomBy(Math.max(0.8, Math.min(1.25, Math.exp(-px * 0.005)))); return; }
-      scrollBy(px);
+      if (e.metaKey || (e.ctrlKey && strgHeld)) { scrollBy(px); return; }
+      zoomBy(Math.max(0.8, Math.min(1.25, Math.exp(-px * 0.005))));
     }, { passive: false });
     window.addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
@@ -767,7 +829,7 @@
       panel.addSlider('verschiebung', { label: 'Verschiebung', min: 0, max: 4, step: 0.001, value: st.verschiebung, decimals: 3, onChange: (v) => setState({ verschiebung: v }, true) });
       panel.addSlider('periode', { label: 'Periode', min: 0, max: Math.max(1, lines.length), step: 1, value: st.periode, decimals: 0, onChange: (v) => setState({ periode: v }, true) });
       panel.addSlider('stelle', { label: 'Stelle', min: 0, max: Math.max(1, lines.length - 1), step: 0.1, value: st.stelle, decimals: 1, onChange: (v) => setState({ stelle: v }, true) });
-      panel.addSlider('zoom', { label: 'Zoom', min: ZOOM_MIN, max: ZOOM_MAX, step: 0.01, value: st.zoom, decimals: 2, onChange: (v) => setState({ zoom: v }, true) });
+      panel.addSlider('zoom', { label: 'Zoom', min: 0, max: ZOOM_MAX, step: 0.01, value: st.zoom, decimals: 4, onChange: (v) => setState({ zoom: v }, true) });
       panel.addResetButton({ title: 'Nullgebilde', onClick: () => { setState({ periode: 0 }); animateTo(NULL, 700); } });
     }
 
