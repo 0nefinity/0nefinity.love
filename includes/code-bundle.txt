@@ -95451,7 +95451,7 @@ unfoldingPi.html
     .stellen { position: absolute; left: 0; right: 0; top: 68%; text-align: center; font-size: 1.25rem; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--text-color); pointer-events: none; white-space: nowrap; }
 
     /* ─── Steuer-Panel: ruhig, dunkel, ein Raster ─── */
-    #pi-compression { --pi-h: 36px; --pi-gap: 6px; --ctrl-label-width: 7rem; font-size: 15px; }
+    #pi-compression { --pi-h: 36px; --pi-gap: 6px; --ctrl-label-width: 9.5rem; font-size: 15px; }
     @media (pointer: coarse), (max-width: 640px) { #pi-compression { --pi-h: 44px; } }
     #pi-compression.position-left .ctrl-panel-body { max-height: 82vh; }
     #pi-compression .ctrl-drag-indicator { opacity: 0.3; box-shadow: none; }
@@ -95460,7 +95460,7 @@ unfoldingPi.html
     #pi-compression .ctrl-value-input { font-size: 15px; }
     #pi-compression .ctrl-slider-group .ctrl-value-input { width: 5em !important; margin: 0; flex: 0 0 5em; }
     #pi-compression .ctrl-slider-group { min-width: 0; }
-    #pi-compression .ctrl-label { overflow-wrap: anywhere; hyphens: auto; }
+    #pi-compression .ctrl-label { overflow-wrap: break-word; hyphens: none; }
     #pi-compression .ctrl-button { font-size: 15px; }
     #pi-compression .ctrl-row { margin-bottom: 0.7rem; }
     .pi-consts { display: block; padding-bottom: 0.9rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--ui-fill-15); }
