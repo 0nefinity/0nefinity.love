@@ -53,7 +53,7 @@
     not_supported: 'auf dieser Seite nicht verfügbar',
   };
   const ANALYTICS = 'https://analytics.timbreitmar.de';
-  // Ysabeau-Outlines '0' und '1', dieselben wie in der Menue-Lupe (generate-menu.py).
+  // Ysabeau-Outlines '0' und '1' (wie die Symbole in tools/editor-symbole.js).
   const ZERO = 'M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z';
   const ONE = 'M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z';
 
@@ -77,7 +77,6 @@
   let cmtOn = false;
   let source = null;
   let csrf = '';
-  let iconSeq = 0;
   const badgeInfo = new WeakMap();
   const fresh = new WeakSet();
   let pubTimer = null;
@@ -148,15 +147,9 @@
       return `<svg class="oe-icon" viewBox="${vb}" aria-hidden="true" focusable="false"><path d="${ZERO}"/>` +
         `<path d="${ONE}" transform="translate(155.5 -335) scale(.5)"/></svg>`;
     }
-    // 0 und 1 in Originalgroesse wie die Menue-Lupe, also gleiche Strichstaerke; die 1 steht mittig ueber
-    // dem Kreis und schneidet sich mit 60 Einheiten Abstand ihre Luecke. viewBox quadratisch um die 0-Mitte.
-    const id = 'oe-pwr-' + (++iconSeq);
-    const one = `<path d="${ONE}" transform="translate(51 -150)"/>`;
-    const box = 'x="-54.5" y="-594" width="629" height="629"';
-    return `<svg class="oe-icon oe-pwr" viewBox="-54.5 -594 629 629" aria-hidden="true" focusable="false">` +
-      `<mask id="${id}" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="#fff"/>` +
-      `<g fill="#000" stroke="#000" stroke-width="120" stroke-linejoin="round">${one}</g></mask>` +
-      `<path d="${ZERO}" mask="url(#${id})"/>${one}</svg>`;
+    // Ausloggen: aus der gemeinsamen Symbol-Quelle (Icon-Designer). Fehlt sie, meldet init() das sichtbar.
+    if (!window.oneSymbole) return '<svg class="oe-icon oe-pwr" aria-hidden="true" focusable="false"></svg>';
+    return window.oneSymbolSvg('ausloggen', 'class="oe-icon oe-pwr" aria-hidden="true" focusable="false"');
   }
 
   // Waehrend ein Umbenennen laeuft, warten alle anderen Aufrufe und gehen danach mit dem neuen Pfad raus
@@ -416,6 +409,18 @@
   // Dateiname oben (editor-filename.js), Plus fuer neue Seiten (editor-newpage.js), Formatierungszeichen
   // (editor-marks.js): eigene Module, hier nur geladen und eingehaengt.
   let extras = null;
+  // Symbol-Quelle tools/editor-symbole.js, neben dieser Datei (auf www und anderen Seiten /api/edit/).
+  function loadSymbole() {
+    if (window.oneSymbole) return Promise.resolve();
+    return new Promise((ok, no) => {
+      const s = document.createElement('script');
+      s.src = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, 'editor-symbole.js?v=' + Date.now()); // gespeichert = sofort gueltig
+      s.onload = ok;
+      s.onerror = () => no(new Error('editor-symbole.js nicht ladbar'));
+      document.head.append(s);
+    });
+  }
+
   async function loadExtras() {
     const base = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, '');
     await Promise.all(['filename', 'newpage', 'marks', 'format'].map((n) => new Promise((ok, no) => {
@@ -2977,18 +2982,21 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     if (!me.ok) { console.error('[editor] ' + CFG.me + ' HTTP ' + me.status); return; }
     const info = await me.json();
     csrf = info.csrf || '';
+    const symbole = loadSymbole().then(() => null, (e) => e);
     // Vor allem anderen: liegt fuer diese Seite ein unbestaetigter Entwurf, zeigt erst das Neuladen ihn.
     if (await resendOutbox()) { location.reload(); return; }
     // Eingeloggt: Live-Reload laedt nie von selbst neu. Autosave und andere Sitzungen aendern laufend
     // Dateien, ein Reload zwischen zwei Eingaben riss Tim aus dem Text.
     window.__oneEditor = true;
 
+    const symbolError = await symbole;
     css();
     buildBar();
     initTips();
     buildSelBar();
     buildAdminMenu();
     render();
+    if (symbolError) say(symbolError.message, 'error');
     resumeDelete();
     document.addEventListener('click', guardClick, true);
     document.addEventListener('keydown', globalKeys, true);

@@ -17,6 +17,8 @@ INDEX_FILE = os.path.join(ROOT_DIR, 'includes', 'search-index.json')
 # Gezielte Uebersetzungen, nur in Tims Wortlaut (AGENTS.md, "Uebersetzungen")
 TRANSLATIONS_FILE = os.path.join(ROOT_DIR, 'includes', 'some-uebersetzungen.json')
 HTACCESS_FILE = os.path.join(ROOT_DIR, '.htaccess')
+# Symbole (Lupe, Ausloggen, ...): einzige Quelle, geschrieben vom Icon-Designer (/icon-entwuerfe)
+SYMBOLE_FILE = os.path.join(ROOT_DIR, 'tools', 'editor-symbole.js')
 
 # Volltext-Index: sichtbarer Text der Seiten im Menue, geladen von meta.js beim
 # ersten Tastendruck in der Suche. Je Datei auf INDEX_CAP Zeichen begrenzt.
@@ -257,6 +259,18 @@ def render_folder(name, data):
     return ''.join(parts)
 
 
+def symbol_svg(name, attrs):
+    """SVG eines Symbols aus tools/editor-symbole.js (Block zwischen den Markierungen, reines JSON)."""
+    with open(SYMBOLE_FILE, encoding='utf-8') as fh:
+        m = re.search(r'/\* symbole: anfang \*/(.*)/\* symbole: ende \*/', fh.read(), re.S)
+    if not m:
+        raise SystemExit(f'{SYMBOLE_FILE}: Markierungen fehlen')
+    sym = json.loads(m.group(1))['symbole'][name]
+    view_box = ' '.join(f'{v:g}' for v in sym['viewBox'])
+    inhalt = sym['inhalt'].replace('{id}', f'menu-{name}')
+    return f'<svg {attrs} viewBox="{view_box}" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">{inhalt}</svg>'
+
+
 def generate():
     structure = collect_structure()
 
@@ -268,7 +282,7 @@ def generate():
     lines.append('<label for="menu-toggle" class="menu-backdrop" aria-hidden="true"></label>')
     lines.append('<label for="menu-toggle" class="menu-button" aria-label="Men\u00fc"><span class="menu-closed-text">\u2261</span><span class="menu-open-text">0 \u2261 1 \u2261 \u221E</span></label>')
     lines.append('<div class="menu-content-wrapper">')
-    lines.append('<div class="menu-search"><svg class="meta-loupe" viewBox="-79 -498 946 946" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false"><path class="meta-loupe-lens" d="M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z"/><g class="meta-loupe-handle"><path d="M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z"/></g></svg><input type="search" autocomplete="off" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"><span class="menu-search-stop" aria-hidden="true"></span></div>')
+    lines.append('<div class="menu-search">' + symbol_svg('lupe', 'class="meta-loupe"') + '<input type="search" autocomplete="off" placeholder="activate js or use browser search" disabled aria-label="Suche ben\u00f6tigt JavaScript"><span class="menu-search-stop" aria-hidden="true"></span></div>')
     lines.append('<ul id="file-list">')
 
     # Priority items
