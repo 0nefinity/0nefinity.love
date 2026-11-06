@@ -132,7 +132,7 @@
     // Stauchzone, einmal je Bild ausgegeben: ink[c * gh + y] traegt die Tinte gestauchter Ziffern ab 1 Geraetepixel Breite,
     // acc[c * NGA + t] die Zahl der Ziffern t (Anteil) unter 1 Geraetepixel; t = AVG ist eine noch fehlende Stelle.
     const NG = GLYPHS.length, AVG = NG, NGA = NG + 1;
-    let acc = new Float32Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
+    let acc = new Float32Array(0), dif = new Float64Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
     let fr1 = 0;  // fold: Radius des Standardpunkts (setFoldWidth); die Ziffern rücken um max(0, Radius - fr1) von der Mitte weg (kleiner als der Standardpunkt: Schriftabstand)
     let fw = 0;   // fold: Strichbreite in css px (setFoldWidth); 0 = Haarlinie
@@ -435,6 +435,8 @@
     }
     // Stellen [i0, i1) spaltenweise: je Geraetepixel die gezaehlten Ziffern, ihre Tinte legt flush darauf (Summe der Profile).
     let colLog = null, depLog = null, drawLog = null;
+    const vals = new Float64Array(NGA), run = new Float64Array(NGA);
+    let dlo = Infinity, dhi = -1;
     function region(i0, i1, zone) {
       if (!(i1 > i0)) return;
       const x0 = posOf(i0) * dpr, x1 = posOf(i1) * dpr;
@@ -450,19 +452,40 @@
           // fwDev Geraetepixel um die Mitte ihrer Ziffern (Tinte bleibt erhalten, nur breiter). Ohne Strichbreite: eine Spalte.
           const D = fwDev();
           const xc = (posOf(a) + posOf(b)) / 2 * dpr, sLo = D > 1 ? xc - D / 2 : c, sHi = D > 1 ? xc + D / 2 : c + 1;
-          for (let cc = Math.max(0, Math.floor(sLo)); cc < sHi && cc < accCols; cc++) {
+          for (let t = 0; t < 10; t++) vals[t] = cntC[t] + FILE_ALPHA * cntF[t];
+          vals[10] = cntC[10];
+          vals[AVG] = FILE_ALPHA * cntMiss;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
+          const cLo = Math.max(0, Math.floor(sLo)), cHi = Math.min(accCols - 1, Math.ceil(sHi) - 1);
+          const cov = (posOf(b) - posOf(a)) * dpr;
+          // Breiter Strich: nur die zwei Randspalten einzeln, die Mitte als Differenzfeld (je Spalte 1/D), sonst waechst die Arbeit mit der Punktgroesse
+          const edge = D > 1 && cHi - cLo > 2;
+          for (let cc = cLo; cc <= cHi; cc++) {
+            if (edge && cc > cLo && cc < cHi) { cc = cHi - 1; continue; }
             const f = D > 1 ? (Math.min(cc + 1, sHi) - Math.max(cc, sLo)) / D : 1;
             if (!(f > 0)) continue;
             const o = cc * NGA;
-            for (let t = 0; t < 10; t++) acc[o + t] += (cntC[t] + FILE_ALPHA * cntF[t]) * f;
-            acc[o + 10] += cntC[10] * f;
-            acc[o + AVG] += FILE_ALPHA * cntMiss * f;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
-            thin(cc, (posOf(b) - posOf(a)) * dpr);
+            for (let t = 0; t < NGA; t++) acc[o + t] += vals[t] * f;
+            thin(cc, cov);
             mark(zone, cc);
+          }
+          if (edge) {
+            const k = 1 / D, p = (cLo + 1) * NGA, q = cHi * NGA;
+            for (let t = 0; t < NGA; t++) { dif[p + t] += vals[t] * k; dif[q + t] -= vals[t] * k; }
+            if (cLo + 1 < dlo) dlo = cLo + 1;
+            if (cHi > dhi) dhi = cHi;
           }
           if (colLog) colLog.set(c, { c, a, b, zone: zone === zoneL ? 'L' : 'R', cntC: Array.from(cntC), cntF: Array.from(cntF), miss: cntMiss, inf: 0 });
         }
         a = b;
+      }
+      if (dhi >= dlo) {
+        run.fill(0);
+        for (let cc = dlo; cc <= dhi; cc++) {
+          const o = cc * NGA;
+          for (let t = 0; t < NGA; t++) { run[t] += dif[o + t]; dif[o + t] = 0; if (cc < dhi) acc[o + t] += run[t]; }
+          if (cc < dhi) mark(zone, cc);
+        }
+        dlo = Infinity; dhi = -1;
       }
     }
     // Unendlich: hinter der letzten vorhandenen Stelle geht die Zahl weiter. ANNAHME (nicht gezaehlt): mittlere Tinte, so viel,
@@ -484,39 +507,64 @@
     // fold: der naechste Treffer nach gezeichneter Lage und Breite. Jede Stelle gilt, auch die schmalste vor dem Strich (kein Sammelbereich);
     // der Strich (linker Punkt, rechtes Ende) nur, wenn er naeher liegt als jede Stelle: auf ihm selbst oder ausserhalb der letzten Stelle.
     function foldInfo(x, tol) {
+      const r = foldInfo0(x, tol);
+      if (r) r.h = headLen;   // erste Nachkommastelle = Kettenindex h: die Seite zaehlt daraus die Stelle
+      return r;
+    }
+    function foldInfo0(x, tol) {
       const fx = foldX(), h = headLen, N = pN;
       const line = (kind, at, extra) => Object.assign({ kind, x0: at, x1: at }, extra);
       const nearPoint = R - fx < 2 * HIT && x >= fx - tol;
+      // Der Kreis ist eine Stelle mit allem, was in ihn gefaltet ist: liegt links des ersten lesbaren Ziffers gestaucht etwas an, ist ein Treffer
+      // auf dem Kreis derselbe Balken (nicht ein zweiter Eintrag "centrum" daneben).
+      const circleOrBar = (d) => { const q = span(0.5 * w); return q && q[0] > h ? barInfo('left') : d; };
       if (x < fx && !nearPoint) {
-        if (pHs * w >= 1 && x >= L) {
+        if (pHs * w >= 1) {
           const k = Math.min(h - 1, Math.max(0, Math.floor((x - L) / (pHs * w))));
           // Die Punktzelle ist EIN Feld: ihre linke Haelfte zeigt dieselbe ganze Zelle wie die rechte (unten), nicht nur die halbe
           const dotCell = k === h - 1 && pHs > 0.5 && N > h && R - Lg() >= 1.5;
-          return { kind: 'digit', index: k, x0: posOf(k), x1: k === h - 1 && !dotCell ? fx : posOf(k + 1) };
+          const d = { kind: 'digit', index: k, x0: posOf(k), x1: k === h - 1 && !dotCell ? fx : posOf(k + 1) };
+          return k === h - 1 ? circleOrBar(d) : d;
         }
-        return line('left', fx, { hi: h - 1 });
+        return circleOrBar(line('left', fx, { hi: h - 1 }));
       }
       // Im Strich liegt der ganze Rest: ab der ersten nicht mehr sichtbaren Stelle jede Stelle bis unendlich, nie eine Anzahl
       // (die Datei endet bei N, pi nicht). Beide Enden eingefaltet: jede Stelle ueberhaupt.
       const end = () => {
         const shut = N <= h || R - Lg() < 1.5 || nearPoint;
         if (shut && L >= fx - 1) return line('all', fx);
-        return line('right', R, { lo: shut ? h : Math.max(h, Math.floor(inv(R - 0.5, h, N)) + 1) });
+        return line('right', R, { lo: shut ? h : barInfo('right').lo });
       };
       if (N <= h || R - Lg() < 1.5 || x >= R - 0.5 || nearPoint) return end();
       if (x < posOf(h)) {
         // Luecke zwischen Punkt und erster Stelle: das Komma (halbe Zelle rechts vom Punkt), sonst der Punktstrich
-        if (pHs > 0.5) return { kind: 'digit', index: h - 1, x0: posOf(h - 1), x1: posOf(h) };
-        return line('left', fx, { hi: h - 1 });
+        if (pHs > 0.5 || pHs * w >= 1) return circleOrBar({ kind: 'digit', index: h - 1, x0: posOf(h - 1), x1: posOf(h) });
+        return circleOrBar(line('left', fx, { hi: h - 1 }));
       }
       const rs = span(0.5 * w);
       if (!rs) return { kind: 'right', lo: h, x0: posOf(h), x1: R };
       const ra = rs[0], rb = rs[1];
       // Sammelanzeige genau in der Ziehzone (ab dem Verdichtungspunkt nach aussen), Einzelanzeige sonst: keine Luecke, keine Ueberlappung
-      if (ra > h && x < posOf(ra)) return { kind: 'left', lo: h, hi: ra - 1, x0: posOf(h), x1: posOf(ra) };
+      if (ra > h && x < posOf(ra)) return barInfo('left');
       if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1, x0: posOf(rb + 1), x1: R };
       const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
       return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
+    }
+    // Getippter Balken: die Anzeige haengt am Balken, nicht an der Stelle. Jedes Bild neu gerechnet, so zaehlt sie beim Sausen mit.
+    function barInfo(kind) {
+      const B = bs(), N = pN, rs = span(0.5 * w);
+      if (kind === 'left') {
+        const hi = rs && rs[0] > B ? rs[0] - 1 : (fold ? B - 1 : 0);
+        const x1 = rs && rs[0] > B ? posOf(rs[0]) : (fold ? foldX() : L);
+        const r = { kind, hi, x0: fold ? (rs && rs[0] > B ? posOf(B - 1) : x1) : L, x1 };
+        if (fold && rs && rs[0] > B) r.lo = pHs * w >= 1 ? B - 1 : 0;
+        if (fold) r.h = headLen;
+        return r;
+      }
+      const lo = Math.min(N, rs ? rs[1] + 1 : B);
+      const r = { kind, lo, x0: posOf(lo), x1: R };
+      if (fold) r.h = headLen;
+      return r;
     }
     function pointerInfo() {
       if (hoverX === null) return null;
@@ -529,10 +577,10 @@
       if (!rs) return { kind: 'all' };
       const ra = rs[0], rb = rs[1];
       // Sammelanzeige genau in der Ziehzone (ab dem Verdichtungspunkt nach aussen), Einzelanzeige sonst: keine Luecke, keine Ueberlappung
-      if (ra > bs() && x < posOf(ra)) return { kind: 'left', hi: ra - 1 };
-      if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1 };
+      if (ra > bs() && x < posOf(ra)) return { kind: 'left', hi: ra - 1, h: headLen };
+      if (rb < N - 1 && x >= posOf(rb + 1)) return { kind: 'right', lo: rb + 1, h: headLen };
       const k = Math.min(rb, Math.max(ra, Math.floor(inv(x, ra, rb + 1))));
-      return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1) };
+      return { kind: 'digit', index: k, x0: posOf(k), x1: posOf(k + 1), h: headLen };
     }
     function underline(y0) {
       if (!info || info.kind !== 'digit') return;
@@ -589,7 +637,7 @@
       const y0 = Math.round(H * dpr / 2 - hd / 2);
       const mid = (Lg() + R) / 2;
       if (accCols !== canvas.width || ink.length !== canvas.width * hd) {
-        accCols = canvas.width; acc = new Float32Array(accCols * NGA); ink = new Float32Array(accCols * hd); cap = new Float32Array(accCols);
+        accCols = canvas.width; acc = new Float32Array(accCols * NGA); dif = new Float64Array(accCols * NGA); dlo = Infinity; dhi = -1; ink = new Float32Array(accCols * hd); cap = new Float32Array(accCols);
       }
       cap.fill(1);
       let n = 0;
@@ -660,7 +708,8 @@
       infinity();
       flush(zoneL, y0, hd);
       flush(zoneR, y0, hd);
-      const ni = pinOn ? (pinned || (pinned = pointerInfo())) : pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') + '|' + (ni.count ?? '') : 'null';
+      if (pinOn && !pinned) pinned = pointerInfo();
+      const ni = pinOn ? (pinned && (pinned.kind === 'left' || pinned.kind === 'right') ? barInfo(pinned.kind) : pinned) : pointerInfo(), nk = ni ? ni.kind + '|' + (ni.index ?? '') + '|' + (ni.hi ?? '') + '|' + (ni.lo ?? '') + '|' + (ni.count ?? '') : 'null';
       // Unterstrich/Aufleuchten nur, solange die festgehaltene Ziffer noch dort liegt, wo sie getippt wurde
       info = pinOn && ni && ni.kind === 'digit' && Math.abs(posOf(ni.index) - ni.x0) > 0.5 ? null : ni;
       underline(y0);
@@ -740,6 +789,8 @@
       const img = flushCtx.createImageData(cw, hd), px = img.data;
       const [r, gc, b] = atlasRgb;
       const off = gw * hd, cums = atlas.cums;
+      const capD = fwDev(), capX = foldX() * dpr, capHh = (inkBottom + 1 - inkTop) / 2, capY = (inkTop + inkBottom + 1) / 2;
+      const capR = Math.min(capD / 2, capHh), capEx = capD / 2 - capR, capEy = capHh - capR;
       for (let x = 0; x < cw; x++) {
         const c = lo + x, base = c * NGA, o = c * hd;
         const rec = colLog ? colLog.get(c) : null;
@@ -752,7 +803,15 @@
         }
         if (rec) { let s = 0, m = 0; for (let y = 0; y < hd; y++) { s += ink[o + y]; if (ink[o + y] > m) m = ink[o + y]; } rec.raw = s; rec.max = m; rec.y0 = y0; rec.rows = Array.from(ink.subarray(o, o + hd)); }
         const k = cap[c];
-        for (let y = 0; y < hd; y++) { const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = Math.min(1, ink[o + y]) * k * 255; }
+        // fold: der Strich hat runde Enden (Kapsel, Radius = halbe Breite, hoechstens halbe Zeilenhoehe): bei Breite = Zeilenhoehe ist er der Kreis,
+        // darueber eine Stadionform, die im Kreis verschwindet. Nur im Strichband (+0,5 px Antialias-Rand), die Ziffern daneben bleiben wie sie sind.
+        const dxa = capD > 1 ? Math.abs(c + 0.5 - capX) : Infinity, inBand = dxa <= capD / 2 + 0.5;
+        const qx = inBand ? Math.max(0, dxa - capEx) : 0;
+        for (let y = 0; y < hd; y++) {
+          let m = 1;
+          if (inBand) { const qy = Math.max(0, Math.abs(y + 0.5 - capY) - capEy); m = Math.min(1, Math.max(0, capR + 0.5 - Math.sqrt(qx * qx + qy * qy))); }
+          const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = Math.min(1, ink[o + y]) * k * m * 255;
+        }
         acc.fill(0, base, base + NGA);
         ink.fill(0, o, o + hd);
       }
@@ -828,9 +887,9 @@
       if (cands.length) return cands.reduce((a, c) => (c[1] < a[1] ? c : a))[0];
       return x > L && x < R ? 'swipe' : null;
     }
-    // Tap: Touch/Stift/Maus, hoechstens TAP_SLOP px Weg (Touch/Stift auch hoechstens TAP_MS lang). Erst jenseits von TAP_SLOP beginnt das Ziehen.
-    const TAP_SLOP = 8, TAP_MS = 500;
-    let tap = null;
+    // Tap: Touch/Stift/Maus, hoechstens TAP_SLOP px Weg (Halten gilt auch). Erst jenseits von TAP_SLOP beginnt das Ziehen.
+    const TAP_SLOP = 8;
+    let tap = null, held = null;   // held: der Finger, der gerade drueckt (Touch)
     function setHover(x) {
       const v = x === null || x === undefined ? null : +x;
       if (v !== null && !Number.isFinite(v)) throw new TypeError('setHover: x muss eine Zahl oder null sein, war ' + x);
@@ -842,7 +901,8 @@
       const x = local(e);
       // Maus wie Touch: aufgeleuchtet wird erst beim Loslassen und nur ohne Weg; Greifen und Ziehen eines Endes leuchtet nicht.
       tap = { id: e.pointerId, x, y: e.clientY, t: performance.now() };
-      if (e.pointerType === 'mouse') setHover(x);
+      if (e.pointerType !== 'mouse') held = e.pointerId;
+      setHover(x);   // Touch: gedrueckt halten zeigt die Stelle unter dem Finger, Bild fuer Bild (Sausen schiebt die Ziffern darunter weg)
       if (drag || locked) return;
       const mode = hitTest(x);
       if (!mode) return;
@@ -855,7 +915,7 @@
     function onMove(e) {
       const x = local(e);
       if (tap && tap.id === e.pointerId && Math.hypot(x - tap.x, e.clientY - tap.y) > TAP_SLOP) tap = null;
-      if (e.pointerType === 'mouse') setHover(x);
+      if (e.pointerType === 'mouse' || (!drag && held === e.pointerId)) setHover(x);
       // Resize-Cursor genau in der Ziehzone eines freien Endes (ab dem Verdichtungspunkt nach aussen), sonst der normale Pfeil; nie eine Greifhand
       const endCur = () => { const c = typeof opts.endCursor === 'function' ? opts.endCursor() : (opts.endCursor || 'ew-resize'); return c; };
       if (!drag || drag.id !== e.pointerId) {
@@ -896,15 +956,16 @@
     }
     function onUp(e) {
       if (tap && tap.id === e.pointerId) {
-        const ok = e.pointerType === 'mouse' || performance.now() - tap.t < TAP_MS;
+        // Auch langes Halten ohne Weg haelt die Stelle fest (sie zeigte schon waehrend des Drueckens)
         const x = tap.x;
         tap = null;
-        if (ok) tapAt(x, e.pointerType !== 'mouse');
-      }
+        tapAt(x, e.pointerType !== 'mouse');
+      } else if (e.pointerType !== 'mouse' && held === e.pointerId && !drag) setHover(null);
+      if (held === e.pointerId) held = null;
       endDrag(e);
     }
     function onLeave(e) { if (e.pointerType === 'mouse') setHover(null); }
-    function onCancel(e) { tap = null; endDrag(e); }
+    function onCancel(e) { tap = null; if (held === e.pointerId) { held = null; if (!drag) setHover(null); } endDrag(e); }
     function endDrag(e) {
       if (!drag || drag.id !== e.pointerId) return;
       drag = null;
