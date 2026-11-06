@@ -91120,7 +91120,7 @@ tools/unfolding-view.js
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
- *   view.setFoldWidth(px)               // nur fold: Breite des Strichs in css px (Durchmesser des Punkts); gefaltete Ziffern laufen auf diese Breite zu
+ *   view.setFoldWidth(px, r1)           // nur fold: Breite des Strichs in css px (Durchmesser des Punkts); gefaltete Ziffern laufen auf diese Breite zu; r1 = Radius des Standardpunkts (Abstand 3 / Kreis / Stellen bleibt wie dort)
  *   view.setFactor(f)  view.setLocked(b)  view.invalidate()  view.refreshColor()
  *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
@@ -91223,6 +91223,7 @@ tools/unfolding-view.js
     const NG = GLYPHS.length, AVG = NG, NGA = NG + 1;
     let acc = new Float32Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
+    let fr1 = 0;  // fold: Radius des Standardpunkts (setFoldWidth); die Ziffern rücken um max(0, Radius - fr1) von der Mitte weg (kleiner als der Standardpunkt: Schriftabstand)
     let fw = 0;   // fold: Strichbreite in css px (setFoldWidth); 0 = Haarlinie
     const fwDev = () => (fold ? fw * dpr : 0);
     // fold, Strich schmaler als ein Geraetepixel: gefaltete Tinte deckt hoechstens D + (1 - D) * Breite ihrer Ziffern.
@@ -91271,8 +91272,8 @@ tools/unfolding-view.js
     // fold: Kopf = Ganzzahl und Komma (Index < headLen), Rest = Nachkommastellen mit Anfang am Punkt F
     const bs = () => (fold ? headLen : 0);
     // fold: halbe Breite des Punktfeldes = halbe Strichbreite, mindestens eine halbe Zelle; die 3 und die Stellen rücken um den Kreis herum
-    const halfDot = () => (fold ? Math.max(0.5 * w, fw / 2) : 0.5 * w);
-    const exW = () => (fold ? Math.max(0, fw - w) : 0);   // Mehrbreite des Punktfeldes gegen eine Zelle
+    const halfDot = () => (fold ? 0.5 * w + Math.max(0, fw / 2 - fr1) : 0.5 * w);
+    const exW = () => (fold ? 2 * Math.max(0, fw / 2 - fr1) : 0);   // Mehrbreite des Punktfeldes gegen eine Zelle
     const foldX = () => +opts.origin + (headLen - 1) * w + halfDot();
     // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (Punktglyphe steht auf der Mitte, nicht unter dem Fuss der Ziffer); schrumpft mit dem Abstand R - Punkt auf 0
     const gapX = () => (fold ? Math.min(halfDot(), Math.max(0, R - foldX())) : 0);
@@ -92079,15 +92080,16 @@ tools/unfolding-view.js
 
     // ─── Verdichtungsfaktor ───
     // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen. Offen folgt L der 3.
-    function setFoldWidth(px) {
+    function setFoldWidth(px, r1) {
       if (!fold) throw new Error('UnfoldingView.setFoldWidth: nur im fold-Modus');
       if (!(+px >= 0) || !Number.isFinite(+px)) throw new TypeError('UnfoldingView.setFoldWidth: Zahl >= 0 erwartet, war ' + px);
+      if (!(+r1 >= 0) || !Number.isFinite(+r1)) throw new TypeError('UnfoldingView.setFoldWidth: r1 (Zahl >= 0) erwartet, war ' + r1);
       const was = foldX(), wasL = L >= was - 0.5, wasR = R > was + 0.5;
-      fw = +px;
+      fw = +px; fr1 = +r1;
       // Der Punkt wandert mit der Strichbreite: ein eingefaltetes Ende bleibt auf ihm, ein freies behaelt seinen Abstand zu ihm
       const dx = foldX() - was;
       if (wasL) L = foldX();
-      if (wasR) R += dx;
+      R = wasR ? R + dx : foldX();   // eingefaltet: R folgt dem Punkt auch beim Schrumpfen (rFloor haelt es nur beim Wachsen)
       settle('x');
     }
     function setFactor(f) {
@@ -94805,7 +94807,9 @@ unfoldingPi.html
     }
     function layoutMulti() {
       if (!multi) return;
-      const SW = stage.clientWidth, SH = stage.clientHeight, w = cellW(), p0 = MARGIN + w / 2, n = multi.items.length;
+      const SW = stage.clientWidth, SH = stage.clientHeight, w = cellW(), n = multi.items.length;
+      // Die erste Stelle liegt eine halbe Zelle plus (Radius - Standardradius) neben der Mitte: der Abstand zum Kreisrand bleibt
+      const p0 = MARGIN + w / 2 - dotShift();
       const A = freeArea();
       if (form === 'kette') {
         const dh = dotHalf(), dc = dh + 0.5;
@@ -94892,12 +94896,16 @@ unfoldingPi.html
         return { l, r, t, b };
       };
       const dot = ink('.'), one = ink('1');
-      dotCache = { fs, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K, bot: (dot.b - S / 2) / K };
+      dotCache = { fs, hd: (one.b - one.t) / K, half: (dot.r - dot.l) / 2 / K, dx: ((dot.l + dot.r) / 2 - S / 2) / K, dy: (one.b - dot.b) / K, bot: (dot.b - S / 2) / K };
       return dotCache;
     }
     const dotHalf = () => dotMetrics().half * dotScale;
     // Der Punkt ist die Konstante: der Strich (gefaltete Ziffern) ist genau so breit wie er und deckt ihn nur, verschwindet er nie
-    function syncFoldWidth() { const D = 2 * dotHalf(); if (view.state().foldWidth !== D) view.setFoldWidth(D); }
+    function syncFoldWidth() { const D = 2 * dotHalf(); if (view.state().foldWidth !== D) view.setFoldWidth(D, dotMetrics().half); }
+    // Mitte des Kreises: wachsend nur nach oben (Unterkante auf der Grundlinie der Ziffern), ab Durchmesser = Zeilenhoehe der Ziffern bleibt die Mitte in der Zeilenmitte
+    const dotCy = (q, dm, r) => q.y + dm.dy + dm.bot - Math.min(r, dm.hd / 2);
+    // Abstand der Ziffern zur Mitte: waechst mit dem Kreis ueber den Standardpunkt hinaus (Abstand zu seinen Aussenkanten bleibt wie dort); kleiner bleibt der Schriftabstand
+    const dotShift = () => Math.max(0, dotHalf() - dotMetrics().half);
     function drawDots(raw) {
       const T = multi || single;
       if (!T.punkt) return;
@@ -94920,9 +94928,9 @@ unfoldingPi.html
       if (!multi && !ONE_DOT) return;
       // Der Punkt wird immer gezeichnet (nur circle width 0 nimmt ihn weg): gefaltete Ziffern liegen als Strich auf ihm, ragt er darueber hinaus, bleibt der Rest sichtbar
       g.globalAlpha = DOT_ALPHA;
-      // Kreis (rund bei jeder Groesse), Mitte = Mitte des Schriftpunkts (Standardgroesse sitzt auf der Grundlinie), Skalierung um diese Mitte
+      // Kreis (rund bei jeder Groesse), Mitte = Mitte des Schriftpunkts (Standardgroesse sitzt auf der Grundlinie), bis Durchmesser = Zeilenhoehe waechst er von der Grundlinie nur nach oben, danach um die feste Zeilenmitte
       const r = dotHalf();
-      if (r > 0) for (const q of pts) { g.beginPath(); g.arc(PUNKT_X(q) * dpr, (q.y + dm.dy + dm.bot - dm.half) * dpr, r * dpr, 0, 2 * Math.PI); g.fill(); }
+      if (r > 0) for (const q of pts) { g.beginPath(); g.arc(PUNKT_X(q) * dpr, dotCy(q, dm, r) * dpr, r * dpr, 0, 2 * Math.PI); g.fill(); }
       g.globalAlpha = 1;
     }
     // Stern: Zeigerlage auf der gedrehten Achse = centrum + Projektion des Zeigers (ab centrum) auf die Achsrichtung
@@ -95092,7 +95100,7 @@ unfoldingPi.html
       if (multi) return;
       const A = freeArea(), SW = stage.clientWidth, w = cellW(), ip = singleInt().length;
       syncFoldWidth();   // der Kreis rueckt die 3 und die Stellen von sich weg (halbe Strichbreite, mindestens eine halbe Zelle): der Punkt bleibt auf der Fenstermitte
-      const left = A.cx - ip * w - Math.max(0.5 * w, dotHalf()) - ORIGIN;
+      const left = A.cx - ip * w - 0.5 * w - dotShift() - ORIGIN;
       Object.assign(canvas.style, { position: 'absolute', left: left + 'px', top: '0px', width: (SW - left) + 'px', height: A.y1 + 'px', margin: '0' });
       canvas.style.top = (A.cy - A.y1 / 2) + 'px';
       // keine Maske: WebKit blendet bei einem Verlauf mit Stopp bei -1e6 px die ganze Zeichenflaeche aus
@@ -95284,7 +95292,7 @@ unfoldingPi.html
       // Punkt-Canvas im Mehrgliedmodus (sonst null) und die Stellen der Punkte (CSS-px der Buehne)
       punkt() { return multi ? { canvas: multi.punkt, points: multi.points } : { canvas: single.punkt, points: single.points }; },
       // Punkte (Mitte in Viewport-px) und Radius, wie gezeichnet
-      dot() { const T = multi || single, dm = dotMetrics(), sr = stage.getBoundingClientRect(); return { r: dotHalf(), points: (T.points || []).map((q) => ({ x: sr.left + PUNKT_X(q), y: sr.top + q.y + dm.dy + dm.bot - dm.half })) }; },
+      dot() { const T = multi || single, dm = dotMetrics(), sr = stage.getBoundingClientRect(); return { r: dotHalf(), r1: dm.half, hd: dm.hd, points: (T.points || []).map((q) => ({ x: sr.left + PUNKT_X(q), y: sr.top + dotCy(q, dm, dotHalf()) })) }; },
       controls: panel
     };
   })();

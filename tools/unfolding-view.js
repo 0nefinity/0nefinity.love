@@ -31,7 +31,7 @@
  *   view.setDigits(intPart, decimals)   // Kette neu: Ganzzahl, ".", bekannte Nachkommastellen (ASCII-String)
  *   view.appendDigits(u8, offset)       // wie Irrational.onDigits: ASCII-Bytes '0'..'9', offset = Nachkommastelle des ersten Bytes
  *   view.rewind()                       // zurueck zum Anfang (die Ganzzahl vorn)
- *   view.setFoldWidth(px)               // nur fold: Breite des Strichs in css px (Durchmesser des Punkts); gefaltete Ziffern laufen auf diese Breite zu
+ *   view.setFoldWidth(px, r1)           // nur fold: Breite des Strichs in css px (Durchmesser des Punkts); gefaltete Ziffern laufen auf diese Breite zu; r1 = Radius des Standardpunkts (Abstand 3 / Kreis / Stellen bleibt wie dort)
  *   view.setFactor(f)  view.setLocked(b)  view.invalidate()  view.refreshColor()
  *   view.setRemote(r)                   // optional: Ziffernquelle jenseits der Kette (z. B. tools/pi-file.js): r.length (Kettenlaenge
  *                                       // gesamt), r.at(i) (ASCII-Code oder 0 = noch nicht da), r.want(lo, hi, step) (Fenster, Versatz je Bild).
@@ -134,6 +134,7 @@
     const NG = GLYPHS.length, AVG = NG, NGA = NG + 1;
     let acc = new Float32Array(0), ink = new Float32Array(0), accCols = 0, flushCanvas = null, flushCtx = null;
     const zoneL = { lo: Infinity, hi: -1 }, zoneR = { lo: Infinity, hi: -1 };
+    let fr1 = 0;  // fold: Radius des Standardpunkts (setFoldWidth); die Ziffern rücken um max(0, Radius - fr1) von der Mitte weg (kleiner als der Standardpunkt: Schriftabstand)
     let fw = 0;   // fold: Strichbreite in css px (setFoldWidth); 0 = Haarlinie
     const fwDev = () => (fold ? fw * dpr : 0);
     // fold, Strich schmaler als ein Geraetepixel: gefaltete Tinte deckt hoechstens D + (1 - D) * Breite ihrer Ziffern.
@@ -182,8 +183,8 @@
     // fold: Kopf = Ganzzahl und Komma (Index < headLen), Rest = Nachkommastellen mit Anfang am Punkt F
     const bs = () => (fold ? headLen : 0);
     // fold: halbe Breite des Punktfeldes = halbe Strichbreite, mindestens eine halbe Zelle; die 3 und die Stellen rücken um den Kreis herum
-    const halfDot = () => (fold ? Math.max(0.5 * w, fw / 2) : 0.5 * w);
-    const exW = () => (fold ? Math.max(0, fw - w) : 0);   // Mehrbreite des Punktfeldes gegen eine Zelle
+    const halfDot = () => (fold ? 0.5 * w + Math.max(0, fw / 2 - fr1) : 0.5 * w);
+    const exW = () => (fold ? 2 * Math.max(0, fw / 2 - fr1) : 0);   // Mehrbreite des Punktfeldes gegen eine Zelle
     const foldX = () => +opts.origin + (headLen - 1) * w + halfDot();
     // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (Punktglyphe steht auf der Mitte, nicht unter dem Fuss der Ziffer); schrumpft mit dem Abstand R - Punkt auf 0
     const gapX = () => (fold ? Math.min(halfDot(), Math.max(0, R - foldX())) : 0);
@@ -990,15 +991,16 @@
 
     // ─── Verdichtungsfaktor ───
     // Nur die Stauchzone aendert sich: R, X0 und (eingerollt) L bleiben stehen. Offen folgt L der 3.
-    function setFoldWidth(px) {
+    function setFoldWidth(px, r1) {
       if (!fold) throw new Error('UnfoldingView.setFoldWidth: nur im fold-Modus');
       if (!(+px >= 0) || !Number.isFinite(+px)) throw new TypeError('UnfoldingView.setFoldWidth: Zahl >= 0 erwartet, war ' + px);
+      if (!(+r1 >= 0) || !Number.isFinite(+r1)) throw new TypeError('UnfoldingView.setFoldWidth: r1 (Zahl >= 0) erwartet, war ' + r1);
       const was = foldX(), wasL = L >= was - 0.5, wasR = R > was + 0.5;
-      fw = +px;
+      fw = +px; fr1 = +r1;
       // Der Punkt wandert mit der Strichbreite: ein eingefaltetes Ende bleibt auf ihm, ein freies behaelt seinen Abstand zu ihm
       const dx = foldX() - was;
       if (wasL) L = foldX();
-      if (wasR) R += dx;
+      R = wasR ? R + dx : foldX();   // eingefaltet: R folgt dem Punkt auch beim Schrumpfen (rFloor haelt es nur beim Wachsen)
       settle('x');
     }
     function setFactor(f) {
