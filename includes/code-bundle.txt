@@ -53897,34 +53897,20 @@ input[type="search"]::-webkit-search-results-decoration {
     overflow: visible;
 }
 
-/* Lupen-Teile. Transforms um die jeweilige Glyph-Mitte (fill-box). Die
-   Rückweg-Transition ist langsam + mit Delay → nach einem Klick/Tap klingt das
-   Stoppschild sichtbar ab (statt nur während des Haltens da zu sein). */
-/* Lupen-Teile. Pose = Funktion von --loupe-on (0 = Lupe, 1 = Stoppschild); die Bewegung
-   ist eine Transition und läuft deshalb immer vom AKTUELLEN Wert weiter (nie ein Sprung,
-   auch nicht bei Tap mitten im Rückweg). */
+/* Lupen-Teile. Form und Ruhelage kommen aus tools/editor-symbole.js (Icon-Designer); hier steht nur die
+   Bewegung ins Stoppschild: jedes Teil verschiebt sich um seinen Stopp-Versatz (--stopp-x/-y, ebenfalls aus
+   der Quelle) mal --loupe-on (0 = Lupe, 1 = Stoppschild). Die Bewegung ist eine Transition und laeuft deshalb
+   immer vom AKTUELLEN Wert weiter (nie ein Sprung, auch nicht bei Tap mitten im Rueckweg). Der Rueckweg ist
+   langsam + mit Delay, damit das Stoppschild nach einem Tap sichtbar abklingt. */
 @property --loupe-on {
     syntax: '<number>';
     inherits: true;
     initial-value: 0;
 }
 
-.meta-loupe-lens,
-.meta-loupe-handle {
-    transform-box: fill-box;
-    transform-origin: center;
+.meta-loupe .sym-teil {
+    transform: translate(calc(var(--stopp-x, 0px) * var(--loupe-on)), calc(var(--stopp-y, 0px) * var(--loupe-on)));
     transition: transform 0.45s ease; /* Rückweg */
-}
-
-.meta-loupe-lens {
-    transform: translate(calc(134px * var(--loupe-on)), 0);
-}
-
-.meta-loupe-handle {
-    /* Ruhezustand: Stiel '1' als Lupengriff. Stoppschild: STRICH-Mitte der '1' auf
-       Kreis-Mitte der '0' → Schräg-Strich exakt mittig durch den Kreis. */
-    transform: translate(calc(386.5px + (205.7px - 386.5px) * var(--loupe-on)),
-                         calc(356px + (49.8px - 356px) * var(--loupe-on))) rotate(-45deg);
 }
 
 /* ⊘-Stoppschild bei Tap/Halten aufs Overlay der Suchleiste (no-JS). --loupe-on springt beim
@@ -53938,8 +53924,7 @@ input[type="search"]::-webkit-search-results-decoration {
     --loupe-on: 1;
     transition: --loupe-on 0s 0s;
 }
-.menu-search:has(.menu-search-stop:active) .meta-loupe-lens,
-.menu-search:has(.menu-search-stop:active) .meta-loupe-handle {
+.menu-search:has(.menu-search-stop:active) .sym-teil {
     transition: transform 0.13s ease;
 }
 
@@ -86360,6 +86345,89 @@ tools/editor-newpage.js
   window.OneEditorNewPage = { mount };
 })();
 
+tools/editor-symbole.js
+// Alle Symbole des Projekts aus 0 und 1 (Menue-Lupe, Ausloggen, ...): die einzige Quelle.
+// Bearbeitet und gespeichert wird im Icon-Designer (/icon-entwuerfe); er schreibt den Block zwischen den
+// beiden Markierungen neu. "inhalt" rechnet tools/icon-render.js, Seiten und Editor setzen ihn nur ein.
+// tools/generate-menu.py liest denselben Block fuer die Lupe im Menue (der pre-commit baut das Menue neu).
+window.oneSymbole = /* symbole: anfang */ {
+  "symbole": {
+    "lupe": {
+      "viewBox": [
+        -79,
+        -498,
+        946,
+        946
+      ],
+      "teile": [
+        {
+          "zeichen": "0",
+          "schrift": "Ysabeau",
+          "gewicht": 400,
+          "d": "M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z",
+          "x": 0,
+          "y": 0,
+          "stopp": [
+            134,
+            0
+          ]
+        },
+        {
+          "zeichen": "1",
+          "schrift": "Ysabeau",
+          "gewicht": 400,
+          "d": "M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z",
+          "x": 386.5,
+          "y": 356,
+          "drehung": -45,
+          "stopp": [
+            -180.8,
+            -306.2
+          ]
+        }
+      ],
+      "inhalt": "<g class=\"sym-teil\" style=\"--stopp-x:134px;--stopp-y:0px\"><path d=\"M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z\"/></g><g class=\"sym-teil\" style=\"--stopp-x:-180.8px;--stopp-y:-306.2px\"><path d=\"M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z\" transform=\"matrix(0.707107 -0.707107 0.707107 0.707107 573.437 393.305)\"/></g>"
+    },
+    "ausloggen": {
+      "viewBox": [
+        -54.5,
+        -594,
+        629,
+        629
+      ],
+      "teile": [
+        {
+          "zeichen": "0",
+          "schrift": "Ysabeau",
+          "gewicht": 400,
+          "d": "M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "zeichen": "1",
+          "schrift": "Ysabeau",
+          "gewicht": 400,
+          "d": "M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z",
+          "x": 51,
+          "y": -150,
+          "aussparung": 120
+        }
+      ],
+      "inhalt": "<mask id=\"{id}\" maskUnits=\"userSpaceOnUse\" x=\"-683.5\" y=\"-1223\" width=\"1887\" height=\"1887\"><rect x=\"-683.5\" y=\"-1223\" width=\"1887\" height=\"1887\" fill=\"#fff\"/><g fill=\"#000\" stroke=\"#000\" stroke-width=\"120\" stroke-linejoin=\"round\"><path d=\"M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z\" transform=\"translate(51 -150)\"/></g></mask><path d=\"M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z\" mask=\"url(#{id})\"/><path d=\"M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z\" transform=\"translate(51 -150)\"/>"
+    }
+  }
+} /* symbole: ende */;
+
+// SVG eines Symbols als Text; jeder Einbau bekommt eigene Masken-Kennungen.
+window.oneSymbolSvg = function (name, attrs) {
+  const s = window.oneSymbole.symbole[name];
+  if (!s) throw new Error('Symbol fehlt: ' + name);
+  const id = 'sym-' + name + '-' + (++window.oneSymbolSvg.n);
+  return '<svg viewBox="' + s.viewBox.join(' ') + '" ' + (attrs || '') + '>' + s.inhalt.split('{id}').join(id) + '</svg>';
+};
+window.oneSymbolSvg.n = 0;
+
 tools/editor.js
 // Dev-only Editor. Ohne Login: nichts im Menue, der Login liegt nur unter /enternity. Eingeloggt: im Menue nur noch Ausloggen;
 // alle Editor-Funktionen sitzen in der Leiste oben links neben dem Menue, nach Zusammengehoerigem gruppiert:
@@ -86416,7 +86484,7 @@ tools/editor.js
     not_supported: 'auf dieser Seite nicht verfügbar',
   };
   const ANALYTICS = 'https://analytics.timbreitmar.de';
-  // Ysabeau-Outlines '0' und '1', dieselben wie in der Menue-Lupe (generate-menu.py).
+  // Ysabeau-Outlines '0' und '1' (wie die Symbole in tools/editor-symbole.js).
   const ZERO = 'M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z';
   const ONE = 'M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z';
 
@@ -86440,7 +86508,6 @@ tools/editor.js
   let cmtOn = false;
   let source = null;
   let csrf = '';
-  let iconSeq = 0;
   const badgeInfo = new WeakMap();
   const fresh = new WeakSet();
   let pubTimer = null;
@@ -86511,15 +86578,9 @@ tools/editor.js
       return `<svg class="oe-icon" viewBox="${vb}" aria-hidden="true" focusable="false"><path d="${ZERO}"/>` +
         `<path d="${ONE}" transform="translate(155.5 -335) scale(.5)"/></svg>`;
     }
-    // 0 und 1 in Originalgroesse wie die Menue-Lupe, also gleiche Strichstaerke; die 1 steht mittig ueber
-    // dem Kreis und schneidet sich mit 60 Einheiten Abstand ihre Luecke. viewBox quadratisch um die 0-Mitte.
-    const id = 'oe-pwr-' + (++iconSeq);
-    const one = `<path d="${ONE}" transform="translate(51 -150)"/>`;
-    const box = 'x="-54.5" y="-594" width="629" height="629"';
-    return `<svg class="oe-icon oe-pwr" viewBox="-54.5 -594 629 629" aria-hidden="true" focusable="false">` +
-      `<mask id="${id}" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="#fff"/>` +
-      `<g fill="#000" stroke="#000" stroke-width="120" stroke-linejoin="round">${one}</g></mask>` +
-      `<path d="${ZERO}" mask="url(#${id})"/>${one}</svg>`;
+    // Ausloggen: aus der gemeinsamen Symbol-Quelle (Icon-Designer). Fehlt sie, meldet init() das sichtbar.
+    if (!window.oneSymbole) return '<svg class="oe-icon oe-pwr" aria-hidden="true" focusable="false"></svg>';
+    return window.oneSymbolSvg('ausloggen', 'class="oe-icon oe-pwr" aria-hidden="true" focusable="false"');
   }
 
   // Waehrend ein Umbenennen laeuft, warten alle anderen Aufrufe und gehen danach mit dem neuen Pfad raus
@@ -86779,6 +86840,18 @@ tools/editor.js
   // Dateiname oben (editor-filename.js), Plus fuer neue Seiten (editor-newpage.js), Formatierungszeichen
   // (editor-marks.js): eigene Module, hier nur geladen und eingehaengt.
   let extras = null;
+  // Symbol-Quelle tools/editor-symbole.js, neben dieser Datei (auf www und anderen Seiten /api/edit/).
+  function loadSymbole() {
+    if (window.oneSymbole) return Promise.resolve();
+    return new Promise((ok, no) => {
+      const s = document.createElement('script');
+      s.src = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, 'editor-symbole.js?v=' + Date.now()); // gespeichert = sofort gueltig
+      s.onload = ok;
+      s.onerror = () => no(new Error('editor-symbole.js nicht ladbar'));
+      document.head.append(s);
+    });
+  }
+
   async function loadExtras() {
     const base = (tag?.src || '/tools/editor.js').replace(/editor\.js(\?.*)?$/, '');
     await Promise.all(['filename', 'newpage', 'marks', 'format'].map((n) => new Promise((ok, no) => {
@@ -89340,18 +89413,21 @@ html.oe-editing #interactionLayer{pointer-events:none!important}
     if (!me.ok) { console.error('[editor] ' + CFG.me + ' HTTP ' + me.status); return; }
     const info = await me.json();
     csrf = info.csrf || '';
+    const symbole = loadSymbole().then(() => null, (e) => e);
     // Vor allem anderen: liegt fuer diese Seite ein unbestaetigter Entwurf, zeigt erst das Neuladen ihn.
     if (await resendOutbox()) { location.reload(); return; }
     // Eingeloggt: Live-Reload laedt nie von selbst neu. Autosave und andere Sitzungen aendern laufend
     // Dateien, ein Reload zwischen zwei Eingaben riss Tim aus dem Text.
     window.__oneEditor = true;
 
+    const symbolError = await symbole;
     css();
     buildBar();
     initTips();
     buildSelBar();
     buildAdminMenu();
     render();
+    if (symbolError) say(symbolError.message, 'error');
     resumeDelete();
     document.addEventListener('click', guardClick, true);
     document.addEventListener('keydown', globalKeys, true);
@@ -89660,6 +89736,747 @@ tools/gif-encoder.js
 
     window.GifEncoder = GifEncoder;
 })();
+
+tools/icon-designer.js
+// Icon-Designer auf /icon-entwuerfe: baut die Symbole aus tools/editor-symbole.js (Lupe, Ausloggen, neue)
+// aus Glyphen zusammen und speichert sie dorthin zurueck, ueber die Quelltext-Route des Editors
+// (/api/edit/source). Diese Datei ist die einzige Quelle: Menue, Editor und Seiten lesen nur von dort.
+// Gerechnet wird mit tools/icon-render.js, Glyphen-Umrisse liefert opentype.js aus den eigenen Schriften.
+(function () {
+  'use strict';
+  const R = window.OneIconRender;
+  const root = document.getElementById('ds');
+  if (!root || !R || !window.oneSymbole) throw new Error('Icon-Designer: Quelle oder Renderer fehlt');
+
+  const FILE = 'tools/editor-symbole.js';
+  const DRAFT = 'icon-designer:entwurf';
+  const FONT_DIR = '/tools/tools/fonts/!!DANGER!!-un0nefinity-fonts-!!DANGER!!/';
+  const SCHRIFTEN = {
+    'Ysabeau': 'Ysabeau/Ysabeau.ttf',
+    'Ysabeau Italic': 'Ysabeau/Ysabeau-Italic.ttf',
+    'Rubik Broken Fax': 'Rubik/RubikBrokenFax.ttf',
+    'Rubik Doodle Triangles': 'Rubik/RubikDoodleTriangles.ttf',
+    'Rubik Lines': 'Rubik/RubikLines.ttf',
+  };
+  // Von Seiten und Code beim Namen gerufen: nicht umbenennbar.
+  const FEST = new Set(['lupe', 'ausloggen']);
+  const ERRORS = { unauthenticated: 'nicht eingeloggt', csrf: 'Anfrage abgelehnt', not_tracked: 'Datei nicht im Repo' };
+  // [Schluessel, Beschriftung, Schritt, Standard, Einheit]
+  const FELDER = [
+    ['x', 'verschieben x', 1, 0], ['y', 'verschieben y', 1, 0],
+    ['drehung', 'drehen', 1, 0, '°'], ['neigung', 'neigen', 1, 0, '°'],
+    ['kruemmung', 'krümmen', 1, 0, '°'], ['gewicht', 'Gewicht', 10, 400],
+    ['skalaX', 'skalieren x', 0.01, 1], ['skalaY', 'skalieren y', 0.01, 1],
+    ['aussparung', 'aussparung', 1, 0], ['stopp.0', 'stopp x', 1, 0], ['stopp.1', 'stopp y', 1, 0],
+  ];
+  const RAHMEN = [['0', 'x'], ['1', 'y'], ['2', 'breite'], ['3', 'höhe']];
+  const NOFILL = 'autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" spellcheck="false" autocorrect="off" autocapitalize="off"';
+
+  const $ = (s) => root.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const round = (v, step) => +(Math.round(v / step) * step).toFixed(4);
+
+  let data = clone(window.oneSymbole);
+  let cur = new URLSearchParams(location.search).get('symbol');
+  if (!data.symbole[cur]) cur = Object.keys(data.symbole)[0];
+  let sel = -1;
+  let seq = 0;
+
+  // ---------- Verlauf (rueckgaengig / wiederholen) ----------
+  const past = [], future = [];
+  let lastKey = '', lastAt = 0;
+  // Vor jeder Aenderung den Stand merken. Gleiche Feld-Aenderungen kurz hintereinander zaehlen als ein Schritt.
+  function mark(key) {
+    const now = Date.now();
+    if (key && key === lastKey && now - lastAt < 1200) { lastAt = now; return; }
+    lastKey = key || ''; lastAt = now;
+    past.push(JSON.stringify({ data, cur, sel }));
+    if (past.length > 200) past.shift();
+    future.length = 0;
+  }
+  function step(from, to) {
+    if (!from.length) return;
+    to.push(JSON.stringify({ data, cur, sel }));
+    ({ data, cur, sel } = JSON.parse(from.pop()));
+    lastKey = '';
+    changed();
+  }
+  const undo = () => step(past, future);
+  const redo = () => step(future, past);
+
+  const sym = () => data.symbole[cur];
+  const part = () => sym().teile[sel];
+
+  function get(t, key) {
+    if (key.startsWith('stopp.')) return (t.stopp || [0, 0])[+key.slice(6)];
+    return t[key];
+  }
+  function set(t, key, v) {
+    if (key.startsWith('stopp.')) { t.stopp = t.stopp || [0, 0]; t.stopp[+key.slice(6)] = v; return; }
+    t[key] = v;
+  }
+
+  // ---------- Schriften und Glyphen ----------
+  const fonts = new Map();
+  const hasWght = new Map();
+  let otReady = null;
+  function loadOpentype() {
+    if (window.opentype) return Promise.resolve();
+    return otReady ??= new Promise((ok, no) => {
+      const s = document.createElement('script');
+      s.src = '/tools/vendor/opentype/2.0.0/opentype.min.js';
+      s.onload = ok;
+      s.onerror = () => { otReady = null; no(new Error('opentype.js nicht ladbar')); };
+      document.head.append(s);
+    });
+  }
+  function font(name) {
+    if (!SCHRIFTEN[name]) return Promise.reject(new Error('Schrift fehlt: ' + name));
+    if (!fonts.has(name)) {
+      const p = loadOpentype()
+        .then(() => fetch(encodeURI(FONT_DIR + SCHRIFTEN[name])))
+        .then((r) => { if (!r.ok) throw new Error('Schrift nicht ladbar: ' + name + ' (HTTP ' + r.status + ')'); return r.arrayBuffer(); })
+        .then((buf) => window.opentype.parse(buf));
+      p.catch(() => fonts.delete(name));
+      fonts.set(name, p);
+    }
+    return fonts.get(name);
+  }
+  function wghtAxis(f) {
+    return f.tables.fvar?.axes.find((a) => a.tag === 'wght') ?? null;
+  }
+  // Umriss neu aus Zeichen, Schrift und Gewicht (Grundlinie 0, 1000 Einheiten wie die bestehenden Teile).
+  async function reglyph(t) {
+    const want = JSON.stringify([t.zeichen, t.schrift, t.gewicht]);
+    const f = await font(t.schrift);
+    const ax = wghtAxis(f);
+    const opts = ax ? { variation: { wght: Math.min(ax.maxValue, Math.max(ax.minValue, t.gewicht ?? ax.defaultValue)) } } : {};
+    const d = f.getPath(t.zeichen ?? '', 0, 0, 1000, opts).toPathData(1);
+    if (JSON.stringify([t.zeichen, t.schrift, t.gewicht]) !== want) return;
+    t.d = d;
+    changed();
+  }
+
+  // ---------- Speichern ----------
+  let csrf = '';
+  async function renewCsrf() {
+    const me = await fetch('/api/auth/me', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (!me.ok) return false;
+    const info = await me.json().catch(() => ({}));
+    if (!info.csrf) return false;
+    csrf = info.csrf;
+    return true;
+  }
+  async function api(method, route, body, renewed) {
+    const opts = { method, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } };
+    if (body) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.headers['X-0ne-Edit'] = '1';
+      if (csrf) opts.headers['X-0ne-Csrf'] = csrf;
+      opts.body = JSON.stringify(body);
+    }
+    let res;
+    try {
+      res = await fetch('/api/edit/' + route, opts);
+    } catch (e) {
+      throw new Error('Editor-Dienst nicht erreichbar');
+    }
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 403 && out.error === 'csrf' && !renewed && await renewCsrf()) return api(method, route, body, true);
+      const err = new Error(ERRORS[out.error] ?? out.error ?? 'HTTP ' + res.status);
+      err.code = out.error;
+      throw err;
+    }
+    return out;
+  }
+  function withInhalt(d) {
+    const out = clone(d);
+    for (const name in out.symbole) {
+      const s = out.symbole[name];
+      out.symbole[name] = { viewBox: s.viewBox, teile: s.teile, inhalt: R.render(s) };
+    }
+    return out;
+  }
+  const BLOCK = /\/\* symbole: anfang \*\/[\s\S]*\/\* symbole: ende \*\//;
+  async function saveOnce(again) {
+    if (!csrf) await renewCsrf();
+    const src = await api('GET', 'source?path=' + encodeURIComponent(FILE));
+    if (!BLOCK.test(src.text)) throw new Error(FILE + ': Markierungen fehlen');
+    const full = withInhalt(data);
+    const text = src.text.replace(BLOCK, () => '/* symbole: anfang */ ' + JSON.stringify(full, null, 2) + ' /* symbole: ende */');
+    try {
+      await api('POST', 'source', { path: FILE, text, sha: src.sha });
+    } catch (e) {
+      if (e.code === 'changed_meanwhile' && !again) return saveOnce(true);
+      throw e;
+    }
+    window.oneSymbole = full;
+  }
+  let timer = 0, saving = false, queued = false;
+  function scheduleSave() {
+    clearTimeout(timer);
+    timer = setTimeout(save, 800);
+  }
+  async function save() {
+    clearTimeout(timer);
+    if (saving) { queued = true; return; }
+    saving = true;
+    const snapshot = JSON.stringify(data);
+    try {
+      await saveOnce(false);
+      if (retry === save) showError(null);
+      try { if (JSON.stringify(data) === snapshot) localStorage.removeItem(DRAFT); } catch (e) { /* ohne Speicher nur kein Entwurf */ }
+    } catch (e) {
+      showError(new Error('nicht gespeichert: ' + e.message), save);
+    } finally {
+      saving = false;
+      if (queued) { queued = false; save(); }
+    }
+  }
+  // Fehler bleiben stehen, bis "nochmal" klappt (oder der naechste Lauf derselben Sache).
+  let retry = null;
+  function showError(e, again) {
+    const box = $('.ds-fehler');
+    box.hidden = !e;
+    retry = e ? again : null;
+    if (!e) return;
+    console.error('Icon-Designer:', e);
+    box.querySelector('span').textContent = e.message;
+  }
+  const loud = (again) => (e) => showError(e, again);
+
+  // ---------- Zeichnen ----------
+  function svgOf(s, attrs, id) {
+    return `<svg viewBox="${s.viewBox.join(' ')}" ${attrs}>${R.render(s).split('{id}').join(id)}</svg>`;
+  }
+  function drawStage() {
+    const s = sym();
+    const [x, y, w, h] = s.viewBox;
+    const p = 0.3;
+    const svg = $('.ds-stage');
+    svg.setAttribute('viewBox', [x - w * p, y - h * p, w * (1 + 2 * p), h * (1 + 2 * p)].map((v) => R.num(v, 3)).join(' '));
+    let hits = '', outline = '';
+    s.teile.forEach((t, i) => {
+      const f = R.form(t);
+      hits += `<path class="ds-hit" data-i="${i}" d="${f.d}"${f.tf ? ` transform="${f.tf}"` : ''}/>`;
+      if (i === sel) outline = `<path class="ds-sel" d="${f.d}"${f.tf ? ` transform="${f.tf}"` : ''}/>`;
+    });
+    svg.innerHTML = `<rect class="ds-frame" x="${x}" y="${y}" width="${w}" height="${h}"/>` +
+      `<g class="ds-ink">${R.render(s).split('{id}').join('ds-st')}</g>${hits}${outline}`;
+  }
+  function drawSymbols() {
+    $('.ds-syms').innerHTML = Object.keys(data.symbole).map((name) =>
+      `<button type="button" class="ds-chip${name === cur ? ' on' : ''}" data-sym="${esc(name)}" aria-pressed="${name === cur}" aria-label="${esc(name)}">` +
+      svgOf(data.symbole[name], 'aria-hidden="true" focusable="false"', 'ds-c' + (++seq)) + '</button>').join('') +
+      '<button type="button" class="ds-chip ds-neu" data-neu aria-label="neues Symbol">+</button>';
+  }
+  function drawParts() {
+    const s = sym();
+    $('.ds-teile').innerHTML = s.teile.map((t, i) => {
+      const one = { viewBox: s.viewBox, teile: [{ ...t, aussparung: 0, stopp: null }] };
+      return `<button type="button" class="ds-teil${i === sel ? ' on' : ''}" data-i="${i}" aria-pressed="${i === sel}" aria-label="${esc(t.zeichen ?? '')}">` +
+        svgOf(one, 'aria-hidden="true" focusable="false"', 'ds-t' + (++seq)) + '</button>';
+    }).join('');
+  }
+  function drawFields() {
+    const s = sym(), t = part();
+    const name = $('.ds-name');
+    if (document.activeElement !== name) name.value = cur;
+    name.disabled = FEST.has(cur);
+    RAHMEN.forEach(([k]) => {
+      const inp = root.querySelector(`[data-rahmen="${k}"]`);
+      if (document.activeElement !== inp) inp.value = R.num(s.viewBox[+k], 3);
+    });
+    root.querySelectorAll('.ds-teilfeld').forEach((el) => { el.hidden = !t; });
+    $('.ds-del').disabled = !t;
+    if (!t) return;
+    const z = $('.ds-zeichen');
+    if (document.activeElement !== z) z.value = t.zeichen ?? '';
+    $('.ds-schrift').value = SCHRIFTEN[t.schrift] ? t.schrift : '';
+    for (const [key, , , def] of FELDER) {
+      const inp = root.querySelector(`[data-feld="${key}"]`);
+      if (document.activeElement !== inp) inp.value = R.num(get(t, key) ?? def, 3);
+    }
+    // Gewicht nur bei Schriften mit Gewichtsachse
+    const g = root.querySelector('[data-feld="gewicht"]').closest('label');
+    if (hasWght.has(t.schrift)) { g.hidden = !hasWght.get(t.schrift); return; }
+    g.hidden = true;
+    font(t.schrift).then((f) => { hasWght.set(t.schrift, !!wghtAxis(f)); if (part() === t) g.hidden = !hasWght.get(t.schrift); },
+      loud(() => drawFields()));
+  }
+  function drawPreview() {
+    const s = sym();
+    const sizes = [16, 24, 44, 112];
+    $('.ds-vor').innerHTML = sizes.map((px) =>
+      svgOf(s, `class="meta-loupe" style="width:${px}px;height:${px}px" aria-hidden="true" focusable="false"`, 'ds-v' + (++seq))).join('');
+    $('.ds-stopp').hidden = !s.teile.some((t) => t.stopp && (t.stopp[0] || t.stopp[1]));
+    drawRef();
+  }
+  // Vergleichszeile oben auf der Seite ("heute"): dieselbe Quelle.
+  function drawRef() {
+    document.querySelectorAll('[data-symbol-ref]').forEach((el) => {
+      const s = data.symbole[el.dataset.symbolRef];
+      if (s) el.innerHTML = svgOf(s, 'class="g" fill="#fff"', 'ref-' + el.dataset.symbolRef + (++seq));
+    });
+  }
+  function render() {
+    drawSymbols(); drawStage(); drawParts(); drawFields(); drawPreview();
+    $('.ds-undo').disabled = !past.length;
+    $('.ds-redo').disabled = !future.length;
+    const u = new URL(location.href);
+    if (u.searchParams.get('symbol') !== cur) { u.searchParams.set('symbol', cur); history.replaceState(null, '', u); }
+  }
+  function changed() {
+    if (sel >= sym().teile.length) sel = sym().teile.length - 1;
+    render();
+    try { localStorage.setItem(DRAFT, JSON.stringify(data)); } catch (e) { /* ohne Speicher nur kein Entwurf */ }
+    scheduleSave();
+  }
+
+  // ---------- Bedienung ----------
+  function wiggle(el) {
+    el.classList.remove('ds-wackel');
+    void el.offsetWidth;
+    el.classList.add('ds-wackel');
+  }
+  function insert() {
+    mark();
+    const s = sym();
+    const [x, y, w, h] = s.viewBox;
+    const t = { zeichen: '1', schrift: 'Ysabeau', gewicht: 400, d: 'M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z', x: 0, y: 0 };
+    // in die Mitte des Rahmens
+    const b = R.bbox(R.parse(t.d));
+    t.x = round(x + w / 2 - (b.x + b.w / 2), 0.5);
+    t.y = round(y + h / 2 - (b.y + b.h / 2), 0.5);
+    s.teile.push(t);
+    sel = s.teile.length - 1;
+    changed();
+    const z = $('.ds-zeichen');
+    z.focus();
+    z.select();
+  }
+  function remove() {
+    if (!part()) return;
+    mark();
+    sym().teile.splice(sel, 1);
+    sel = Math.min(sel, sym().teile.length - 1);
+    changed();
+  }
+  function newSymbol() {
+    mark();
+    let n = 1;
+    while (data.symbole['neu-' + n]) n++;
+    cur = 'neu-' + n;
+    data.symbole[cur] = { viewBox: [-54.5, -594, 629, 629], teile: [] };
+    sel = -1;
+    insert();
+    past.pop(); // neues Symbol und erstes Teil sind ein Schritt
+  }
+  function rename(inp) {
+    const name = inp.value.trim();
+    if (name === cur) return;
+    if (FEST.has(cur) || !/^[a-z0-9][a-z0-9-]*$/.test(name) || data.symbole[name]) { wiggle(inp); inp.value = cur; return; }
+    mark();
+    const next = {};
+    for (const k in data.symbole) next[k === cur ? name : k] = data.symbole[k];
+    data.symbole = next;
+    cur = name;
+    changed();
+  }
+  function setField(key, raw) {
+    const t = part();
+    const v = parseFloat(raw);
+    if (!t || !Number.isFinite(v)) return;
+    mark(key + ':' + cur + ':' + sel);
+    set(t, key, key === 'aussparung' ? Math.max(0, v) : v);
+    if (key === 'gewicht') { changed(); reglyph(t).catch(loud(() => reglyph(t).catch(loud()))); return; }
+    changed();
+  }
+
+  root.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.sym) { if (b.dataset.sym !== cur) { cur = b.dataset.sym; sel = -1; render(); } return; }
+    if (b.hasAttribute('data-neu')) return newSymbol();
+    if (b.classList.contains('ds-teil')) { sel = +b.dataset.i === sel ? -1 : +b.dataset.i; render(); return; }
+    if (b.classList.contains('ds-ins')) return insert();
+    if (b.classList.contains('ds-del')) return remove();
+    if (b.classList.contains('ds-undo')) return undo();
+    if (b.classList.contains('ds-redo')) return redo();
+    if (b.classList.contains('ds-retry')) { const r = retry; showError(null); return r?.(); }
+    if (b.classList.contains('ds-stopp')) {
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', on);
+      $('.ds-vor').style.setProperty('--loupe-on', on ? 1 : 0);
+    }
+  });
+  root.addEventListener('input', (e) => {
+    const el = e.target;
+    if (el.dataset.feld) return setField(el.dataset.feld, el.value);
+    if (el.dataset.rahmen) {
+      const v = parseFloat(el.value);
+      if (!Number.isFinite(v) || (+el.dataset.rahmen >= 2 && v <= 0)) return;
+      mark('rahmen' + el.dataset.rahmen + cur);
+      sym().viewBox[+el.dataset.rahmen] = v;
+      changed();
+      return;
+    }
+    if (el.classList.contains('ds-zeichen')) {
+      const t = part();
+      if (!t) return;
+      mark('zeichen:' + cur + ':' + sel);
+      t.zeichen = el.value;
+      drawParts();
+      reglyph(t).catch(loud(() => reglyph(t).catch(loud())));
+    }
+  });
+  root.addEventListener('change', (e) => {
+    const el = e.target;
+    if (el.classList.contains('ds-name')) return rename(el);
+    if (el.classList.contains('ds-schrift')) {
+      const t = part();
+      if (!t) return;
+      mark();
+      t.schrift = el.value;
+      changed();
+      reglyph(t).catch(loud(() => reglyph(t).catch(loud())));
+    }
+  });
+
+  // Ziehen an der Beschriftung aendert den Wert (Daumen statt Tastatur).
+  root.addEventListener('pointerdown', (e) => {
+    const lab = e.target.closest('.ds-scrub');
+    if (!lab || e.target.tagName === 'INPUT') return;
+    const inp = lab.querySelector('input');
+    const stepV = +inp.dataset.step;
+    const x0 = e.clientX, v0 = parseFloat(inp.value) || 0;
+    lab.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const v = round(v0 + Math.round((ev.clientX - x0) / 4) * stepV, stepV);
+      if (String(v) !== inp.value) { inp.value = v; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+    };
+    const up = () => { lab.removeEventListener('pointermove', move); lab.removeEventListener('pointerup', up); lab.removeEventListener('pointercancel', up); };
+    lab.addEventListener('pointermove', move);
+    lab.addEventListener('pointerup', up);
+    lab.addEventListener('pointercancel', up);
+  });
+
+  // Buehne: Teil antippen waehlt, Ziehen verschiebt, zwei Finger drehen und skalieren (auch neben dem Teil
+  // angesetzt). Antippen daneben ohne Geste hebt die Wahl auf.
+  const stage = $('.ds-stage');
+  const pointers = new Map();
+  let gesture = null, leer = false;
+  function toUser(e) {
+    const m = stage.getScreenCTM().inverse();
+    return { x: m.a * e.clientX + m.c * e.clientY + m.e, y: m.b * e.clientX + m.d * e.clientY + m.f };
+  }
+  function startGesture() {
+    const t = part();
+    if (!t) { gesture = null; return; }
+    const pts = [...pointers.values()];
+    gesture = { moved: gesture?.moved ?? false, x: t.x ?? 0, y: t.y ?? 0, sx: t.skalaX ?? 1, sy: t.skalaY ?? 1, r: t.drehung ?? 0, p: pts.map((p) => ({ ...p })) };
+  }
+  stage.addEventListener('pointerdown', (e) => {
+    const hit = e.target.closest('.ds-hit');
+    if (!pointers.size) {
+      if (hit && +hit.dataset.i !== sel) { sel = +hit.dataset.i; render(); }
+      if (!part()) return;
+      gesture = null;
+      leer = !hit;
+    }
+    stage.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, toUser(e));
+    startGesture();
+    e.preventDefault();
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!gesture || !pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, toUser(e));
+    const t = part(), pts = [...pointers.values()], g = gesture;
+    if (leer && pts.length === 1) return;
+    if (!g.moved) { mark(); g.moved = true; }
+    if (pts.length === 1 || g.p.length === 1) {
+      t.x = round(g.x + pts[0].x - g.p[0].x, 0.5);
+      t.y = round(g.y + pts[0].y - g.p[0].y, 0.5);
+    } else {
+      const d = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+      const ang = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const f = d(pts[0], pts[1]) / (d(g.p[0], g.p[1]) || 1);
+      t.skalaX = round(g.sx * f, 0.01);
+      t.skalaY = round(g.sy * f, 0.01);
+      t.drehung = round(g.r + ang(pts[0], pts[1]) - ang(g.p[0], g.p[1]), 0.5);
+    }
+    drawStage(); drawFields();
+  });
+  const release = (e) => {
+    if (!pointers.delete(e.pointerId)) return;
+    if (pointers.size) { startGesture(); return; }
+    const moved = gesture?.moved;
+    gesture = null;
+    if (moved) changed();
+    else if (leer) { sel = -1; render(); }
+  };
+  stage.addEventListener('pointerup', release);
+  stage.addEventListener('pointercancel', release);
+
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && !typing && e.key.toLowerCase() === 'z') { e.preventDefault(); return e.shiftKey ? redo() : undo(); }
+    if (mod && !typing && e.key.toLowerCase() === 'y') { e.preventDefault(); return redo(); }
+    if (typing || !part()) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); return remove(); }
+    const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!k) return;
+    e.preventDefault();
+    mark('pfeil:' + cur + ':' + sel);
+    const n = e.shiftKey ? 10 : 1;
+    part().x = (part().x ?? 0) + k[0] * n;
+    part().y = (part().y ?? 0) + k[1] * n;
+    changed();
+  });
+
+  // ---------- Aufbau ----------
+  $('.ds-schrift').innerHTML = Object.keys(SCHRIFTEN).map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  $('.ds-felder').innerHTML = FELDER.map(([key, label, stepV, , unit]) =>
+    `<label class="ds-teilfeld ds-scrub"><span>${esc(label)}${unit ? ' ' + unit : ''}</span>` +
+    `<input type="number" step="any" inputmode="decimal" data-feld="${key}" data-step="${stepV}" ${NOFILL}></label>`).join('');
+  $('.ds-rahmen').innerHTML = RAHMEN.map(([k, label]) =>
+    `<label class="ds-scrub"><span>${esc(label)}</span><input type="number" step="any" inputmode="decimal" data-rahmen="${k}" data-step="1" ${NOFILL}></label>`).join('');
+
+  // Nicht gespeicherter Entwurf vom letzten Besuch (Funkloch, Tab zu) geht vor und wird nachgesendet.
+  for (const k in data.symbole) delete data.symbole[k].inhalt; // inhalt gehoert zur Datei, nicht zum Bearbeitungsstand
+  let pending = null;
+  try { pending = JSON.parse(localStorage.getItem(DRAFT) || 'null'); } catch (e) { pending = null; }
+  if (pending?.symbole && JSON.stringify(pending) !== JSON.stringify(data)) {
+    data = pending;
+    if (!data.symbole[cur]) cur = Object.keys(data.symbole)[0];
+    render();
+    save();
+  } else {
+    try { localStorage.removeItem(DRAFT); } catch (e) { /* ohne Speicher nur kein Entwurf */ }
+    render();
+  }
+  window.oneIconDesigner = { save, get data() { return data; } };
+})();
+
+tools/icon-render.js
+// Rechnet ein Symbol (Teile = Glyphen-Umrisse samt Lage) in SVG-Inhalt um. Einziger Renderer: der
+// Icon-Designer (/icon-entwuerfe) ruft ihn beim Speichern auf und legt das Ergebnis als "inhalt" in
+// tools/editor-symbole.js ab; Menue, Editor und die anderen Seiten setzen nur noch diesen Text ein.
+// Teil: d (Umriss, Glyphe auf Grundlinie 0), x/y (Verschiebung), drehung/neigung (Grad), skalaX/skalaY,
+// kruemmung (Grad Bogen ueber die Breite), aussparung (Strichbreite, mit der das Teil alle Teile davor
+// ausschneidet), stopp [dx, dy] (Versatz im Stoppschild der Menue-Lupe). Drehen, Neigen und Skalieren
+// wirken um die Mitte des Teils.
+(function (root) {
+  'use strict';
+
+  function num(v, digits) {
+    let s = (+v).toFixed(digits);
+    if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s === '-0' ? '0' : s;
+  }
+
+  function parse(d) {
+    const tokens = String(d).match(/[MLHVQCZmlhvqcz]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/g) || [];
+    const segs = [];
+    let i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0;
+    const n = () => {
+      const v = parseFloat(tokens[i++]);
+      if (!Number.isFinite(v)) throw new Error('Umriss nicht lesbar: ' + String(d).slice(0, 40));
+      return v;
+    };
+    while (i < tokens.length) {
+      if (/[A-Za-z]/.test(tokens[i])) cmd = tokens[i++];
+      const rel = cmd === cmd.toLowerCase();
+      const ox = rel ? x : 0, oy = rel ? y : 0;
+      switch (cmd.toUpperCase()) {
+        case 'M': x = ox + n(); y = oy + n(); sx = x; sy = y; segs.push({ c: 'M', p: [x, y] }); cmd = rel ? 'l' : 'L'; break;
+        case 'L': x = ox + n(); y = oy + n(); segs.push({ c: 'L', p: [x, y] }); break;
+        case 'H': x = ox + n(); segs.push({ c: 'L', p: [x, y] }); break;
+        case 'V': y = oy + n(); segs.push({ c: 'L', p: [x, y] }); break;
+        case 'Q': { const p = [ox + n(), oy + n(), ox + n(), oy + n()]; x = p[2]; y = p[3]; segs.push({ c: 'Q', p }); break; }
+        case 'C': { const p = [ox + n(), oy + n(), ox + n(), oy + n(), ox + n(), oy + n()]; x = p[4]; y = p[5]; segs.push({ c: 'C', p }); break; }
+        case 'Z': x = sx; y = sy; segs.push({ c: 'Z', p: [] }); break;
+        default: throw new Error('Pfadbefehl nicht unterstuetzt: ' + cmd);
+      }
+    }
+    return segs;
+  }
+
+  function serialize(segs) {
+    return segs.map((s) => s.c + s.p.map((v) => num(v, 1)).join(' ')).join('');
+  }
+
+  // Exakte Huelle (wie getBBox): Endpunkte plus Extremstellen der Kurven.
+  function bbox(segs) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, cx = 0, cy = 0, sx = 0, sy = 0;
+    const add = (x, y) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
+    for (const s of segs) {
+      const p = s.p;
+      if (s.c === 'M') { cx = sx = p[0]; cy = sy = p[1]; add(cx, cy); continue; }
+      if (s.c === 'Z') { cx = sx; cy = sy; continue; }
+      if (s.c === 'Q') {
+        for (const k of [0, 1]) {
+          const a = k ? cy : cx, den = a - 2 * p[k] + p[2 + k];
+          const t = den ? (a - p[k]) / den : -1;
+          if (t > 0 && t < 1) {
+            const u = 1 - t;
+            add(u * u * cx + 2 * u * t * p[0] + t * t * p[2], u * u * cy + 2 * u * t * p[1] + t * t * p[3]);
+          }
+        }
+      } else if (s.c === 'C') {
+        for (const k of [0, 1]) {
+          const a = k ? cy : cx, b = p[k], c = p[2 + k], e = p[4 + k];
+          const qa = -a + 3 * b - 3 * c + e, qb = 2 * (a - 2 * b + c), qc = b - a;
+          const ts = [];
+          if (Math.abs(qa) < 1e-12) { if (qb) ts.push(-qc / qb); } else {
+            const disc = qb * qb - 4 * qa * qc;
+            if (disc >= 0) { const r = Math.sqrt(disc); ts.push((-qb + r) / (2 * qa), (-qb - r) / (2 * qa)); }
+          }
+          for (const t of ts) if (t > 0 && t < 1) add(...cubicAt([cx, cy], p, t));
+        }
+      }
+      const n = p.length;
+      cx = p[n - 2]; cy = p[n - 1];
+      add(cx, cy);
+    }
+    if (x0 === Infinity) return { x: 0, y: 0, w: 0, h: 0 };
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
+  function cubicAt(s, p, t) {
+    const u = 1 - t;
+    return [0, 1].map((k) => u * u * u * s[k] + 3 * u * u * t * p[k] + 3 * u * t * t * p[2 + k] + t * t * t * p[4 + k]);
+  }
+
+  // Kruemmung: Teil auf einen Kreisbogen legen (Mitte unter/ueber dem Teil). Strecken und Kurven werden
+  // vorher unterteilt, damit der Bogen rund wird.
+  function bend(segs, deg) {
+    const b = bbox(segs);
+    if (!deg || !b.w) return segs;
+    const R = b.w / (deg * Math.PI / 180);
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const warp = (x, y) => {
+      const a = (x - cx) / R, r = R - (y - cy);
+      return [cx + r * Math.sin(a), cy + R - r * Math.cos(a)];
+    };
+    const out = [];
+    let px = 0, py = 0, sx = 0, sy = 0;
+    const lerp = (a, b, t) => a + (b - a) * t;
+    for (const s of segs) {
+      const p = s.p;
+      if (s.c === 'M') { px = sx = p[0]; py = sy = p[1]; out.push({ c: 'M', p: warp(px, py) }); continue; }
+      if (s.c === 'L' || s.c === 'Z') {
+        const ex = s.c === 'Z' ? sx : p[0], ey = s.c === 'Z' ? sy : p[1];
+        for (let k = 1; k <= 8; k++) out.push({ c: 'L', p: warp(lerp(px, ex, k / 8), lerp(py, ey, k / 8)) });
+        if (s.c === 'Z') out.push({ c: 'Z', p: [] });
+        px = ex; py = ey;
+        continue;
+      }
+      // Kurven in 4 Stuecke teilen (de Casteljau), Kontrollpunkte mitbiegen.
+      const pts = [[px, py]];
+      for (let k = 0; k < p.length; k += 2) pts.push([p[k], p[k + 1]]);
+      for (let k = 0; k < 4; k++) {
+        const t0 = k / 4, t1 = (k + 1) / 4;
+        const piece = sub(pts, t0, t1);
+        out.push({ c: s.c, p: piece.slice(1).flatMap(([x, y]) => warp(x, y)) });
+      }
+      px = p[p.length - 2]; py = p[p.length - 1];
+    }
+    return out;
+  }
+
+  // Teilstueck [t0, t1] einer Bezierkurve (Kontrollpunkte pts).
+  function sub(pts, t0, t1) {
+    const split = (q, t) => { // linke und rechte Haelfte bei t
+      const left = [q[0]], right = [q[q.length - 1]];
+      let cur = q;
+      while (cur.length > 1) {
+        const nx = [];
+        for (let i = 0; i < cur.length - 1; i++) nx.push([cur[i][0] + (cur[i + 1][0] - cur[i][0]) * t, cur[i][1] + (cur[i + 1][1] - cur[i][1]) * t]);
+        left.push(nx[0]); right.unshift(nx[nx.length - 1]);
+        cur = nx;
+      }
+      return [left, right];
+    };
+    const right = split(pts, t0)[1];
+    return split(right, t0 < 1 ? (t1 - t0) / (1 - t0) : 0)[0];
+  }
+
+  const mul = (A, B) => [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3],
+    A[1] * B[2] + A[3] * B[3], A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+
+  function matrix(t, b) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const r = (t.drehung ?? 0) * Math.PI / 180, k = (t.neigung ?? 0) * Math.PI / 180;
+    let M = [1, 0, 0, 1, (t.x ?? 0) + cx, (t.y ?? 0) + cy];
+    M = mul(M, [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r), 0, 0]);
+    M = mul(M, [1, 0, Math.tan(k), 1, 0, 0]);
+    M = mul(M, [t.skalaX ?? 1, 0, 0, t.skalaY ?? 1, 0, 0]);
+    return mul(M, [1, 0, 0, 1, -cx, -cy]);
+  }
+
+  function transformAttr(M) {
+    const lin = [M[0], M[1], M[2], M[3]].map((v) => +v.toFixed(6));
+    if (lin[0] === 1 && lin[1] === 0 && lin[2] === 0 && lin[3] === 1) {
+      const e = num(M[4], 3), f = num(M[5], 3);
+      return e === '0' && f === '0' ? '' : `translate(${e} ${f})`;
+    }
+    return `matrix(${lin.map((v) => num(v, 6)).join(' ')} ${num(M[4], 3)} ${num(M[5], 3)})`;
+  }
+
+  // Form eines Teils: gebogener Umriss (oder der Umriss unveraendert) plus Transform-Attribut.
+  function form(t) {
+    const segs = parse(t.d);
+    const bent = t.kruemmung ? bend(segs, t.kruemmung) : null;
+    const d = bent ? serialize(bent) : t.d;
+    const tf = transformAttr(matrix(t, bbox(bent || segs)));
+    return { d, tf, path: `<path d="${d}"${tf ? ` transform="${tf}"` : ''}/>` };
+  }
+
+  // SVG-Inhalt eines Symbols. "{id}" steht fuer eine je Einbau eindeutige Masken-Kennung.
+  function render(sym) {
+    const teile = sym.teile || [];
+    const forms = teile.map(form);
+    const [vx, vy, vw, vh] = sym.viewBox;
+    const box = `x="${num(vx - vw, 3)}" y="${num(vy - vh, 3)}" width="${num(3 * vw, 3)}" height="${num(3 * vh, 3)}"`;
+    const masks = new Map();
+    let out = '';
+    teile.forEach((t, i) => {
+      const cutters = [];
+      for (let j = i + 1; j < teile.length; j++) if ((teile[j].aussparung ?? 0) > 0) cutters.push(j);
+      let el = forms[i].path;
+      if (cutters.length) {
+        const key = cutters.join(',');
+        if (!masks.has(key)) masks.set(key, { cutters, id: '' });
+        const m = masks.get(key);
+        el = forms[i].tf ? `<g mask="url(#M${key})">${el}</g>` : el.replace('/>', ` mask="url(#M${key})"/>`);
+        m.used = true;
+      }
+      if (t.stopp && (t.stopp[0] || t.stopp[1])) {
+        el = `<g class="sym-teil" style="--stopp-x:${num(t.stopp[0], 3)}px;--stopp-y:${num(t.stopp[1], 3)}px">${el}</g>`;
+      }
+      out += el;
+    });
+    let defs = '';
+    let n = 0;
+    for (const [key, m] of masks) {
+      const id = masks.size === 1 ? '{id}' : `{id}-${++n}`;
+      out = out.split(`url(#M${key})`).join(`url(#${id})`);
+      defs += `<mask id="${id}" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="#fff"/>` +
+        m.cutters.map((j) => `<g fill="#000" stroke="#000" stroke-width="${num(teile[j].aussparung, 3)}" stroke-linejoin="round">${forms[j].path}</g>`).join('') +
+        '</mask>';
+    }
+    return defs + out;
+  }
+
+  const api = { parse, serialize, bbox, bend, matrix, form, render, num };
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.OneIconRender = api;
+})(typeof window !== 'undefined' ? window : globalThis);
 
 tools/irrational.js
 /**
@@ -95587,6 +96404,7 @@ where-is-01.html
   <!--#include virtual="/includes/something-in-the-head.html" -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <script src="/tools/editor-symbole.js?v=<!--#flastmod virtual="/tools/editor-symbole.js" -->"></script>
 
 
   <style>
@@ -95626,7 +96444,7 @@ where-is-01.html
     (function () {
       const loupe = document.createElement('div');
       loupe.className = 'cursor-loupe';
-      loupe.innerHTML = '<svg class="meta-loupe" viewBox="-79 -498 946 946" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false"><path class="meta-loupe-lens" d="M261 5Q198 5 148.5 -23.0Q99 -51 70.5 -99.0Q42 -147 42 -209Q42 -270 70.5 -317.5Q99 -365 148.0 -392.0Q197 -419 260 -419Q322 -419 371.5 -391.5Q421 -364 449.5 -316.5Q478 -269 478 -206Q478 -146 449.5 -97.5Q421 -49 372.5 -22.0Q324 5 261 5ZM261 -50Q304 -50 338.0 -70.0Q372 -90 391.0 -125.5Q410 -161 410 -206Q410 -251 391.0 -287.0Q372 -323 338.0 -344.0Q304 -365 260 -365Q217 -365 182.5 -345.0Q148 -325 128.0 -290.0Q108 -255 108 -209Q108 -164 128.0 -127.5Q148 -91 183.0 -70.5Q218 -50 261 -50Z"/><g class="meta-loupe-handle"><path d="M196 -414H243V0H175V-394L201 -360L59 -278L34 -322Z"/></g></svg>';
+      loupe.innerHTML = window.oneSymbolSvg('lupe', 'class="meta-loupe" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false"');
       document.body.appendChild(loupe);
 
       const zoom = Zoom2D.createZoom2D({
