@@ -301,10 +301,18 @@
         if (!input) return;
         const candidates = [value];
         if (config) {
-            candidates.push(config.min, config.max);
+            // Wachsende Skala (grow): Breite nach der Ausgangs-Skala, nicht nach der gewachsenen. Sonst wird das Feld
+            // bei jedem Wachsen breiter und die Spur daneben schmaler: der Regler aendert beim grossen Kreis seine Groesse.
+            const bounded = config.grow && Number.isFinite(config.defaultMax)
+                ? { ...config, min: config.defaultMin, max: config.defaultMax } : config;
+            candidates.push(bounded.min, bounded.max);
+            // Dazu zwei Zehnerstellen Vorrat ueber dem Ausgangs-Ende: erst jenseits davon wird das Feld breiter.
+            if (bounded !== config) {
+                candidates.push(fromSliderRangeValue(config.defaultMax, config) * 100 - Math.pow(10, -Math.max(0, decimals | 0)));
+            }
             // Eigene Anzeige-Umrechnung (transform): die Ziffernzahl schwankt entlang der Bahn, Enden allein reichen nicht.
             // Darum die ganze Bahn abtasten, damit die Feldbreite (und mit ihr die Spur) beim Ziehen nicht springt.
-            const { min, max } = getProjectedSliderBounds(config, Number(value));
+            const { min, max } = getProjectedSliderBounds(bounded, Number(value));
             if (getSliderTransform(config) && max > min) {
                 for (let i = 0; i <= 64; i++) candidates.push(fromSliderRangeValue(min + (max - min) * i / 64, config));
             }
@@ -3248,13 +3256,15 @@
                 st.peak = value;
                 saveSliderPeak(key, value);
             }
-            let target = st.peak * st.buffer;
+            // min/max sind Reglerweg-Einheiten (wie range.min/max); mit transform erst umrechnen, sonst waechst die Skala falsch.
+            const pos = toSliderRangeValue(value, cfg);
+            let target = toSliderRangeValue(st.peak, cfg) * st.buffer;
             if (st.dragging) {
                 const now = Date.now();
-                const atEnd = Number.isFinite(value) && value >= cfg.max - Math.max(cfg.step || 0, (cfg.max - cfg.min) * 0.002);
+                const atEnd = Number.isFinite(pos) && pos >= cfg.max - Math.max(cfg.step || 0, (cfg.max - cfg.min) * 0.002);
                 if (!atEnd || now - st.lastExt < 300) return false;
                 st.lastExt = now;
-                target = Math.max(target, value * 1.25);
+                target = Math.max(target, pos * 1.25);
             }
             if (!(target > cfg.max)) return false;
             cfg.max = Math.ceil(target * 100) / 100;

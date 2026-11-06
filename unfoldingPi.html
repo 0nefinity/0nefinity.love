@@ -905,7 +905,7 @@
       parseConfigValue(text) { return parseDE(text); }
     };
     panel.addSlider('circle', {
-      label: 'your circle width', min: 0, max: 1000, step: 0.01, value: 1, decimals: 2, grow: true, transform: circleTransform,
+      label: 'your circle width', min: 0, max: 100, step: 0.01, value: 1, decimals: 2, grow: true, transform: circleTransform,
       onChange: (v) => {
         dotScale = Math.max(0, +v || 0);
         if (multi) layoutMulti(); else centreSingle();
