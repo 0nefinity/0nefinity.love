@@ -40,9 +40,15 @@
     #pi-compression .ctrl-label { justify-content: flex-start; text-align: left; font-size: 14px; opacity: 0.72; }
     /* Alle Regler-Zeilen gleich: controls.js misst die Wertfeld-Breite je Regler, dadurch hatte jede Spur eine andere Laenge. Eine feste Breite fuer alle (Sausen zeigt bis -10000 und mehr, your circle width ist das breiteste Feld); zu lange Beschriftungen brechen um, die Spalte bleibt stehen. */
     #pi-compression .ctrl-value-input { font-size: 15px; }
-    #pi-compression .ctrl-slider-group .ctrl-value-input { width: 5em !important; margin: 0; flex: 0 0 5em; }
+    #pi-compression .ctrl-slider-group .ctrl-value-input { width: 4.2em !important; margin: 0; flex: 0 0 4.2em; text-align: right; }
     #pi-compression .ctrl-slider-group { min-width: 0; }
     #pi-compression .ctrl-label { overflow-wrap: break-word; hyphens: none; }
+    /* Handy: Spur fuellt den Raum zwischen - und +, Wert rechtsbuendig vor dem Menuepunkt (gleich fuer alle Zeilen). */
+    @media (pointer: coarse), (max-width: 640px) {
+      #pi-compression { --ctrl-label-width: 7.7rem; }
+      #pi-compression .ctrl-label { font-size: 13px; }
+      #pi-compression .ctrl-stepper-btn { width: 34px; height: 34px; }
+    }
     #pi-compression .ctrl-button { font-size: 15px; }
     #pi-compression .ctrl-row { margin-bottom: 0.7rem; }
     .pi-consts { display: block; padding-bottom: 0.9rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--ui-fill-15); }
