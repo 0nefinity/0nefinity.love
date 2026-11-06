@@ -12220,7 +12220,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ## Text-Layout und Textdarstellung
 
 ### Gedrehte Textzeilen aus Bitmaps
-`EinNullgespräch.html` (`wrap()`, `layout(force)`, `makeSprite()`, `buildChunk()`, `fold(j)`, `place(k)`, `draw()`, `drawReference()`). Wortumbruch per `measureText` (überlange Wörter zeichenweise), Ankerzeile bleibt beim Umbruch, Zeilen-Bitmaps in 6-ms-Häppchen per `setTimeout`, pixelgenaue Geräte-Ausrichtung, Zeilen gedreht und versetzt mit periodischem Falten, exaktes Culling gedrehter Rechtecke, `fillText`-Fallback, Vorbau beim Laden (Schrift abwarten, Shader und Probezeichnung früh, alle Atlanten vorab in nötiger Höhe, Zeilen auf CPU-Leinwand gesetzt und als Alpha-Bytes hochgeladen statt Canvas-Upload, Neuzeichnen im Aufbau gedrosselt, Zähler `counters()` belegen: beim Bewegen kein Bau). `drawReference()` ist die Testgrundwahrheit, Testhaken in `window.einNullgespraech`, Fehler brechen sichtbar ab (`fail()`). Zoom 0.1 bis 8 (`zoomBy()`, `pickScale()`, `settleScale()`): die GPU skaliert beim Zoomen den vorhandenen Atlas (Uniform `u_m`), nach dem Loslassen baut ein entprellter Vorbau einmal in `dpr * zoom`, gedeckelt durch MAX_TEXTURE_SIZE und `TEX_BUDGET`. Ausgefeilt, herauslösen.
+`EinNullgespräch.html` (`wrap()`, `layout(force)`, `makeSprite()`, `buildChunk()`, `fold(j)`, `place(k)`, `draw()`, `drawReference()`). Wortumbruch per `measureText` (überlange Wörter zeichenweise), Ankerzeile bleibt beim Umbruch, Zeilen-Bitmaps in 6-ms-Häppchen per `setTimeout`, pixelgenaue Geräte-Ausrichtung, Zeilen gedreht und versetzt mit periodischem Falten, exaktes Culling gedrehter Rechtecke, `fillText`-Fallback, Vorbau beim Laden (Schrift abwarten, Shader und Probezeichnung früh, alle Atlanten vorab in nötiger Höhe, Zeilen auf CPU-Leinwand gesetzt und als Alpha-Bytes hochgeladen statt Canvas-Upload, Neuzeichnen im Aufbau gedrosselt, Zähler `counters()` belegen: beim Bewegen kein Bau). `drawReference()` ist die Testgrundwahrheit, Testhaken in `window.einNullgespraech`, Fehler brechen sichtbar ab (`fail()`). Zoom bis 8 hinein und unbegrenzt hinaus (`ZOOM_MIN` 1e-30 nur Zahlenschutz; `BS_MIN`-Boden, Mindestquad von 1 px mit tintenerhaltender Alpha, unter ca. 1,5 px Zeilenhöhe blendet der Shader per `u_t` auf den Tintenmittelwert `l.ink` der Zeile, damit beim Rauszoomen keine Zeile wegfällt) (`zoomBy()`, `pickScale()`, `settleScale()`): die GPU skaliert beim Zoomen den vorhandenen Atlas (Uniform `u_m`), nach dem Loslassen baut ein entprellter Vorbau einmal in `dpr * zoom`, gedeckelt durch MAX_TEXTURE_SIZE und `TEX_BUDGET`. Ausgefeilt, herauslösen.
 
 ### Text in Kreisform setzen
 `bibelaufdenpunkt.html` (`solveCircleRadius()` findet per Bisektion den kleinsten Radius für N Zeichen, `allocateCircleRowCharCounts()` verteilt nach Größte-Reste-Verfahren, `buildCircleLayout()`, `buildLineLayout()`, `getVirtualLineRowAt()` für Millionen Zeichen): ausgefeilt, die beiden Rechenfunktionen direkt kopierbar, Layout hängt am globalen `state`. Einfachere Variante: `Kuriositäten/bibleegg.html` (`generateLines()`, Sehnenlänge `sqrt(r²-y²)`, automatische Schriftverkleinerung, Kürzung nach Zoomstufe). Ähnlich auch in: `kreisausdingen.html` (`draw()`, n Zeichen gleichmäßig auf Kreis, je Zeichen `translate/rotate`, Radius relativ zur kürzeren Seite; `startHold()`), `Kuriositäten/kreisausdingen-goes-spiral.html` (Zeichen auf Spirale, Radius = base + progress*spiralFactor, URL-Parameter `anzahl`/`zeichen`; Variante `-anotherone.html`).
@@ -12328,7 +12328,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 `kreisausdingen.html` (`startHold()` 500 ms, dann 100 ms), `tools/controls.js` (Haltetaste 400/80 ms), `tools/cookies-banner.js` (`holdable()`), `Kuriositäten/kreisausdingen-goes-spiral.html` (`startHold(action, 500, 100)`, `getAngleBetweenTouches()`, Wheel/Shift-Wheel, `resizeCanvas()` über `getBoundingClientRect` für Firefox Mobile). Brauchbar; `holdable()` und `startHold` direkt kopierbar.
 
 ### Drehknopf-Geste
-`EinNullgespräch.html` (`polar()`, `knobMove()`, Zwei-Finger- und Mausrad-Scroll, Strg-Rad/Pinch-Zoom um die Stapelmitte): Winkelzuwachs normalisiert (Sprung über 180° abgefangen), Abstand vom Zentrum schiebt zusätzlich. Ausgefeilt, herauslösen.
+`EinNullgespräch.html` (`polar()`, `knobMove()`, zwei Finger zoomen nur, ein Finger kreist nur, Neu-Ansatz von `pairD` und Knopf beim Fingerwechsel; Mausrad zoomt um die Stapelmitte, Strg/Cmd+Rad wandert, Trackpad-Pinch (Rad mit `ctrlKey` ohne gehaltene Strg-Taste, über `keydown`/`keyup` unterschieden) zoomt): Winkelzuwachs normalisiert (Sprung über 180° abgefangen), Abstand vom Zentrum schiebt zusätzlich. Ausgefeilt, herauslösen.
 
 ### Multitouch-Halter mit Gleiten
 `0klang.html` (`halter`-Map, `greifen()`, `loslassen()`, Zähler pro Note, `gleite()`): Pointer-Multitouch für Tasten und Akkord-Pads, Zähler verhindert vorzeitiges Abschalten bei mehreren Haltern. Brauchbar, herauslösen.
@@ -13633,7 +13633,10 @@ EinNullgespräch.html
     let mode = '2d', gl = null, glName = '';
 
     const st = { winkel: 0, verschiebung: 0, periode: 0, stelle: 0, zoom: 1 };
-    const ZOOM_MIN = 0.1, ZOOM_MAX = 8;
+    // Nach unten keine Grenze (wie bibelaufdenpunkt.html): ZOOM_MIN ist nur der kleinste positive Wert, der in 32-Bit-Gleitkomma nicht ueberlaeuft.
+    // Jede Zeile wird immer gezeichnet: unter ~1,5 Pixel Zeilenhoehe zeichnet der Shader sie als Streifen von mindestens 1 px mit der mittleren Tinte der Zeile.
+    const ZOOM_MIN = 1e-30, ZOOM_MAX = 8;
+    const BS_MIN = 0.125;   // kleinste Aufloesung des Atlas (Geraetepixel je Layout-Pixel); darunter skaliert die GPU, der Text bleibt scharf genug fuer den Uebergang
     // Zoom skaliert die ganze Anordnung um die Bildmitte (Layout, Umbruch und Zeilenzahl bleiben gleich). Waehrend der Geste skaliert die GPU die fertigen
     // Atlanten; nach dem Loslassen baut der Atlas einmal in der neuen Aufloesung bs (Geraetepixel je Layout-Pixel = dpr * zoom, begrenzt durch Textur und Speicher).
     const TEX_BUDGET = 192e6;   // Bytes Alpha-Atlas insgesamt (1 Byte je Pixel)
@@ -13771,7 +13774,7 @@ EinNullgespräch.html
     // Aufloesung des Vorbaus: dpr * zoom, bis jede Zeile in den Atlas passt (MAX_TEXTURE_SIZE) und der Speicher reicht; darueber skaliert die GPU.
     // beyond the memory budget the GPU takes over, and the words only get softer, never fewer.
     function pickScale() {
-      const want = Math.round(dpr * st.zoom * 1000) / 1000, S = atlasS || 8192;
+      const want = Math.max(BS_MIN, Math.round(dpr * st.zoom * 1000) / 1000), S = atlasS || 8192;
       bs = want;
       for (let i = 0; i < 40; i++) {
         const m = sizeLines();
@@ -13850,7 +13853,7 @@ EinNullgespräch.html
     // Plaetze werden beim Layout vergeben (Reihen gleicher Hoehe, Zeile fuer Zeile), gefuellt wird reihenweise im Hintergrund.
     // Je Atlas-Seite ein Draw-Call; die Zeilen einer Seite stehen im Instanzpuffer hintereinander.
     let pages = [], rows = [], nextRow = 0, wanted = [], atlasS = 0, scratch = null, scratchG = null, instBuf = null, instArr = null;
-    let prog = null, U = null, A = null, cornerBuf = null, inst = null, colorRGB = [0, 0, 0], overlayUsed = false;
+    let prog = null, U = null, A = null, cornerBuf = null, inst = null, accProg = null, accU = null, accTex = null, accFbo = null, accW = 0, accH = 0, floatOK = false, colorRGB = [0, 0, 0], overlayUsed = false;
 
     function setMode(m, why) {
       const was = mode;
@@ -13891,24 +13894,41 @@ EinNullgespräch.html
         const vs = compile(gl.VERTEX_SHADER, [
           'attribute vec2 a_corner; attribute vec4 a_geo; attribute vec4 a_src;',
           'uniform vec2 u_origin; uniform vec2 u_res; uniform float u_m; uniform float u_x0; uniform float u_hp; uniform vec2 u_atlas;',
-          'varying vec2 v_uv; varying float v_a;',
+          'varying vec2 v_uv; varying float v_a; varying float v_ink;',
           'void main() {',
           '  vec2 loc = vec2(u_x0 + a_corner.x * a_src.z, a_geo.z + a_corner.y * u_hp);',
-          '  vec2 p = u_origin + u_m * vec2(loc.x * a_geo.x - loc.y * a_geo.y, loc.x * a_geo.y + loc.y * a_geo.x);',
+          // Mindestgroesse 1 px je Achse (nichts faellt aus dem Raster); die Tinte bleibt erhalten, weil v_a mit dem Flaechenverhaeltnis abgeschwaecht wird.
+          '  vec2 size = u_m * vec2(a_src.z, u_hp);',
+          '  vec2 ext = max(size, vec2(1.0));',
+          '  vec2 q = u_m * loc + (a_corner - 0.5) * (ext - size);',
+          '  vec2 p = u_origin + vec2(q.x * a_geo.x - q.y * a_geo.y, q.x * a_geo.y + q.y * a_geo.x);',
           '  gl_Position = vec4(p.x / u_res.x * 2.0 - 1.0, 1.0 - p.y / u_res.y * 2.0, 0.0, 1.0);',
           '  v_uv = (a_src.xy + a_corner * vec2(a_src.z, u_hp)) / u_atlas;',
-          '  v_a = a_src.w;',
+          '  v_a = a_src.w * (size.x * size.y) / (ext.x * ext.y);',
+          '  v_ink = a_geo.w;',
           '}'].join('\n'));
         const fs = compile(gl.FRAGMENT_SHADER, [
           'precision highp float;',
-          'uniform sampler2D u_tex; uniform vec3 u_color;',
-          'varying vec2 v_uv; varying float v_a;',
-          'void main() { float a = texture2D(u_tex, v_uv).a * v_a; gl_FragColor = vec4(u_color * a, a); }'].join('\n'));
+          'uniform sampler2D u_tex; uniform vec3 u_color; uniform float u_t;',
+          'varying vec2 v_uv; varying float v_a; varying float v_ink;',
+          'void main() { float a = mix(v_ink, texture2D(u_tex, v_uv).a, u_t) * v_a; gl_FragColor = vec4(u_color * a, a); }'].join('\n'));
         prog = gl.createProgram();
         gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
         if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Shader-Link: ' + gl.getProgramInfoLog(prog));
-        U = {}; for (const n of ['u_origin', 'u_res', 'u_m', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color']) U[n] = gl.getUniformLocation(prog, n);
+        U = {}; for (const n of ['u_origin', 'u_res', 'u_m', 'u_x0', 'u_hp', 'u_atlas', 'u_tex', 'u_color', 'u_t']) U[n] = gl.getUniformLocation(prog, n);
         A = { corner: gl.getAttribLocation(prog, 'a_corner'), geo: gl.getAttribLocation(prog, 'a_geo'), src: gl.getAttribLocation(prog, 'a_src') };
+        // Winzige Zeilen (unter 1 px hoch) tragen je Quad weniger als eine 8-Bit-Stufe bei; damit die Summe nicht verloren geht, wird dort in Gleitkomma
+        // aufaddiert (R16F, additiv) und einmal in Deckkraft 1-exp(-Summe) umgesetzt. Ohne EXT_color_buffer_float bleibt es beim 8-Bit-Pfad.
+        floatOK = glName === 'WebGL2' && !!gl.getExtension('EXT_color_buffer_float');
+        if (floatOK) {
+          const avs = compile(gl.VERTEX_SHADER, 'attribute vec2 a_corner; varying vec2 v_p; void main() { v_p = a_corner; gl_Position = vec4(a_corner * 2.0 - 1.0, 0.0, 1.0); }');
+          const afs = compile(gl.FRAGMENT_SHADER, 'precision highp float; uniform sampler2D u_acc; uniform vec3 u_color; varying vec2 v_p; void main() { float a = 1.0 - exp(-texture2D(u_acc, v_p).r); gl_FragColor = vec4(u_color * a, a); }');
+          accProg = gl.createProgram();
+          gl.bindAttribLocation(accProg, 0, 'a_corner');
+          gl.attachShader(accProg, avs); gl.attachShader(accProg, afs); gl.linkProgram(accProg);
+          if (!gl.getProgramParameter(accProg, gl.LINK_STATUS)) throw new Error('Shader-Link (Summe): ' + gl.getProgramInfoLog(accProg));
+          accU = { u_acc: gl.getUniformLocation(accProg, 'u_acc'), u_color: gl.getUniformLocation(accProg, 'u_color') };
+        }
         cornerBuf = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
@@ -14010,6 +14030,12 @@ EinNullgespräch.html
         const w = Math.min(S, Math.ceil(r.w)), rgba = g.getImageData(0, 0, w, hp).data;
         const a = new Uint8Array(w * hp);
         for (let i = 0, n = a.length; i < n; i++) a[i] = rgba[4 * i + 3];
+        for (const l of r.lines) {
+          let sum = 0;
+          const x1 = Math.min(w, l.sx + l.wp);
+          for (let y = 0; y < hp; y++) for (let x = l.sx, b = y * w; x < x1; x++) sum += a[b + x];
+          l.ink = sum / (255 * l.wp * hp);
+        }
         const pg = pages[r.page];
         gl.bindTexture(gl.TEXTURE_2D, pg.tex);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -14103,6 +14129,24 @@ EinNullgespräch.html
       drawn = lastKs.length;
       if (missing) scheduleBuild();
     }
+    function ensureAcc(cw, ch) {
+      if (accTex && accW === cw && accH === ch) return;
+      if (accTex) { gl.deleteTexture(accTex); gl.deleteFramebuffer(accFbo); }
+      accTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, accTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, cw, ch, 0, gl.RGBA, gl.HALF_FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      accFbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, accTex, 0);
+      const st_ = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (st_ !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Summen-Puffer unvollstaendig: ' + st_);
+      accW = cw; accH = ch;
+    }
     function drawGL() {
       const c = bs, m = dpr * st.zoom / bs, cw = canvas.width, ch = canvas.height, pad = padPx(), hp = heightPx();
       const ox = Math.round(W / 2 * dpr), oy = Math.round(H / 2 * dpr), x0 = Math.round(-colW / 2 * c) - pad;
@@ -14137,7 +14181,7 @@ EinNullgespräch.html
           segPage = r.page; segStart = n;
         }
         const o = n * 8;
-        instArr[o] = cos; instArr[o + 1] = sin; instArr[o + 2] = y0; instArr[o + 3] = 0;
+        instArr[o] = cos; instArr[o + 1] = sin; instArr[o + 2] = y0; instArr[o + 3] = l.ink || 0;
         instArr[o + 4] = l.sx; instArr[o + 5] = r.y; instArr[o + 6] = l.wp; instArr[o + 7] = alpha;
         n++;
       }
@@ -14148,10 +14192,16 @@ EinNullgespräch.html
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       if (n) {
+        const tiny = floatOK && m * hp < 1;
+        if (tiny) { ensureAcc(cw, ch); gl.bindFramebuffer(gl.FRAMEBUFFER, accFbo); gl.viewport(0, 0, cw, ch); gl.clear(gl.COLOR_BUFFER_BIT); gl.blendFunc(gl.ONE, gl.ONE); }
         gl.useProgram(prog);
         gl.uniform2f(U.u_origin, ox, oy); gl.uniform2f(U.u_res, cw, ch);
         gl.uniform1f(U.u_m, m); gl.uniform1f(U.u_x0, x0); gl.uniform1f(U.u_hp, hp);
-        gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
+        // Zeilenhoehe auf dem Schirm: ab 3 px Bitmap, unter 1,5 px nur die mittlere Tinte der Zeile (Rhythmus der Buchstaben ist dann unter einem Pixel).
+        // far out, a line is only a smudge: it melts into its own mean ink, so ten thousand words become one grey breath, and none is missing
+        const tu = Math.min(1, Math.max(0, (m * hp - 1.5) / 1.5));
+        gl.uniform1f(U.u_t, tu * tu * (3 - 2 * tu));
+        if (tiny) gl.uniform3f(U.u_color, 1, 1, 1); else gl.uniform3f(U.u_color, colorRGB[0], colorRGB[1], colorRGB[2]);
         gl.uniform1i(U.u_tex, 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
         gl.enableVertexAttribArray(A.corner); gl.vertexAttribPointer(A.corner, 2, gl.FLOAT, false, 0, 0); inst.div(A.corner, 0);
@@ -14166,6 +14216,17 @@ EinNullgespräch.html
           gl.vertexAttribPointer(A.geo, 4, gl.FLOAT, false, 32, start * 32);
           gl.vertexAttribPointer(A.src, 4, gl.FLOAT, false, 32, start * 32 + 16);
           inst.draw(count);
+        }
+        if (tiny) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+          gl.disableVertexAttribArray(A.geo); gl.disableVertexAttribArray(A.src);
+          gl.useProgram(accProg);
+          gl.uniform3f(accU.u_color, colorRGB[0], colorRGB[1], colorRGB[2]); gl.uniform1i(accU.u_acc, 0);
+          gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accTex);
+          gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+          gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); inst.div(0, 0);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
         const e = gl.getError();
         if (e !== gl.NO_ERROR) { console.error('[EinNullgespraech] WebGL-Fehler ' + e + ' beim Zeichnen'); setMode('2d', 'WebGL-Fehler ' + e); dirty = true; return; }
@@ -14219,7 +14280,7 @@ EinNullgespräch.html
       panel.set('verschiebung', round(st.verschiebung, 3));
       panel.set('periode', st.periode);
       panel.set('stelle', round(st.stelle, 1));
-      panel.set('zoom', round(st.zoom, 3));
+      panel.set('zoom', Number(st.zoom.toPrecision(4)));
     }
     const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -14231,7 +14292,7 @@ EinNullgespräch.html
         const isNull = !st.winkel && !st.verschiebung && !st.periode && !st.stelle && st.zoom === 1;
         for (const k of Object.keys(st)) {
           if (isNull) u.searchParams.delete(k);
-          else u.searchParams.set(k, String(round(st[k], 4)));
+          else u.searchParams.set(k, k === 'zoom' ? String(Number(st[k].toPrecision(6))) : String(round(st[k], 4)));
         }
         history.replaceState(null, '', u);
       }, 250);
@@ -14259,9 +14320,10 @@ EinNullgespräch.html
 
     // ─── Ziehen: wie an einem Drehknopf ───
     // Der Zeiger kreist um die Bildmitte: der Winkelzuwachs je Ereignis (auf (-180, 180] normalisiert, aufsummiert)
-    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Zwei Finger, Mausrad: durch das Gespraech wandern.
+    // dreht die Zeilen, die Aenderung des Abstands zur Mitte schiebt sie auseinander. Fingerzahl entscheidet: ein Finger kreist, zwei Finger zoomen nur (kein Wandern); beim Wechsel mitten in der Geste wird neu angesetzt, es gibt keinen Sprung.
+    // Mausrad zoomt, Strg/Cmd+Rad wandert durch das Gespraech.
     const pointers = new Map();
-    let lastTap = 0, moved = 0, pairY = null, pairD = null, knob = null;
+    let lastTap = 0, moved = 0, pairD = null, knob = null;
     const WINKEL_PRO_GRAD = 0.05, VERSCH_PRO_PX = 1 / 320;
 
     function polar(e) {
@@ -14283,7 +14345,6 @@ EinNullgespräch.html
       anim = null;
       moved = 0;
       if (pointers.size === 1) knobStart(e);
-      pairY = pointers.size === 2 ? avgY() : null;
       pairD = pointers.size === 2 ? pairDist() : null;
       canvas.classList.add('zieht');
     });
@@ -14297,9 +14358,6 @@ EinNullgespräch.html
         if (!knob) knobStart(e);
         knobMove(e);
       } else if (pointers.size === 2) {
-        const y = avgY();
-        if (pairY !== null) scrollBy(-(y - pairY));
-        pairY = y;
         const d = pairDist();
         if (pairD > 0 && d > 0) zoomBy(d / pairD);
         pairD = d;
@@ -14308,7 +14366,6 @@ EinNullgespräch.html
     const end = (e) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.delete(e.pointerId);
-      pairY = pointers.size === 2 ? avgY() : null;
       pairD = pointers.size === 2 ? pairDist() : null;
       if (pointers.size === 1) { const [rest] = pointers.values(); knob = polar({ clientX: rest.x, clientY: rest.y }); }
       if (!pointers.size) { knob = null; canvas.classList.remove('zieht'); }
@@ -14321,19 +14378,24 @@ EinNullgespräch.html
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
     function pairDist() { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); }
-    function avgY() { let s = 0; for (const p of pointers.values()) s += p.y; return s / pointers.size; }
     function scrollBy(px) {
       const step = Math.max(Math.abs(st.verschiebung), 0.05) * lh * st.zoom;
       setState({ stelle: st.stelle + px / step });
     }
-    // Zoomen wie auf den anderen Seiten, ohne das Mausrad (= Wandern) anzutasten: Strg+Rad (Trackpad-Pinch kommt als Strg+Rad), Pinch mit zwei Fingern,
-    // Tasten + / - / 0. Mitte der Anordnung bleibt in der Bildmitte.
+    // Zoomen: Mausrad, Pinch mit zwei Fingern, Trackpad-Pinch, Tasten + / - / 0. Mitte der Anordnung bleibt in der Bildmitte. Wandern: Strg/Cmd+Rad.
+    // Ein Trackpad-Pinch kommt als Rad-Ereignis mit ctrlKey=true, ohne dass eine Strg-Taste gedrueckt ist: nur wenn Strg wirklich gehalten wird
+    // (keydown/keyup mitgefuehrt), ist es Wandern, sonst Zoom. Cmd (metaKey) erzeugt keinen Pinch und wandert immer.
     const zoomBy = (f) => setState({ zoom: st.zoom * f });
+    let strgHeld = false;
+    const trackStrg = (e) => { strgHeld = e.ctrlKey; };
+    window.addEventListener('keydown', trackStrg, true);
+    window.addEventListener('keyup', trackStrg, true);
+    window.addEventListener('blur', () => { strgHeld = false; });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const px = e.deltaMode === 1 ? e.deltaY * lh : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
-      if (e.ctrlKey || e.metaKey) { zoomBy(Math.max(0.8, Math.min(1.25, Math.exp(-px * 0.005)))); return; }
-      scrollBy(px);
+      if (e.metaKey || (e.ctrlKey && strgHeld)) { scrollBy(px); return; }
+      zoomBy(Math.max(0.8, Math.min(1.25, Math.exp(-px * 0.005))));
     }, { passive: false });
     window.addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
@@ -14353,7 +14415,7 @@ EinNullgespräch.html
       panel.addSlider('verschiebung', { label: 'Verschiebung', min: 0, max: 4, step: 0.001, value: st.verschiebung, decimals: 3, onChange: (v) => setState({ verschiebung: v }, true) });
       panel.addSlider('periode', { label: 'Periode', min: 0, max: Math.max(1, lines.length), step: 1, value: st.periode, decimals: 0, onChange: (v) => setState({ periode: v }, true) });
       panel.addSlider('stelle', { label: 'Stelle', min: 0, max: Math.max(1, lines.length - 1), step: 0.1, value: st.stelle, decimals: 1, onChange: (v) => setState({ stelle: v }, true) });
-      panel.addSlider('zoom', { label: 'Zoom', min: ZOOM_MIN, max: ZOOM_MAX, step: 0.01, value: st.zoom, decimals: 2, onChange: (v) => setState({ zoom: v }, true) });
+      panel.addSlider('zoom', { label: 'Zoom', min: 0, max: ZOOM_MAX, step: 0.01, value: st.zoom, decimals: 4, onChange: (v) => setState({ zoom: v }, true) });
       panel.addResetButton({ title: 'Nullgebilde', onClick: () => { setState({ periode: 0 }); animateTo(NULL, 700); } });
     }
 
@@ -79196,86 +79258,212 @@ tools/aufnahme.js
 })();
 
 tools/claude-chat.js
-// Seiten-Chat: eingeloggt (dev-Login, /api/auth/me) bekommt die Seite rechts einen eingeklappten Knopf
-// "claude"; offen zeigt er den Verlauf der zugeordneten Claude-Sitzung und ein Eingabefeld.
-// Der eigentliche Chat laeuft in einem iframe auf https://kanal.0nefinity.love (eigene Origin, eigener
-// Passkey-Login, eigener Dienst ausserhalb dieses Repos). Diese Datei sieht keine Nachrichten und keine
-// Zugangsdaten; der dev-Login entscheidet nur, ob der Knopf erscheint.
+// Seiten-Chat: Nur dev, nur eingeloggt (Editor-Login, /api/auth/me), nur der Inhaber.
+// Ein Claude-Symbol in der Kopfleiste des Control-Panels tauscht den Panelinhalt gegen den Chat der Claude-Sitzung,
+// die so heisst wie die Seite (oder "018 <seite>"). Das Panel bleibt Panel: gleiche Kopfleiste, gleiche Ziehkanten,
+// gleiche Groessenaenderung. Zweiter Klick auf das Symbol bringt die Regler zurueck.
+// Der Chat selbst laeuft in einem iframe auf eigener Origin; diese Datei sieht keine Nachrichten und keine Zugangsdaten.
 // Einbinden: <script src="/tools/claude-chat.js" defer></script>
 (function claudeChat() {
   if (!location.hostname.startsWith('dev.')) return;
-  const KANAL = 'https://kanal.0nefinity.love';
   const seite = location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-  const OFFEN = 'claude-chat-offen';
+  const MAX_NEU = 2;
+  const FENSTER_MS = 60000;
+  const KANAL_ORIGIN = 'https://kanal.0nefinity.love';
+
+  const STRAHLEN = [[269.7, 60.5], [325.9, 133.4], [401.3, 155.9], [383.8, 236.1], [443.6, 312.8], [368.6, 359.4],
+    [322.7, 423.5], [246.4, 392.9], [160.8, 422.8], [136.6, 338.3], [85.6, 282.6], [128.4, 217.4], [111.7, 123.4], [198.0, 110.3]];
+  const SYMBOL = '<svg viewBox="0 0 512 512" aria-hidden="true"><g stroke="currentColor" stroke-width="40" stroke-linecap="round">'
+    + STRAHLEN.map(([x, y]) => `<line x1="256" y1="256" x2="${x}" y2="${y}"/>`).join('') + '</g></svg>';
 
   const css = `
-  .cc-knopf{position:fixed;right:12px;bottom:72px;z-index:2147483000;min-width:44px;height:44px;padding:0 14px;
-    border-radius:6px;background:var(--ui-surface-strong);color:var(--text-color);border:1px solid var(--ui-border);font:15px/42px var(--font-family);
-    box-shadow:0 2px 10px rgba(0,0,0,.45);cursor:pointer}
-  .cc-knopf:focus-visible{outline:2px solid var(--ui-border-stronger);outline-offset:2px}
-  .cc-knopf[aria-expanded="true"]{border-color:var(--ui-border-stronger)}
-  .cc-rahmen{position:fixed;right:12px;bottom:124px;z-index:2147483000;width:min(400px,calc(100vw - 24px));
-    height:min(620px,calc(100vh - 148px));border:1px solid var(--ui-border);border-radius:8px;overflow:hidden;
-    background:var(--bg-color);box-shadow:0 8px 30px rgba(0,0,0,.55);display:none}
-  .cc-rahmen.an{display:block}
-  .cc-rahmen iframe{width:100%;height:100%;border:0;display:block;background:var(--bg-color)}
-  @media (max-width:600px){
-    .cc-rahmen{right:0;left:0;bottom:0;width:100vw;height:min(75vh,calc(100vh - 56px));border-radius:8px 8px 0 0;border-width:1px 0 0}
-    .cc-knopf[aria-expanded="true"]{bottom:calc(min(75vh,100vh - 56px) + 8px)}
-  }`;
+#claude-chat-knopf{position:relative;color:var(--text-color,#fff);font-family:inherit;display:flex;align-items:center;justify-content:center}
+#claude-chat-knopf svg{width:1.05em;height:1.05em;display:block}
+#claude-chat-knopf[aria-pressed="true"]{opacity:1}
+#claude-chat-knopf.schwebt{position:fixed;left:4.375rem;bottom:calc(var(--visible-viewport-bottom,0px) + var(--controls-mobile-occlusion,0px));
+  width:4.375rem;height:4.375rem;z-index:1002;background:transparent;border:0;padding:0;font-size:2.25rem;line-height:1;
+  cursor:pointer;opacity:.55;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#claude-chat-knopf.schwebt:hover,#claude-chat-knopf.schwebt:focus-visible,#claude-chat-knopf.schwebt[aria-pressed="true"]{opacity:1}
+#claude-chat-knopf.schwebt svg{width:1.875rem;height:1.875rem}
+.ctrl-panel.cc-an .ctrl-panel-body{padding:0 !important;overflow:hidden !important;position:relative}
+.ctrl-panel.cc-an .ctrl-panel-body>:not(.cc-chat):not(.cc-platz){display:none !important}
+.ctrl-panel.cc-an .ctrl-layout-toggle{display:none !important}
+.cc-platz{height:min(60vh,520px);pointer-events:none}
+.cc-chat{position:absolute;inset:0;box-sizing:border-box;overflow:hidden;background:var(--bg-color,#000)}
+.cc-chat iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:var(--bg-color,#000);opacity:0;transition:opacity .15s}
+.cc-chat.bereit iframe{opacity:1}
+.cc-skel{position:absolute;inset:0;padding:16px;display:flex;flex-direction:column;gap:12px;justify-content:flex-end;pointer-events:none}
+.cc-skel i{display:block;height:14px;border-radius:4px;background:var(--ui-border,#2a2a2a);animation:cc-atmen 1.3s ease-in-out infinite}
+.cc-skel i:nth-child(1){width:46%}.cc-skel i:nth-child(2){width:78%;animation-delay:.1s}.cc-skel i:nth-child(3){width:62%;animation-delay:.2s}
+.cc-skel i:nth-child(4){width:30%;margin-left:auto;animation-delay:.3s}
+.cc-chat.bereit .cc-skel,.cc-chat.fehler .cc-skel{display:none}
+@keyframes cc-atmen{50%{opacity:.35}}
+.cc-fehler{position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:12px;color:var(--text-color,#fff);font-family:inherit}
+.cc-chat.fehler .cc-fehler{display:flex}
+.cc-fehler button{background:transparent;color:inherit;border:1px solid var(--ui-border-stronger,#555);border-radius:6px;min-width:44px;height:44px;font:inherit;font-size:1.25rem;cursor:pointer}
+.cc-rahmen{position:fixed;left:4.375rem;bottom:5rem;z-index:2147483000;width:min(400px,calc(100vw - 24px));height:min(620px,calc(100vh - 6rem));
+  border:1px solid var(--ui-border,#2a2a2a);border-radius:8px;overflow:hidden;background:var(--bg-color,#000);box-shadow:0 8px 30px rgba(0,0,0,.55);display:none}
+.cc-rahmen.an{display:block}
+@media (prefers-reduced-motion:reduce){.cc-skel i{animation:none}.cc-chat iframe{transition:none}}`;
 
-  async function eingeloggt() {
+  let knopf = null;
+  let panelEl = null;
+  let behaelter = null;   // Panelkoerper oder schwebender Rahmen
+  let chat = null;
+  let platz = null;   // gibt dem Panel eine Ausgangshoehe; die Groesse bestimmt danach das Panel selbst
+  let rahmen = null;
+  let offen = false;
+  let sequenz = 0;
+  const neuZeiten = [];
+
+  const kopfleiste = () => document.querySelector('.ctrl-panel-header .ctrl-header-buttons');
+
+  async function csrf() {
+    const r = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' });
+    if (r.status !== 200) throw new Error('login ' + r.status);
+    const me = await r.json();
+    if (!me || !me.csrf) throw new Error('csrf');
+    return me.csrf;
+  }
+
+  async function eintritt() {
+    const token = await csrf();
+    const r = await fetch('/api/seitenchat/oeffnen', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-0ne-Csrf': token },
+      body: JSON.stringify({ seite }),
+    });
+    if (r.status !== 200) throw new Error(String(r.status));
+    const d = await r.json();
+    if (!d || typeof d.eintritt !== 'string' || !d.eintritt.startsWith(KANAL_ORIGIN + '/eintritt?t=')) throw new Error('antwort');
+    return d.eintritt;
+  }
+
+  function chatBauen() {
+    const c = document.createElement('div');
+    c.className = 'cc-chat';
+    c.setAttribute('data-oe-ui', '');
+    c.innerHTML = '<div class="cc-skel"><i></i><i></i><i></i><i></i></div>'
+      + '<div class="cc-fehler"><span class="cc-code"></span><button type="button" aria-label="claude">&#8635;</button></div>';
+    c.querySelector('.cc-fehler button').addEventListener('click', () => laden(true));
+    return c;
+  }
+
+  async function laden(neu) {
+    const mein = ++sequenz;
+    chat.classList.remove('bereit', 'fehler');
+    chat.querySelector('iframe')?.remove();
     try {
-      const r = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' });
-      return r.status === 200;
+      const url = await eintritt();
+      if (mein !== sequenz || !offen) return;
+      const f = document.createElement('iframe');
+      f.title = 'claude';
+      f.referrerPolicy = 'no-referrer';
+      f.allow = '';
+      f.addEventListener('load', () => { if (mein === sequenz) chat.classList.add('bereit'); });
+      f.src = url;
+      chat.appendChild(f);
     } catch (e) {
-      return false;
+      if (mein !== sequenz) return;
+      console.error('claude-chat:', e);
+      chat.querySelector('.cc-code').textContent = 'claude ' + (/^\d+$/.test(e.message) ? e.message : '!');
+      chat.classList.add('fehler');
     }
+  }
+
+  function zeigen(an) {
+    offen = an;
+    knopf.setAttribute('aria-pressed', String(an));
+    // Leistenmodus hat keinen Platz fuer einen Chat: erst zurueck ins Panel
+    if (an && panelEl && panelEl.classList.contains('bar-mode')) panelEl.querySelector('.ctrl-layout-toggle')?.click();
+    if (panelEl) panelEl.classList.toggle('cc-an', an);
+    if (rahmen) rahmen.classList.toggle('an', an);
+    if (an) {
+      if (!chat) chat = chatBauen();
+      if (!platz) { platz = document.createElement('div'); platz.className = 'cc-platz'; }
+      if (chat.parentNode !== behaelter) { behaelter.appendChild(platz); behaelter.appendChild(chat); }
+      laden(false);
+    } else {
+      sequenz++;
+      chat?.querySelector('iframe')?.remove();
+      chat?.classList.remove('bereit', 'fehler');
+      chat?.remove();
+      platz?.remove();
+    }
+  }
+
+  // Der Chat meldet "Tor abgelaufen": hoechstens 2 neue Tueren je Minute, sonst sichtbarer Fehler mit Wiederholen.
+  addEventListener('message', (ev) => {
+    if (ev.origin !== KANAL_ORIGIN || !ev.data || ev.data.typ !== '0ne-seitenchat-abgelaufen' || !offen) return;
+    const jetzt = Date.now();
+    while (neuZeiten.length && jetzt - neuZeiten[0] > FENSTER_MS) neuZeiten.shift();
+    if (neuZeiten.length >= MAX_NEU) {
+      sequenz++;
+      chat.querySelector('iframe')?.remove();
+      chat.querySelector('.cc-code').textContent = 'claude !';
+      chat.classList.remove('bereit');
+      chat.classList.add('fehler');
+      return;
+    }
+    neuZeiten.push(jetzt);
+    laden(true);
+  });
+
+  function platzieren() {
+    const k = kopfleiste();
+    if (k) {
+      knopf.classList.remove('schwebt');
+      panelEl = k.closest('.ctrl-panel');
+      behaelter = panelEl.querySelector('.ctrl-panel-body');
+      k.insertBefore(knopf, k.querySelector('.ctrl-layout-toggle'));
+      rahmen?.remove();
+      rahmen = null;
+      return true;
+    }
+    if (!rahmen) {
+      rahmen = document.createElement('div');
+      rahmen.className = 'cc-rahmen';
+      rahmen.setAttribute('data-oe-ui', '');
+      document.body.appendChild(rahmen);
+    }
+    panelEl = null;
+    behaelter = rahmen;
+    knopf.classList.add('schwebt');
+    if (!knopf.isConnected) document.body.appendChild(knopf);
+    return false;
   }
 
   function bauen() {
-    const style = document.createElement('style');
-    style.textContent = css;
-    document.head.appendChild(style);
-
-    const knopf = document.createElement('button');
+    const st = document.createElement('style');
+    st.textContent = css;
+    document.head.appendChild(st);
+    knopf = document.createElement('button');
+    knopf.id = 'claude-chat-knopf';
+    knopf.className = 'ctrl-header-btn';
     knopf.type = 'button';
-    knopf.className = 'cc-knopf';
-    knopf.textContent = 'claude';
-    knopf.setAttribute('data-oe-ui', '');
-    knopf.setAttribute('aria-controls', 'cc-rahmen');
-
-    const rahmen = document.createElement('div');
-    rahmen.className = 'cc-rahmen';
-    rahmen.id = 'cc-rahmen';
-    rahmen.setAttribute('data-oe-ui', '');
-    let frame = null;
-
-    function setze(offen) {
-      knopf.setAttribute('aria-expanded', String(offen));
-      rahmen.classList.toggle('an', offen);
-      try { localStorage.setItem(OFFEN, offen ? '1' : ''); } catch (e) { /* privater Modus: Zustand nur fuer diese Seite */ }
-      if (offen && !frame) {
-        frame = document.createElement('iframe');
-        frame.title = 'Claude-Sitzung dieser Seite';
-        frame.src = KANAL + '/panel?seite=' + encodeURIComponent(seite);
-        frame.referrerPolicy = 'no-referrer';
-        frame.allow = '';
-        rahmen.appendChild(frame);
-      }
+    knopf.setAttribute('aria-label', 'claude');
+    knopf.setAttribute('aria-pressed', 'false');
+    knopf.innerHTML = SYMBOL;
+    knopf.addEventListener('click', (e) => { e.stopPropagation(); zeigen(!offen); });
+    knopf.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && offen) zeigen(false); });
+    if (!platzieren()) {
+      // das Panel entsteht oft erst nach diesem Skript: dann zieht das Symbol in die Kopfleiste um
+      const mo = new MutationObserver(() => {
+        if (!kopfleiste()) return;
+        mo.disconnect();
+        const war = offen;
+        if (war) zeigen(false);
+        platzieren();
+        if (war) zeigen(true);
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
     }
-    knopf.addEventListener('click', () => setze(knopf.getAttribute('aria-expanded') !== 'true'));
-    document.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Escape' && knopf.getAttribute('aria-expanded') === 'true') setze(false);
-    });
-    document.body.appendChild(rahmen);
-    document.body.appendChild(knopf);
-    let offen = false;
-    try { offen = localStorage.getItem(OFFEN) === '1'; } catch (e) { offen = false; }
-    setze(offen);
   }
 
-  eingeloggt().then((ja) => { if (ja) bauen(); });
+  fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' })
+    .then((r) => { if (r.status === 200) bauen(); })
+    .catch(() => { /* nicht eingeloggt oder offline: kein Symbol */ });
 })();
 
 tools/color.php
@@ -95183,7 +95371,6 @@ unfoldingPi.html
 <head>
   <!--#include virtual="/includes/something-in-the-head.html" -->
   <script src="/tools/math-notation.js" defer></script>
-  <script src="/tools/claude-chat.js" defer></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>(un)foldingPi</title>
