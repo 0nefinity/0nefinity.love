@@ -25256,15 +25256,26 @@ void main() {
   // the picture lives here, never in the canvas itself: the canvas only ever gets a copy of it
   // with the ring and the marker on top (zeige), so a copy of the picture never holds a ring
   const bildFbo = rahmen();
-  // ms per pixel, from the last passes: a fence says when the GPU is through with one
+  // ms per pixel, from the last passes: a fence says when the GPU is through with one.
+  // It was through somewhere between the last look that saw it busy and the first that saw it
+  // done; on a slow or busy page the looks lie a whole frame apart, and taking the late one as
+  // the GPU's time made pixels look up to a thousand times dearer than they are: whole frames at
+  // the coarsest grain for good, and copies built a few rows per frame. So the estimate only
+  // moves as far as that window says it must.
   let pxMs = 2e-5;
   function messe(n, dann) {
     const t0 = gpuT0, f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     gl.flush();
+    let frueh = t0;
     const warte = () => {
-      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) return void setTimeout(warte, 1);
+      const t = performance.now();
+      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) {
+        frueh = t;
+        return void setTimeout(warte, 1);
+      }
       gl.deleteSync(f);
-      pxMs = 0.5 * pxMs + 0.5 * (performance.now() - t0) / Math.max(1, n);
+      const m = Math.max(1, n), ziel = Math.min(Math.max(pxMs, (frueh - t0) / m), (t - t0) / m);
+      pxMs = 0.5 * pxMs + 0.5 * ziel;
       if (dann) dann();
     };
     warte();
@@ -25818,7 +25829,7 @@ void main() {
     const A = innen ? -Math.log2(voll * Math.SQRT1_2) - 3 - 8 * t : Math.log2(8 / Math.SQRT1_2) + 8 * t;
     const B = { innen, f, t, A, J, D, side, R, l: [], tex: [], fb: [], ok: null, pruef: [] };
     T[br] = B;
-    T.bau = true;
+    T.bau = br;
     ereignis("turm-bau", { br, t, side, A, lam: T.lam, th: T.th });
     const weg = () => turm !== T || T[br] !== B;
     const ende = (ok) => {
@@ -25913,6 +25924,15 @@ void main() {
       const plan = turmPlan(B, lsc, ux, uy, ext);
       if (plan) return Object.assign(plan, { br: key, lsc, ext });
     }
+    // a build for the other side yields: on a slow device it would hold this side's copies back
+    // for seconds while the view races on in coarse whole frames. Its attempt count is kept.
+    if (turm.bau && !turm.bau.startsWith(br)) {
+      const alt = turm.bau, A = turm[alt];
+      turmFrei(A);
+      turm[alt] = { ok: null, t: A.t, R: A.R };
+      turm.bau = false;
+      ereignis("turm-abbruch", { br: alt, fuer: br });
+    }
     if (turm.bau) return null;
     for (const key of [br + "Grob", br]) {
       const B = turm[key];
@@ -25986,6 +26006,8 @@ void main() {
   function tempo(v) {
     if (!Number.isFinite(v)) throw new Error("tempo(" + v + "): keine Zahl");
     tempoV = v;
+    // the side the zoom heads for is built first
+    if (v) turmSeite = v > 0 && spiegelOn ? "aussen" : "innen";
     if (!v || tempoRaf) return;
     tempoT = performance.now();
     const step = (t) => {
