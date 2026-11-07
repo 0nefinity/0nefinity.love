@@ -25106,8 +25106,7 @@ void main() {
     }
     gl.uniform1i(U.uRefLen, o.L);
     gl.uniform1i(U.uRoh, 0);
-    gpuT0 = performance.now();
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    zeichneFlaeche(slot === "feld");
     return true;
   }
 
@@ -25228,11 +25227,22 @@ void main() {
     }
     gl.uniform1i(U.uRefLen, o.L);
     gl.uniform1i(U.uRoh, slot === "turm" && turmRoh ? 1 : 0);
-    gpuT0 = performance.now();
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    zeichneFlaeche(slot === "feld");
     return true;
   }
   let gpuT0 = 0;
+  // the one draw of a pass; the passes that messe() counts are timed on the GPU itself where the
+  // browser offers it, the others (tower, magnifier) are not
+  const tqExt = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+  let tqOffen = [];
+  function tqVerwirf() { for (const q of tqOffen) gl.deleteQuery(q); tqOffen = []; }
+  function zeichneFlaeche(zeit) {
+    gpuT0 = performance.now();
+    const q = zeit && tqExt ? gl.createQuery() : null;
+    if (q) gl.beginQuery(tqExt.TIME_ELAPSED_EXT, q);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (q) { gl.endQuery(tqExt.TIME_ELAPSED_EXT); tqOffen.push(q); }
+  }
 
   // ---- passes: coarse into a small framebuffer, stretched onto the canvas; sharp in bands ----
   function rahmen() {
@@ -25256,26 +25266,28 @@ void main() {
   // the picture lives here, never in the canvas itself: the canvas only ever gets a copy of it
   // with the ring and the marker on top (zeige), so a copy of the picture never holds a ring
   const bildFbo = rahmen();
-  // ms per pixel, from the last passes: a fence says when the GPU is through with one.
-  // It was through somewhere between the last look that saw it busy and the first that saw it
-  // done; on a slow or busy page the looks lie a whole frame apart, and taking the late one as
-  // the GPU's time made pixels look up to a thousand times dearer than they are: whole frames at
-  // the coarsest grain for good, and copies built a few rows per frame. So the estimate only
-  // moves as far as that window says it must.
+  // ms per pixel of the GPU. Where the browser has timer queries the draws are timed on the GPU
+  // and nothing else enters. Without them the wait for a fence is all there is, and it also holds
+  // what no pixel pays for: the look at the fence comes only when the page is free again, on a
+  // slow or busy page up to a frame late. Divided by a small pass's pixels that made each pixel
+  // look dearer the fewer there were, and the coarser grain chosen for it made them dearer still:
+  // down to the coarsest for good (q 0.06, blocks jumping) and copies built a few rows per frame.
+  // So then a pass counts as at least a sixteenth of the view.
   let pxMs = 2e-5;
   function messe(n, dann) {
-    const t0 = gpuT0, f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    const t0 = gpuT0, f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), [W, Hc] = vollW(), qs = tqOffen;
+    tqOffen = [];
     gl.flush();
-    let frueh = t0;
     const warte = () => {
-      const t = performance.now();
-      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) {
-        frueh = t;
-        return void setTimeout(warte, 1);
-      }
+      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) return void setTimeout(warte, 1);
       gl.deleteSync(f);
-      const m = Math.max(1, n), ziel = Math.min(Math.max(pxMs, (frueh - t0) / m), (t - t0) / m);
-      pxMs = 0.5 * pxMs + 0.5 * ziel;
+      let neu = 0;
+      if (qs.length && qs.every((q) => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) && !gl.getParameter(tqExt.GPU_DISJOINT_EXT)) {
+        neu = Math.max(1e-7, qs.reduce((s, q) => s + gl.getQueryParameter(q, gl.QUERY_RESULT), 0) / 1e6 / Math.max(1, n));
+      }
+      for (const q of qs) gl.deleteQuery(q);
+      if (!neu) neu = (performance.now() - t0) / Math.max(1, n, W * Hc / 16);
+      pxMs = 0.5 * pxMs + 0.5 * neu;
       if (dann) dann();
     };
     warte();
@@ -25550,10 +25562,12 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // ?diag: the last frames, kept only with the parameter
   const rahmenLog = new URLSearchParams(location.search).has("diag") ? [] : null;
   function draw(q, schieben = true) {
+    tqVerwirf();
     takt(performance.now());
     ensurePB();
     const ok = grob(q, schieben);
     if (ok && schieben && rahmenArt && rahmenArt.k !== 0) nachziehen(bild.width, bild.height);
+    tqVerwirf();
     if (rahmenLog) {
       const t = performance.now(), [ox, oy] = origin();
       rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy, ls, ok });
