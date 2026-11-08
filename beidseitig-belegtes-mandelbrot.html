@@ -117,11 +117,11 @@ html, body { touch-action: pan-x pan-y; }
   let zoomZeit = 0;
   const setS = (l) => { ls = l; sw = 2 ** l; if (typeof zoomLauf === "function" && !zoomZeit) zoomZeit = requestAnimationFrame(zoomLauf); };
   let snapOn = true;
-  // ?diag: what happened when (towers built, checked, thrown away; anchors swapped in; old
-  // pictures stretched while an orbit is missing), the last 400, for hunting phone-only glitches
-  const ereignisse = new URLSearchParams(location.search).has("diag") ? [] : null;
+  // what happened when (towers built, checked, thrown away; anchors swapped in; old pictures
+  // stretched while an orbit is missing), the last 400, for hunting phone-only glitches: kept
+  // always, so a recording (tools/aufnahme.js) brings them along without ?diag
+  const ereignisse = [];
   function ereignis(art, x) {
-    if (!ereignisse) return;
     ereignisse.push({ t: performance.now(), art, ls, ...x });
     if (ereignisse.length > 400) ereignisse.shift();
   }
@@ -1316,21 +1316,35 @@ void main() {
   // slow or busy page up to a frame late. Divided by a small pass's pixels that made each pixel
   // look dearer the fewer there were, and the coarser grain chosen for it made them dearer still:
   // down to the coarsest for good (q 0.06, blocks jumping) and copies built a few rows per frame.
-  // So then a pass counts as at least a sixteenth of the view.
+  // So then a pass counts as at least a sixteenth of the view. And the GPU is known to have
+  // finished only somewhere between the last look that found it busy and the look that found it
+  // done; a look that came late (the page waited for the screen, up to a frame) says little. Under
+  // tempo that wait made every pass look a frame long and held the grain at a quarter.
+  // So a late look only moves the cost where both ends of that span agree it lies.
   let pxMs = 2e-5;
   function messe(n, dann) {
     const t0 = gpuT0, f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), [W, Hc] = vollW(), qs = tqOffen;
     tqOffen = [];
     gl.flush();
+    let beschaeftigt = t0;
     const warte = () => {
-      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) return void setTimeout(warte, 1);
+      const jetzt = performance.now();
+      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) {
+        beschaeftigt = jetzt;
+        return void setTimeout(warte, 1);
+      }
       gl.deleteSync(f);
       let neu = 0;
       if (qs.length && qs.every((q) => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) && !gl.getParameter(tqExt.GPU_DISJOINT_EXT)) {
         neu = Math.max(1e-7, qs.reduce((s, q) => s + gl.getQueryParameter(q, gl.QUERY_RESULT), 0) / 1e6 / Math.max(1, n));
       }
       for (const q of qs) gl.deleteQuery(q);
-      if (!neu) neu = (performance.now() - t0) / Math.max(1, n, W * Hc / 16);
+      if (!neu) {
+        // waiting for the screen lasts at most a frame or two: a later look means the page itself
+        // was held, by a call that waited for this very GPU work (SwiftShader: 27 s at once)
+        const px = Math.max(1, n, W * Hc / 16), lo = Math.max(beschaeftigt, jetzt - 34) - t0, hi = (jetzt - t0) / px;
+        neu = jetzt - beschaeftigt <= 4 ? Math.max(1e-7, (lo / px + hi) / 2) : hi < pxMs ? Math.max(1e-7, hi) : lo / px > pxMs ? lo / px : pxMs;
+      }
       pxMs = 0.5 * pxMs + 0.5 * neu;
       if (dann) dann();
     };
@@ -1532,7 +1546,6 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       zeigeTurm(kopie, W, Hc);
       gezeichnet(1 / kopie.B.f);
       rahmenArt = { k: 0, rand: 0, qr: 1 / kopie.B.f, br: kopie.br, n: kopie.n, j: kopie.j, kt: kopie.k, rx: kopie.rx, ry: kopie.ry, ux: kopie.ux, uy: kopie.uy };
-      turmKontrolle(kopie, W, Hc);
       return true;
     }
     // under tempo the tower of this zone is on its way: no frame computed meanwhile. Live frames
@@ -1623,8 +1636,8 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     ereignis("nachzug", { zu: nach.g.ls });
     nach = null;
   }
-  // ?diag: the last frames, kept only with the parameter
-  const rahmenLog = new URLSearchParams(location.search).has("diag") ? [] : null;
+  // the last frames (how each came about, its time), kept always for the recording
+  const rahmenLog = [];
   function draw(q, schieben = true) {
     tqVerwirf();
     takt(performance.now());
@@ -1632,9 +1645,9 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     const ok = grob(q, schieben);
     if (ok && schieben && rahmenArt && rahmenArt.k !== 0 && !(haeckWartet && tempoV)) nachziehen(bild.width, bild.height);
     tqVerwirf();
-    if (rahmenLog) {
+    {
       const t = performance.now(), [ox, oy] = origin();
-      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy, ls, ok });
+      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy, ls, ok, v: tempoV, px: pxMs });
       if (rahmenLog.length > 120) rahmenLog.shift();
     }
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
@@ -1670,7 +1683,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // a pixel aside (filaments thinner than a pixel come and go with the grid; measured 0.7-0.9 %
   // at sh12a), give or take a quarter, plus lone boundary pixels one side's iteration limit
   // leaves black and the other's lets escape
-  const TURM_SCHWELLE = 0.002, TURM_VERSUCHE = 7, TURM_TAKT = 3000;
+  const TURM_SCHWELLE = 0.002, TURM_VERSUCHE = 7;
   const TURM_FOLGE = ["innenGrob", "innen", "aussenGrob", "aussen"];
   let turm = null;
   const TFS = `#version 300 es
@@ -1704,7 +1717,7 @@ void main() {
   gl.uniform1i(TU.uT, 3);
   // one set for the sample before copying, one for the checks while copies show: real, copy,
   // and real again half a pixel aside
-  const probeFbo = [rahmen(), rahmen(), rahmen()], kontrollFbo = [rahmen(), rahmen(), rahmen()];
+  const probeFbo = [rahmen(), rahmen(), rahmen()];
 
   const gpuDann = (dann) => {
     const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -1740,11 +1753,24 @@ void main() {
   // real passes into fb, one rectangle [x, y, w, h] per wait for the GPU, so the page stays
   // free meanwhile; dann() when through, never once weg() says the result is not wanted
   function verdeckt(fb, W, Hc, an, rects, weg, dann) {
-    let i = 0;
+    // eig: what a pixel of this very picture cost the GPU, from the band before (deep layers cost
+    // far more than the view pxMs was measured on: a band cut by pxMs ran 130 ms at rest and held
+    // the start of the ride). In the ride a band waits for a whole frame, that says nothing.
+    let i = 0, rest = null, eig = 0, seit = 0, px = 0;
     const naechstes = () => {
       if (weg()) return;
-      if (i === rects.length) return dann();
-      const [x, y, w, h] = rects[i++];
+      if (seit) eig = (performance.now() - seit) / px;
+      if (!rest) {
+        if (i === rects.length) return dann();
+        rest = rects[i++].slice();
+      }
+      // cut from the top a band that fits the moment: small while the view rides, and the first
+      // one, before its cost is known
+      const [x, y0, w, h0] = rest, y1 = Math.max(8, Math.round(tempoV ? 4 / (pxMs * w) : (eig ? 40 : 4) / (Math.max(pxMs, eig) * w)));
+      const h = Math.min(h0, y1), y = y0 + h0 - h;
+      rest = h < h0 ? [x, y0, w, h0 - h] : null;
+      seit = performance.now();
+      px = w * h;
       turmPB(an.l, an.ext);
       alsAnsicht(an.l, an.v, an.vb, W, Hc, () => {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -1760,9 +1786,11 @@ void main() {
     };
     naechstes();
   }
-  // a whole frame in bands of about 40 ms
+  // a whole frame in bands of about 40 ms, of about 4 ms while the view rides: a band is GPU
+  // work the frame after it waits for, and a ride shows every frame. verdeckt cuts each band
+  // again when it comes to it, so a build begun at rest gets small bands once the ride starts.
   function baender(W, Hc) {
-    const h = Math.max(8, Math.round(40 / (pxMs * W))), out = [];
+    const h = Math.max(8, Math.round((tempoV ? 4 : 40) / (pxMs * W))), out = [];
     for (let y = Hc; y > 0; y -= h) out.push([0, Math.max(0, y - h), W, Math.min(h, y)]);
     return out;
   }
@@ -1797,8 +1825,9 @@ void main() {
   }
   // a value matches when it lies within the other picture's 3x3 neighbourhood widened by 2
   // greys: off by at most a pixel or by at most 2 greys. Both ways round.
-  function abweichung(a, b, w, h, st) {
-    for (let y = 1; y < h - 1; y++)
+  // (rows y0 to y1, so the comparison can go in slices that leave the frames alone)
+  function abweichung(a, b, w, h, st, y0 = 1, y1 = h - 1) {
+    for (let y = y0; y < y1; y++)
       for (let x = 1; x < w - 1; x++) {
         const i = (y * w + x) * 4;
         st.n++;
@@ -1838,16 +1867,22 @@ void main() {
     });
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, bildFbo.fb);
-    gpuDann(() => {
-      dann(bufs.map(([b, n]) => {
-        const px = new Uint8Array(n);
+    // a buffer at a time, yielding after about 4 ms, so no frame waits for the whole picture
+    const px = [];
+    const hole = () => {
+      const t = performance.now();
+      while (px.length < bufs.length && performance.now() - t < 4) {
+        const [b, n] = bufs[px.length], p = new Uint8Array(n);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b);
-        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, p);
         gl.deleteBuffer(b);
-        return px;
-      }));
+        px.push(p);
+      }
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    });
+      if (px.length < bufs.length) return void setTimeout(hole, 0);
+      dann(px);
+    };
+    gpuDann(hole);
   }
   // real pixels at view (l, v) in rects against the copy there; dann(statistics)
   function vergleiche(B, an, W, Hc, rects, [pruefFbo, kopieFbo, nebenFbo], weg, dann) {
@@ -1863,12 +1898,23 @@ void main() {
     verdeckt(pruefFbo.fb, W, Hc, an, rects, weg, () => verdeckt(nebenFbo.fb, W, Hc, neben, rects, weg, () => {
       lies(rects.flatMap((rc) => [[kopieFbo.fb, rc], [pruefFbo.fb, rc], [nebenFbo.fb, rc]]), (px) => {
         if (weg()) return;
-        const st = neuSt(), basis = neuSt();
-        rects.forEach((rc, i) => {
-          abweichung(px[3 * i], px[3 * i + 1], rc[2], rc[3], st);
-          abweichung(px[3 * i + 2], px[3 * i + 1], rc[2], rc[3], basis);
-        });
-        dann(urteil(st, basis));
+        const st = neuSt(), basis = neuSt(), arbeit = [];
+        rects.forEach((rc, i) => arbeit.push([px[3 * i], px[3 * i + 1], rc[2], rc[3], st], [px[3 * i + 2], px[3 * i + 1], rc[2], rc[3], basis]));
+        // sixteen rows at a time, about 4 ms per task: a whole sharp frame compared at once held
+        // the page for longer than a frame
+        let k = 0, y = 1;
+        const stueck = () => {
+          if (weg()) return;
+          const t = performance.now();
+          while (k < arbeit.length && performance.now() - t < 4) {
+            const [a, b, w, h, s] = arbeit[k], y1 = Math.min(h - 1, y + 16);
+            abweichung(a, b, w, h, s, y, y1);
+            if (y1 >= h - 1) { k++; y = 1; } else y = y1;
+          }
+          if (k < arbeit.length) return void setTimeout(stueck, 0);
+          dann(urteil(st, basis));
+        };
+        stueck();
       });
     }));
   }
@@ -1913,10 +1959,14 @@ void main() {
     const ende = (ok) => {
       T.bau = false;
       ereignis(ok ? "turm-fertig" : "turm-fehl", { br, t, pruef: B.pruef.map((p) => ({ l: p.l, anteil: p.anteil, basis: p.basis, max: p.max })) });
+      // a tower that passed is done: from here on it is only turned and scaled, never checked
+      // again nor rebuilt (one picture computed, then only turned). Checking it again while it
+      // showed cost a whole real frame every few seconds, the regular jolt in the ride. The next
+      // tower follows at once, the sharp one right after its coarse one.
       if (ok) {
         B.ok = true;
         if (br.startsWith(turmSeite)) request(false);
-        else bauWeiter();
+        bauWeiter();
         return;
       }
       turmFrei(B);
@@ -1935,20 +1985,27 @@ void main() {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-      const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       B.l.push(l);
       B.tex.push(tex);
       B.fb.push(fb);
-      if (st !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
-        console.error("Selbstähnlichkeit: kein Grafikspeicher für " + side + "² Pixel oder R16F nicht als Ziel erlaubt");
-        ereignis("turm-kein-speicher", { br, side });
-        T.bau = false;
-        turmFrei(B);
-        T[br] = { ok: "nein", t, R };
-        return;
-      }
-      verdeckt(fb, side, side, { l: l + Math.log2(f), v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
+      // asked only once the GPU is through: both questions wait for all work queued before
+      // them, mid-ride that held the frame they were asked in (14-17 ms, more with a band queued)
+      gpuDann(() => {
+        if (weg()) return;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+        if (st !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
+          console.error("Selbstähnlichkeit: kein Grafikspeicher für " + side + "² Pixel oder R16F nicht als Ziel erlaubt");
+          ereignis("turm-kein-speicher", { br, side });
+          T.bau = false;
+          turmFrei(B);
+          T[br] = { ok: "nein", t, R };
+          return;
+        }
+        verdeckt(fb, side, side, { l: l + Math.log2(f), v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
+      });
     };
     // the sample before anything is copied: real frames one turn past the tower (with a fraction,
     // so the step between frames is tested too) and about 16 bits past it
@@ -1959,7 +2016,7 @@ void main() {
       const l = innen ? A - proben[i] * T.lam : A + proben[i] * T.lam;
       vergleiche(B, { l: l + Math.log2(f), g: f, v: [0n, 0n], vb: PB, ext: Math.hypot(W, Hc) / 2 }, W, Hc, baender(W, Hc), probeFbo, weg, (st) => {
         B.pruef.push(Object.assign(st, { l }));
-        T.protokoll.push({ br, t, A, l, anteil: st.anteil, basis: st.basis, max: st.max, mittel: st.mittel });
+        T.protokoll.push({ br, t, A, l, ok: st.ok, anteil: st.anteil, basis: st.basis, max: st.max, mittel: st.mittel });
         if (!st.ok) return ende(false);
         pruefe(i + 1);
       });
@@ -1981,7 +2038,7 @@ void main() {
     if (turm && !turmGilt()) turmWeg();
     if (turm) return;
     const q = rho(cH[0], cH[1], mis.k, mis.p);
-    turm = { cx: cH[0], cy: cH[1], PB, r, k: mis.k, p: mis.p, lam: q.lam, th: q.th, bau: false, prueft: false, geprueft: 0, kontrollen: [], protokoll: [] };
+    turm = { cx: cH[0], cy: cH[1], PB, r, k: mis.k, p: mis.p, lam: q.lam, th: q.th, bau: false, protokoll: [] };
     for (const key of TURM_FOLGE) turm[key] = null;
   }
   // a sharp tower starts where its coarse one passed: the anchors that failed there fail here too
@@ -2007,7 +2064,15 @@ void main() {
       const B = turm[key];
       if (!B || B.ok !== true) continue;
       const plan = turmPlan(B, lsc, ux, uy, ext);
-      if (plan) return Object.assign(plan, { br: key, lsc, ext });
+      if (!plan) continue;
+      // the coarse copy serves only until the sharp one is there: its build starts now, during
+      // the ride, not when the ride ends (it never ended, so the zoom stayed coarse)
+      const S = turm[br];
+      if (key !== br && !turm.bau && !(S && (S.ok === "nein" || (S.ok === true && S.R >= ext)))) {
+        if (S) turmFrei(S);
+        baue(br, S ? S.t : ersterVersuch(br), Math.max(1.25 * hd, ext));
+      }
+      return Object.assign(plan, { br: key, lsc, ext });
     }
     // a build for the other side yields: on a slow device it would hold this side's copies back
     // for seconds while the view races on in coarse whole frames. Its attempt count is kept.
@@ -2050,37 +2115,6 @@ void main() {
       return;
     }
   }
-  // every few seconds while copies show: real pixels in five patches of the shown view against
-  // the copy. A miss throws the tower away, loudly, and builds it again a step further out with ρ
-  // computed afresh.
-  function turmKontrolle(plan, W, Hc) {
-    const T = turm, B = plan.B, br = plan.br;
-    if (T.prueft || performance.now() - T.geprueft < TURM_TAKT) return;
-    T.prueft = true;
-    const f = B.f;
-    W = Math.ceil(W / f);
-    Hc = Math.ceil(Hc / f);
-    const P = Math.min(64, W - 2, Hc - 2), rnd = (n) => 1 + Math.floor(Math.random() * Math.max(1, n - P - 2));
-    const rects = [[(W - P) >> 1, (Hc - P) >> 1, P, P]];
-    for (let i = 0; i < 4; i++) rects.push([rnd(W), rnd(Hc), P, P]);
-    const an = { l: plan.lsc + Math.log2(f), g: f, v: vH, vb: PB, ext: plan.ext / f };
-    const weg = () => turm !== T || T[br] !== B;
-    vergleiche(B, an, W, Hc, rects, kontrollFbo, weg, (st) => {
-      T.prueft = false;
-      T.geprueft = performance.now();
-      T.kontrollen.push(Object.assign(st, { l: an.l, br }));
-      ereignis("turm-kontrolle", { br, ok: st.ok, anteil: st.anteil, basis: st.basis, max: st.max, mittel: st.mittel, n: plan.n, j: plan.j });
-      if (st.ok) return;
-      console.error(`Selbstähnlichkeit: Kopie weicht von der echten Rechnung ab (${(100 * st.anteil).toFixed(2)} % der Pixel, bis ${st.max} Graustufen), Turm verworfen`);
-      turmFrei(B);
-      T[br] = { ok: "verworfen", t: B.t + 1, R: B.R };
-      const q = rho(cH[0], cH[1], mis.k, mis.p);
-      T.lam = q.lam;
-      T.th = q.th;
-      request(false);
-    });
-  }
-
   // ---- tempo: the interface for the speed slider (#416) ----
   // tempo(v) zooms on and on at v octaves per second (v < 0 in, v > 0 out, no bound either way),
   // tempo(0) stops. The marker stays put while it is on screen, else the middle. Every frame is drawn at
@@ -3288,12 +3322,9 @@ void main() {
   // --controls-mobile-occlusion after the panel is built or dragged)
   new ResizeObserver(resize).observe(feld);
 
-  // ?diag: small print of what the device reports, for hunting phone-only glitches; nothing without the parameter
-  if (new URLSearchParams(location.search).has("diag")) {
-    const dg = document.createElement("pre");
-    dg.id = "diag";
-    dg.style.cssText = "position:fixed;left:4px;top:4px;margin:0;padding:2px 4px;font:9px/1.15 monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none;z-index:99999;white-space:pre";
-    document.body.appendChild(dg);
+  // what the device reports, for hunting phone-only glitches: read by tools/aufnahme.js into
+  // every recording; printed small on the page only with ?diag
+  {
     // the last 60 drawn frames as bars: sharpness q, frame time dt (full bar 50 ms), and the
     // marker's step on screen from frame to frame (full bar 8 px)
     const BALKEN = "▁▂▃▄▅▆▇█";
@@ -3315,13 +3346,13 @@ void main() {
     const turmZeile = () => {
       if (!turm) return "tower -";
       const st = (k) => { const B = turm[k]; return B ? (B.ok === true ? "ok" : B.ok === null ? "…" : String(B.ok)) + "/" + B.t : "-"; };
-      const kl = turm.kontrollen[turm.kontrollen.length - 1];
+      const kl = turm.protokoll[turm.protokoll.length - 1];
       return `tower ${TURM_FOLGE.map((k) => k + " " + st(k)).join(" ")} | check ${kl ? (kl.ok ? "ok " : "MISS ") + (100 * kl.anteil).toFixed(2) + "% max " + kl.max : "-"}`;
     };
     const modus = () => (dragging ? (dragging.lupe ? "lupe" : "punkt") : pts.size >= 2 ? "pinch" : pts.size === 1 ? "pan" : lupeZug ? "lupe" : "-");
-    const tick = () => {
+    const zeilen = () => {
       const vv = window.visualViewport;
-      dg.textContent = [
+      return [
         `mode ${modus()} fingers ${pts.size}`,
         `dpr ${window.devicePixelRatio} used ${dpr}`,
         `canvas ${bild.width}x${bild.height} px, css ${cssW.toFixed(1)}x${cssH.toFixed(1)}`,
@@ -3329,12 +3360,22 @@ void main() {
         `resize #${resizeN} ${resizeN ? ((performance.now() - resizeT) / 1000).toFixed(1) + "s ago" : "-"}`,
         `ls ${ls.toFixed(4)} sw ${sw} c ${cMx.toFixed(6)},${cMy.toFixed(6)}`,
         `v ${N(vH[0])},${N(vH[1])}`,
+        `tempo ${tempoV} waits ${haeckWartet} cost ${pxMs.toExponential(2)} ms/px gpu timer ${tqExt ? "yes" : "no"}`,
         ...rahmenZeilen(),
         turmZeile(),
       ].join("\n");
-      requestAnimationFrame(tick);
     };
-    tick();
+    if (new URLSearchParams(location.search).has("diag")) {
+      const dg = document.createElement("pre");
+      dg.id = "diag";
+      dg.style.cssText = "position:fixed;left:4px;top:4px;margin:0;padding:2px 4px;font:9px/1.15 monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none;z-index:99999;white-space:pre";
+      document.body.appendChild(dg);
+      const tick = () => {
+        dg.textContent = zeilen();
+        requestAnimationFrame(tick);
+      };
+      tick();
+    }
     // read by tools/aufnahme.js (recording trace, and sent along on unlocked pages)
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     const geraet = {
@@ -3344,9 +3385,10 @@ void main() {
       hp: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision,
     };
     window.__diag = () => ({
-      text: dg.textContent, geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
+      text: zeilen(), geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
       turm: turm && { lam: turm.lam, th: turm.th, seite: turmSeite, protokoll: turm.protokoll.slice(-20),
-        ...Object.fromEntries(TURM_FOLGE.map((k) => [k, turm[k] && { ok: turm[k].ok, t: turm[k].t, side: turm[k].side, f: turm[k].f, A: turm[k].A }])) },
+        bau: turm.bau, ...Object.fromEntries(TURM_FOLGE.map((k) => [k, turm[k] && { ok: turm[k].ok, t: turm[k].t, side: turm[k].side, f: turm[k].f, A: turm[k].A, R: turm[k].R }])) },
+      fahrt: { tempo: tempoV, wartet: haeckWartet, pxMs, gpuTimer: !!tqExt, dpr, dprGeraet: window.devicePixelRatio, canvas: [bild.width, bild.height] },
     });
   }
 
