@@ -1353,12 +1353,21 @@ void main() {
   }
   const gleich = () => gezeigt && gezeigt.w === wechsel;
   // no reference yet: the last picture, moved and scaled to where the view went
-  function altesBild() {
+  // drehen: near c_M the picture repeats itself every turn (λ octaves further, turned by θ about
+  // c_M), so whole turns are taken back out: the old picture stays at its size and only turns,
+  // as the tower's copies do, instead of shrinking to a dot or swelling to a blur
+  function altesBild(drehen) {
     ereignis("altes-bild", { da: !!gezeigt });
     if (!gezeigt) return;
-    const k = 2 ** (gezeigt.ls - ls);
+    const d = gezeigt.ls - ls, k = 2 ** d;
     const tx = N(zuPB(gezeigt.vH[0], gezeigt.PB) - vH[0], ls), ty = -N(zuPB(gezeigt.vH[1], gezeigt.PB) - vH[1], ls);
-    bild.style.transform = `translate(${f32(tx)}px, ${f32(ty)}px) scale(${f32(k)})`;
+    let tf = `translate(${f32(tx)}px, ${f32(ty)}px) scale(${f32(k)})`;
+    if (drehen && turm && turm.lam > 0) {
+      const n = Math.round(-d / turm.lam), cx = -f32(N(vH[0], ls)), cy = f32(N(vH[1], ls));
+      const a = (DREH[turmSeite] * n * turm.th) % (2 * Math.PI);
+      tf = `translate(${cx}px, ${cy}px) rotate(${f32(a)}rad) scale(${f32(2 ** (n * turm.lam))}) translate(${-cx}px, ${-cy}px) ` + tf;
+    }
+    bild.style.transform = tf;
   }
   // what the canvas holds is moved and scaled to where the view went; only what that leaves
   // uncovered is computed (sharp when it is cheap, else coarse), so panning and slight zooming
@@ -1526,7 +1535,17 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       turmKontrolle(kopie, W, Hc);
       return true;
     }
-    const alt = schieben ? plan(W, Hc) : null;
+    // under tempo the tower of this zone is on its way: no frame computed meanwhile. Live frames
+    // there grow dearer with every octave, and each one took the time the tower's bands needed,
+    // so on a device without GPU timers the tower never came and the zoom stayed coarse. The last
+    // picture is computed once on the way in and only turned after, until the copies take over.
+    const warten = haeckWartet && tempoV;
+    if (warten && gezeigt && gezeigt === wartBild) {
+      rahmenArt = { k: -1, rand: 0, qr: gezeigt.q };
+      altesBild(true);
+      return false;
+    }
+    const alt = schieben && !warten ? plan(W, Hc) : null;
     if (alt) return umschieben(alt, W, Hc);
     rahmenArt = { k: 1, rand: 1, qr: q };
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
@@ -1544,6 +1563,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     messe(w * h);
     gezeichnet(w === W && h === Hc ? 1 : q);
     ankerNeu(W, Hc);
+    if (warten) wartBild = gezeigt;
     return true;
   }
   // the Nachzug: while the view moves, a sharp picture of it grows a few rows per frame off screen
@@ -1610,7 +1630,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     takt(performance.now());
     ensurePB();
     const ok = grob(q, schieben);
-    if (ok && schieben && rahmenArt && rahmenArt.k !== 0) nachziehen(bild.width, bild.height);
+    if (ok && schieben && rahmenArt && rahmenArt.k !== 0 && !(haeckWartet && tempoV)) nachziehen(bild.width, bild.height);
     tqVerwirf();
     if (rahmenLog) {
       const t = performance.now(), [ox, oy] = origin();
@@ -1949,6 +1969,12 @@ void main() {
 
   // the side the view was last on: built first, and asked to redraw when its tower is ready
   let turmSeite = "innen";
+  // haeck found the view where a tower serves, but that tower is still being built
+  let haeckWartet = false;
+  // the one picture computed in that zone while waiting, the one that is turned until then
+  let wartBild = null;
+  // which way θ turns on screen: outside one way, inside the other (measured against the copies)
+  const DREH = { aussen: 1, innen: -1 };
   // device pixels per texel of a coarse tower: about 2 css pixels
   const turmF = () => Math.max(2, Math.round(2 * dpr));
   function neuTurm() {
@@ -1966,6 +1992,7 @@ void main() {
   // the copy for the current view, if a tower serves it: the sharp one, else the coarse one.
   // Starts a tower where one would serve, the coarse one first.
   function haeck(W, Hc) {
+    haeckWartet = false;
     if (!mis || kind >= 2) return null;
     if (turm && !turmGilt()) turmWeg();
     const lsc = ls + Math.log2(cssW / W), hd = Math.hypot(W, Hc) / 2;
@@ -1991,13 +2018,17 @@ void main() {
       turm.bau = false;
       ereignis("turm-abbruch", { br: alt, fuer: br });
     }
-    if (turm.bau) return null;
+    if (turm.bau) {
+      haeckWartet = true;
+      return null;
+    }
     for (const key of [br + "Grob", br]) {
       const B = turm[key];
       // ready (this view lies before its first turn) or given up on
       if (B && (B.ok === "nein" || (B.ok === true && B.R >= ext))) continue;
       if (B) turmFrei(B);
       baue(key, B ? B.t : ersterVersuch(key), Math.max(1.25 * hd, ext));
+      haeckWartet = !!turm.bau;
       return null;
     }
     return null;
@@ -2066,6 +2097,8 @@ void main() {
     tempoV = v;
     // the side the zoom heads for is built first
     if (v) turmSeite = v > 0 && spiegelOn ? "aussen" : "innen";
+    // and started now, while the frames are still cheap, not first when the view gets there
+    if (v) bauWeiter();
     if (!v || tempoRaf) return;
     tempoT = performance.now();
     const step = (t) => {
