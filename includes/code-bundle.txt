@@ -25332,8 +25332,10 @@ void main() {
       }
       for (const q of qs) gl.deleteQuery(q);
       if (!neu) {
-        const px = Math.max(1, n, W * Hc / 16), lo = (beschaeftigt - t0) / px, hi = (jetzt - t0) / px;
-        neu = jetzt - beschaeftigt <= 4 ? Math.max(1e-7, (lo + hi) / 2) : hi < pxMs ? Math.max(1e-7, hi) : lo > pxMs ? lo : pxMs;
+        // waiting for the screen lasts at most a frame or two: a later look means the page itself
+        // was held, by a call that waited for this very GPU work (SwiftShader: 27 s at once)
+        const px = Math.max(1, n, W * Hc / 16), lo = Math.max(beschaeftigt, jetzt - 34) - t0, hi = (jetzt - t0) / px;
+        neu = jetzt - beschaeftigt <= 4 ? Math.max(1e-7, (lo / px + hi) / 2) : hi < pxMs ? Math.max(1e-7, hi) : lo / px > pxMs ? lo / px : pxMs;
       }
       pxMs = 0.5 * pxMs + 0.5 * neu;
       if (dann) dann();
@@ -25743,16 +25745,24 @@ void main() {
   // real passes into fb, one rectangle [x, y, w, h] per wait for the GPU, so the page stays
   // free meanwhile; dann() when through, never once weg() says the result is not wanted
   function verdeckt(fb, W, Hc, an, rects, weg, dann) {
-    let i = 0, rest = null;
+    // eig: what a pixel of this very picture cost the GPU, from the band before (deep layers cost
+    // far more than the view pxMs was measured on: a band cut by pxMs ran 130 ms at rest and held
+    // the start of the ride). In the ride a band waits for a whole frame, that says nothing.
+    let i = 0, rest = null, eig = 0, seit = 0, px = 0;
     const naechstes = () => {
       if (weg()) return;
+      if (seit) eig = (performance.now() - seit) / px;
       if (!rest) {
         if (i === rects.length) return dann();
         rest = rects[i++].slice();
       }
-      // cut from the top a band that fits the moment: small while the view rides
-      const [x, y0, w, h0] = rest, h = Math.min(h0, baender(w, h0)[0][3]), y = y0 + h0 - h;
+      // cut from the top a band that fits the moment: small while the view rides, and the first
+      // one, before its cost is known
+      const [x, y0, w, h0] = rest, y1 = Math.max(8, Math.round(tempoV ? 4 / (pxMs * w) : (eig ? 40 : 4) / (Math.max(pxMs, eig) * w)));
+      const h = Math.min(h0, y1), y = y0 + h0 - h;
       rest = h < h0 ? [x, y0, w, h0 - h] : null;
+      seit = performance.now();
+      px = w * h;
       turmPB(an.l, an.ext);
       alsAnsicht(an.l, an.v, an.vb, W, Hc, () => {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -25967,20 +25977,27 @@ void main() {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-      const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
       B.l.push(l);
       B.tex.push(tex);
       B.fb.push(fb);
-      if (st !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
-        console.error("Selbstähnlichkeit: kein Grafikspeicher für " + side + "² Pixel oder R16F nicht als Ziel erlaubt");
-        ereignis("turm-kein-speicher", { br, side });
-        T.bau = false;
-        turmFrei(B);
-        T[br] = { ok: "nein", t, R };
-        return;
-      }
-      verdeckt(fb, side, side, { l: l + Math.log2(f), v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
+      // asked only once the GPU is through: both questions wait for all work queued before
+      // them, mid-ride that held the frame they were asked in (14-17 ms, more with a band queued)
+      gpuDann(() => {
+        if (weg()) return;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+        if (st !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
+          console.error("Selbstähnlichkeit: kein Grafikspeicher für " + side + "² Pixel oder R16F nicht als Ziel erlaubt");
+          ereignis("turm-kein-speicher", { br, side });
+          T.bau = false;
+          turmFrei(B);
+          T[br] = { ok: "nein", t, R };
+          return;
+        }
+        verdeckt(fb, side, side, { l: l + Math.log2(f), v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
+      });
     };
     // the sample before anything is copied: real frames one turn past the tower (with a fraction,
     // so the step between frames is tested too) and about 16 bits past it
