@@ -43,6 +43,7 @@
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
+  background: transparent;
 }
 .pad.an {
   background: var(--text-color);
@@ -563,6 +564,27 @@ document.addEventListener('visibilitychange', () => {
   else ac.resume();
 });
 
+// ---------- hold button next to the chords (same switch as the panel toggle) ----------
+const haltenKnopf = document.createElement('button');
+haltenKnopf.type = 'button';
+haltenKnopf.id = 'halten';
+haltenKnopf.className = 'pad';
+haltenKnopf.textContent = 'Halten';
+haltenKnopf.setAttribute('aria-pressed', 'false');
+akkordeEl.appendChild(haltenKnopf);
+haltenKnopf.addEventListener('click', () => haltenSetzen(!cfg.halten));
+
+function haltenSetzen(v){
+  cfg.halten = v;
+  haltenKnopf.classList.toggle('an', v);
+  haltenKnopf.setAttribute('aria-pressed', String(v));
+  panel.set('halten', v);
+  if (!v){
+    gerastet.forEach(loslassen); gerastet.clear();
+    freie.forEach(f => { if (f.latched){ freie.delete(f); stimmeAus(f.v); } });
+  }
+}
+
 // ---------- settings panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
 panel
@@ -580,9 +602,7 @@ panel
   .addSlider('oberMenge',  { label: 'Obertöne', min: 0, max: 1, step: 0.01, value: cfg.oberMenge,  decimals: 2, onChange: v => { cfg.oberMenge = v; filterNachstellen(); } })
   .addSlider('oberAnzahl', { label: 'Anzahl',   min: 0, max: 12, step: 1,   value: cfg.oberAnzahl, decimals: 0, onChange: v => { cfg.oberAnzahl = v; teiltoeneNeu(); } })
   .addDivider()
-  .addToggle('halten', { label: 'Halten', value: cfg.halten, onChange: v => {
-      cfg.halten = v;
-      if (!v){ gerastet.forEach(loslassen); gerastet.clear(); freie.forEach(f => { if (f.latched){ freie.delete(f); stimmeAus(f.v); } }); } } })
+  .addToggle('halten', { label: 'Halten', value: cfg.halten, onChange: v => haltenSetzen(v) })
   .addToggle('raster', { label: 'Raster', value: cfg.raster, onChange: v => { cfg.raster = v; } })
   .addButton('los', { label: 'alle los', onClick: alleLos })
   .addDivider()
