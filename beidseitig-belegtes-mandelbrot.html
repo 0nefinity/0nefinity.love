@@ -117,7 +117,7 @@ html, body { touch-action: pan-x pan-y; }
   let zoomZeit = 0;
   const setS = (l) => { ls = l; sw = 2 ** l; if (typeof zoomLauf === "function" && !zoomZeit) zoomZeit = requestAnimationFrame(zoomLauf); };
   let snapOn = true;
-  // what happened when (towers built, checked, thrown away; anchors swapped in; old pictures
+  // what happened when (bands begun and done; anchors swapped in; old pictures
   // stretched while an orbit is missing), the last 400, for hunting phone-only glitches: kept
   // always, so a recording (tools/aufnahme.js) brings them along without ?diag
   const ereignisse = [];
@@ -219,11 +219,17 @@ html, body { touch-action: pan-x pan-y; }
     cH = nc;
     PB = n;
     PBn = BigInt(n);
+    if (mis) cRoh = true;
+  }
+  // cH only cut or widened, not yet refined at the new width: frames from the band need no more
+  let cRoh = false;
+  function cFein() {
+    cRoh = false;
     if (mis) cH = misRefine(cH[0], cH[1], mis.k, mis.p) || cH;
   }
   // bits for the finest c-pixel of the current view, plus 64 to spare. nurV: only the bits the
   // view centre needs, upwards only. Moving the view asks just that; the c-pixel's bits wait
-  // until a frame is really computed. Copies of a tower need none of them, and outside the
+  // until a frame is really computed. Lookups in the band need none of them, and outside the
   // mirror every octave out wanted two more: each new width cost a Newton run along the whole
   // orbit of the mirror point (993 steps at Tim's), up to 100 ms, five times a second.
   function ensurePB(nurV) {
@@ -421,7 +427,16 @@ uniform int uBlaTop;
 uniform float uLc;
 uniform int uRefLen;
 uniform int uMaxit;
-uniform bool uRoh;
+// the band (der Häck, below): 1 computes it, 2 looks the view up in it where it serves
+uniform int uBand;
+uniform highp sampler2D uBandT;
+uniform float uBandRb;
+uniform vec2 uBandN;
+uniform float uBandLam;
+uniform float uBandTh;
+uniform float uBandP;
+uniform vec4 uBandI;
+uniform vec4 uBandO;
 uniform vec2 uRes;
 uniform int uMode;
 uniform vec2 uU0;
@@ -489,7 +504,50 @@ void main() {
 #endif
   if (uMode == 0) {
     vec2 u = uU0 + p;
-    if (dot(u, u) > uInvS2) {
+    if (uBand == 1) {
+      // texel (i, j) of the band: radius Rb 2^(s lam), s = (i - 1/2) / Nx, angle 2 pi j / Ny
+      float ph = 6.2831853 * (gl_FragCoord.y - 0.5) / uBandN.y;
+      u = uBandRb * exp2(uBandLam * (gl_FragCoord.x - 1.0) / uBandN.x) * vec2(cos(ph), sin(ph));
+    } else if (uBand == 2) {
+      // a pixel at a pixels from cM lies (L - S0) / lam turns of the cycle below the band; L = log2 |c - cM|
+      float a = length(u);
+      bool au = dot(u, u) > uInvS2;
+      vec4 S = au ? uBandO : uBandI;
+      float la = log2(a);
+      // cM itself never escapes, at any depth
+      if (a == 0.0) {
+        o = vec4(vec3(18.0 / 255.0), 1.0);
+        return;
+      }
+      if (a <= uBandRb && (au ? la > S.z : la < S.z)) {
+        float t = S.x + (au ? -la : la) / uBandLam, n = floor(t);
+        float ci = (t - n) * uBandN.x + 0.5;
+        float cj = (atan(u.y, u.x) - S.y - n * uBandTh) / 6.2831853 * uBandN.y;
+        cj -= floor(cj / uBandN.y) * uBandN.y;
+        int i0 = min(int(ci), int(uBandN.x)), j0 = min(int(cj), int(uBandN.y) - 1), j1 = j0 + 1 == int(uBandN.y) ? 0 : j0 + 1;
+        float fi = ci - float(i0), fj = cj - float(j0);
+        vec2 v00 = texelFetch(uBandT, ivec2(i0, j0), 0).rg, v10 = texelFetch(uBandT, ivec2(i0 + 1, j0), 0).rg;
+        vec2 v01 = texelFetch(uBandT, ivec2(i0, j1), 0).rg, v11 = texelFetch(uBandT, ivec2(i0 + 1, j1), 0).rg;
+        // n turns deeper the same point needs n p more iterations than the band's
+        float lim = S.w + n * uBandP;
+        bvec4 es = bvec4(v00.y <= lim, v10.y <= lim, v01.y <= lim, v11.y <= lim);
+        float e;
+        if (all(es)) e = mix(mix(v00.x, v10.x, fi), mix(v01.x, v11.x, fi), fj);
+        else if (!any(es)) e = 1.0e9;
+        else {
+          vec2 v = fj < 0.5 ? (fi < 0.5 ? v00 : v10) : (fi < 0.5 ? v01 : v11);
+          e = v.y <= lim ? v.x : 1.0e9;
+        }
+        float g = 18.0;
+        if (e < 1.0e8) {
+          float t3 = max(0.0, 1.0 - log2(1.0 + a * exp2(e)) / 7.0);
+          g = 6.0 + 240.0 * t3 * t3 * t3;
+        }
+        o = vec4(vec3(g / 255.0), 1.0);
+        return;
+      }
+    }
+    if (uBand != 1 && dot(u, u) > uInvS2) {
       vec2 iu = invConj(u);
       dcm = uKO * iu;
       pcm = uKO * dot(iu, iu);
@@ -636,8 +694,8 @@ void main() {
     }
   }
 #ifdef KIND
-  if (dead) { o = uRoh ? vec4(-1.0) : vec4(vec3(18.0 / 255.0), 1.0); return; }
-  if (weg) { o = uRoh ? vec4(0.0) : vec4(vec3(6.0 / 255.0), 1.0); return; }
+  if (dead) { o = vec4(vec3(18.0 / 255.0), 1.0); return; }
+  if (weg) { o = vec4(vec3(6.0 / 255.0), 1.0); return; }
 #endif
   // the tables hold for |dc| up to 2^uLc
 #ifdef BLA
@@ -735,10 +793,11 @@ void main() {
     float d = az * log(az) / (dm * length(D / dm));
     float t = max(0.0, 1.0 - log2(1.0 + d) / 7.0);
     g = 6.0 + 240.0 * t * t * t;
-    // the tower keeps the distance itself: a copy shown k times smaller is k times nearer
-    if (uRoh) { o = vec4(log2(1.0 + d)); return; }
+    // the band keeps the distance against the one to cM: alike at every turn of the cycle
+    if (uBand == 1) { o = vec4(log2(d) - log2(length(uBandRb * exp2(uBandLam * (gl_FragCoord.x - 1.0) / uBandN.x))), float(n), 0.0, 0.0); return; }
   }
-  o = uRoh ? vec4(-1.0) : vec4(vec3(g / 255.0), 1.0);
+  if (uBand == 1) { o = vec4(0.0, 1.0e9, 0.0, 0.0); return; }
+  o = vec4(vec3(g / 255.0), 1.0);
 }`;
 
   function shader(type, src) {
@@ -760,11 +819,12 @@ void main() {
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
       const u = {};
-      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uRoh", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O", "uMu0", "uMp0", "uS0", "uEb", "uSt", "uBe", "uXs", "uJw", "uUW", "uW0", "uUc", "uRE", "uIEs", "uEsc", "uA0"]) u[n] = gl.getUniformLocation(prog, n);
+      for (const n of ["uRef", "uBlaAB", "uBlaR", "uBlaOff", "uBlaCnt", "uBlaTop", "uLc", "uRefLen", "uMaxit", "uBand", "uBandT", "uBandRb", "uBandN", "uBandLam", "uBandTh", "uBandP", "uBandI", "uBandO", "uRes", "uMode", "uU0", "uInvS2", "uKI", "uEI", "uKO", "uEO", "uH", "uVn", "uEps", "uE", "uA", "uD0I", "uD0O", "uMu0", "uMp0", "uS0", "uEb", "uSt", "uBe", "uXs", "uJw", "uUW", "uW0", "uUc", "uRE", "uIEs", "uEsc", "uA0"]) u[n] = gl.getUniformLocation(prog, n);
       gl.useProgram(prog);
       gl.uniform1i(u.uRef, 0);
       gl.uniform1i(u.uBlaAB, 1);
       gl.uniform1i(u.uBlaR, 2);
+      gl.uniform1i(u.uBandT, 3);
       programme[bla] = { prog, u };
     }
   } catch (e) {
@@ -783,7 +843,7 @@ void main() {
   const BLA_MAX = 28;
 
   // whether the card took a texture is asked once the GPU is through anyway: asked at once,
-  // getError waits for all the GPU work before it, a tower band too (98 ms in the ride)
+  // getError waits for all the GPU work before it, a row of the band too
   let speicherFrage = 0;
   function speicherPruefen() {
     if (speicherFrage && gl.getError() !== gl.NO_ERROR) fail("Grafikspeicher voll: " + speicherFrage + " Werte.");
@@ -804,12 +864,8 @@ void main() {
 
   // A reference: orbit Z_0 = 0, Z_{m+1} = Z_m^2 + c, exact (tools/workers/gespiegeltes-mandelbrot-bahn.js),
   // with its own textures. cx, cy in fixed point at the PB it was made with.
-  // Three slots: the field, the lupe and the tower (der Häck, below), so none throws away another's orbit.
-  const refs = { feld: null, lupe: null, turm: null };
-  let turmRoh = false;
-  // tower frames are built shallow but shown (and checked) at any depth, where the real view runs
-  // many more iterations; with fewer the copy loses the pixels near the boundary (dark specks)
-  const turmMinIt = 8000;
+  // Three slots: the field, the lupe and the band (der Häck, below), so none throws away another's orbit.
+  const refs = { feld: null, lupe: null, band: null };
   function machRef(o, spec, c, exact, pb) {
     return { cx: c[0], cy: c[1], PB: pb, L: o.L, escaped: o.escaped, mode: spec.mode, exact, data: o.data, tex: texture(gl.RG32F, o.data, 2, gl.RG), bla: null };
   }
@@ -1166,15 +1222,18 @@ void main() {
       gl.uniform1f(U.uLc, o.bla.lc);
     }
     gl.uniform1i(U.uRefLen, o.L);
-    gl.uniform1i(U.uRoh, 0);
+    bandUni(0);
     zeichneFlaeche(slot === "feld");
     return true;
   }
 
+  // the iterations a view gets, from its finest c-pixel
+  const itFuer = (lpcMin) => Math.min(LMAX - 2, Math.round(250 + 45 * Math.max(0, -lpcMin)));
   // one pass of the view into the bound framebuffer, W x Hc pixels; false when there is
   // no reference for it yet (the worker is on it)
   function drawView(W, Hc, slot) {
     if (kind) return drawKind(W, Hc, slot);
+    if (cRoh) cFein();
     gl.viewport(0, 0, W, Hc);
     const lsc = ls + Math.log2(cssW / W);   // log2 of w units per pixel
     const hd = Math.hypot(W, Hc) / 2, lhd = Math.log2(hd);
@@ -1182,15 +1241,16 @@ void main() {
     const lw = logadd(lv, lsc + lhd);
     // only the mirrored outside gets finer as |w| grows; without the mirror the c-pixel only
     // grows out there (the start view keeps its iterations, further out they fall back)
-    const lpcMin = lr + lsc - 2 * Math.max(0, spiegelOn ? lw : Math.min(lw, 4));
-    const maxit = Math.min(LMAX - 2, Math.max(turmRoh ? turmMinIt : 0, Math.round(250 + 45 * Math.max(0, -lpcMin))));
+    const B = bandBau;
+    const lpcMin = B ? B.S0 - Math.log2(B.Rb) : lr + lsc - 2 * Math.max(0, spiegelOn ? lw : Math.min(lw, 4));
+    const maxit = B ? B.M : itFuer(lpcMin);
     const exact = lpcMin < -40;
     // orbits are made a bit longer than needed, so zooming keeps them for a while
     const longer = Math.min(LMAX, Math.ceil((maxit * 1.1 + 2900) / 4096) * 4096);
     // the origin, in pixels from the centre; around a Misiurewicz point cM is the reference
     // for everything within 2^16 pixels: its orbit only goes round, any depth costs nothing
     const lu0 = lv - lsc;
-    const mode = lu0 <= lhd || (mis && lu0 <= 16) ? 0 : 1;
+    const mode = B || lu0 <= lhd || (mis && lu0 <= 16) ? 0 : 1;
     const rH = mode ? H(r) : 0n;
     const vcOut = spiegelOn && lv > 0;
     const lrs = lr + lsc;
@@ -1236,7 +1296,15 @@ void main() {
     let lc;
     gl.uniform2f(U.uRes, W, Hc);
     gl.uniform1i(U.uMaxit, maxit);
-    if (mode === 0) {
+    if (B) {
+      lc = B.S0 + B.lam;
+      const [kB, eB] = splitL(B.S0 - Math.log2(B.Rb));
+      gl.uniform1i(U.uMode, 0);
+      gl.uniform2f(U.uU0, 0, 0);
+      gl.uniform1f(U.uInvS2, 3e38);
+      gl.uniform1f(U.uKI, kB);
+      gl.uniform1i(U.uEI, eB);
+    } else if (mode === 0) {
       const u0 = 2 ** lu0;
       // log2 |w| at the pixel centre nearest the origin: zoomed far out the inner disk falls
       // between pixels, and the largest |dc| is that of this pixel on the outer branch
@@ -1289,13 +1357,13 @@ void main() {
       gl.uniform1f(U.uLc, o.bla.lc);
     }
     gl.uniform1i(U.uRefLen, o.L);
-    gl.uniform1i(U.uRoh, slot === "turm" && turmRoh ? 1 : 0);
+    bandUni(B ? 1 : mode === 0 && bandFertig() ? 2 : 0, lr, lsc, maxit);
     zeichneFlaeche(slot === "feld");
     return true;
   }
   let gpuT0 = 0;
   // the one draw of a pass; the passes that messe() counts are timed on the GPU itself where the
-  // browser offers it, the others (tower, magnifier) are not
+  // browser offers it, the others (band, magnifier) are not
   const tqExt = gl.getExtension("EXT_disjoint_timer_query_webgl2");
   let tqOffen = [];
   function tqVerwirf() { for (const q of tqOffen) gl.deleteQuery(q); tqOffen = []; }
@@ -1340,18 +1408,28 @@ void main() {
   // done; a look that came late (the page waited for the screen, up to a frame) says little. Under
   // tempo that wait made every pass look a frame long and held the grain at a quarter.
   // So a late look only moves the cost where both ends of that span agree it lies.
+  // A phone's Chrome (Android, 2026-11-09) says a fence is done only with the next frame, however
+  // little was asked: every pass looked a frame long, the cost six times what it was, and the edge
+  // stayed coarse ("irgendwas übersehen wir MASSIV", Tim). A fence that turns done right at a frame
+  // only says the work was done somewhere since the frame before; done at the first frame, the work
+  // may have been nothing at all. Then the cost is only known to be lower, and is lowered by steps
+  // until the work no longer fits that first frame: the frames themselves are the clock.
   let pxMs = 2e-5;
   function messe(n, dann) {
     const t0 = gpuT0, f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), [W, Hc] = vollW(), qs = tqOffen;
     tqOffen = [];
     gl.flush();
-    let beschaeftigt = t0;
+    let beschaeftigt = t0, laeuft = true;
+    const takte = [];
+    const schlag = () => { takte.push(performance.now()); if (laeuft) requestAnimationFrame(schlag); };
+    requestAnimationFrame(schlag);
     const warte = () => {
       const jetzt = performance.now();
       if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) {
         beschaeftigt = jetzt;
         return void setTimeout(warte, 1);
       }
+      laeuft = false;
       gl.deleteSync(f);
       speicherPruefen();
       let neu = 0;
@@ -1362,8 +1440,15 @@ void main() {
       if (!neu) {
         // waiting for the screen lasts at most a frame or two: a later look means the page itself
         // was held, by a call that waited for this very GPU work (SwiftShader: 27 s at once)
-        const px = Math.max(1, n, W * Hc / 16), lo = Math.max(beschaeftigt, jetzt - 34) - t0, hi = (jetzt - t0) / px;
-        neu = jetzt - beschaeftigt <= 4 ? Math.max(1e-7, (lo / px + hi) / 2) : hi < pxMs ? Math.max(1e-7, hi) : lo / px > pxMs ? lo / px : pxMs;
+        const px = Math.max(1, n, W * Hc / 16), hi = (jetzt - t0) / px, tk = takte.filter((t) => t > t0 && t <= jetzt);
+        let lo = Math.max(beschaeftigt, jetzt - 34) - t0;
+        // done right after a frame began (a frame between the last busy look and now): done somewhere
+        // since the frame before that one, or since t0 if there was none
+        const nach = tk.findIndex((t) => t > beschaeftigt), amTakt = nach >= 0;
+        if (amTakt) lo = nach > 0 ? tk[nach - 1] - t0 : 0;
+        // lowered by steps, never below the cost at which the whole canvas fits the time it took
+        neu = amTakt && !lo ? Math.min(pxMs, Math.max((jetzt - t0) / (W * Hc), Math.min((jetzt - t0) / Math.max(1, n), 0.7 * pxMs)))
+          : jetzt - beschaeftigt <= 4 ? Math.max(1e-7, (lo / px + hi) / 2) : hi < pxMs ? Math.max(1e-7, hi) : lo / px > pxMs ? lo / px : pxMs;
       }
       pxMs = 0.5 * pxMs + 0.5 * neu;
       if (dann) dann();
@@ -1389,17 +1474,18 @@ void main() {
   // no reference yet: the last picture, moved and scaled to where the view went
   // drehen: near c_M the picture repeats itself every turn (λ octaves further, turned by θ about
   // c_M), so whole turns are taken back out: the old picture stays at its size and only turns,
-  // as the tower's copies do, instead of shrinking to a dot or swelling to a blur
+  // as the band's lookups do, instead of shrinking to a dot or swelling to a blur
   function altesBild(drehen) {
     ereignis("altes-bild", { da: !!gezeigt });
     if (!gezeigt) return;
     const d = gezeigt.ls - ls, k = 2 ** d;
     const tx = N(zuPB(gezeigt.vH[0], gezeigt.PB) - vH[0], ls), ty = -N(zuPB(gezeigt.vH[1], gezeigt.PB) - vH[1], ls);
     let tf = `translate(${f32(tx)}px, ${f32(ty)}px) scale(${f32(k)})`;
-    if (drehen && turm && turm.lam > 0) {
-      const n = Math.round(-d / turm.lam), cx = -f32(N(vH[0], ls)), cy = f32(N(vH[1], ls));
-      const a = (DREH[turmSeite] * n * turm.th) % (2 * Math.PI);
-      tf = `translate(${cx}px, ${cy}px) rotate(${f32(a)}rad) scale(${f32(2 ** (n * turm.lam))}) translate(${-cx}px, ${-cy}px) ` + tf;
+    if (drehen && band && band.lam > 0) {
+      const n = Math.round(-d / band.lam), cx = -f32(N(vH[0], ls)), cy = f32(N(vH[1], ls));
+      // on screen y points down: inside a turn deeper turns the other way than outside
+      const a = ((ls < 0 ? -1 : 1) * BAND_DREH * n * band.th) % (2 * Math.PI);
+      tf = `translate(${cx}px, ${cy}px) rotate(${f32(a)}rad) scale(${f32(2 ** (n * band.lam))}) translate(${-cx}px, ${-cy}px) ` + tf;
     }
     bild.style.transform = tf;
   }
@@ -1512,7 +1598,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // phone saw nothing but blocks). Only a shift that lost nothing becomes the next anchor.
   const STREIFEN_MS = 16;
   // how the last frame came about, for ?diag: k scale of the moved anchor (1 whole view drawn
-  // afresh, 0 a tower copy), rand the share computed anew, qr its sharpness
+  // afresh, 0 the band), rand the share computed anew, qr its sharpness
   let rahmenArt = null;
   function umschieben(a, W, Hc) {
     const flaeche = a.rects.reduce((s, t) => s + t[2] * t[3], 0);
@@ -1560,26 +1646,23 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // the whole view at quality q (<= 1), at once
   function grob(q, schieben) {
     const [W, Hc] = leinwand();
-    const kopie = haeck(W, Hc);
-    if (kopie) {
+    if (bandDeckt(W, Hc)) {
+      // past the band: the whole view from it, sharp, at any depth the same cost. Until it is
+      // made the last picture only turns (live frames there grow dearer with every octave).
+      if (!band.fertig) {
+        rahmenArt = { k: -1, rand: 0, qr: gezeigt ? gezeigt.q : 0 };
+        altesBild(true);
+        return false;
+      }
       gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-      zeigeTurm(kopie, W, Hc);
-      gezeichnet(1 / kopie.B.f);
-      rahmenArt = { k: 0, rand: 0, qr: 1 / kopie.B.f, br: kopie.br, n: kopie.n, j: kopie.j, kt: kopie.k, rx: kopie.rx, ry: kopie.ry, ux: kopie.ux, uy: kopie.uy };
+      drawBand(W, Hc);
+      gezeichnet(1);
+      rahmenArt = { k: 0, rand: 0, qr: 1, br: "band" };
+      ankerNeu(W, Hc);
       return true;
     }
-    // under tempo the tower of this zone is on its way: no frame computed meanwhile. Live frames
-    // there grow dearer with every octave, and each one took the time the tower's bands needed,
-    // so on a device without GPU timers the tower never came and the zoom stayed coarse. The last
-    // picture is computed once on the way in and only turned after, until the copies take over.
-    const warten = haeckWartet && tempoV;
-    if (warten && gezeigt && gezeigt === wartBild) {
-      rahmenArt = { k: -1, rand: 0, qr: gezeigt.q };
-      altesBild(true);
-      return false;
-    }
     ensurePB();
-    const alt = schieben && !warten ? plan(W, Hc) : null;
+    const alt = schieben ? plan(W, Hc) : null;
     if (alt) return umschieben(alt, W, Hc);
     rahmenArt = { k: 1, rand: 1, qr: q };
     const w = Math.max(1, Math.round(W * q)), h = Math.max(1, Math.round(Hc * q));
@@ -1597,7 +1680,6 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     messe(w * h);
     gezeichnet(w === W && h === Hc ? 1 : q);
     ankerNeu(W, Hc);
-    if (warten) wartBild = gezeigt;
     return true;
   }
   // the Nachzug: while the view moves, a sharp picture of it grows a few rows per frame off screen
@@ -1663,11 +1745,11 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     tqVerwirf();
     takt(performance.now());
     const ok = grob(q, schieben);
-    if (ok && schieben && rahmenArt && rahmenArt.k !== 0 && !(haeckWartet && tempoV)) nachziehen(bild.width, bild.height);
+    if (ok && schieben && rahmenArt && rahmenArt.k > 0) nachziehen(bild.width, bild.height);
     tqVerwirf();
     {
       const t = performance.now(), [ox, oy] = origin();
-      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy, ls, ok, v: tempoV, px: pxMs });
+      rahmenLog.push({ t, dt: rahmenLog.length ? t - rahmenLog[rahmenLog.length - 1].t : 0, q: gezeigt ? gezeigt.q : 0, ...rahmenArt, ox, oy, ls, ok, v: tempoV, px: pxMs, scharf: ok && !!gezeigt && gezeigt.q >= 1 && gleich() });
       if (rahmenLog.length > 120) rahmenLog.shift();
     }
     lupe.hidden = !(lupeOn && lupeG > 0 && sw > 2 * fitSw());
@@ -1680,15 +1762,20 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // arg ρ and shrunk by |ρ| = 2^lam per turn of the cycle, ρ = Π 2 z_j over the cycle, exact
   // from cH. So pixel u at scale l shows what pixel e^{inθ} u shows at scale l + n lam on the
   // inner side (deeper looks like shallower) and at l - n lam on the outer one (further out
-  // looks like nearer). The tower: one turn of real frames centred on cM, shallow enough to be
-  // cheap; every view past it, at any depth, is a turned and scaled copy of one of them.
-  // Only asymptotically true, so nothing is copied before real frames past the tower agree
-  // with it to a pixel or 2 greys, and real pixels keep checking the copies while they show.
+  // looks like nearer). "an dem Punkt wo es keine darstellbaren Unterschiede mehr gibt,
+  // wiederholt sich doch dann tatsächlich nur noch das Bild" (Tim, 2026-11-09): one turn of it,
+  // the band, computed once; past it every view, at any depth, on either side, is that one turn.
   function rho(cx, cy, k, p) {
     const s1 = PBn - 1n;
-    let zx = 0n, zy = 0n, lam = 0, th = 0;
+    let zx = 0n, zy = 0n, lam = 0, th = 0, dx = 0, dy = 0, ld = 0;
     for (let n = 1; n <= k + p; n++) {
-      if (n > k) {
+      if (n <= k) {
+        // dz/dc along the preperiod, kept as dx + i dy times 2^ld
+        const x = N(zx), y = N(zy), m = 2 ** -ld;
+        [dx, dy] = [2 * (x * dx - y * dy) + m, 2 * (x * dy + y * dx)];
+        const h = Math.hypot(dx, dy);
+        if (h > 1e100 || (h < 1e-100 && h > 0)) { const e = Math.round(Math.log2(h)); dx *= 2 ** -e; dy *= 2 ** -e; ld += e; }
+      } else {
         const x = N(zx), y = N(zy);
         lam += Math.log2(2 * Math.hypot(x, y));
         th += Math.atan2(y, x);
@@ -1697,48 +1784,25 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       zy = ((zx * zy) >> s1) + cy;
       zx = u;
     }
-    return { lam, th: th % (2 * Math.PI) };
+    return { lam, th: th % (2 * Math.PI), ld: ld + Math.log2(Math.hypot(dx, dy)) };
   }
-  // a copy may miss on no more pixels than the real picture misses on against itself moved half
-  // a pixel aside (filaments thinner than a pixel come and go with the grid; measured 0.7-0.9 %
-  // at sh12a), give or take a quarter, plus lone boundary pixels one side's iteration limit
-  // leaves black and the other's lets escape
-  const TURM_SCHWELLE = 0.002, TURM_VERSUCHE = 7;
-  const TURM_FOLGE = ["innenGrob", "innen", "aussenGrob", "aussen"];
-  let turm = null;
-  const TFS = `#version 300 es
-precision highp float;
-uniform sampler2D uT;
-uniform vec2 uRes;
-uniform vec2 uU0;
-uniform vec2 uRot;
-uniform float uSide;
-uniform float uK;
-out vec4 o;
-void main() {
-  vec2 u = uU0 + gl_FragCoord.xy - 0.5 * uRes;
-  vec2 q = vec2(uRot.x * u.x - uRot.y * u.y, uRot.x * u.y + uRot.y * u.x);
-  float e = texture(uT, q / uSide + 0.5).r, g = 18.0;
-  if (e >= 0.0) {
-    float t = max(0.0, 1.0 - log2(1.0 + (exp2(e) - 1.0) / uK) / 7.0);
-    g = 6.0 + 240.0 * t * t * t;
-  }
-  o = vec4(vec3(g / 255.0), 1.0);
-}`;
-  const turmProg = gl.createProgram();
-  gl.attachShader(turmProg, shader(gl.VERTEX_SHADER, VS));
-  gl.attachShader(turmProg, shader(gl.FRAGMENT_SHADER, TFS));
-  gl.bindAttribLocation(turmProg, 0, "p");
-  gl.linkProgram(turmProg);
-  if (!gl.getProgramParameter(turmProg, gl.LINK_STATUS)) fail("Shader-Fehler: " + gl.getProgramInfoLog(turmProg));
-  const TU = {};
-  for (const n of ["uT", "uRes", "uU0", "uRot", "uSide", "uK"]) TU[n] = gl.getUniformLocation(turmProg, n);
-  gl.useProgram(turmProg);
-  gl.uniform1i(TU.uT, 3);
-  // one set for the sample before copying, one for the checks while copies show: real, copy,
-  // and real again half a pixel aside
-  const probeFbo = [rahmen(), rahmen(), rahmen()];
-
+  // the band: the turn of the cycle that begins 2^S0 from cM, as it lies around it, in polar
+  // texels (x: log2 radius, Nx texels to the turn of lam octaves; y: angle, Ny around), each with
+  // the distance against |c - cM| (log2 d/a, alike at every turn) and its iteration count. Made
+  // once per cM, in rows between frames; every view past it at any depth is a lookup.
+  // D0, where the differences end: the turns repeat exactly once c - cM is so small that the
+  // preperiod carries it on linearly, |c - cM| * |dz_k/dc| << 1, measured along the orbit (rho, ld).
+  // The band begins BAND_RAND octaves below that for its farthest texel (Rb pixels out): there the
+  // rule is off by 2^-BAND_RAND of a pixel. Measured (2026-11-09, Tim's point, ld 41): the seam of
+  // the band fits itself turned by theta at S0 -60 to -130, not at -40. Everything shallower is
+  // computed, not copied: only what lies past S0 + lam is taken from the band.
+  const BAND_RB = 1, BAND_RAND = 10, BAND_MS = 6;
+  // iterations at S0: the preperiod and enough to let all but 1/2500 of the texels escape (Tim's
+  // point at S0 -60: 4096 leaves 0.04 % open and builds in half a second)
+  const bandM = (k) => 4096 * Math.ceil((k + 3000) / 4096);
+  // which way theta turns a deeper turn of the cycle, in u (u is c - cM, unflipped)
+  const BAND_DREH = 1;
+  let band = null, bandBau = null;
   const gpuDann = (dann) => {
     const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     gl.flush();
@@ -1750,128 +1814,6 @@ void main() {
     };
     warte();
   };
-  // bits enough for a frame at scale l reaching ext pixels from cM (as ensurePB, only upwards)
-  function turmPB(l, ext) {
-    const lw = l + Math.log2(ext), lpc = Math.log2(Math.max(r, 1e-9)) + l - (spiegelOn ? 2 * Math.max(0, lw) : 0);
-    const need = Math.max(128, Math.ceil((64 + Math.max(0, -lpc, -l)) / 64) * 64);
-    if (need > PB) setPB(need);
-  }
-  // fn with the view put at scale l (w units per device pixel) and centre v (fixed point at
-  // PB vb), W x Hc device pixels; the real view put back after
-  function alsAnsicht(l, v, vb, W, Hc, fn) {
-    const keep = { ls, sw, lv, vnx, vny, vH, cssW, cssH };
-    cssW = W;
-    cssH = Hc;
-    setS(l);
-    setV(zuPB(v[0], vb), zuPB(v[1], vb));
-    try {
-      return fn();
-    } finally {
-      ({ ls, sw, lv, vnx, vny, vH, cssW, cssH } = keep);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-    }
-  }
-  // real passes into fb, one rectangle [x, y, w, h] per wait for the GPU, so the page stays
-  // free meanwhile; dann() when through, never once weg() says the result is not wanted
-  // In the ride a band starts at RITT_MS of the view's pixel cost, but a tower pixel deeper down
-  // costs anything from a fifth to ten times that. So a band during which a frame came late (two
-  // vsyncs or more) halves the next, and one cut to size with the frames calm lets it grow by a
-  // quarter, up to twice the start (a whole small rectangle says nothing about more).
-  const RITT_MS = 4;
-  let rittPx = 0, rittPB = 0;
-  function rittBand(seit, px) {
-    const voll = RITT_MS / pxMs, dauer = performance.now() - seit;
-    let m = 0;
-    for (let k = rahmenLog.length - 1; k >= 0 && rahmenLog[k].t > seit; k--) m = Math.max(m, rahmenLog[k].dt);
-    // a band that outlasted several frames has told its true price: cut the next to a third of a frame
-    if (m > 40) rittPx = Math.max(64, Math.min(rittPx / 2, px / 2, dauer > 60 ? px * 6 / dauer : Infinity));
-    else if (m && m < 20 && px > 0.8 * rittPx) rittPx = Math.min(rittPx * 1.25, 2 * voll);
-  }
-  function verdeckt(fb, W, Hc, an, rects, weg, dann) {
-    // eig: what a pixel of this very picture cost the GPU, from the band before (deep layers cost
-    // far more than the view pxMs was measured on: a band cut by pxMs ran 130 ms at rest and held
-    // the start of the ride). In the ride a band waits for a whole frame, that says nothing.
-    const offen = rects.map((rc) => rc.slice());
-    let eig = 0, seit = 0, px = 0;
-    const naechstes = () => {
-      if (weg()) return;
-      if (seit) eig = (performance.now() - seit) / px;
-      rittPx = rittPx ? Math.min(rittPx, 2 * RITT_MS / pxMs) : RITT_MS / pxMs;
-      if (seit && tempoV) rittBand(seit, px);
-      if (!offen.length) return dann();
-      // more bits make every pixel dearer than pxMs knows yet: start that band small again
-      turmPB(an.l, an.ext);
-      if (tempoV && rittPB && PB > rittPB) rittPx = Math.min(rittPx, RITT_MS / pxMs / 4);
-      rittPB = PB;
-      // cut from the top a band that fits the moment: small while the view rides, and the first
-      // one, before its cost is known (never under eight rows: narrower pieces each wait a frame)
-      const [x, y0, w, h0] = offen.shift();
-      const soll = tempoV ? rittPx : (eig ? 40 : 4) / Math.max(pxMs, eig);
-      const h = Math.min(h0, Math.max(8, Math.round(soll / w))), y = y0 + h0 - h;
-      if (h < h0) offen.unshift([x, y0, w, h0 - h]);
-      seit = performance.now();
-      px = w * h;
-      alsAnsicht(an.l, an.v, an.vb, W, Hc, () => {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-        gl.enable(gl.SCISSOR_TEST);
-        gl.scissor(x, y, w, h);
-        turmRoh = !!an.roh;
-        const ok = drawView(W, Hc, "turm");
-        turmRoh = false;
-        gl.disable(gl.SCISSOR_TEST);
-        if (!ok) throw new Error("Turm ohne Bahn");
-      });
-      gpuDann(naechstes);
-    };
-    naechstes();
-  }
-  // a whole frame in bands of about 40 ms: a band is GPU work the frame after it waits for.
-  // verdeckt cuts each band again when it comes to it, small while the view rides.
-  function baender(W, Hc) {
-    const h = Math.max(8, Math.round(40 / (pxMs * W))), out = [];
-    for (let y = Hc; y > 0; y -= h) out.push([0, Math.max(0, y - h), W, Math.min(h, y)]);
-    return out;
-  }
-  // the rows a tower's sample checks: 32 of every 128, top to bottom. The real frames of the
-  // sample were four fifths of a tower's work (two whole frames twice, against one picture);
-  // a quarter of the rows, spread over every distance from cM, judges the copy as well
-  function stichprobe(W, Hc) {
-    const out = [];
-    for (let y = 0; y < Hc; y += 128) out.push([0, y, W, Math.min(32, Hc - y)]);
-    return out.filter((rc) => rc[3] >= 3);
-  }
-  // the copy for scale lsc and origin u (device pixels from the centre): which frame, turned
-  // and scaled how; null before the tower's first turn or beyond its edge
-  function turmPlan(B, lsc, ux, uy, ext, g = 1) {
-    const { lam, th } = turm;
-    const m = B.innen ? (B.A - lsc) / lam : (lsc - B.A) / lam;
-    if (!(m >= 0)) return null;
-    let n = Math.floor(m), s = B.innen ? lsc + n * lam : lsc - n * lam, j;
-    if (B.innen) {
-      j = Math.max(0, Math.ceil((B.A - s) / B.D - 1e-9));
-      if (j >= B.J) { j = 0; n++; s += lam; }
-    } else {
-      j = Math.min(B.J - 1, Math.max(0, Math.floor((s - B.A) / B.D + 1e-9)));
-    }
-    const k = 2 ** (s - B.l[j]) * g / B.f, a = (n * th) % (2 * Math.PI);
-    if (!(ext * k < B.side / 2 - 1)) return null;
-    return { B, j, n, k, tex: B.tex[j], rx: k * Math.cos(a), ry: k * Math.sin(a), ux, uy };
-  }
-  function zeigeTurm(plan, W, Hc) {
-    gl.viewport(0, 0, W, Hc);
-    gl.useProgram(turmProg);
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, plan.tex);
-    gl.uniform2f(TU.uRes, W, Hc);
-    gl.uniform2f(TU.uU0, plan.ux, plan.uy);
-    gl.uniform2f(TU.uRot, plan.rx, plan.ry);
-    gl.uniform1f(TU.uSide, plan.B.side);
-    gl.uniform1f(TU.uK, plan.k);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }
-  // a value matches when it lies within the other picture's 3x3 neighbourhood widened by 2
-  // greys: off by at most a pixel or by at most 2 greys. Both ways round.
-  // (rows y0 to y1, so the comparison can go in slices that leave the frames alone)
   function abweichung(a, b, w, h, st, y0 = 1, y1 = h - 1) {
     for (let y = y0; y < y1; y++)
       for (let x = 1; x < w - 1; x++) {
@@ -1895,280 +1837,145 @@ void main() {
     return st;
   }
   const neuSt = () => ({ n: 0, schlecht: 0, max: 0, summe: 0 });
-  const urteil = (st, basis) => Object.assign(st, {
-    anteil: st.schlecht / Math.max(1, st.n),
-    basis: basis.schlecht / Math.max(1, basis.n),
-    mittel: st.summe / Math.max(1, st.n),
-    ok: st.schlecht <= TURM_SCHWELLE * st.n + 1.25 * basis.schlecht,
-  });
-  // read back through pixel buffers, after a fence: a plain readPixels would stall the GPU
-  function lies(paare, dann) {
-    const bufs = paare.map(([fb, [x, y, w, h]]) => {
-      const b = gl.createBuffer();
-      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b);
-      gl.bufferData(gl.PIXEL_PACK_BUFFER, w * h * 4, gl.STREAM_READ);
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
-      gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, 0);
-      return [b, w * h * 4];
-    });
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, bildFbo.fb);
-    // a buffer at a time, yielding after about 4 ms, so no frame waits for the whole picture
-    const px = [];
-    const hole = () => {
-      const t = performance.now();
-      while (px.length < bufs.length && performance.now() - t < 4) {
-        const [b, n] = bufs[px.length], p = new Uint8Array(n);
-        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b);
-        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, p);
-        gl.deleteBuffer(b);
-        px.push(p);
-      }
-      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-      if (px.length < bufs.length) return void setTimeout(hole, 0);
-      dann(px);
-    };
-    gpuDann(hole);
-  }
-  // real pixels at view (l, v) in rects against the copy there; dann(statistics)
-  function vergleiche(B, an, W, Hc, rects, [pruefFbo, kopieFbo, nebenFbo], weg, dann) {
-    pruefFbo.an(W, Hc);
-    nebenFbo.an(W, Hc);
-    kopieFbo.an(W, Hc);
-    const g = an.g || 1, plan = turmPlan(B, an.l - Math.log2(g), f32(N(an.v[0], an.l + an.vb - PB)), f32(N(an.v[1], an.l + an.vb - PB)), an.ext, g);
-    if (!plan) throw new Error("Turm-Vergleich ausserhalb des Turms");
-    zeigeTurm(plan, W, Hc);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-    // a third to a half pixel along both axes
-    const e = BigInt(Math.max(0, Math.floor(an.l + an.vb - 1))), neben = { ...an, v: [an.v[0] + (1n << e), an.v[1] + (1n << e)] };
-    verdeckt(pruefFbo.fb, W, Hc, an, rects, weg, () => verdeckt(nebenFbo.fb, W, Hc, neben, rects, weg, () => {
-      lies(rects.flatMap((rc) => [[kopieFbo.fb, rc], [pruefFbo.fb, rc], [nebenFbo.fb, rc]]), (px) => {
-        if (weg()) return;
-        const st = neuSt(), basis = neuSt(), arbeit = [];
-        rects.forEach((rc, i) => arbeit.push([px[3 * i], px[3 * i + 1], rc[2], rc[3], st], [px[3 * i + 2], px[3 * i + 1], rc[2], rc[3], basis]));
-        // sixteen rows at a time, about 4 ms per task: a whole sharp frame compared at once held
-        // the page for longer than a frame
-        let k = 0, y = 1;
-        const stueck = () => {
-          if (weg()) return;
-          const t = performance.now();
-          while (k < arbeit.length && performance.now() - t < 4) {
-            const [a, b, w, h, s] = arbeit[k], y1 = Math.min(h - 1, y + 16);
-            abweichung(a, b, w, h, s, y, y1);
-            if (y1 >= h - 1) { k++; y = 1; } else y = y1;
-          }
-          if (k < arbeit.length) return void setTimeout(stueck, 0);
-          dann(urteil(st, basis));
-        };
-        stueck();
-      });
-    }));
-  }
-
-  function turmFrei(B) {
-    if (!B || !B.tex) return;
-    for (const t of B.tex) gl.deleteTexture(t);
-    for (const f of B.fb) gl.deleteFramebuffer(f);
-    B.tex = B.fb = null;
-  }
-  function turmWeg() {
-    if (!turm) return;
-    for (const key of TURM_FOLGE) turmFrei(turm[key]);
-    turm = null;
-  }
-  // the same mirror point, give or take the bits a change of PB refines
   function gleichC(a, pa, b, pb) {
     const m = Math.min(pa, pb) - 16, d = (a >> BigInt(pa - m)) - (b >> BigInt(pb - m));
     return d >= -1n && d <= 1n;
   }
-  const turmGilt = () => mis && turm.k === mis.k && turm.p === mis.p && turm.r === r && gleichC(turm.cx, turm.PB, cH[0], PB) && gleichC(turm.cy, turm.PB, cH[1], PB);
-
-  // builds one tower, attempt t: the frames lie 8 bits further past the circle per attempt.
-  // br names side and grain: "innen", "aussen" sharp (a texel per device pixel), "...Grob" with
-  // f device pixels per texel, f² times cheaper, shown only while things move
-  function baue(br, t, R) {
-    const T = turm, innen = br.startsWith("innen"), f = br.endsWith("Grob") ? turmF() : 1;
-    const J = Math.max(1, Math.ceil(T.lam)), D = T.lam / J;
-    const voll = 2 * Math.ceil(R * 2 ** D) + 4, side = f === 1 ? voll : 2 * Math.ceil(R / f * 2 ** D) + 4;
-    if (t >= TURM_VERSUCHE || side > Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE))) {
-      T[br] = { ok: "nein", t, R };
-      return;
-    }
-    // inner: the frame's corners within 1/8 of the circle; outer: its middle pixels 8 times outside
-    // (both grains alike, so they copy the same stretch)
-    const A = innen ? -Math.log2(voll * Math.SQRT1_2) - 3 - 8 * t : Math.log2(8 / Math.SQRT1_2) + 8 * t;
-    const B = { innen, f, t, A, J, D, side, R, l: [], tex: [], fb: [], ok: null, pruef: [] };
-    T[br] = B;
-    T.bau = br;
-    ereignis("turm-bau", { br, t, side, A, lam: T.lam, th: T.th });
-    const weg = () => turm !== T || T[br] !== B;
-    const ende = (ok) => {
-      T.bau = false;
-      ereignis(ok ? "turm-fertig" : "turm-fehl", { br, t, pruef: B.pruef.map((p) => ({ l: p.l, anteil: p.anteil, basis: p.basis, max: p.max })) });
-      // a tower that passed is done: from here on it is only turned and scaled, never checked
-      // again nor rebuilt (one picture computed, then only turned). Checking it again while it
-      // showed cost a whole real frame every few seconds, the regular jolt in the ride. The next
-      // tower follows at once, the sharp one right after its coarse one.
-      if (ok) {
-        B.ok = true;
-        if (br.startsWith(turmSeite)) request(false);
-        bauWeiter();
-        return;
-      }
-      turmFrei(B);
-      baue(br, t + 1, R);
-    };
-    const ebene = (j) => {
-      if (j === J) return pruefe(0);
-      const l = innen ? A - j * D : A + j * D;
-      const tex = gl.createTexture(), fb = gl.createFramebuffer();
-      gl.activeTexture(gl.TEXTURE3);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R16F, side, side);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-      B.l.push(l);
-      B.tex.push(tex);
-      B.fb.push(fb);
-      // asked only once the GPU is through: both questions wait for all work queued before
-      // them, mid-ride that held the frame they were asked in (14-17 ms, more with a band queued)
-      gpuDann(() => {
-        if (weg()) return;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-        const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
-        if (st !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
-          console.error("Selbstähnlichkeit: kein Grafikspeicher für " + side + "² Pixel oder R16F nicht als Ziel erlaubt");
-          ereignis("turm-kein-speicher", { br, side });
-          T.bau = false;
-          turmFrei(B);
-          T[br] = { ok: "nein", t, R };
-          return;
-        }
-        verdeckt(fb, side, side, { l: l + Math.log2(f), v: [0n, 0n], vb: PB, ext: side * Math.SQRT1_2, roh: true }, baender(side, side), weg, () => ebene(j + 1));
-      });
-    };
-    // the sample before anything is copied: real frames one turn past the tower (with a fraction,
-    // so the step between frames is tested too) and about 16 bits past it
-    const proben = [1.37, Math.ceil(16 / T.lam) + 0.37];
-    const pruefe = (i) => {
-      if (i === proben.length) return ende(true);
-      const [W0, H0] = vollW(), W = Math.ceil(W0 / f), Hc = Math.ceil(H0 / f);
-      const l = innen ? A - proben[i] * T.lam : A + proben[i] * T.lam;
-      vergleiche(B, { l: l + Math.log2(f), g: f, v: [0n, 0n], vb: PB, ext: Math.hypot(W, Hc) / 2 }, W, Hc, stichprobe(W, Hc), probeFbo, weg, (st) => {
-        B.pruef.push(Object.assign(st, { l }));
-        T.protokoll.push({ br, t, A, l, ok: st.ok, anteil: st.anteil, basis: st.basis, max: st.max, mittel: st.mittel });
-        if (!st.ok) return ende(false);
-        pruefe(i + 1);
-      });
-    };
-    ebene(0);
+  const gleichBand = (B) => !!B && !kind && !!mis && B.k === mis.k && B.p === mis.p
+    && gleichC(B.cx, B.PB, cH[0], PB) && gleichC(B.cy, B.PB, cH[1], PB);
+  function bandFertig() {
+    if (!band || !band.fertig || !gleichBand(band)) return false;
+    const [W, Hc] = vollW();
+    return band.W === W && band.Hc === Hc;
   }
-
-  // the side the view was last on: built first, and asked to redraw when its tower is ready
-  let turmSeite = "innen";
-  // haeck found the view where a tower serves, but that tower is still being built
-  let haeckWartet = false;
-  // the one picture computed in that zone while waiting, the one that is turned until then
-  let wartBild = null;
-  // which way θ turns on screen: outside one way, inside the other (measured against the copies)
-  const DREH = { aussen: 1, innen: -1 };
-  // device pixels per texel of a coarse tower: about 2 css pixels
-  const turmF = () => Math.max(2, Math.round(2 * dpr));
-  function neuTurm() {
-    if (turm && !turmGilt()) turmWeg();
-    if (turm) return;
+  // the band's uniforms: art 0 off, 1 being built (into bandBau), 2 looked up for a view at lr, lsc
+  function bandUni(art, lr, lsc, maxit) {
+    gl.uniform1i(U.uBand, art);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, art === 2 ? band.tex : leer);
+    if (!art) return;
+    const B = art === 1 ? bandBau : band;
+    gl.uniform1f(U.uBandRb, B.Rb);
+    gl.uniform2f(U.uBandN, B.Nx, B.Ny);
+    gl.uniform1f(U.uBandLam, B.lam);
+    gl.uniform1f(U.uBandTh, BAND_DREH * B.th);
+    gl.uniform1f(U.uBandP, B.p);
+    if (art === 1) return;
+    // a pixel a pixels from cM lies at log2 |c - cM| = L0 +- log2 a: T turns past S0 at a = 1
+    const seite = (L0, grenze) => {
+      const T = (L0 - B.S0) / B.lam, n = Math.floor(T), tau = 2 * Math.PI;
+      return [T - n, ((n * BAND_DREH * B.th) % tau + tau) % tau, grenze, maxit + n * B.p];
+    };
+    gl.uniform4f(U.uBandI, ...seite(lr + lsc, B.S0 + B.lam - (lr + lsc)));
+    gl.uniform4f(U.uBandO, ...seite(lr - lsc, lr - lsc - B.S0 - B.lam));
+  }
+  function bandWeg() {
+    if (!band) return;
+    gl.deleteFramebuffer(band.fb);
+    gl.deleteTexture(band.tex);
+    band = null;
+  }
+  // the band for this cM, if it is not there yet: begun now, built between frames
+  function bandStart() {
+    if (kind || !mis) return;
+    if (cRoh) cFein();
+    const [W, Hc] = vollW();
+    if (band && gleichBand(band) && band.W === W && band.Hc === Hc) return;
+    bandWeg();
     const q = rho(cH[0], cH[1], mis.k, mis.p);
-    turm = { cx: cH[0], cy: cH[1], PB, r, k: mis.k, p: mis.p, lam: q.lam, th: q.th, bau: false, protokoll: [] };
-    for (const key of TURM_FOLGE) turm[key] = null;
+    const Rb = Math.min(BAND_RB * Math.hypot(W, Hc) / 2, (gl.getParameter(gl.MAX_TEXTURE_SIZE) - 1) / (2 * Math.PI));
+    const Nx = Math.ceil(q.lam * Rb * Math.LN2), Ny = Math.ceil(2 * Math.PI * Rb);
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, Nx + 2, Ny);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.bindTexture(gl.TEXTURE_2D, leer);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    if (st !== gl.FRAMEBUFFER_COMPLETE) throw new Error("band: framebuffer " + st);
+    band = { k: mis.k, p: mis.p, cx: cH[0], cy: cH[1], PB, W, Hc, lam: q.lam, th: q.th, Nx, Ny, Rb, S0: Math.floor(-q.ld - Math.log2(Rb) - BAND_RAND), M: bandM(mis.k), ld: q.ld, tex, fb, y: 0, h: 8, fertig: false, t0: performance.now() };
+    ereignis("band-start", { Nx, Ny, lam: q.lam, th: q.th });
+    bandWeiter(band);
   }
-  // a sharp tower starts where its coarse one passed: the anchors that failed there fail here too.
-  // Where the coarse one had to go deeper, the sharp one goes one step deeper still: its pixels see
-  // the finer threads the coarse one could not, and its first attempt failed on both sides
-  // (c=0.363347,0.310832: outside coarse 5, sharp only 6; inside coarse 6, sharp not 6), a whole
-  // sharp picture for nothing. Deeper is never wrong, the likeness only grows towards cM.
-  function ersterVersuch(key) {
-    const G = key.endsWith("Grob") ? null : turm[key + "Grob"];
-    return G && G.ok === true ? Math.min(TURM_VERSUCHE - 1, G.t + (G.t > 0 ? 1 : 0)) : 0;
+  // a few rows of the band, about BAND_MS of the GPU's time, then the next ones after it is done
+  function bandWeiter(B) {
+    if (band !== B) return;
+    const h = Math.min(B.h, B.Ny - B.y), t0 = performance.now();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, B.fb);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, B.y, B.Nx + 2, h);
+    bandBau = B;
+    let ok;
+    try {
+      ok = drawView(B.Nx + 2, B.Ny, "band");
+    } finally {
+      bandBau = null;
+      gl.disable(gl.SCISSOR_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    }
+    if (!ok) throw new Error("band: keine Referenz");
+    gpuDann(() => {
+      if (band !== B) return;
+      const dt = Math.max(0.5, performance.now() - t0);
+      B.y += h;
+      // frames drawn meanwhile hold the fence back (it reports once they are through), so dt is then
+      // their time, not the band's, and kept h at one row while zooming: their own pace says what fits
+      const zuege = rahmenLog.filter((f) => f.t > t0 && f.dt < 100).map((f) => f.dt);
+      B.h = !zuege.length ? Math.max(1, Math.min(2 * h, Math.round(h * BAND_MS / dt)))
+        : Math.max(...zuege) > 18 ? Math.max(1, h >> 1) : h + Math.max(1, h >> 1);
+      if (B.y < B.Ny) return void setTimeout(() => bandWeiter(B), 0);
+      B.fertig = true;
+      ereignis("band-fertig", { ms: Math.round(performance.now() - B.t0) });
+      request(false);
+    });
   }
-  // the copy for the current view, if a tower serves it: the sharp one, else the coarse one.
-  // Starts a tower where one would serve, the coarse one first.
-  function haeck(W, Hc) {
-    haeckWartet = false;
-    if (!mis || kind >= 2) return null;
-    if (turm && !turmGilt()) turmWeg();
-    const lsc = ls + Math.log2(cssW / W), hd = Math.hypot(W, Hc) / 2;
-    const ux = f32(N(vH[0], lsc)), uy = f32(N(vH[1], lsc)), ext = Math.hypot(ux, uy) + hd;
-    // far from cM the frames would have to be huge: the plain way is as good there
-    if (!(ext < 4 * hd)) return null;
-    const br = lsc + Math.log2(ext) < 0 ? "innen" : spiegelOn && lsc + Math.log2(Math.hypot(naechst(ux, W), naechst(uy, Hc))) > 0 ? "aussen" : null;
-    if (!br) return null;
-    turmSeite = br;
-    neuTurm();
-    for (const key of [br, br + "Grob"]) {
-      const B = turm[key];
-      if (!B || B.ok !== true) continue;
-      const plan = turmPlan(B, lsc, ux, uy, ext);
-      if (!plan) continue;
-      // the coarse copy serves only until the sharp one is there: its build starts now, during
-      // the ride, not when the ride ends (it never ended, so the zoom stayed coarse)
-      const S = turm[br];
-      if (key !== br && !turm.bau && !(S && (S.ok === "nein" || (S.ok === true && S.R >= ext)))) {
-        if (S) turmFrei(S);
-        baue(br, S ? S.t : ersterVersuch(br), Math.max(1.25 * hd, ext));
-      }
-      return Object.assign(plan, { br: key, lsc, ext });
-    }
-    // a build for the other side yields: on a slow device it would hold this side's copies back
-    // for seconds while the view races on in coarse whole frames. Its attempt count is kept.
-    if (turm.bau && !turm.bau.startsWith(br)) {
-      const alt = turm.bau, A = turm[alt];
-      turmFrei(A);
-      turm[alt] = { ok: null, t: A.t, R: A.R };
-      turm.bau = false;
-      ereignis("turm-abbruch", { br: alt, fuer: br });
-    }
-    if (turm.bau) {
-      haeckWartet = true;
-      return null;
-    }
-    for (const key of [br + "Grob", br]) {
-      const B = turm[key];
-      // ready (this view lies before its first turn) or given up on
-      if (B && (B.ok === "nein" || (B.ok === true && B.R >= ext))) continue;
-      if (B) turmFrei(B);
-      baue(key, B ? B.t : ersterVersuch(key), Math.max(1.25 * hd, ext));
-      haeckWartet = !!turm.bau;
-      return null;
-    }
-    return null;
+  // true when every pixel of a W x Hc view lies past the band's turn (its picture is all lookup)
+  // why the last view was or was not drawn from the band, for ?diag
+  let bandGrund = "-";
+  function bandDeckt(W, Hc) {
+    const B = band;
+    if (!gleichBand(B)) { bandGrund = !B ? (kind ? "no band (kind " + kind + ")" : !mis ? "no band, no orbit yet" : "no band yet") : "band of another c/orbit"; return false; }
+    const lsc = ls + Math.log2(cssW / W);
+    if (lv - lsc > 16) { bandGrund = "view far from M point"; return false; }
+    const ux = N(vH[0], lsc), uy = N(vH[1], lsc), ex = W / 2 - 0.5, ey = Hc / 2 - 0.5;
+    const amax = Math.max(Math.hypot(Math.abs(ux) + ex, Math.abs(uy) + ey));
+    const amin = Math.hypot(naechst(ux, W), naechst(uy, Hc));
+    if (amax > B.Rb) { bandGrund = "view wider than band (" + Math.round(amax) + " > " + Math.round(B.Rb) + ")"; return false; }
+    const lr = Math.log2(Math.max(r, 1e-9)), s2 = spiegelOn ? -lsc : Infinity, g = 1e-3;
+    if (Math.log2(amin) <= s2 && !(Math.min(Math.log2(amax), s2) < B.S0 + B.lam - (lr + lsc) - g)) { bandGrund = "inside not yet past D0 (live)"; return false; }
+    if (Math.log2(amax) > s2 && !(Math.max(Math.log2(amin), s2) > lr - lsc - B.S0 - B.lam + g)) { bandGrund = "outside not yet past D0 (live)"; return false; }
+    bandGrund = B.fertig ? "band" : "band still building";
+    return true;
   }
-  // while nothing moves: the towers not yet there, the side last looked at first, so zooming
-  // either way finds its copies waiting
-  function bauWeiter() {
-    if (!mis || kind >= 2) return;
-    neuTurm();
-    if (turm.bau) return;
-    const o = turmSeite === "innen" ? "aussen" : "innen";
-    for (const key of [turmSeite + "Grob", turmSeite, o + "Grob", o]) {
-      if (!spiegelOn && key.startsWith("aussen")) continue;
-      const B = turm[key];
-      if (B && (B.ok === true || B.ok === "nein")) continue;
-      if (B) turmFrei(B);
-      const [W, Hc] = vollW();
-      baue(key, B ? B.t : ersterVersuch(key), 1.25 * Math.hypot(W, Hc) / 2);
-      return;
+  // a view all past the band: no orbit, no iteration, one lookup per pixel
+  function drawBand(W, Hc) {
+    const P = programme[false];
+    gl.useProgram(P.prog);
+    U = P.u;
+    gl.viewport(0, 0, W, Hc);
+    const lsc = ls + Math.log2(cssW / W), lr = Math.log2(Math.max(r, 1e-9));
+    const lw = logadd(lv, lsc + Math.log2(Math.hypot(W, Hc) / 2));
+    const maxit = itFuer(lr + lsc - 2 * Math.max(0, spiegelOn ? lw : Math.min(lw, 4)));
+    gl.uniform2f(U.uRes, W, Hc);
+    gl.uniform1i(U.uMaxit, maxit);
+    gl.uniform1i(U.uMode, 0);
+    gl.uniform2f(U.uU0, f32(N(vH[0], lsc)), f32(N(vH[1], lsc)));
+    gl.uniform1f(U.uInvS2, spiegelOn ? f32(2 ** (-2 * lsc)) : 3e38);
+    for (let i = 0; i < 3; i++) {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, leer);
     }
+    bandUni(2, lr, lsc, maxit);
+    zeichneFlaeche(false);
   }
   // ---- tempo: the interface for the speed slider (#416) ----
   // tempo(v) zooms on and on at v octaves per second (v < 0 in, v > 0 out, no bound either way),
   // tempo(0) stops. The marker stays put while it is on screen, else the middle. Every frame is drawn at
-  // once: where the tower serves, a turned copy, the same cost at any depth.
+  // once: past the band's turn, a lookup, the same cost at any depth.
   let tempoV = 0, tempoRaf = 0, tempoT = 0;
   // The progress of a frame is the time that really passed, as in a game: the clock of the frame
   // (rAF) itself, unrounded, so the zoom is a straight line in time and the marker never jerks.
@@ -2179,10 +1986,8 @@ void main() {
   function tempo(v) {
     if (!Number.isFinite(v)) throw new Error("tempo(" + v + "): keine Zahl");
     tempoV = v;
-    // the side the zoom heads for is built first
-    if (v) turmSeite = v > 0 && spiegelOn ? "aussen" : "innen";
-    // and started now, while the frames are still cheap, not first when the view gets there
-    if (v) bauWeiter();
+    // the band is begun now, while the frames are still cheap, not first when the view gets there
+    if (v) bandStart();
     if (!v || tempoRaf) return;
     tempoT = performance.now();
     const step = (t) => {
@@ -2423,7 +2228,7 @@ void main() {
   function scharf() {
     const nr = ++lauf;
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    const fertig = () => { saveUrl(); meldeOrt(); if (lupeOn && lupeG > 0) drawLupe(true); bauWeiter(); };
+    const fertig = () => { saveUrl(); meldeOrt(); if (lupeOn && lupeG > 0) drawLupe(true); bandStart(); };
     if (!gleich() && !draw(qGrob())) return;
     // a slow frame under tempo lets this run between two frames: the Nachzug goes on then
     if (!tempoV) nach = null;
@@ -3388,17 +3193,12 @@ void main() {
         `q  ${balken(L.map((f) => f.q), 1)}`,
         `dt ${balken(L.map((f) => f.dt), 50)}`,
         `mk ${balken(schritt, 8)}`,
-        // the way each frame came about: t tower copy, s moved anchor, n drawn whole, a old picture stretched
-        `way ${L.map((f) => (!f.ok ? "a" : f.k === 0 ? "t" : f.k === 1 ? "n" : "s")).join("")}`,
+        // the way each frame came about: b from the band, s moved anchor, n drawn whole, a old picture stretched
+        `way ${L.map((f) => (!f.ok ? "a" : f.br === "band" ? "b" : f.k === 1 ? "n" : "s")).join("")}`,
         `last dt ${z.dt.toFixed(1)} q ${z.q.toFixed(2)} k ${z.k == null ? "-" : z.k.toFixed(3)} edge ${z.rand == null ? "-" : (100 * z.rand).toFixed(0) + "%"} @${z.qr == null ? "-" : z.qr.toFixed(2)} mk ${z.ox.toFixed(1)},${z.oy.toFixed(1)} nach ${nach ? (100 - 100 * nach.y / nach.Hc).toFixed(0) + "%" : "-"}`,
       ];
     };
-    const turmZeile = () => {
-      if (!turm) return "tower -";
-      const st = (k) => { const B = turm[k]; return B ? (B.ok === true ? "ok" : B.ok === null ? "…" : String(B.ok)) + "/" + B.t : "-"; };
-      const kl = turm.protokoll[turm.protokoll.length - 1];
-      return `tower ${TURM_FOLGE.map((k) => k + " " + st(k)).join(" ")} | check ${kl ? (kl.ok ? "ok " : "MISS ") + (100 * kl.anteil).toFixed(2) + "% max " + kl.max : "-"}`;
-    };
+    const bandZeile = () => (band ? `band ${band.Nx + 2}x${band.Ny} ${band.fertig ? "ok" : (100 * band.y / band.Ny).toFixed(0) + "%"} lam ${band.lam.toFixed(5)} th ${band.th.toFixed(5)}` : "band -");
     const modus = () => (dragging ? (dragging.lupe ? "lupe" : "punkt") : pts.size >= 2 ? "pinch" : pts.size === 1 ? "pan" : lupeZug ? "lupe" : "-");
     const zeilen = () => {
       const vv = window.visualViewport;
@@ -3410,24 +3210,56 @@ void main() {
         `resize #${resizeN} ${resizeN ? ((performance.now() - resizeT) / 1000).toFixed(1) + "s ago" : "-"}`,
         `ls ${ls.toFixed(4)} sw ${sw} c ${cMx.toFixed(6)},${cMy.toFixed(6)}`,
         `v ${N(vH[0])},${N(vH[1])}`,
-        `tempo ${tempoV} waits ${haeckWartet} cost ${pxMs.toExponential(2)} ms/px gpu timer ${tqExt ? "yes" : "no"}`,
+        `tempo ${tempoV} cost ${pxMs.toExponential(2)} ms/px gpu timer ${tqExt ? "yes" : "no"}`,
         ...rahmenZeilen(),
-        turmZeile(),
+        bandZeile(),
+      ].join("\n");
+    };
+    // read by tools/aufnahme.js (recording trace, and sent along on unlocked pages)
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    // the big lines, readable on a phone when filmed: how deep, how this frame came about, how
+    // long it took, why the band serves or not, and the device
+    const art = (f) => {
+      if (!f) return "-";
+      if (!f.ok) return "old picture stretched";
+      if (f.br === "band") return "BAND (no iterations)";
+      if (f.k === -1) return "WAIT for band: last picture turned";
+      if (f.k === 1) return f.qr >= 1 ? "LIVE whole, sharp" : "LIVE whole, q " + f.qr.toFixed(2);
+      return "LIVE shifted, edge " + (100 * f.rand).toFixed(0) + "% q " + (f.qr == null ? "-" : f.qr.toFixed(2));
+    };
+    const gross = () => {
+      const L = rahmenLog.slice(-60), z = L[L.length - 1];
+      const dts = L.slice(1).map((f) => f.dt);
+      const tief = Math.log2(fitSw()) - ls;
+      return [
+        `depth ${tief.toFixed(2)} oct (x10^${(tief * Math.log10(2)).toFixed(1)})  tempo ${tempoV}`,
+        `frame ${art(z)}`,
+        `q ${gezeigt ? gezeigt.q.toFixed(2) : "-"}  dt ${z ? z.dt.toFixed(1) : "-"} ms  max60 ${dts.length ? Math.max(...dts).toFixed(1) : "-"} ms`,
+        `cost ${pxMs.toExponential(2)} ms/px  timer query ${tqExt ? "YES" : "NO"}`,
+        `band ${band ? (band.fertig ? "ready" : "building " + (100 * band.y / band.Ny).toFixed(0) + "%") + " " + (band.Nx + 2) + "x" + band.Ny : "-"}`,
+        `why ${bandGrund}`,
+        `mirror ${spiegelOn ? "on" : "off"}`,
+        `dpr ${window.devicePixelRatio} used ${dpr}  canvas ${bild.width}x${bild.height}`,
+        `gpu ${geraet.renderer}`,
       ].join("\n");
     };
     if (new URLSearchParams(location.search).has("diag")) {
+      const box = document.createElement("div");
+      box.id = "diag";
+      box.style.cssText = "position:fixed;left:4px;top:4px;right:4px;max-height:60vh;overflow:hidden;pointer-events:none;z-index:99999;text-align:left";
+      const gr = document.createElement("pre");
+      gr.style.cssText = "margin:0;padding:4px 6px;font:12px/1.3 ui-monospace,monospace;color:#f2f2f2;background:rgba(10,10,12,.78);border-radius:4px;white-space:pre-wrap;word-break:break-all;width:max-content;max-width:100%";
       const dg = document.createElement("pre");
-      dg.id = "diag";
-      dg.style.cssText = "position:fixed;left:4px;top:4px;margin:0;padding:2px 4px;font:9px/1.15 monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none;z-index:99999;white-space:pre";
-      document.body.appendChild(dg);
+      dg.style.cssText = "margin:2px 0 0;padding:2px 4px;font:9px/1.15 monospace;color:#cfcfcf;background:rgba(0,0,0,.55);white-space:pre;width:max-content";
+      box.append(gr, dg);
+      document.body.appendChild(box);
       const tick = () => {
+        gr.textContent = gross();
         dg.textContent = zeilen();
         requestAnimationFrame(tick);
       };
-      tick();
+      requestAnimationFrame(tick);
     }
-    // read by tools/aufnahme.js (recording trace, and sent along on unlocked pages)
-    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     const geraet = {
       renderer: gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER),
       maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE), maxViewport: [...gl.getParameter(gl.MAX_VIEWPORT_DIMS)],
@@ -3435,10 +3267,9 @@ void main() {
       hp: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision,
     };
     window.__diag = () => ({
-      text: zeilen(), geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
-      turm: turm && { lam: turm.lam, th: turm.th, seite: turmSeite, protokoll: turm.protokoll.slice(-20),
-        bau: turm.bau, ...Object.fromEntries(TURM_FOLGE.map((k) => [k, turm[k] && { ok: turm[k].ok, t: turm[k].t, side: turm[k].side, f: turm[k].f, A: turm[k].A, R: turm[k].R }])) },
-      fahrt: { tempo: tempoV, wartet: haeckWartet, pxMs, gpuTimer: !!tqExt, dpr, dprGeraet: window.devicePixelRatio, canvas: [bild.width, bild.height] },
+      text: gross() + "\n" + zeilen(), grund: bandGrund, geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
+      band: band && { lam: band.lam, th: band.th, Nx: band.Nx, Ny: band.Ny, Rb: band.Rb, S0: band.S0, y: band.y, fertig: band.fertig },
+      fahrt: { tempo: tempoV, pxMs, gpuTimer: !!tqExt, dpr, dprGeraet: window.devicePixelRatio, canvas: [bild.width, bild.height] },
     });
   }
 
