@@ -924,7 +924,7 @@
       return x > L && x < R ? 'swipe' : null;
     }
     // Tap: Touch/Stift/Maus, hoechstens TAP_SLOP px Weg (Halten gilt auch). Erst jenseits von TAP_SLOP beginnt das Ziehen.
-    const TAP_SLOP = 8, SLOP_CATCH = 32;
+    const TAP_SLOP = 8, SLOP_CATCH = 64;
     let tap = null, held = null;   // held: der Finger, der gerade drueckt (Touch)
     function setHover(x) {
       const v = x === null || x === undefined ? null : +x;
