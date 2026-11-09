@@ -1980,12 +1980,22 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // tempo(v) zooms on and on at v octaves per second (v < 0 in, v > 0 out, no bound either way),
   // tempo(0) stops. The marker stays put while it is on screen, else the middle. Every frame is drawn at
   // once: past the band's turn, a lookup, the same cost at any depth.
-  let tempoV = 0, tempoRaf = 0, tempoT = 0;
-  // The progress of a frame is the time that really passed, as in a game: the clock of the frame
-  // (rAF) itself, unrounded, so the zoom is a straight line in time and the marker never jerks.
-  // A hitch is made good in the next frame. Only a pause (tab hidden, over a second) counts as one frame.
-  function frameZeit(t) {
-    return t - tempoT >= 1000 ? tempoT + 1000 / 60 : Math.max(tempoT, t);
+  let tempoV = 0, tempoRaf = 0, tempoT0 = 0, tempoN = 0;
+  // The ride advances in fixed steps of 1/60 s on a grid of its own, however fast the screen runs
+  // (Tim, 2026-11-09: the strobe, the wheel that seems to stand or turn back, must not change when
+  // the phone switches from 60 to 120 or 90 Hz). A frame shows the step that belongs to its time:
+  // at 120 Hz each step twice, at 90 Hz unevenly, a late frame catches up. The speed in octaves per
+  // second stays. The grid starts at the first frame of a ride. Only a pause (tab hidden, over a
+  // second) counts as one step.
+  const TEMPO_RASTER = 1000 / 60;
+  function frameSchritte(t) {
+    if (tempoN === 0 && tempoT0 === 0) tempoT0 = t - TEMPO_RASTER;
+    const soll = Math.round((t - tempoT0) / TEMPO_RASTER);
+    if ((soll - tempoN) * TEMPO_RASTER >= 1000) { tempoT0 = t - (tempoN + 1) * TEMPO_RASTER; }
+    const n = Math.max(tempoN, Math.round((t - tempoT0) / TEMPO_RASTER));
+    const s = n - tempoN;
+    tempoN = n;
+    return s;
   }
   function tempo(v) {
     if (!Number.isFinite(v)) throw new Error("tempo(" + v + "): keine Zahl");
@@ -1993,12 +2003,12 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     // the band is begun now, while the frames are still cheap, not first when the view gets there
     if (v) bandStart();
     if (!v || tempoRaf) return;
-    tempoT = performance.now();
+    tempoT0 = 0;
+    tempoN = 0;
     const step = (t) => {
       tempoRaf = 0;
       if (!tempoV) return;
-      const tf = frameZeit(t), dt = (tf - tempoT) / 1000;
-      tempoT = tf;
+      const dt = frameSchritte(t) / 60;
       // the marker stays put while it is on screen (zoomed about the middle it flew off and
       // the M point jumped from frame to frame); off screen the middle of the view does
       const [ox, oy] = origin(), da = ox >= 0 && ox <= cssW && oy >= 0 && oy <= cssH;
@@ -3235,10 +3245,15 @@ void main() {
       const L = rahmenLog.slice(-60), z = L[L.length - 1];
       const dts = L.slice(1).map((f) => f.dt);
       const tief = Math.log2(fitSw()) - ls;
+      // measured frame rate over the last second, and the zoom per shown frame in octaves (0 = a step shown twice)
+      const jung = z ? L.filter((f) => z.t - f.t <= 1000) : [];
+      const fps = jung.length > 1 ? (1000 * (jung.length - 1) / (z.t - jung[0].t)).toFixed(0) : "-";
+      const zoomSchritt = L.length > 1 ? Math.abs(z.ls - L[L.length - 2].ls).toPrecision(3) : "-";
       return [
         `depth ${tief.toFixed(2)} oct (x10^${(tief * Math.log10(2)).toFixed(1)})  tempo ${tempoV}`,
         `frame ${art(z)}`,
         `q ${gezeigt ? gezeigt.q.toFixed(2) : "-"}  dt ${z ? z.dt.toFixed(1) : "-"} ms  max60 ${dts.length ? Math.max(...dts).toFixed(1) : "-"} ms`,
+        `fps ${fps}  zoom step ${zoomSchritt}`,
         `cost ${pxMs.toExponential(2)} ms/px  timer query ${tqExt ? "YES" : "NO"}`,
         `band ${band ? (band.fertig ? "ready" : "building " + (100 * band.y / band.Ny).toFixed(0) + "%") + " " + (band.Nx + 2) + "x" + band.Ny : "-"}`,
         `why ${bandGrund}`,
