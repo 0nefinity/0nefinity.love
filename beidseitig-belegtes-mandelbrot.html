@@ -224,7 +224,7 @@ html, body { touch-action: pan-x pan-y; }
   // bits for the finest c-pixel of the current view, plus 64 to spare
   function ensurePB() {
     const lw = logadd(lv, Math.log2(Math.hypot(cssW, cssH) / 2) + ls);
-    const lpc = Math.log2(Math.max(r, 1e-9)) + ls - (kind ? 0 : 2 * Math.max(0, lw));
+    const lpc = Math.log2(Math.max(r, 1e-9)) + ls - (kind || !spiegelOn ? 0 : 2 * Math.max(0, lw));
     const need = Math.max(128, Math.ceil((64 + Math.max(0, -lpc, -ls)) / 64) * 64);
     if (need > PB || need < PB - 128) setPB(need);
   }
@@ -1163,7 +1163,9 @@ void main() {
     const hd = Math.hypot(W, Hc) / 2, lhd = Math.log2(hd);
     const lr = Math.log2(Math.max(r, 1e-9));
     const lw = logadd(lv, lsc + lhd);
-    const lpcMin = lr + lsc - 2 * Math.max(0, lw);
+    // only the mirrored outside gets finer as |w| grows; without the mirror the c-pixel only
+    // grows out there (the start view keeps its iterations, further out they fall back)
+    const lpcMin = lr + lsc - 2 * Math.max(0, spiegelOn ? lw : Math.min(lw, 4));
     const maxit = Math.min(LMAX - 2, Math.max(turmRoh ? turmMinIt : 0, Math.round(250 + 45 * Math.max(0, -lpcMin))));
     const exact = lpcMin < -40;
     // orbits are made a bit longer than needed, so zooming keeps them for a while
@@ -1731,7 +1733,7 @@ void main() {
   };
   // bits enough for a frame at scale l reaching ext pixels from cM (as ensurePB, only upwards)
   function turmPB(l, ext) {
-    const lw = l + Math.log2(ext), lpc = Math.log2(Math.max(r, 1e-9)) + l - 2 * Math.max(0, lw);
+    const lw = l + Math.log2(ext), lpc = Math.log2(Math.max(r, 1e-9)) + l - (spiegelOn ? 2 * Math.max(0, lw) : 0);
     const need = Math.max(128, Math.ceil((64 + Math.max(0, -lpc, -l)) / 64) * 64);
     if (need > PB) setPB(need);
   }
