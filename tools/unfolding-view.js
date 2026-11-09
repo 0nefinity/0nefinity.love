@@ -914,7 +914,7 @@
       return x > L && x < R ? 'swipe' : null;
     }
     // Tap: Touch/Stift/Maus, hoechstens TAP_SLOP px Weg (Halten gilt auch). Erst jenseits von TAP_SLOP beginnt das Ziehen.
-    const TAP_SLOP = 8;
+    const TAP_SLOP = 8, SLOP_CATCH = 32;
     let tap = null, held = null;   // held: der Finger, der gerade drueckt (Touch)
     function setHover(x) {
       const v = x === null || x === undefined ? null : +x;
@@ -951,10 +951,19 @@
       }
       canvas.style.cursor = drag.mode === 'R' || drag.mode === 'L' ? endCur() : 'default';
       // Jenseits der Schwelle folgt das Ende ab hier, nicht ab dem Aufsetzen: sonst holte es die ersten TAP_SLOP px auf einmal nach (Sprung).
-      if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; drag.x0 += Math.sign(x - drag.x0) * TAP_SLOP; }
+      // Den Rueckstand holt es danach stetig auf (SLOP_CATCH px Weg je TAP_SLOP): kein Sprung, und das Ende liegt bald wieder unter dem Finger.
+      if (drag.slop) {
+        if (Math.abs(x - drag.x0) <= TAP_SLOP) return;
+        drag.slop = false; drag.sgn = Math.sign(x - drag.x0); drag.x0 += drag.sgn * TAP_SLOP; drag.lag = TAP_SLOP; drag.px = x;
+      }
       if (e.pointerType !== 'mouse') setHover(null);   // ein Touch-Wisch loescht die Stellenanzeige; sie erscheint nur bei einem Tap
       // x0 aus dem letzten Zeigerereignis in den neuen Leinwand-Koordinaten: die Bewegung seit dem letzten Move geht beim Neusetzen nicht verloren
       if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = local(drag.lastEv); }
+      if (drag.lag > 0) {   // nach dem Neusetzen: x0 gilt dann ab hier, die Verschiebung bleibt also bis zum naechsten Neusetzen und steckt danach in R
+        const step = (x - drag.px) * drag.sgn;
+        if (step > 0) { const take = Math.min(drag.lag, step * TAP_SLOP / SLOP_CATCH); drag.x0 -= drag.sgn * take; drag.lag -= take; }
+        drag.px = x;
+      }
       drag.lastEv = e;
       const dx = x - drag.x0, dd = deff();
       let mode = 'x';
