@@ -26066,6 +26066,9 @@ void main() {
   let turmSeite = "innen";
   // haeck found the view where a tower serves, but that tower is still being built
   let haeckWartet = false;
+  // why the last haeck gave a copy or none, for ?diag (when, what)
+  let turmGrund = { t: 0, was: "-" };
+  const grund = (was) => { turmGrund = { t: performance.now(), was }; };
   // the one picture computed in that zone while waiting, the one that is turned until then
   let wartBild = null;
   // which way θ turns on screen: outside one way, inside the other (measured against the copies)
@@ -26092,14 +26095,14 @@ void main() {
   // Starts a tower where one would serve, the coarse one first.
   function haeck(W, Hc) {
     haeckWartet = false;
-    if (!mis || kind >= 2) return null;
+    if (!mis || kind >= 2) { grund(mis ? "kind " + kind : "no orbit yet (mis)"); return null; }
     if (turm && !turmGilt()) turmWeg();
     const lsc = ls + Math.log2(cssW / W), hd = Math.hypot(W, Hc) / 2;
     const ux = f32(N(vH[0], lsc)), uy = f32(N(vH[1], lsc)), ext = Math.hypot(ux, uy) + hd;
     // far from cM the frames would have to be huge: the plain way is as good there
-    if (!(ext < 4 * hd)) return null;
+    if (!(ext < 4 * hd)) { grund("view far from M point (" + (ext / hd).toFixed(1) + " half diagonals)"); return null; }
     const br = lsc + Math.log2(ext) < 0 ? "innen" : spiegelOn && lsc + Math.log2(Math.hypot(naechst(ux, W), naechst(uy, Hc))) > 0 ? "aussen" : null;
-    if (!br) return null;
+    if (!br) { grund(spiegelOn ? "between inside and outside zone" : "outside, mirror off"); return null; }
     turmSeite = br;
     neuTurm();
     for (const key of [br, br + "Grob"]) {
@@ -26114,6 +26117,7 @@ void main() {
         if (S) turmFrei(S);
         baue(br, S ? S.t : ersterVersuch(br), Math.max(1.25 * hd, ext));
       }
+      grund("copy " + key);
       return Object.assign(plan, { br: key, lsc, ext });
     }
     // a build for the other side yields: on a slow device it would hold this side's copies back
@@ -26127,6 +26131,7 @@ void main() {
     }
     if (turm.bau) {
       haeckWartet = true;
+      grund("waiting for build " + turm.bau);
       return null;
     }
     for (const key of [br + "Grob", br]) {
@@ -26136,8 +26141,10 @@ void main() {
       if (B) turmFrei(B);
       baue(key, B ? B.t : ersterVersuch(key), Math.max(1.25 * hd, ext));
       haeckWartet = !!turm.bau;
+      grund(turm.bau ? "build started " + key : "build of " + key + " failed at once");
       return null;
     }
+    grund([br + "Grob", br].map((k) => { const B = turm[k]; return k + (B.ok === "nein" ? " given up" : " no plan (R " + Math.round(B.R) + ", ext " + Math.round(ext) + ")"); }).join(", "));
     return null;
   }
   // while nothing moves: the towers not yet there, the side last looked at first, so zooming
@@ -27407,19 +27414,52 @@ void main() {
         turmZeile(),
       ].join("\n");
     };
+    // read by tools/aufnahme.js (recording trace, and sent along on unlocked pages)
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    // the big lines, readable on a phone when filmed: how deep, how this frame came about, how
+    // long it took, why the tower serves or not, and the device
+    const art = (f) => {
+      if (!f) return "-";
+      if (!f.ok) return "old picture stretched";
+      if (f.k === 0) return (String(f.br).endsWith("Grob") ? "TOWER coarse" : "TOWER sharp") + " (" + f.br + ")";
+      if (f.k === -1) return "WAIT: last picture turned";
+      if (f.k === 1) return f.qr >= 1 ? "LIVE whole, sharp" : "LIVE whole, q " + f.qr.toFixed(2);
+      return "LIVE shifted, edge " + (100 * f.rand).toFixed(0) + "% q " + (f.qr == null ? "-" : f.qr.toFixed(2));
+    };
+    const gross = () => {
+      const L = rahmenLog.slice(-60), z = L[L.length - 1];
+      const dts = L.slice(1).map((f) => f.dt);
+      const tief = Math.log2(fitSw()) - ls;
+      const st = (k) => { const B = turm && turm[k]; return B ? (B.ok === true ? "ok" : B.ok === null ? "…" : String(B.ok)) : "-"; };
+      return [
+        `depth ${tief.toFixed(2)} oct (x10^${(tief * Math.log10(2)).toFixed(1)})  tempo ${tempoV}`,
+        `frame ${art(z)}`,
+        `q ${gezeigt ? gezeigt.q.toFixed(2) : "-"}  dt ${z ? z.dt.toFixed(1) : "-"} ms  max60 ${dts.length ? Math.max(...dts).toFixed(1) : "-"} ms`,
+        `cost ${pxMs.toExponential(2)} ms/px  timer query ${tqExt ? "YES" : "NO"}`,
+        `tower ${turm ? TURM_FOLGE.map((k) => k.replace("aussen", "out").replace("innen", "in") + " " + st(k)).join(" ") : "-"}${turm && turm.bau ? " building " + turm.bau : ""}`,
+        `why ${turmGrund.was}${turmGrund.t ? " (" + ((performance.now() - turmGrund.t) / 1000).toFixed(1) + "s ago)" : ""}`,
+        `mirror ${spiegelOn ? "on" : "off"}  side ${turmSeite}`,
+        `dpr ${window.devicePixelRatio} used ${dpr}  canvas ${bild.width}x${bild.height}`,
+        `gpu ${geraet.renderer}`,
+      ].join("\n");
+    };
     if (new URLSearchParams(location.search).has("diag")) {
+      const box = document.createElement("div");
+      box.id = "diag";
+      box.style.cssText = "position:fixed;left:4px;top:4px;right:4px;max-height:60vh;overflow:hidden;pointer-events:none;z-index:99999;text-align:left";
+      const gr = document.createElement("pre");
+      gr.style.cssText = "margin:0;padding:4px 6px;font:12px/1.3 ui-monospace,monospace;color:#f2f2f2;background:rgba(10,10,12,.78);border-radius:4px;white-space:pre-wrap;word-break:break-all;width:max-content;max-width:100%";
       const dg = document.createElement("pre");
-      dg.id = "diag";
-      dg.style.cssText = "position:fixed;left:4px;top:4px;margin:0;padding:2px 4px;font:9px/1.15 monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none;z-index:99999;white-space:pre";
-      document.body.appendChild(dg);
+      dg.style.cssText = "margin:2px 0 0;padding:2px 4px;font:9px/1.15 monospace;color:#cfcfcf;background:rgba(0,0,0,.55);white-space:pre;width:max-content";
+      box.append(gr, dg);
+      document.body.appendChild(box);
       const tick = () => {
+        gr.textContent = gross();
         dg.textContent = zeilen();
         requestAnimationFrame(tick);
       };
-      tick();
+      requestAnimationFrame(tick);
     }
-    // read by tools/aufnahme.js (recording trace, and sent along on unlocked pages)
-    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     const geraet = {
       renderer: gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER),
       maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE), maxViewport: [...gl.getParameter(gl.MAX_VIEWPORT_DIMS)],
@@ -27427,7 +27467,7 @@ void main() {
       hp: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision,
     };
     window.__diag = () => ({
-      text: zeilen(), geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
+      text: gross() + "\n" + zeilen(), grund: turmGrund, geraet, rahmen: rahmenLog.slice(-120), ereignisse: ereignisse.slice(),
       turm: turm && { lam: turm.lam, th: turm.th, seite: turmSeite, protokoll: turm.protokoll.slice(-20),
         bau: turm.bau, ...Object.fromEntries(TURM_FOLGE.map((k) => [k, turm[k] && { ok: turm[k].ok, t: turm[k].t, side: turm[k].side, f: turm[k].f, A: turm[k].A, R: turm[k].R }])) },
       fahrt: { tempo: tempoV, wartet: haeckWartet, pxMs, gpuTimer: !!tqExt, dpr, dprGeraet: window.devicePixelRatio, canvas: [bild.width, bild.height] },
@@ -75539,7 +75579,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -79021,7 +79072,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '', letzterStand = '', diagBis = {};
+  let letzterDiag = '';
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -79049,25 +79100,8 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
-    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
-    if (typeof d === 'object' && typeof d.text === 'string') {
-      const neu = (liste, feld) => {
-        if (!Array.isArray(liste)) return;
-        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
-        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
-      };
-      neu(d.rahmen, 'rahmen');
-      neu(d.ereignisse, 'ereignisse');
-      const stand = {};
-      if (d.fahrt) stand.fahrt = d.fahrt;
-      if (d.turm) stand.turm = d.turm;
-      if (Object.keys(stand).length) {
-        const st = JSON.stringify(stand);
-        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
-      }
-      d = { text: d.text };
-    }
+    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
+    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -79092,7 +79126,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);
