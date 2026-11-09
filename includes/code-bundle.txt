@@ -25835,10 +25835,11 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   }
   const gleichBand = (B) => !!B && !kind && !!mis && B.k === mis.k && B.p === mis.p
     && gleichC(B.cx, B.PB, cH[0], PB) && gleichC(B.cy, B.PB, cH[1], PB);
+  // the band's radius in pixels for a canvas W x Hc: the lookups reach out to its corners
+  const bandRb = (W, Hc) => Math.min(BAND_RB * Math.hypot(W, Hc) / 2, (gl.getParameter(gl.MAX_TEXTURE_SIZE) - 1) / (2 * Math.PI));
   function bandFertig() {
     if (!band || !band.fertig || !gleichBand(band)) return false;
-    const [W, Hc] = vollW();
-    return band.W === W && band.Hc === Hc;
+    return band.Rb >= bandRb(...vollW());
   }
   // the band's uniforms: art 0 off, 1 being built (into bandBau), 2 looked up for a view at lr, lsc
   function bandUni(art, lr, lsc, maxit) {
@@ -25872,10 +25873,11 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     if (kind || !mis) return;
     if (cRoh) cFein();
     const [W, Hc] = vollW();
-    if (band && gleichBand(band) && band.W === W && band.Hc === Hc) return;
+    if (band && gleichBand(band) && band.Rb >= bandRb(W, Hc)) return;
     bandWeg();
     const q = rho(cH[0], cH[1], mis.k, mis.p);
-    const Rb = Math.min(BAND_RB * Math.hypot(W, Hc) / 2, (gl.getParameter(gl.MAX_TEXTURE_SIZE) - 1) / (2 * Math.PI));
+    // sized for the tallest the field gets (panel pulled down), so a panel moved never asks for a new band
+    const Rb = bandRb(W, Math.max(Hc, Math.round(window.innerHeight * dpr)));
     const Nx = Math.ceil(q.lam * Rb * Math.LN2), Ny = Math.ceil(2 * Math.PI * Rb);
     const tex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE3);
@@ -25935,7 +25937,9 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     if (lv - lsc > 16) { bandGrund = "view far from M point"; return false; }
     const ux = N(vH[0], lsc), uy = N(vH[1], lsc), ex = W / 2 - 0.5, ey = Hc / 2 - 0.5;
     const amax = Math.max(Math.hypot(Math.abs(ux) + ex, Math.abs(uy) + ey));
-    const amin = Math.hypot(naechst(ux, W), naechst(uy, Hc));
+    // a pixel exactly on c_M (odd W and Hc, a panel pulled to an odd height) is painted as the point
+    // itself by the shader; the nearest other pixel is one away
+    const amin = Math.hypot(naechst(ux, W), naechst(uy, Hc)) || 1;
     if (amax > B.Rb) { bandGrund = "view wider than band (" + Math.round(amax) + " > " + Math.round(B.Rb) + ")"; return false; }
     const lr = Math.log2(Math.max(r, 1e-9)), s2 = spiegelOn ? -lsc : Infinity, g = 1e-3;
     if (Math.log2(amin) <= s2 && !(Math.min(Math.log2(amax), s2) < B.S0 + B.lam - (lr + lsc) - g)) { bandGrund = "inside not yet past D0 (live)"; return false; }
