@@ -191,6 +191,16 @@
     const Lg = () => (fold ? foldX() + gapX() : L);      // linker Anker der Stellen
     const Lp = () => (fold ? foldX() : L);               // Anker der hineingeschobenen Stellen: fold = der Punkt selbst, nicht die erste Stelle dahinter
     const Xg = () => X0 + bs() * w + exW();                      // lineare Lage der ersten Stelle (fold: eine halbe Zelle hinter dem Punkt)
+    // fold: Strichbreite nach dem Ort (Geraetepixel), nie nach der Zone: am Punkt und links davon die volle Punktbreite, rechts davon
+    // eine Haarlinie aus den Ziffern, die erst auf dem letzten Stueck vor dem Punkt stetig so breit wird wie er (glatt, ohne Knick).
+    // So faehrt kein fertiger Balken mit, und keine Ziffer wechselt die Breite, nur weil sie die Mitte zwischen Punkt und Ende kreuzt.
+    function kAt(xCss) {
+      if (!fold) return 0;
+      const u = Math.min(1, Math.max(0, 1 - (xCss - foldX()) / (halfDot() + w)));
+      return u * u * (3 - 2 * u);
+    }
+    const endK = () => kAt(R);
+    const Dx = (xDev) => fwDev() * (fold ? kAt(xDev / dpr) : 1);
     const x0Cap = () => (fold ? +opts.origin : L);   // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (die Punktzelle bleibt frei, wie im Schriftsatz)
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
@@ -449,9 +459,10 @@
           cntC.fill(0); cntF.fill(0); cntMiss = 0;
           addRange(a, b);
           // fold: gefaltete Tinte ist nie schmaler als der Strich (= Punktbreite): die Zaehlung dieser Spalte verteilt sich auf
-          // fwDev Geraetepixel um die Mitte ihrer Ziffern (Tinte bleibt erhalten, nur breiter). Ohne Strichbreite: eine Spalte.
-          const D = fwDev();
-          const xc = (posOf(a) + posOf(b)) / 2 * dpr, sLo = D > 1 ? xc - D / 2 : c, sHi = D > 1 ? xc + D / 2 : c + 1;
+          // D Geraetepixel um die Mitte ihrer Ziffern (Tinte bleibt erhalten, nur breiter). Ohne Strichbreite: eine Spalte; bis D = 1
+          // gleitet das Spaltenfenster stetig von der Spalte auf die Mitte der Ziffern, damit der Uebergang keine Stufe hat.
+          const xc = (posOf(a) + posOf(b)) / 2 * dpr, D = Dx(xc), E = Math.max(1, D), xm = D > 1 ? xc : c + 0.5 + (xc - c - 0.5) * Math.max(0, D);
+          const sLo = xm - E / 2, sHi = xm + E / 2;
           for (let t = 0; t < 10; t++) vals[t] = cntC[t] + FILE_ALPHA * cntF[t];
           vals[10] = cntC[10];
           vals[AVG] = FILE_ALPHA * cntMiss;   // ANNAHME: noch nicht geladene Stellen zaehlen mit der mittleren Tinte
@@ -461,7 +472,7 @@
           const edge = D > 1 && cHi - cLo > 2;
           for (let cc = cLo; cc <= cHi; cc++) {
             if (edge && cc > cLo && cc < cHi) { cc = cHi - 1; continue; }
-            const f = D > 1 ? (Math.min(cc + 1, sHi) - Math.max(cc, sLo)) / D : 1;
+            const f = (Math.min(cc + 1, sHi) - Math.max(cc, sLo)) / E;
             if (!(f > 0)) continue;
             const o = cc * NGA;
             for (let t = 0; t < NGA; t++) acc[o + t] += vals[t] * f;
@@ -745,6 +756,7 @@
     // auf Spalte c fallen die Quellspalten [u0, u1) aus dem Fenster [s0, s1), ihre Summe mal al. Das Fenster ist bei voller
     // Breite die ganze Glyphe und schrumpft bis 0,85 Breite auf die Tinte: gestauchte Ziffern geben ihre Seitenraender ab,
     // sonst bliebe vor jedem Ende eine leere Spalte. Schmalere Ziffern zaehlt region().
+    let rowTot = new Float64Array(0);
     function deposit(zone, t, xDev, wDev, al) {
       const cum = atlas.cums[t], hd = gh, ex = atlas.exts[t];
       // Die Tinte wird nie breiter als ihre natuerliche Breite: ab Zellbreite >= Tintenbreite liegt sie unverzerrt in der Zelle
@@ -756,11 +768,16 @@
       let w2 = Math.min(wDev, ext), sx = wDev > ext && free > 0 ? xDev + (wDev - ext) * ex[0] / free : xDev;
       // fold: gefaltete Tinte laeuft auf die Strichbreite D zu, um ihre Mitte. D <= Tintenbreite: nie schmaler als D. D > Tintenbreite:
       // stetig von der natuerlichen Breite (volle Zelle) bis D (Zelle 0), die Ziffer wird beim Hineinschieben breiter. Immer monoton in der Zelle.
-      const D = fwDev();
+      // Verbreitert, verliert die Ziffer ihre Form im selben Mass an einen gleichmaessigen Strich (be = 0 ohne Verbreiterung, 1 bei einem
+      // Geraetepixel): dort uebernimmt region() mit genau diesem Strich, die Ziffer geht ohne Formsprung in ihn ueber.
+      const D = Dx(xDev + wDev / 2);
+      let be = 0;
       if (D > 0) {
         const iw = D > ext ? ext + (D - ext) * (1 - Math.min(1, wDev / gw)) : Math.max(w2, D);
+        if (iw > w2) be = Math.min(1, (iw - w2) / Math.max(1e-9, iw - 1));
         if (iw !== w2) { sx += (w2 - iw) / 2; w2 = iw; }
       }
+      if (be > 0) { if (rowTot.length < hd) rowTot = new Float64Array(hd); const o1 = gw * hd; for (let y = 0; y < hd; y++) rowTot[y] = cum[o1 + y] - cum[y]; }
       const sc = (s1 - s0) / w2, end = sx + w2;
       if (depLog) { const e = depLog[depLog.length - 1]; if (e && e.x === xDev && e.w === wDev) { e.s0 = s0; e.s1 = s1; e.dx = sx; e.dw = w2; } }
       for (let c = Math.floor(sx); c < end; c++) {
@@ -773,7 +790,7 @@
         for (let y = 0; y < hd; y++) {
           const p0 = cum[a0 + y] + f0 * (cum[a0 + hd + y] - cum[a0 + y]);
           const p1 = cum[a1 + y] + f1 * (cum[a1 + hd + y] - cum[a1 + y]);
-          ink[o + y] += (p1 - p0) * al;
+          ink[o + y] += (be > 0 ? (1 - be) * (p1 - p0) + be * part / w2 * rowTot[y] : p1 - p0) * al;
         }
         thin(c, wDev);
         mark(zone, c);
@@ -791,6 +808,10 @@
       const off = gw * hd, cums = atlas.cums;
       const capD = fwDev(), capX = foldX() * dpr, capHh = (inkBottom + 1 - inkTop) / 2, capY = (inkTop + inkBottom + 1) / 2;
       const capR = Math.min(capD / 2, capHh), capEx = capD / 2 - capR, capEy = capHh - capR;
+      // rechtes Ende: eigene Kapsel um R, so breit wie dort der Strich (Dx), gerundet im selben Mass, wie er gewachsen ist (endK).
+      // Im Punkt deckt sie sich mit der Punktkapsel; die Haarlinie weit draussen bleibt ungeschnitten.
+      const eK = endK(), eD = eK > 0 ? capD * eK : 0, eX = R * dpr;
+      const eR = Math.min(eD / 2, capHh), eEx = eD / 2 - eR, eEy = capHh - eR;
       for (let x = 0; x < cw; x++) {
         const c = lo + x, base = c * NGA, o = c * hd;
         const rec = colLog ? colLog.get(c) : null;
@@ -807,9 +828,14 @@
         // darueber eine Stadionform, die im Kreis verschwindet. Nur im Strichband (+0,5 px Antialias-Rand), die Ziffern daneben bleiben wie sie sind.
         const dxa = capD > 1 ? Math.abs(c + 0.5 - capX) : Infinity, inBand = dxa <= capD / 2 + 0.5;
         const qx = inBand ? Math.max(0, dxa - capEx) : 0;
+        const exa = eD > 0 ? Math.abs(c + 0.5 - eX) : Infinity, inEnd = exa <= eD / 2 + 0.5, ex = inEnd ? Math.max(0, exa - eEx) : 0;
         for (let y = 0; y < hd; y++) {
           let m = 1;
           if (inBand) { const qy = Math.max(0, Math.abs(y + 0.5 - capY) - capEy); m = Math.min(1, Math.max(0, capR + 0.5 - Math.sqrt(qx * qx + qy * qy))); }
+          if (inEnd) {
+            const qy = Math.max(0, Math.abs(y + 0.5 - capY) - eEy), me = 1 - eK * (1 - Math.min(1, Math.max(0, eR + 0.5 - Math.sqrt(ex * ex + qy * qy))));
+            m = inBand ? Math.max(m, me) : me;
+          }
           const q = (y * cw + x) * 4; px[q] = r; px[q + 1] = gc; px[q + 2] = b; px[q + 3] = Math.min(1, ink[o + y]) * k * m * 255;
         }
         acc.fill(0, base, base + NGA);
@@ -924,7 +950,8 @@
         return;
       }
       canvas.style.cursor = drag.mode === 'R' || drag.mode === 'L' ? endCur() : 'default';
-      if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; }
+      // Jenseits der Schwelle folgt das Ende ab hier, nicht ab dem Aufsetzen: sonst holte es die ersten TAP_SLOP px auf einmal nach (Sprung).
+      if (drag.slop) { if (Math.abs(x - drag.x0) <= TAP_SLOP) return; drag.slop = false; drag.x0 += Math.sign(x - drag.x0) * TAP_SLOP; }
       if (e.pointerType !== 'mouse') setHover(null);   // ein Touch-Wisch loescht die Stellenanzeige; sie erscheint nur bei einem Tap
       // x0 aus dem letzten Zeigerereignis in den neuen Leinwand-Koordinaten: die Bewegung seit dem letzten Move geht beim Neusetzen nicht verloren
       if (drag.rebase) { drag.rebase = false; drag.X0 = X0; drag.L = L; drag.R = R; drag.x0 = local(drag.lastEv); }
