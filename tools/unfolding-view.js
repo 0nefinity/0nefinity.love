@@ -201,6 +201,15 @@
     }
     const endK = () => kAt(R);
     const Dx = (xDev) => fwDev() * (fold ? kAt(xDev / dpr) : 1);
+    // Strichbreite je Ziffer: eine abgelegte Ziffer (>= 1 Geraetepixel) wird beim Aufziehen nie schmaler, sie behaelt den
+    // groessten Wert von kAt, den sie seit ihrem Auftauchen hatte (wie der Strich dort, wo sie aus der Zaehlung kam; zieht R
+    // zurueck, steigt kAt wieder bis zu diesem Wert, also ohne Sprung beim Wechsel in die Zaehlung). Der Wert ist ein Anteil, nicht Pixel.
+    let kHold = new Map(), kHoldNext = new Map();
+    const kDigit = (i, xDev) => {
+      const k = Math.max(fold ? kAt(xDev / dpr) : 1, kHold.get(i) || 0);
+      if (k > (kHoldNext.get(i) || 0)) kHoldNext.set(i, k);
+      return k;
+    };
     const x0Cap = () => (fold ? +opts.origin : L);   // fold: die erste Stelle beginnt eine halbe Zelle hinter dem Punkt (die Punktzelle bleibt frei, wie im Schriftsatz)
 
     // Textfarbe einmal lesen, nicht je Bild; bei Theme-Wechsel (Inline-Variablen/Klassen an html/body, Systemschema) neu.
@@ -692,7 +701,7 @@
                 else drawCropped(atlas['0'].bar, xDev + wDev * 0.4, Math.max(1, wDev * 0.2), y0, hd, gLo, gHi);
                 ctx.globalAlpha = 1;
               }
-              if (fade < 1 && pass === 0) { if (depLog) depLog.push({ i, code: 0, x: xDev, w: wDev, al: FILE_ALPHA * mul * (1 - fade) }); deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade)); }
+              if (fade < 1 && pass === 0) { if (depLog) depLog.push({ i, code: 0, x: xDev, w: wDev, al: FILE_ALPHA * mul * (1 - fade) }); deposit(xa < mid ? zoneL : zoneR, AVG, xDev, wDev, FILE_ALPHA * mul * (1 - fade), i); }
             }
             continue;
           }
@@ -704,7 +713,7 @@
           n++;
           // Gestaucht: die ganze Tinte der Ziffer in ihre Spalten (Tinte bleibt erhalten, kein Mindestmass).
           if (wDev < wd * 0.999) {
-            if (pass === 0) { if (depLog) depLog.push({ i, code, x: xDev, w: wDev, al }); deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al); }
+            if (pass === 0) { if (depLog) depLog.push({ i, code, x: xDev, w: wDev, al }); deposit(xa < mid ? zoneL : zoneR, g.t, xDev, wDev, al, i); }
             continue;
           }
           ctx.globalAlpha = al;
@@ -728,6 +737,7 @@
       ctx.restore();
       if (nk !== infoKey) { infoKey = nk; if (opts.onPointerInfo) opts.onPointerInfo(ni); }
       drawnCount = n;
+      kHold = kHoldNext; kHoldNext = new Map();
       renderMs = performance.now() - tStart;
     }
 
@@ -739,7 +749,7 @@
         if (!g) continue;
         let wDev = pHs * w * dpr, xDev = posOf(i) * dpr;
         if (wDev >= wd * 0.999) { wDev = wd; xDev = Math.round(xDev); ctx.globalAlpha = 1; ctx.drawImage(g.img, xDev, y0, wDev, hd); if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); if (drawLog) drawLog.push([xDev, wDev]); }
-        else if (wDev >= 1 || fold) { if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); deposit(zoneL, g.t, xDev, wDev, 1); }
+        else if (wDev >= 1 || fold) { if (depLog) depLog.push({ i, code: buf[i], x: xDev, w: wDev, al: 1 }); deposit(zoneL, g.t, xDev, wDev, 1, i); }
         else region(i, i + 1, zoneL);
       }
     }
@@ -757,7 +767,7 @@
     // Breite die ganze Glyphe und schrumpft bis 0,85 Breite auf die Tinte: gestauchte Ziffern geben ihre Seitenraender ab,
     // sonst bliebe vor jedem Ende eine leere Spalte. Schmalere Ziffern zaehlt region().
     let rowTot = new Float64Array(0);
-    function deposit(zone, t, xDev, wDev, al) {
+    function deposit(zone, t, xDev, wDev, al, di) {
       const cum = atlas.cums[t], hd = gh, ex = atlas.exts[t];
       // Die Tinte wird nie breiter als ihre natuerliche Breite: ab Zellbreite >= Tintenbreite liegt sie unverzerrt in der Zelle
       // (Rand proportional wie bei voller Breite), darunter wird sie auf die Zelle gestaucht. Sonst waere eine Ziffer auf dem
@@ -770,7 +780,7 @@
       // stetig von der natuerlichen Breite (volle Zelle) bis D (Zelle 0), die Ziffer wird beim Hineinschieben breiter. Immer monoton in der Zelle.
       // Verbreitert, verliert die Ziffer ihre Form im selben Mass an einen gleichmaessigen Strich (be = 0 ohne Verbreiterung, 1 bei einem
       // Geraetepixel): dort uebernimmt region() mit genau diesem Strich, die Ziffer geht ohne Formsprung in ihn ueber.
-      const D = Dx(xDev + wDev / 2);
+      const D = fwDev() * kDigit(di, xDev + wDev / 2);
       let be = 0;
       if (D > 0) {
         const iw = D > ext ? ext + (D - ext) * (1 - Math.min(1, wDev / gw)) : Math.max(w2, D);
