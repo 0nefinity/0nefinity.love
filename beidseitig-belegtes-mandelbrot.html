@@ -67,6 +67,11 @@ html, body { touch-action: pan-x pan-y; }
    letter, both tracks over the whole width, both numbers in a box of one width */
 .ctrl-panel:not(.bar-mode) .ctrl-row:is([data-key="r"], [data-key="tempo"]) { grid-template-columns: 1em minmax(0, 1fr); }
 .ctrl-row:is([data-key="r"], [data-key="tempo"]) .ctrl-value-input { min-width: calc(6ch + 0.4em); }
+/* the frame rate the device shows while the ride runs, small under the speed number; out of the
+   flow so it moves nothing when it comes and goes */
+#hz { position: absolute; right: 2.1em; bottom: -0.55em; font-size: 9px; line-height: 1; letter-spacing: .02em;
+  color: var(--t-50, rgba(255,255,255,.5)); font-variant-numeric: tabular-nums; pointer-events: none; }
+#hz[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -1988,9 +1993,34 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   function frameZeit(t) {
     return t - tempoT >= 1000 ? tempoT + 1000 / 60 : Math.max(tempoT, t);
   }
+  // The frame rate the device really shows, read off the rAF clock of the ride: the median of the
+  // gaps over the last 0.4 s (one missed frame moves no median), rounded to the usual rates so
+  // the number does not flicker. Shown only while the ride runs.
+  const HZ_RASTER = [30, 48, 50, 60, 72, 90, 100, 120, 144, 165, 240];
+  const hzEl = document.createElement("span");
+  hzEl.id = "hz";
+  hzEl.hidden = true;
+  hzEl.title = "frame rate of this device";
+  let hzT = [];
+  function hzAus() {
+    hzT = [];
+    hzEl.hidden = true;
+  }
+  function hzTakt(t) {
+    hzT.push(t);
+    while (hzT.length && t - hzT[0] > 400) hzT.shift();
+    if (hzT.length < 6) return;
+    const gaps = hzT.slice(1).map((x, i) => x - hzT[i]).sort((a, b) => a - b);
+    const hz = 1000 / gaps[gaps.length >> 1];
+    const r = HZ_RASTER.reduce((b, x) => (Math.abs(Math.log(x / hz)) < Math.abs(Math.log(b / hz)) ? x : b));
+    const txt = r + " Hz";
+    if (hzEl.textContent !== txt) hzEl.textContent = txt;
+    hzEl.hidden = false;
+  }
   function tempo(v) {
     if (!Number.isFinite(v)) throw new Error("tempo(" + v + "): keine Zahl");
     tempoV = v;
+    if (!v) hzAus();
     // the band is begun now, while the frames are still cheap, not first when the view gets there
     if (v) bandStart();
     if (!v || tempoRaf) return;
@@ -2000,6 +2030,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       if (!tempoV) return;
       const tf = frameZeit(t), dt = (tf - tempoT) / 1000;
       tempoT = tf;
+      hzTakt(t);
       // the marker stays put while it is on screen (zoomed about the middle it flew off and
       // the M point jumped from frame to frame); off screen the middle of the view does
       const [ox, oy] = origin(), da = ox >= 0 && ox <= cssW && oy >= 0 && oy <= cssH;
@@ -3018,6 +3049,7 @@ void main() {
     onChange: (v) => tempo(-(Number(v) || 0)),
   });
   panel.bodyEl.querySelector('[data-key="r"]').before(panel.bodyEl.querySelector('[data-key="tempo"]'));
+  panel.bodyEl.querySelector('[data-key="tempo"]').appendChild(hzEl);
   // the mirror at the circle, above the zoom; the further mirrors (?spiegel=) are mirrors through and through
   if (!kind) {
     panel.addToggle("spiegelung", {
