@@ -24496,6 +24496,9 @@ void main() {
   vec2 dcm;
   float pcm;
   int ec;
+  // mx: the iterations this pixel gets; faltA, faltR: its distance from cM in the view, and folded
+  int mx = uMaxit;
+  float faltA = 1.0, faltR = 1.0;
 #ifdef KIND
   bool dead = false, weg = false;
 #endif
@@ -24543,8 +24546,25 @@ void main() {
         o = vec4(vec3(g / 255.0), 1.0);
         return;
       }
+    } else if (uBand == 3) {
+      // the fold: the band's turn without the band. Pixel u, n turns of the cycle past it, is
+      // e^{-i n theta} u shrunk into the turn; there it is iterated itself, nothing looked up
+      // or blended. As deep as one likes, a pixel costs the same few hundred steps.
+      faltA = length(u);
+      if (faltA == 0.0) {
+        o = vec4(vec3(18.0 / 255.0), 1.0);
+        return;
+      }
+      bool au = dot(u, u) > uInvS2;
+      vec4 S = au ? uBandO : uBandI;
+      float t = S.x + (au ? -log2(faltA) : log2(faltA)) / uBandLam, n = floor(t);
+      float ph = atan(u.y, u.x) - S.y - n * uBandTh;
+      faltR = uBandRb * exp2(uBandLam * (t - n));
+      u = faltR * vec2(cos(ph), sin(ph));
+      // n turns deeper the point needs n p more steps than the turn gives it: as many as the view's
+      mx = int(min(float(uMaxit), floor(S.w + n * uBandP)));
     }
-    if (uBand != 1 && dot(u, u) > uInvS2) {
+    if (uBand != 1 && uBand != 3 && dot(u, u) > uInvS2) {
       vec2 iu = invConj(u);
       dcm = uKO * iu;
       pcm = uKO * dot(iu, iu);
@@ -24714,7 +24734,7 @@ void main() {
   int m = 0, n = 0;
   bool esc = false;
   float zz = 0.0;
-  while (n < uMaxit) {
+  while (n < mx) {
     bool jump = false;
     if (bla && m > 0) {
       // the block of 2^l steps starting at m exists for every l up to the trailing zeros of m - 1
@@ -24723,7 +24743,7 @@ void main() {
       float ldz = log2(max(abs(dz.x), abs(dz.y))) + 0.5 + (scaled ? float(E) : 0.0);
       for (int l = top; l >= 1; l--) {
         int j = mm >> l;
-        if (j >= uBlaCnt[l - 1] || n + (1 << l) > uMaxit) continue;
+        if (j >= uBlaCnt[l - 1] || n + (1 << l) > mx) continue;
         int i = uBlaOff[l - 1] + j;
         if (ldz >= texelFetch(uBlaR, at(i), 0).r) continue;
         vec4 ab = texelFetch(uBlaAB, at(i), 0);
@@ -24788,7 +24808,9 @@ void main() {
     // scale before squaring (float max 3.4e38)
     float dm = max(max(abs(D.x), abs(D.y)), 1.0e-30);
     float d = az * log(az) / (dm * length(D / dm));
-    float t = max(0.0, 1.0 - log2(1.0 + d) / 7.0);
+    // folded, the distance grows back with the pixel's way out (as the band's a 2^e)
+    if (uBand == 3) d *= faltA / faltR;
+    float t =max(0.0, 1.0 - log2(1.0 + d) / 7.0);
     g = 6.0 + 240.0 * t * t * t;
     // the band keeps the distance against the one to cM: alike at every turn of the cycle
     if (uBand == 1) { o = vec4(log2(d) - log2(length(uBandRb * exp2(uBandLam * (gl_FragCoord.x - 1.0) / uBandN.x))), float(n), 0.0, 0.0); return; }
@@ -25238,16 +25260,18 @@ void main() {
     const lw = logadd(lv, lsc + lhd);
     // only the mirrored outside gets finer as |w| grows; without the mirror the c-pixel only
     // grows out there (the start view keeps its iterations, further out they fall back)
-    const B = bandBau;
-    const lpcMin = B ? B.S0 - Math.log2(B.Rb) : lr + lsc - 2 * Math.max(0, spiegelOn ? lw : Math.min(lw, 4));
-    const maxit = B ? B.M : itFuer(lpcMin);
+    // B: a row of the band being built; F: a view folded into the band's turn (faltBau)
+    const B = bandBau, F = B ? null : faltBau, BF = B || F;
+    const lpcView = lr + lsc - 2 * Math.max(0, spiegelOn ? lw : Math.min(lw, 4));
+    const lpcMin = BF ? BF.S0 - Math.log2(BF.Rb) : lpcView;
+    const maxit = BF ? BF.M : itFuer(lpcMin);
     const exact = lpcMin < -40;
     // orbits are made a bit longer than needed, so zooming keeps them for a while
     const longer = Math.min(LMAX, Math.ceil((maxit * 1.1 + 2900) / 4096) * 4096);
     // the origin, in pixels from the centre; around a Misiurewicz point cM is the reference
     // for everything within 2^16 pixels: its orbit only goes round, any depth costs nothing
     const lu0 = lv - lsc;
-    const mode = B || lu0 <= lhd || (mis && lu0 <= 16) ? 0 : 1;
+    const mode = BF || lu0 <= lhd || (mis && lu0 <= 16) ? 0 : 1;
     const rH = mode ? H(r) : 0n;
     const vcOut = spiegelOn && lv > 0;
     const lrs = lr + lsc;
@@ -25293,12 +25317,12 @@ void main() {
     let lc;
     gl.uniform2f(U.uRes, W, Hc);
     gl.uniform1i(U.uMaxit, maxit);
-    if (B) {
-      lc = B.S0 + B.lam;
-      const [kB, eB] = splitL(B.S0 - Math.log2(B.Rb));
+    if (BF) {
+      lc = BF.S0 + BF.lam;
+      const [kB, eB] = splitL(BF.S0 - Math.log2(BF.Rb));
       gl.uniform1i(U.uMode, 0);
-      gl.uniform2f(U.uU0, 0, 0);
-      gl.uniform1f(U.uInvS2, 3e38);
+      gl.uniform2f(U.uU0, B ? 0 : f32(N(vH[0], lsc)), B ? 0 : f32(N(vH[1], lsc)));
+      gl.uniform1f(U.uInvS2, !B && spiegelOn ? f32(2 ** (-2 * lsc)) : 3e38);
       gl.uniform1f(U.uKI, kB);
       gl.uniform1i(U.uEI, eB);
     } else if (mode === 0) {
@@ -25354,7 +25378,7 @@ void main() {
       gl.uniform1f(U.uLc, o.bla.lc);
     }
     gl.uniform1i(U.uRefLen, o.L);
-    bandUni(B ? 1 : mode === 0 && bandFertig() ? 2 : 0, lr, lsc, maxit);
+    bandUni(B ? 1 : F ? 3 : mode === 0 && bandFertig() ? 2 : 0, lr, lsc, F ? itFuer(lpcView) : maxit);
     zeichneFlaeche(slot === "feld");
     return true;
   }
@@ -25454,6 +25478,8 @@ void main() {
   }
   // what the canvas shows: the view it was drawn for
   let gezeigt = null;
+  // the point that picture is of (while a dragged point is held, not the point asked for)
+  let gezeigtPunkt = null;
   function vollW() { return [Math.max(1, Math.round(cssW * dpr)), Math.max(1, Math.round(cssH * dpr))]; }
   function leinwand() {
     const [W, Hc] = vollW();
@@ -25465,6 +25491,7 @@ void main() {
   let wechsel = 0;
   function gezeichnet(q) {
     gezeigt = { ls, vH, PB, q, w: wechsel, W: bild.width, Hc: bild.height, cx: cH[0], cy: cH[1], r, sp: spiegelOn, mk: mis ? mis.k : -1, mp: mis ? mis.p : -1 };
+    gezeigtPunkt = { cMx, cMy, mis, cH, cGenau, PB, cRoh };
     bild.style.transform = "";
   }
   const gleich = () => gezeigt && gezeigt.w === wechsel;
@@ -25643,6 +25670,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   // the whole view at quality q (<= 1), at once
   function grob(q, schieben) {
     const [W, Hc] = leinwand();
+    if (halten(W, Hc)) return true;
     if (bandDeckt(W, Hc)) {
       // past the band: the whole view from it, sharp, at any depth the same cost. Until it is
       // made the last picture only turns (live frames there grow dearer with every octave).
@@ -25659,6 +25687,15 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
       return true;
     }
     ensurePB();
+    // not timed into pxMs: a folded pixel costs what the turn costs, not what the depth would
+    const fb = drawFalt(W, Hc);
+    if (fb === false) { altesBild(); return false; }
+    if (fb) {
+      gezeichnet(1);
+      rahmenArt = { k: 0, rand: 0, qr: 1, br: "falt" };
+      ankerNeu(W, Hc);
+      return true;
+    }
     const alt = schieben ? plan(W, Hc) : null;
     if (alt) return umschieben(alt, W, Hc);
     rahmenArt = { k: 1, rand: 1, qr: q };
@@ -25799,7 +25836,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   const bandM = (k) => 4096 * Math.ceil((k + 3000) / 4096);
   // which way theta turns a deeper turn of the cycle, in u (u is c - cM, unflipped)
   const BAND_DREH = 1;
-  let band = null, bandBau = null;
+  let band = null, bandBau = null, faltBau = null, falt = null;
   const gpuDann = (dann) => {
     const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     gl.flush();
@@ -25852,7 +25889,7 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, art === 2 ? band.tex : leer);
     if (!art) return;
-    const B = art === 1 ? bandBau : band;
+    const B = art === 1 ? bandBau : art === 3 ? faltBau : band;
     gl.uniform1f(U.uBandRb, B.Rb);
     gl.uniform2f(U.uBandN, B.Nx, B.Ny);
     gl.uniform1f(U.uBandLam, B.lam);
@@ -25938,18 +25975,156 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   function bandDeckt(W, Hc) {
     const B = band;
     if (!gleichBand(B)) { bandGrund = !B ? (kind ? "no band (kind " + kind + ")" : !mis ? "no band, no orbit yet" : "no band yet") : "band of another c/orbit"; return false; }
+    const g = deckGrund(B, W, Hc);
+    if (g) { bandGrund = g; return false; }
+    bandGrund = B.fertig ? "band" : "band still building";
+    return true;
+  }
+  // why band B does not reach every pixel of a W x Hc view, or "" when it does
+  function deckGrund(B, W, Hc) {
     const lsc = ls + Math.log2(cssW / W);
-    if (lv - lsc > 16) { bandGrund = "view far from M point"; return false; }
+    if (lv - lsc > 16) return "view far from M point";
     const ux = N(vH[0], lsc), uy = N(vH[1], lsc), ex = W / 2 - 0.5, ey = Hc / 2 - 0.5;
     const amax = Math.max(Math.hypot(Math.abs(ux) + ex, Math.abs(uy) + ey));
     // a pixel exactly on c_M (odd W and Hc, a panel pulled to an odd height) is painted as the point
     // itself by the shader; the nearest other pixel is one away
     const amin = Math.hypot(naechst(ux, W), naechst(uy, Hc)) || 1;
-    if (amax > B.Rb) { bandGrund = "view wider than band (" + Math.round(amax) + " > " + Math.round(B.Rb) + ")"; return false; }
+    if (amax > B.Rb) return "view wider than band (" + Math.round(amax) + " > " + Math.round(B.Rb) + ")";
     const lr = Math.log2(Math.max(r, 1e-9)), s2 = spiegelOn ? -lsc : Infinity, g = 1e-3;
-    if (Math.log2(amin) <= s2 && !(Math.min(Math.log2(amax), s2) < B.S0 + B.lam - (lr + lsc) - g)) { bandGrund = "inside not yet past D0 (live)"; return false; }
-    if (Math.log2(amax) > s2 && !(Math.max(Math.log2(amin), s2) > lr - lsc - B.S0 - B.lam + g)) { bandGrund = "outside not yet past D0 (live)"; return false; }
-    bandGrund = B.fertig ? "band" : "band still building";
+    if (Math.log2(amin) <= s2 && !(Math.min(Math.log2(amax), s2) < B.S0 + B.lam - (lr + lsc) - g)) return "inside not yet past D0 (live)";
+    if (Math.log2(amax) > s2 && !(Math.max(Math.log2(amin), s2) > lr - lsc - B.S0 - B.lam + g)) return "outside not yet past D0 (live)";
+    return "";
+  }
+  // the band's turn for this cM without its texture, for the fold: the same lam, theta, S0, Rb and
+  // iterations as the band that bandStart makes, so a picture folded and one looked up agree
+  function faltFuer() {
+    if (kind || !mis) return null;
+    if (cRoh) cFein();
+    if (falt && gleichBand(falt)) return falt;
+    const q = rho(cH[0], cH[1], mis.k, mis.p);
+    const [W, Hc] = vollW();
+    const Rb = bandRb(W, Math.max(Hc, Math.round(window.innerHeight * dpr)));
+    falt = { k: mis.k, p: mis.p, cx: cH[0], cy: cH[1], PB, lam: q.lam, th: q.th, Nx: 1, Ny: 1, Rb, S0: Math.floor(-q.ld - Math.log2(Rb) - BAND_RAND), M: bandM(mis.k), ld: q.ld };
+    return falt;
+  }
+  // a view past the turn while no band of this cM is there (the point just moved): every pixel
+  // folded into the turn and iterated there, sharp, at a cost that no depth changes
+  function drawFalt(W, Hc) {
+    if (band && gleichBand(band)) return null;
+    const F = faltFuer();
+    if (!F || deckGrund(F, W, Hc)) return null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    faltBau = F;
+    try {
+      return drawView(W, Hc, "feld");
+    } finally {
+      faltBau = null;
+    }
+  }
+  // ---- holding the point: dragged far out, a point whose fold costs more than a frame (high k:
+  // up to 100 ms) is folded off screen in strips of about HALT_MS a frame. Meanwhile the point
+  // shown, its value and its picture stay the last whole one; once the new picture is whole, point
+  // and picture change together. The point lags a few frames, no frame shows a picture of another
+  // point, none is coarser, none waits for more than a strip.
+  const HALT_MS = 8;
+  const haltFbo = rahmen();
+  // zugHalt: the job (target point, its turn, the rows still open); zugWartet: the newest target,
+  // come while a job ran, started next; gezeigtPunkt: the point the canvas shows
+  let zugHalt = null, zugWartet = null;
+  // ms a row of the fold took, by point and width (the worst strip), for the first strip next time
+  const faltZeile = new Map();
+  const punkt = () => ({ cMx, cMy, mis, cH, cGenau, PB, cRoh });
+  function setzePunkt(p) {
+    cMx = p.cMx; cMy = p.cMy; mis = p.mis; cGenau = p.cGenau;
+    cH = p.PB === PB ? p.cH : p.cH.map((b) => zuPB(b, p.PB));
+    cRoh = p.cRoh || (p.PB !== PB && !!p.mis);
+  }
+  const gleichP = (a, b) => (a.mis ? a.mis.k + "/" + a.mis.p : "-") === (b.mis ? b.mis.k + "/" + b.mis.p : "-")
+    && gleichC(a.cH[0], a.PB, b.cH[0], b.PB) && gleichC(a.cH[1], a.PB, b.cH[1], b.PB);
+  // the frame while the point is dragged, or null when the usual way draws it
+  function halten(W, Hc) {
+    const g = gezeigt, gp = gezeigtPunkt;
+    const ansicht = g && gp && g.W === W && g.Hc === Hc && g.ls === ls && g.PB === PB && g.vH[0] === vH[0] && g.vH[1] === vH[1]
+      && g.r === r && g.sp === spiegelOn && g.q >= 1 && !bild.style.transform;
+    const amGezeigten = ansicht && gleichK(g);
+    if (zugWartet && amGezeigten) setzePunkt(zugWartet);
+    zugWartet = null;
+    if (!ansicht) {
+      // the view moved (pinch, panel): no hold, the newest target is drawn the usual way
+      if (zugHalt && gp && gleichK({ ...g, cx: gp.cH[0], cy: gp.cH[1], PB: gp.PB })) setzePunkt(zugHalt.naechst || zugHalt.ziel);
+      zugHalt = null;
+      return null;
+    }
+    if (!zugHalt) {
+      // still on the point shown: the picture is whole and current, nothing to draw again
+      if (gleichK(g)) {
+        if (!dragging) return null;
+        g.w = wechsel;
+        rahmenArt = { k: 0, rand: 0, qr: 1, br: rahmenArt && rahmenArt.br };
+        return true;
+      }
+      if (band && gleichBand(band)) return null;
+      const F = faltFuer();
+      if (!F || deckGrund(F, W, Hc)) return null;
+      zugHalt = { ziel: punkt(), F, y: Hc, h: 0, rate: faltZeile.get(F.k + "/" + F.p + "/" + W) || 0, naechst: null };
+    } else if (!gleichK(g)) {
+      if (cRoh) cFein();
+      zugHalt.naechst = punkt();
+    }
+    // the value written meanwhile was the one asked for: back to the one shown
+    if (!gleichK(g)) { setzePunkt(gp); showValues(); }
+    const Z = zugHalt;
+    // rows for HALT_MS: at the worst rate a strip of this job had (rows near the edge of the set cost most), else the worst this point had, else
+    // a three-hundredth of the canvas (a whole fold of the costliest turns took up to 520 ms); never more than half again the strip before
+    const satt = Math.max(8, Math.floor(HALT_MS / (Z.rate || 2400 / Hc)));
+    const h = Math.min(Z.y, Z.h ? Math.min(Math.ceil(1.5 * Z.h), satt) : satt);
+    haltFbo.an(W, Hc);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, Z.y - h, W, h);
+    const alt = punkt(), t0 = performance.now();
+    setzePunkt(Z.ziel);
+    faltBau = Z.F;
+    let ok;
+    try {
+      ok = drawView(W, Hc, "feld");
+    } finally {
+      faltBau = null;
+      setzePunkt(alt);
+      gl.disable(gl.SCISSOR_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    }
+    if (ok) {
+      Z.y -= h;
+      Z.h = h;
+      gpuDann(() => {
+        const rate = (performance.now() - t0) / h, key = Z.F.k + "/" + Z.F.p + "/" + W;
+        Z.rate = Math.max(Z.rate, rate);
+        faltZeile.set(key, Math.max(rate, faltZeile.get(key) || 0));
+      });
+    }
+    if (!raf) raf = requestAnimationFrame(rafDraw);
+    if (Z.y > 0) {
+      g.w = wechsel;
+      rahmenArt = { k: 0, rand: 0, qr: 1, br: "halt" };
+      return true;
+    }
+    // whole: the point and its picture change together
+    zugHalt = null;
+    setzePunkt(Z.ziel);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, haltFbo.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, bildFbo.fb);
+    gl.blitFramebuffer(0, 0, W, Hc, 0, 0, W, Hc, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bildFbo.fb);
+    gezeichnet(1);
+    rahmenArt = { k: 0, rand: 0, qr: 1, br: "falt" };
+    ankerNeu(W, Hc);
+    showValues();
+    if (Z.naechst && !gleichP(Z.naechst, Z.ziel)) zugWartet = Z.naechst;
+    else {
+      // the finger is where the point is: what a still point gets (URL, band once let go)
+      clearTimeout(idle);
+      idle = setTimeout(scharf, dragging ? 160 : 0);
+    }
     return true;
   }
   // a view all past the band: no orbit, no iteration, one lookup per pixel
@@ -26256,8 +26431,11 @@ void main() {
   function scharf() {
     const nr = ++lauf;
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    const fertig = () => { saveUrl(); meldeOrt(); if (lupeOn && lupeG > 0) drawLupe(true); bandStart(); };
+    // while the point is held the band waits: its rows would be for a point already left behind
+    const fertig = () => { saveUrl(); meldeOrt(); if (lupeOn && lupeG > 0) drawLupe(true); if (!dragging) bandStart(); };
     if (!gleich() && !draw(qGrob())) return;
+    // a held point goes on in strips, frame by frame; whole, it calls scharf again
+    if (zugHalt || zugWartet) { if (!raf) raf = requestAnimationFrame(rafDraw); return; }
     // a slow frame under tempo lets this run between two frames: the Nachzug goes on then
     if (!tempoV) nach = null;
     if (gezeigt.q >= 1) return fertig();
@@ -26779,6 +26957,7 @@ void main() {
     dragging = null;
     if (sucheLauf) sucheLauf.verworfen = true;
     sucheNext = null;
+    zugHalt = zugWartet = null;
     cH = v.h.map((b) => zuPB(b, v.PB));
     mis = v.mis;
     cGenau = v.cGenau;
@@ -26829,6 +27008,12 @@ void main() {
   function lasseLos() {
     const { lk } = dragging;
     dragging = null;
+    // a held point: what is snapped is the newest asked for; the strips go on to it
+    if (zugHalt || zugWartet) {
+      setzePunkt(zugWartet || zugHalt.naechst || zugHalt.ziel);
+      zugWartet = null;
+      if (zugHalt) zugHalt.naechst = null;
+    }
     if (snapOn) {
       snapC(lk);
       showValues();
