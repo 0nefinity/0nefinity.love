@@ -25848,6 +25848,29 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     };
     warte();
   };
+  // the GPU time between the fence vor and now: the moment vor is done is taken off, so what
+  // waited in the queue before (the frame shown, the lupe) does not count. Watched by message,
+  // not by timer: timers in a row are held to 4 ms, too coarse for a strip of 8
+  function gpuStrecke(vor, dann) {
+    const nach = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), mc = new MessageChannel(), t0 = performance.now();
+    gl.flush();
+    let tv = 0;
+    mc.port1.onmessage = () => {
+      const t = performance.now();
+      if (!tv && gl.getSyncParameter(vor, gl.SYNC_STATUS) === gl.SIGNALED) tv = t;
+      if (!tv || gl.getSyncParameter(nach, gl.SYNC_STATUS) !== gl.SIGNALED) {
+        if (t - t0 < 200) mc.port2.postMessage(0);
+        else setTimeout(() => mc.port2.postMessage(0), 4);
+        return;
+      }
+      mc.port1.close();
+      gl.deleteSync(vor);
+      gl.deleteSync(nach);
+      speicherPruefen();
+      dann(t - tv);
+    };
+    mc.port2.postMessage(0);
+  }
   function abweichung(a, b, w, h, st, y0 = 1, y1 = h - 1) {
     for (let y = y0; y < y1; y++)
       for (let x = 1; x < w - 1; x++) {
@@ -26074,14 +26097,16 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     // the value written meanwhile was the one asked for: back to the one shown
     if (!gleichK(g)) { setzePunkt(gp); showValues(); }
     const Z = zugHalt;
-    // rows for HALT_MS: at the worst rate a strip of this job had (rows near the edge of the set cost most), else the worst this point had, else
-    // a three-hundredth of the canvas (a whole fold of the costliest turns took up to 520 ms); never more than half again the strip before
-    const satt = Math.max(8, Math.floor(HALT_MS / (Z.rate || 2400 / Hc)));
-    const h = Math.min(Z.y, Z.h ? Math.min(Math.ceil(1.5 * Z.h), satt) : satt);
+    // rows for HALT_MS: at the middle rate of the last three strips of this job (one watch alone can catch the GPU late), else the worst
+    // this turn had, else two rows (near the edge of the set a row of k 72-78 took over 2 ms; 8 rows missed frames); never more than half
+    // again the strip before. A strip done faster than the GPU can be watched (unter) says only: more fits, so half again;
+    // while the last strip is still being watched (offen) the next keeps its size
+    const satt = Z.unter ? Infinity : Math.max(1, Math.floor(HALT_MS / (Z.rate || HALT_MS / 2)));
+    const h = Math.min(Z.y, !Z.h ? satt : Z.offen ? Math.min(Z.h, satt) : Math.min(Math.ceil(1.5 * Z.h), satt));
     haltFbo.an(W, Hc);
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(0, Z.y - h, W, h);
-    const alt = punkt(), t0 = performance.now();
+    const alt = punkt(), vor = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     setzePunkt(Z.ziel);
     faltBau = Z.F;
     let ok;
@@ -26096,12 +26121,20 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
     if (ok) {
       Z.y -= h;
       Z.h = h;
-      gpuDann(() => {
-        const rate = (performance.now() - t0) / h, key = Z.F.k + "/" + Z.F.p + "/" + W;
-        Z.rate = Math.max(Z.rate, rate);
-        faltZeile.set(key, Math.max(rate, faltZeile.get(key) || 0));
+      Z.offen = true;
+      gpuStrecke(vor, (ms) => {
+        Z.offen = false;
+        Z.unter = !(ms > 0);
+        if (Z.unter) return;
+        // a single watch can catch the GPU late (another tab, the compositor): the middle of the last three, of two the worse
+        const R = (Z.raten = [...(Z.raten || []).slice(-2), ms / h]).slice().sort((a, b) => a - b);
+        Z.rate = R.length === 2 ? R[1] : R[R.length >> 1];
+        // for the first strip of the next point: the worst middle any point of this turn had; the
+        // rate of one point says little about the next (0.008 to 0.1 ms a row within one turn)
+        const key = Z.F.k + "/" + Z.F.p + "/" + W;
+        if (R.length === 3) faltZeile.set(key, Math.max(faltZeile.get(key) || 0, Z.rate));
       });
-    }
+    } else gl.deleteSync(vor);
     if (!raf) raf = requestAnimationFrame(rafDraw);
     if (Z.y > 0) {
       g.w = wechsel;
@@ -26227,6 +26260,20 @@ void main() { o = texture(uT, (gl_FragCoord.xy - uZiel.xy) / (uZiel.zw - uZiel.x
   }
   // still: called at rest, also while hidden, so it is ready before it shows
   function drawLupe(still) {
+    // dragged, the lupe shows the point under the finger in the frame the finger gets there; the
+    // field keeps the last whole picture until the new one is (Tim, 2026-11-11: "die Verschiebung
+    // des m Punktes in der Lupe soll absolut flüssig sein")
+    const ziel = zugWartet || (zugHalt && (zugHalt.naechst || zugHalt.ziel));
+    if (!ziel) return lupeZeichnen(still);
+    const alt = punkt();
+    setzePunkt(ziel);
+    try {
+      lupeZeichnen(still);
+    } finally {
+      setzePunkt(alt);
+    }
+  }
+  function lupeZeichnen(still) {
     let Lc = lupe.clientWidth;
     if (lupe.hidden) {
       const cs = getComputedStyle(lupe);
