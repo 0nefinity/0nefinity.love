@@ -2,6 +2,10 @@
 // the worklet scope has no DOM, no fetch, no storage. It is checked against a whitelist
 // before it is compiled, so a shared URL can only ever run arithmetic.
 //
+// Formula language 1 (default): fractions. "1 - 1/4" takes the last quarter of every beat away,
+// "1 - 1/4 alle 4" the last quarter of every 4 beats (= every 4th beat), several terms subtract.
+// Formula language 2 (anything else): arithmetic in t (seconds), p (position in the beat), n (beat number), f.
+//
 // carrier on:  sound = wave(f) * clamp(formula, 0, 1)   (1 = the tone, taking away makes gaps)
 // carrier off: sound = clamp(formula, -1, 1)            (the formula is the membrane itself)
 
@@ -17,12 +21,36 @@ const VARS = ['t', 'p', 'n', 'f'];
 const NAMES = new Set([...Object.keys(MATH), ...VARS]);
 const MAX_LEN = 400;
 
+const FRAC_TERM = String.raw`\s*-\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)(?:\s+alle\s+(\d+(?:\.\d+)?))?`;
+const FRAC_ALL = new RegExp('^\\s*1(?:' + FRAC_TERM + ')*\\s*$', 'i');
+
+// "1 - 1/4 - 1/16 alle 4" -> { terms: [{ r: 0.25, N: 1 }, { r: 0.0625, N: 4 }] }, or { error } / null (not a fraction formula)
+function fractions(src) {
+  if (!FRAC_ALL.test(src)) return null;
+  const terms = [];
+  const re = new RegExp(FRAC_TERM, 'gi');
+  let m;
+  while ((m = re.exec(src.replace(/^\s*1/, ''))) !== null) {
+    const a = parseFloat(m[1]), b = parseFloat(m[2]), N = m[3] === undefined ? 1 : parseFloat(m[3]);
+    if (b === 0) return { error: 'durch 0' };
+    if (N === 0) return { error: 'alle 0' };
+    if (a > 0) terms.push({ r: Math.min(1, a / b), N });
+  }
+  return { terms };
+}
+
 // Returns { fn } or { error }. Never evaluates anything outside the whitelist.
 function compile(expr) {
   if (typeof expr !== 'string') return { error: 'keine Formel' };
   const src = expr.trim();
   if (src === '') return { fn: () => 0 };
   if (src.length > MAX_LEN) return { error: 'zu lang' };
+  const fr = fractions(src);
+  if (fr) {
+    if (fr.error) return fr;
+    const terms = fr.terms;
+    return { terms, fn: (t, p, n) => { const x = n + p; for (const k of terms) { const q = x / k.N; if (q - Math.floor(q) >= 1 - k.r) return 0; } return 1; } };
+  }
   if (!/^[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]*$/.test(src)) {
     return { error: 'Zeichen nicht erlaubt: ' + src.replace(/[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]/g, '').slice(0, 5) };
   }
@@ -56,6 +84,7 @@ class Klang extends AudioWorkletProcessor {
     this.prm = { f: 220, w: 'sin', tempo: 2, smooth: true, carrier: true };
     this.expr = '1';
     this.fn = () => 1;
+    this.terms = [];
     this.beat = 0;            // beats played (phase accumulator, so tempo changes never jump)
     this.tone = 0;
     this.samples = 0;
@@ -73,12 +102,12 @@ class Klang extends AudioWorkletProcessor {
       if (m.expr !== this.expr) {
         this.expr = m.expr;
         const r = compile(m.expr);
-        if (r.fn) this.fn = r.fn;                 // last valid formula keeps running
+        if (r.fn) { this.fn = r.fn; this.terms = r.terms || null; }   // last valid formula keeps running
         this.error = r.fn ? '' : r.error;
       }
       this.port.postMessage({ type: 'formel-fehler', text: this.error || '' });
     } else if (m.type === 'vorschau') {
-      this.port.postMessage({ type: 'vorschau', id: m.id, gate: this.vorschau(m.von, m.beats, m.points), von: m.von, beats: m.beats });
+      this.port.postMessage({ type: 'vorschau', id: m.id, cols: this.vorschau(m.von, m.beats, m.points), von: m.von, beats: m.beats });
     }
   }
 
@@ -90,17 +119,47 @@ class Klang extends AudioWorkletProcessor {
     return x < -1 ? -1 : x > 1 ? 1 : x;
   }
 
-  // Values over [von, von + beats) in beats, sampled at any resolution (zoom down to single samples).
-  vorschau(von, beats, points) {
-    const out = new Float32Array(points);
+  // Per column over [von, von + beats): lowest and highest level, coverage (share of the column that sounds)
+  // and kerb (a gap narrower than the column). Any zoom, from single samples to days.
+  vorschau(von, beats, cols) {
+    const lo = new Float32Array(cols), hi = new Float32Array(cols), cov = new Float32Array(cols), kerb = new Uint8Array(cols);
     const { f, tempo } = this.prm;
-    for (let i = 0; i < points; i++) {
-      let x = von + (i / points) * beats;
-      if (tempo > 0) { const d = tempo / sampleRate; x = Math.floor(x / d + 1e-9) * d; }   // zoomed to single samples, show what the ear gets
-      const n = Math.floor(x);
-      out[i] = this.level(tempo > 0 ? x / tempo : 0, x - n, n, f);
+    const d = tempo / sampleRate;
+    const w = beats / cols;
+    const at = x => { const n = Math.floor(x); return this.level(tempo > 0 ? x / tempo : 0, x - n, n, f); };
+    const snap = x => (d > 0 ? Math.floor(x / d + 1e-9) * d : x);
+    const K = this.terms ? 16 : 6;
+    for (let i = 0; i < cols; i++) {
+      const x0 = von + i * w;
+      if (d > 0 && w <= d * 1.0001) {              // a column is at most one sample: show what the ear gets
+        const v = at(snap(x0)); lo[i] = hi[i] = cov[i] = v; continue;
+      }
+      let mn = Infinity, mx = -Infinity, sum = 0, off = 0, aus = 0;
+      for (let j = 0; j < K; j++) {
+        off = (off + 0.6180339887) % 1;
+        const v = at(snap(x0 + (j + off) / K * w));
+        if (v < mn) mn = v; if (v > mx) mx = v; sum += v; if (v < 0.5) aus++;
+      }
+      cov[i] = sum / K;
+      if (this.terms) {                            // exact for fraction formulas: one gap anywhere in the column counts
+        const x1 = x0 + w;
+        let luecke = false, voll = false, schmal = false;
+        for (const k of this.terms) {
+          const N = k.N, kk = Math.floor(x0 / N);
+          const s0 = kk * N + (1 - k.r) * N, e0 = (kk + 1) * N;
+          const s1 = e0 + (1 - k.r) * N;
+          const trifft = (e0 > x0 && s0 < x1) || s1 < x1;
+          if (trifft) { luecke = true; if (k.r * N < w) schmal = true; }
+          if (x0 >= s0 && x1 <= e0) voll = true;
+        }
+        mn = luecke ? 0 : 1; mx = voll ? 0 : 1;
+        kerb[i] = luecke && !voll && schmal ? 1 : 0;
+      } else {
+        kerb[i] = mn < 0.5 && aus === 1 ? 1 : 0;
+      }
+      lo[i] = mn; hi[i] = mx;
     }
-    return out;
+    return { lo, hi, cov, kerb };
   }
 
   process(_in, outputs) {

@@ -13613,6 +13613,8 @@ text.setAttribute("y",svgP.y)
 .knopf:focus-visible { outline: 2px solid var(--text-color); outline-offset: 2px; }
 .knopf.an { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
 
+#regel { padding: 0 0.75rem 0.5rem; font-size: 0.8rem; line-height: 1.3; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
+
 @media (hover: hover) {
   #ton:hover, .knopf:hover { background: color-mix(in srgb, var(--text-color) 12%, transparent); }
   #ton[aria-pressed="true"]:hover, .knopf.an:hover { background: var(--text-color); }
@@ -13738,7 +13740,6 @@ const ctx = cvs.getContext('2d');
 let W = 1, H = 1, dpr = 1;
 let span = 8, von = 0, folgen = true;
 let letzte = null, geplant = false, vorschauId = 0;
-const OVERSAMPLE = 3;
 const ANKER = 0.85;      // while following, the playhead stays at this share of the width
 
 function farbe(){ return getComputedStyle(document.body).color; }
@@ -13755,7 +13756,7 @@ function sichtVon(){
 function zeichnen(){
   if (!node) { zeichnenLeer(); return; }
   vorschauId++;
-  node.port.postMessage({ type: 'vorschau', id: vorschauId, von: sichtVon(), beats: span, points: W * OVERSAMPLE });
+  node.port.postMessage({ type: 'vorschau', id: vorschauId, von: sichtVon(), beats: span, points: W });
 }
 function vorschauDa(m){
   if (m.id !== vorschauId) { zeichnenPlanen(); return; }
@@ -13770,40 +13771,37 @@ function zeichnenLeer(){
 }
 function malen(){
   if (!letzte) return;
-  const g = letzte.gate;
+  const { lo, hi, cov, kerb } = letzte.cols;
   const dick = Math.max(1, Math.round(2 * dpr));
   const mitte = Math.round(H / 2);
   const kopf = beatSchaetzung();
-  const pxKopf = (kopf - letzte.von) / span * W;     // left of it the line has been played
+  const pxKopf = (kopf - letzte.von) / span * W;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = farbe();
   if (cfg.traeger) {
-    // one column per pixel: the lowest value of its samples, so a gap narrower than a pixel is never lost
+    // the line is the formula itself: always white, its brightness is only how loud it is (and, zoomed out, how much of a column sounds)
     for (let x = 0; x < W; x++) {
-      let lo = 1;
-      for (let k = 0; k < OVERSAMPLE; k++) { const y = g[x * OVERSAMPLE + k]; if (y < lo) lo = y; }
-      if (lo <= 0) continue;
-      ctx.globalAlpha = (x <= pxKopf ? 0.95 : 0.25) * Math.max(0.15, lo);
+      if (hi[x] <= 0) continue;
+      ctx.globalAlpha = lo[x] > 0 ? hi[x] : Math.max(0.6, cov[x]) * hi[x];
       ctx.fillRect(x, mitte - Math.floor(dick / 2), 1, dick);
     }
   } else {
     // the formula is the membrane: draw its value, up is +1
     const hoch = H / 2 - 4 * dpr;
+    ctx.globalAlpha = 1;
     for (let x = 0; x < W; x++) {
-      let lo = 1, hi = -1;
-      for (let k = 0; k < OVERSAMPLE; k++) { const y = g[x * OVERSAMPLE + k]; if (y < lo) lo = y; if (y > hi) hi = y; }
-      ctx.globalAlpha = x <= pxKopf ? 0.95 : 0.25;
-      const y0 = mitte - Math.round(hi * hoch), y1 = mitte - Math.round(lo * hoch);
+      const y0 = mitte - Math.round(hi[x] * hoch), y1 = mitte - Math.round(lo[x] * hoch);
       ctx.fillRect(x, y0, 1, Math.max(dick, y1 - y0 + 1));
     }
   }
-  // beat ticks
-  if (span <= 64) {
-    ctx.globalAlpha = 0.4;
-    const v0 = letzte.von;
-    for (let b = Math.ceil(v0); b < v0 + span; b++) ctx.fillRect(Math.round((b - v0) / span * W), H - 4 * dpr, 1, 3 * dpr);
+  // ticks at round distances (beats), whatever the zoom
+  const schritt = Math.pow(10, Math.ceil(Math.log10(span * 50 * dpr / W)));
+  const v0 = letzte.von;
+  ctx.globalAlpha = 0.4;
+  for (let i = Math.ceil(v0 / schritt), b = i * schritt, z = 0; b < v0 + span && z < 200; i++, b = i * schritt, z++) {
+    ctx.fillRect(Math.round((b - v0) / span * W), H - 4 * dpr, 1, 3 * dpr);
   }
-  if (laeuft && pxKopf >= 0 && pxKopf < W) { ctx.globalAlpha = 1; ctx.fillRect(Math.round(pxKopf), 0, Math.max(1, dpr), H); }
+  if (pxKopf >= 0 && pxKopf < W && (laeuft || beatNow > 0)) { ctx.globalAlpha = 0.5; ctx.fillRect(Math.round(pxKopf), 0, Math.max(1, Math.floor(dpr / 2)), H); }
   ctx.globalAlpha = 1;
 }
 function groesse(){
@@ -13825,10 +13823,10 @@ function folgenSetzen(an){
 }
 // factor < 1 zooms in. Following: the playhead stays put. Free: the point under the finger stays put.
 function zoomUm(faktor, ankerX){
-  const neu = Math.max(spanMin(), Math.min(1e7, span * faktor));
+  const neu = Math.max(spanMin(), Math.min(1e15, span * faktor));
   if (!folgen) {
     const a = ankerX / cvs.clientWidth;
-    von = Math.max(0, von + a * span - a * neu);
+    von = von + a * span - a * neu;
   }
   span = neu;
   zeichnenPlanen();
@@ -13850,7 +13848,7 @@ cvs.addEventListener('pointermove', ev => {
   if (zeiger.size === 1) {
     if (dx === 0) return;
     folgenSetzen(false);
-    von = Math.max(0, von - dx / cvs.clientWidth * span);
+    von = von - dx / cvs.clientWidth * span;
     zeichnenPlanen();
   } else if (zeiger.size === 2 && pinchStart) {
     const [a, b] = [...zeiger.values()];
@@ -13869,13 +13867,16 @@ folgenKnopf.addEventListener('click', () => folgenSetzen(!folgen));
 
 let letzterTakt = 0;
 function schleife(t){
-  if (laeuft && t - letzterTakt > 16) { letzterTakt = t; zeichnenPlanen(); }
+  if (laeuft && t - letzterTakt > 33) { letzterTakt = t; zeichnenPlanen(); }
   requestAnimationFrame(schleife);
 }
 requestAnimationFrame(schleife);
 
 // ---------- settings panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
+const hilfe = document.createElement('div');
+hilfe.id = 'regel';
+hilfe.textContent = '1 - 1/4: das letzte Viertel jedes Schlags fehlt. 1 - 1/4 alle 4: jeder 4. Schlag fehlt. Mehrere Terme: 1 - 1/4 - 1/16.';
 const LOG_MIN = Math.log(0.1), LOG_MAX = Math.log(2000);
 panel
   .addInput('formel', { label: 'Formel', value: cfg.formel, type: 'text', inputmode: 'text',
@@ -13900,6 +13901,8 @@ panel
   .addToggle('glatt', { label: 'Glätten', value: cfg.glatt,
       onChange: v => { cfg.glatt = v; paramSenden(); urlSchreiben(); } })
 ;
+
+panel.el.querySelector('[data-key="formel"]').after(hilfe);
 
 function raumFuerPanel(){
   const r = panel.el.getBoundingClientRect();
@@ -79472,6 +79475,10 @@ tools/1klang-worklet.js
 // the worklet scope has no DOM, no fetch, no storage. It is checked against a whitelist
 // before it is compiled, so a shared URL can only ever run arithmetic.
 //
+// Formula language 1 (default): fractions. "1 - 1/4" takes the last quarter of every beat away,
+// "1 - 1/4 alle 4" the last quarter of every 4 beats (= every 4th beat), several terms subtract.
+// Formula language 2 (anything else): arithmetic in t (seconds), p (position in the beat), n (beat number), f.
+//
 // carrier on:  sound = wave(f) * clamp(formula, 0, 1)   (1 = the tone, taking away makes gaps)
 // carrier off: sound = clamp(formula, -1, 1)            (the formula is the membrane itself)
 
@@ -79487,12 +79494,36 @@ const VARS = ['t', 'p', 'n', 'f'];
 const NAMES = new Set([...Object.keys(MATH), ...VARS]);
 const MAX_LEN = 400;
 
+const FRAC_TERM = String.raw`\s*-\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)(?:\s+alle\s+(\d+(?:\.\d+)?))?`;
+const FRAC_ALL = new RegExp('^\\s*1(?:' + FRAC_TERM + ')*\\s*$', 'i');
+
+// "1 - 1/4 - 1/16 alle 4" -> { terms: [{ r: 0.25, N: 1 }, { r: 0.0625, N: 4 }] }, or { error } / null (not a fraction formula)
+function fractions(src) {
+  if (!FRAC_ALL.test(src)) return null;
+  const terms = [];
+  const re = new RegExp(FRAC_TERM, 'gi');
+  let m;
+  while ((m = re.exec(src.replace(/^\s*1/, ''))) !== null) {
+    const a = parseFloat(m[1]), b = parseFloat(m[2]), N = m[3] === undefined ? 1 : parseFloat(m[3]);
+    if (b === 0) return { error: 'durch 0' };
+    if (N === 0) return { error: 'alle 0' };
+    if (a > 0) terms.push({ r: Math.min(1, a / b), N });
+  }
+  return { terms };
+}
+
 // Returns { fn } or { error }. Never evaluates anything outside the whitelist.
 function compile(expr) {
   if (typeof expr !== 'string') return { error: 'keine Formel' };
   const src = expr.trim();
   if (src === '') return { fn: () => 0 };
   if (src.length > MAX_LEN) return { error: 'zu lang' };
+  const fr = fractions(src);
+  if (fr) {
+    if (fr.error) return fr;
+    const terms = fr.terms;
+    return { terms, fn: (t, p, n) => { const x = n + p; for (const k of terms) { const q = x / k.N; if (q - Math.floor(q) >= 1 - k.r) return 0; } return 1; } };
+  }
   if (!/^[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]*$/.test(src)) {
     return { error: 'Zeichen nicht erlaubt: ' + src.replace(/[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]/g, '').slice(0, 5) };
   }
@@ -79526,6 +79557,7 @@ class Klang extends AudioWorkletProcessor {
     this.prm = { f: 220, w: 'sin', tempo: 2, smooth: true, carrier: true };
     this.expr = '1';
     this.fn = () => 1;
+    this.terms = [];
     this.beat = 0;            // beats played (phase accumulator, so tempo changes never jump)
     this.tone = 0;
     this.samples = 0;
@@ -79543,12 +79575,12 @@ class Klang extends AudioWorkletProcessor {
       if (m.expr !== this.expr) {
         this.expr = m.expr;
         const r = compile(m.expr);
-        if (r.fn) this.fn = r.fn;                 // last valid formula keeps running
+        if (r.fn) { this.fn = r.fn; this.terms = r.terms || null; }   // last valid formula keeps running
         this.error = r.fn ? '' : r.error;
       }
       this.port.postMessage({ type: 'formel-fehler', text: this.error || '' });
     } else if (m.type === 'vorschau') {
-      this.port.postMessage({ type: 'vorschau', id: m.id, gate: this.vorschau(m.von, m.beats, m.points), von: m.von, beats: m.beats });
+      this.port.postMessage({ type: 'vorschau', id: m.id, cols: this.vorschau(m.von, m.beats, m.points), von: m.von, beats: m.beats });
     }
   }
 
@@ -79560,17 +79592,47 @@ class Klang extends AudioWorkletProcessor {
     return x < -1 ? -1 : x > 1 ? 1 : x;
   }
 
-  // Values over [von, von + beats) in beats, sampled at any resolution (zoom down to single samples).
-  vorschau(von, beats, points) {
-    const out = new Float32Array(points);
+  // Per column over [von, von + beats): lowest and highest level, coverage (share of the column that sounds)
+  // and kerb (a gap narrower than the column). Any zoom, from single samples to days.
+  vorschau(von, beats, cols) {
+    const lo = new Float32Array(cols), hi = new Float32Array(cols), cov = new Float32Array(cols), kerb = new Uint8Array(cols);
     const { f, tempo } = this.prm;
-    for (let i = 0; i < points; i++) {
-      let x = von + (i / points) * beats;
-      if (tempo > 0) { const d = tempo / sampleRate; x = Math.floor(x / d + 1e-9) * d; }   // zoomed to single samples, show what the ear gets
-      const n = Math.floor(x);
-      out[i] = this.level(tempo > 0 ? x / tempo : 0, x - n, n, f);
+    const d = tempo / sampleRate;
+    const w = beats / cols;
+    const at = x => { const n = Math.floor(x); return this.level(tempo > 0 ? x / tempo : 0, x - n, n, f); };
+    const snap = x => (d > 0 ? Math.floor(x / d + 1e-9) * d : x);
+    const K = this.terms ? 16 : 6;
+    for (let i = 0; i < cols; i++) {
+      const x0 = von + i * w;
+      if (d > 0 && w <= d * 1.0001) {              // a column is at most one sample: show what the ear gets
+        const v = at(snap(x0)); lo[i] = hi[i] = cov[i] = v; continue;
+      }
+      let mn = Infinity, mx = -Infinity, sum = 0, off = 0, aus = 0;
+      for (let j = 0; j < K; j++) {
+        off = (off + 0.6180339887) % 1;
+        const v = at(snap(x0 + (j + off) / K * w));
+        if (v < mn) mn = v; if (v > mx) mx = v; sum += v; if (v < 0.5) aus++;
+      }
+      cov[i] = sum / K;
+      if (this.terms) {                            // exact for fraction formulas: one gap anywhere in the column counts
+        const x1 = x0 + w;
+        let luecke = false, voll = false, schmal = false;
+        for (const k of this.terms) {
+          const N = k.N, kk = Math.floor(x0 / N);
+          const s0 = kk * N + (1 - k.r) * N, e0 = (kk + 1) * N;
+          const s1 = e0 + (1 - k.r) * N;
+          const trifft = (e0 > x0 && s0 < x1) || s1 < x1;
+          if (trifft) { luecke = true; if (k.r * N < w) schmal = true; }
+          if (x0 >= s0 && x1 <= e0) voll = true;
+        }
+        mn = luecke ? 0 : 1; mx = voll ? 0 : 1;
+        kerb[i] = luecke && !voll && schmal ? 1 : 0;
+      } else {
+        kerb[i] = mn < 0.5 && aus === 1 ? 1 : 0;
+      }
+      lo[i] = mn; hi[i] = mx;
     }
-    return out;
+    return { lo, hi, cov, kerb };
   }
 
   process(_in, outputs) {
