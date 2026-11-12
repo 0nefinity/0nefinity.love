@@ -13615,6 +13615,26 @@ text.setAttribute("y",svgP.y)
 
 #regel { padding: 0 0.75rem 0.5rem; font-size: 0.8rem; line-height: 1.3; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
 
+#formelhilfe { padding: 0 0 0.25rem; }
+#mathe {
+  min-height: 3.6rem; padding: 0.25rem 0.75rem;
+  display: flex; align-items: center; overflow-x: auto; overflow-y: hidden;
+  font-size: 1.15rem; color: var(--text-color);
+}
+#mathe math { display: block; margin: 0 auto; }
+#vorlagen { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.25rem 0.75rem 0.5rem; }
+#vorlagen .knopf { font-size: 0.85rem; padding: 0 0.7rem; }
+#wie {
+  font-family: var(--font-family); font-size: 0.8rem; color: inherit;
+  background: none; border: 0; padding: 0 0.75rem; min-height: 44px; cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px; -webkit-tap-highlight-color: transparent;
+}
+#wie:focus-visible { outline: 2px solid var(--text-color); outline-offset: -2px; }
+#erklaerung { padding: 0 0.75rem 0.75rem; font-size: 0.8rem; line-height: 1.45; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
+#erklaerung[hidden] { display: none; }
+#erklaerung p { margin: 0 0 0.5rem; }
+#erklaerung code { font-family: inherit; color: var(--text-color); }
+
 @media (hover: hover) {
   #ton:hover, .knopf:hover { background: color-mix(in srgb, var(--text-color) 12%, transparent); }
   #ton[aria-pressed="true"]:hover, .knopf.an:hover { background: var(--text-color); }
@@ -13646,6 +13666,7 @@ const fehlerEl = document.getElementById('fehler');
 const rausKnopf = document.getElementById('raus');
 const reinKnopf = document.getElementById('rein');
 const folgenKnopf = document.getElementById('folgen');
+let F = null;   // /tools/1klang-formel.js, for the typeset formula and the page-side error (the sound is computed in the worklet)
 
 // ---------- state (also the URL) ----------
 const WELLEN = ['sin', 'tri', 'square', 'saw'];
@@ -13711,7 +13732,18 @@ function paramSenden(){
 }
 function formelSenden(){
   if (node) node.port.postMessage({ type: 'formel', expr: cfg.formel });
+  matheZeigen();
   zeichnenPlanen();
+}
+
+// the formula as typeset maths under the input (native MathML); errors of the new language show at once, also before the audio exists
+function matheZeigen(){
+  if (!F || !matheEl) return;
+  const r = F.analysiere(cfg.formel);
+  matheEl.replaceChildren();
+  if (r.error) { fehlerEl.textContent = r.error; return; }
+  fehlerEl.textContent = '';
+  if (r.ast) matheEl.append(F.mathml(r.ast));
 }
 
 async function schalten(an){
@@ -13875,8 +13907,49 @@ requestAnimationFrame(schleife);
 // ---------- settings panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
 const hilfe = document.createElement('div');
-hilfe.id = 'regel';
-hilfe.textContent = '1 - 1/4: das letzte Viertel jedes Schlags fehlt. 1 - 1/4 alle 4: jeder 4. Schlag fehlt. Mehrere Terme: 1 - 1/4 - 1/16.';
+hilfe.id = 'formelhilfe';
+const matheEl = document.createElement('div');
+matheEl.id = 'mathe';
+matheEl.setAttribute('aria-label', 'Formel');
+const VORLAGEN = [
+  { name: 'Viertel weg', formel: '1 - [3/4, 1) mod 1', was: 'das letzte Viertel jedes Schlags fehlt' },
+  { name: 'Jeder 4.', formel: '1 - [3, 4) mod 4', was: 'jeder 4. Schlag fehlt' },
+  { name: '3 gegen 4', formel: '[0, 1/2) mod 3 + [0, 1/2) mod 4', was: 'alle 3 Schläge ein Treffer, alle 4 Schläge ein Treffer, Muster über 12' },
+  { name: 'Komplex', formel: '1 - [3/4, 1) mod 1 - [1/4, 3/8) mod 2 - [3, 4) mod 4', was: 'drei Lücken mit eigenen Perioden übereinander' },
+  { name: 'Cantor', formel: 'prod(k=1..inf) (1 - [1/3, 2/3)(frac(3^(k-1) * t)))', was: 'das mittlere Drittel fehlt, in jedem Rest wieder, bis unendlich' },
+  { name: '\u221A2 driftet', formel: '1 - [3/4, 1) mod sqrt(2)', was: 'Periode \u221A2 Schläge, die Lücke wandert gegen den Schlag' },
+  { name: 'Tresillo', formel: 'E(3,8)', was: '3 Schläge gleichmäßig auf 8 Schritte (Euklid)' },
+];
+const vorlagenEl = document.createElement('div');
+vorlagenEl.id = 'vorlagen';
+for (const v of VORLAGEN) {
+  const k = document.createElement('button');
+  k.type = 'button'; k.className = 'knopf'; k.textContent = v.name; k.title = v.formel + ' : ' + v.was;
+  k.addEventListener('click', () => { cfg.formel = v.formel; panel.set('formel', v.formel); formelSenden(); urlSchreiben(); });
+  vorlagenEl.append(k);
+}
+const regel = document.createElement('div');
+regel.id = 'regel';
+regel.textContent = '1 - [3/4, 1) mod 1: das letzte Viertel jedes Schlags fehlt. Kurz: 1 - 1/4.';
+const wieKnopf = document.createElement('button');
+wieKnopf.id = 'wie'; wieKnopf.type = 'button'; wieKnopf.textContent = 'Wie funktioniert das?';
+wieKnopf.setAttribute('aria-expanded', 'false'); wieKnopf.setAttribute('aria-controls', 'erklaerung');
+const erklaerung = document.createElement('div');
+erklaerung.id = 'erklaerung'; erklaerung.hidden = true;
+for (const z of [
+  '[a, b) mod N ist 1, wenn t mod N in [a, b) liegt, sonst 0. t zählt in Schlägen. 1 - [3, 4) mod 4: jeder 4. Schlag fehlt. Terme lassen sich mit + - * / ^ und Klammern kombinieren.',
+  '[a, b)(x) ist 1, wenn x in [a, b) liegt. Kurzformen: 1 - 1/4 ist 1 - [3/4, 1) mod 1, 1 - 1/4 alle 4 ist 1 - [3, 4) mod 4.',
+  'prod(k=1..inf) (...) und sum(k=1..inf) (...) laufen bis zur Auflösung (Sample, Pixel). Beim Hineinzoomen kommen neue Lücken. frac(x) ist der Rest hinter dem Komma.',
+  'E(k, n) oder E(k, n, r): k Schläge gleichmäßig auf n Schritte von je einem Schlag, r dreht das Muster. Die Verteilung stammt von Bjorklund, als Rhythmus beschrieben hat sie Toussaint (2005).',
+  'Alles andere, etwa sin(2*pi*f*t) oder 1 - (n%4==3), rechnet mit t in Sekunden.',
+]) { const q = document.createElement('p'); q.textContent = z; erklaerung.append(q); }
+wieKnopf.addEventListener('click', () => {
+  const auf = erklaerung.hidden;
+  erklaerung.hidden = !auf;
+  wieKnopf.setAttribute('aria-expanded', auf ? 'true' : 'false');
+  layout();
+});
+hilfe.append(matheEl, vorlagenEl, regel, wieKnopf, erklaerung);
 const LOG_MIN = Math.log(0.1), LOG_MAX = Math.log(2000);
 panel
   .addInput('formel', { label: 'Formel', value: cfg.formel, type: 'text', inputmode: 'text',
@@ -13922,6 +13995,7 @@ document.addEventListener('ctrl-panel-layout-change', layout);
 // Context and worklet load at once (suspended); sound waits for the tap (iOS).
 audioBauen().then(() => { if (ac.state === 'running') ac.suspend(); }).catch(() => {});
 requestAnimationFrame(layout);
+import('/tools/1klang-formel.js').then(m => { F = m; matheZeigen(); layout(); }).catch(e => { console.error('1klang: Formelmodul fehlt', e); fehlerEl.textContent = 'Formelmodul fehlt'; });
 
 window.__1klang = { cfg, setSpan: s => { span = s; zeichnenPlanen(); }, setVon: v => { von = v; folgenSetzen(false); zeichnenPlanen(); }, letzte: () => letzte, folgen: () => folgen, span: () => span };
 
@@ -79470,17 +79544,413 @@ tools/0necanvas/ui.js
   };
 })();
 
+tools/1klang-formel.js
+// Formula language of 1klang.html (t in beats). Used by the worklet (compile, sound) and the page (parse, MathML).
+// No eval, no new Function: tokenizer, recursive parser, closures. Nothing outside the grammar can run.
+//
+//   [a, b) mod N      1 while (t mod N) lies in [a, b), else 0. "(" after the interval: indicator of that argument instead.
+//   prod(k=1..inf) x  product / sum (sum(...)), "inf" runs as far as the resolution (sample, pixel) reaches.
+//   E(k, n, r)        Euclidean rhythm: k hits spread evenly over n steps of one beat, rotated by r (Bjorklund, Toussaint 2005).
+//   1 - 1/4           short form: last quarter of every beat gone;  1 - 1/4 alle 4  every 4th beat gone.
+
+const MAX_LEN = 400;
+const MAX_TERME = 60;        // "inf" reaches this far at most
+const MAX_ENDLICH = 2000;    // finite upper bounds
+const TIEFE = 12;
+
+let RES = 0;                 // resolution in beats: what a sample / a pixel column spans
+export function setRes(r) { RES = r > 0 ? r : 0; }
+
+export class FormelFehler extends Error {}
+const fehler = m => { throw new FormelFehler(m); };
+
+// ---------- tokens ----------
+function tokens(src) {
+  const s = src.replace(/∞/g, ' inf ').replace(/π/g, ' pi ').replace(/[·×]/g, '*').replace(/−/g, '-');
+  const out = [];
+  const re = /\s*(?:(\d+(?:\.\d+)?)|([A-Za-z_][A-Za-z_0-9]*)|(\.\.)|([-+*/^()[\],=]))/y;
+  let i = 0;
+  while (i < s.length) {
+    if (/^\s*$/.test(s.slice(i))) break;
+    re.lastIndex = i;
+    const m = re.exec(s);
+    if (!m) fehler('Zeichen nicht erlaubt: ' + s.slice(i).trim().charAt(0));
+    if (m[1] !== undefined) out.push({ k: 'num', v: parseFloat(m[1]) });
+    else if (m[2] !== undefined) out.push({ k: 'id', v: m[2] });
+    else out.push({ k: 'op', v: m[3] || m[4] });
+    i = re.lastIndex;
+  }
+  return out;
+}
+
+// ---------- parser ----------
+const F1 = {
+  frac: x => x - Math.floor(x), fract: x => x - Math.floor(x),
+  floor: Math.floor, ceil: Math.ceil, round: Math.round, abs: Math.abs, sqrt: Math.sqrt,
+  sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, sign: Math.sign,
+  rnd: x => { const s = Math.sin(x * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); },
+};
+const mod = (a, b) => a - b * Math.floor(a / b);
+const F2 = { pow: Math.pow, mod };
+const FN = { min: Math.min, max: Math.max };
+const KONST = { pi: Math.PI, e: Math.E, inf: Infinity };
+const VARS = new Set(['t', 'p', 'n', 'f']);
+
+export function parse(src) {
+  if (typeof src !== 'string') fehler('keine Formel');
+  if (src.length > MAX_LEN) fehler('zu lang');
+  const tk = tokens(src);
+  if (!tk.length) fehler('leer');
+  let i = 0;
+  const isOp = v => tk[i] && tk[i].k === 'op' && tk[i].v === v;
+  const isId = v => tk[i] && tk[i].k === 'id' && tk[i].v === v;
+  const want = v => { if (!isOp(v)) fehler(tk[i] ? '"' + v + '" fehlt vor "' + (tk[i].v) + '"' : '"' + v + '" fehlt am Ende'); i++; };
+
+  const expr = () => {
+    let a = term();
+    while (isOp('+') || isOp('-')) { const op = tk[i++].v; a = { t: 'bin', op, a, b: term() }; }
+    return a;
+  };
+  const term = () => {
+    let a = unary();
+    for (;;) {
+      if (isOp('*') || isOp('/')) { const op = tk[i++].v; a = { t: 'bin', op, a, b: unary() }; }
+      else if (isId('mod')) { i++; a = { t: 'bin', op: 'mod', a, b: unary() }; }
+      else return a;
+    }
+  };
+  const unary = () => {
+    if (isOp('-')) { i++; return { t: 'neg', a: unary() }; }
+    if (isOp('+')) { i++; return unary(); }
+    return power();
+  };
+  const power = () => {
+    const a = atom();
+    if (isOp('^')) { i++; return { t: 'bin', op: '^', a, b: unary() }; }
+    return a;
+  };
+  const atom = () => {
+    const tok = tk[i];
+    if (!tok) fehler('Formel endet zu früh');
+    if (tok.k === 'num') { i++; return { t: 'num', v: tok.v }; }
+    if (isOp('(')) { i++; const e = expr(); want(')'); return e; }
+    if (isOp('[')) return intervall();
+    if (tok.k === 'id') {
+      i++;
+      const name = tok.v;
+      const call = isOp('(');
+      if (call && (name === 'prod' || name === 'sum')) return gross(name);
+      if (call) {
+        i++;
+        const args = [];
+        if (!isOp(')')) { args.push(expr()); while (isOp(',')) { i++; args.push(expr()); } }
+        want(')');
+        return aufruf(name, args);
+      }
+      if (name in KONST) return { t: 'const', n: name };
+      if (VARS.has(name)) return { t: 'var', n: name };
+      return { t: 'name', n: name };     // loop variable, resolved by the compiler (error "unbekannt" if none)
+    }
+    fehler('unerwartet: ' + tok.v);
+  };
+  const aufruf = (name, args) => {
+    const n = args.length;
+    if (name === 'E') { if (n < 2 || n > 3) fehler('E braucht 2 oder 3 Argumente: E(k, n, r)'); return { t: 'euk', k: args[0], n: args[1], r: args[2] || null }; }
+    if (name in F1) { if (n !== 1) fehler(name + ' braucht 1 Argument'); }
+    else if (name in F2) { if (n !== 2) fehler(name + ' braucht 2 Argumente'); }
+    else if (name in FN) { if (n < 1) fehler(name + ' braucht Argumente'); }
+    else fehler('unbekannt: ' + name);
+    return { t: 'call', n: name, args };
+  };
+  const intervall = () => {
+    i++;
+    const a = expr(); want(',');
+    const b = expr();
+    let close;
+    if (isOp(')')) close = ')'; else if (isOp(']')) close = ']'; else fehler('")" oder "]" fehlt am Intervall');
+    i++;
+    let arg = null, m = null;
+    if (isId('mod')) { i++; m = power(); }
+    else if (isOp('(')) { i++; arg = expr(); want(')'); }
+    return { t: 'ind', a, b, close, arg, mod: m };
+  };
+  const gross = op => {
+    i++;   // "("
+    const tok = tk[i];
+    if (!tok || tok.k !== 'id') fehler(op + ' braucht eine Variable: ' + op + '(k=1..inf)');
+    i++;
+    want('=');
+    const von = expr();
+    want('..');
+    const bis = expr();
+    want(')');
+    return { t: 'big', op, v: tok.v, von, bis, body: term() };
+  };
+
+  const ast = expr();
+  if (i < tk.length) fehler('unerwartet: ' + tk[i].v);
+  return ast;
+}
+
+// ---------- short form: "1 - 1/4 - 1/16 alle 4" ----------
+const FRAC_TERM = String.raw`\s*-\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)(?:\s+alle\s+(\d+(?:\.\d+)?))?`;
+const FRAC_ALL = new RegExp('^\\s*1(?:' + FRAC_TERM + ')*\\s*$', 'i');
+
+// the same formula in long form: 1 - [(1-r)N, N) mod N. null: not a short form.
+export function kurzform(src) {
+  if (!FRAC_ALL.test(src)) return null;
+  const re = new RegExp(FRAC_TERM, 'gi');
+  let ast = { t: 'num', v: 1 }, m;
+  const rest = src.replace(/^\s*1/, '');
+  while ((m = re.exec(rest)) !== null) {
+    const a = parseFloat(m[1]), b = parseFloat(m[2]), N = m[3] === undefined ? 1 : parseFloat(m[3]);
+    if (b === 0) fehler('durch 0');
+    if (N === 0) fehler('alle 0');
+    if (!(a > 0)) continue;
+    const r = Math.min(1, a / b);
+    ast = { t: 'bin', op: '-', a: ast, b: { t: 'ind', a: { t: 'num', v: (1 - r) * N }, b: { t: 'num', v: N }, close: ')', arg: null, mod: { t: 'num', v: N } } };
+  }
+  return ast;
+}
+
+// goes into this language (t in beats) or stays with the old arithmetic (t in seconds)?
+export function istNeu(src) {
+  return FRAC_ALL.test(src) || /[[∞π·×−]|\b(?:prod|sum|inf|mod|alle|frac|E)\b/.test(src);
+}
+
+// ---------- compiler ----------
+function euklid(k, n, r, x) {
+  n = Math.floor(n);
+  if (!(n >= 1)) return 0;
+  k = Math.max(0, Math.min(n, Math.floor(k)));
+  if (k === 0) return 0;
+  const i = mod(Math.floor(x) - Math.floor(r || 0), n);
+  return Math.floor(i * k / n) !== Math.floor((i - 1) * k / n) ? 1 : 0;
+}
+
+function comp(node, S) {
+  switch (node.t) {
+    case 'num': { const v = node.v; return () => v; }
+    case 'const': { const v = KONST[node.n]; return () => v; }
+    case 'var':
+      switch (node.n) {
+        case 't': return x => x;
+        case 'p': return x => x - Math.floor(x);
+        case 'n': return x => Math.floor(x);
+        default: return (x, f) => f;
+      }
+    case 'name': {
+      const idx = S.names.lastIndexOf(node.n);
+      if (idx < 0) fehler('unbekannt: ' + node.n);
+      const L = S.L;
+      return () => L[idx];
+    }
+    case 'neg': { const a = comp(node.a, S); return (x, f) => -a(x, f); }
+    case 'bin': {
+      if (node.op === '/' && node.b.t === 'num' && node.b.v === 0) fehler('durch 0');
+      const a = comp(node.a, S), b = comp(node.b, S);
+      switch (node.op) {
+        case '+': return (x, f) => a(x, f) + b(x, f);
+        case '-': return (x, f) => a(x, f) - b(x, f);
+        case '*': return (x, f) => a(x, f) * b(x, f);
+        case '/': return (x, f) => a(x, f) / b(x, f);
+        case '^': return (x, f) => Math.pow(a(x, f), b(x, f));
+        default: return (x, f) => mod(a(x, f), b(x, f));
+      }
+    }
+    case 'call': {
+      const args = node.args.map(a => comp(a, S));
+      if (node.n in F1) { const g = F1[node.n], a = args[0]; return (x, f) => g(a(x, f)); }
+      if (node.n in F2) { const g = F2[node.n], a = args[0], b = args[1]; return (x, f) => g(a(x, f), b(x, f)); }
+      const g = FN[node.n];
+      return (x, f) => g(...args.map(a => a(x, f)));
+    }
+    case 'euk': {
+      const k = comp(node.k, S), n = comp(node.n, S), r = node.r ? comp(node.r, S) : () => 0;
+      return (x, f) => euklid(k(x, f), n(x, f), r(x, f), x);
+    }
+    case 'ind': {
+      const a = comp(node.a, S), b = comp(node.b, S), zu = node.close === ']';
+      let v;
+      if (node.mod) {
+        const N = comp(node.mod, S);
+        v = (x, f) => { const n = N(x, f); return n > 0 ? mod(x, n) : NaN; };
+      } else if (node.arg) v = comp(node.arg, S);
+      else v = x => x;
+      return (x, f) => { const y = v(x, f); return y >= a(x, f) && (zu ? y <= b(x, f) : y < b(x, f)) ? 1 : 0; };
+    }
+    case 'big': {
+      if (S.names.length >= TIEFE) fehler('zu tief verschachtelt');
+      const von = comp(node.von, S), bis = comp(node.bis, S);
+      const idx = S.names.length;
+      S.names.push(node.v);
+      const body = comp(node.body, S);
+      S.names.pop();
+      const L = S.L, produkt = node.op === 'prod';
+      return (x, f) => {
+        const a = Math.ceil(von(x, f)), b = bis(x, f);
+        if (!(a === a) || !(b === b)) return NaN;
+        const unendlich = b === Infinity;
+        const letzt = unendlich ? a + MAX_TERME - 1 : Math.min(b, a + MAX_ENDLICH - 1);
+        let acc = produkt ? 1 : 0;
+        for (let k = a; k <= letzt; k++) {
+          L[idx] = k;
+          const v = body(x, f);
+          // bis unendlich, solange das Sample reicht: a term that changes within one resolution step is below what can be seen or heard
+          if (unendlich && RES > 0 && (body(x + RES / 2, f) !== v || body(x + RES, f) !== v)) break;
+          if (produkt) { acc *= v; if (acc === 0) break; } else acc += v;
+        }
+        return acc;
+      };
+    }
+  }
+  fehler('intern: ' + node.t);
+}
+
+// every constant? (no t, p, n, f, loop variable, product)
+function konstant(node) {
+  if (!node || typeof node !== 'object') return true;
+  if (Array.isArray(node)) return node.every(konstant);
+  if (node.t === 'var' || node.t === 'name' || node.t === 'big') return false;
+  return Object.keys(node).every(k => k === 't' || konstant(node[k]));
+}
+
+// "1 - [a,b) mod N - ..." with constant a, b, N: the gaps are known exactly. null: any other formula (the preview samples).
+export function terme(ast) {
+  const out = [];
+  let n = ast;
+  while (n.t === 'bin' && n.op === '-') {
+    const g = n.b;
+    if (g.t !== 'ind' || !g.mod || g.arg || !konstant(g)) return null;
+    const S = { L: new Float64Array(TIEFE), names: [] };
+    const N = comp(g.mod, S)(0, 0);
+    let a = comp(g.a, S)(0, 0), b = comp(g.b, S)(0, 0);
+    if (!(N > 0) || a !== a || b !== b) return null;
+    a = Math.max(0, a); b = Math.min(N, b);
+    if (b > a) out.push({ a, b, N });
+    n = n.a;
+  }
+  if (!(n.t === 'num' && n.v === 1)) return null;
+  return out.reverse();
+}
+
+// Returns { fn(t, p, n, f), ast, terms } or { error }. t is ignored: this language runs in beats (n + p).
+export function kompiliere(src) {
+  try {
+    const ast = kurzform(src) || parse(src);
+    const S = { L: new Float64Array(TIEFE), names: [] };
+    const core = comp(ast, S);
+    const proben = [0, 0.37, 1.5, 7.25].map(x => core(x, 220));
+    if (proben.every(v => !Number.isFinite(v))) fehler('Ergebnis nicht endlich');
+    return { fn: (_t, p, n, f) => core(n + p, f), ast, terms: terme(ast) };
+  } catch (e) {
+    if (e instanceof FormelFehler) return { error: e.message };
+    throw e;
+  }
+}
+
+// Page side: { legacy: true } (old arithmetic), { ast } or { error }
+export function analysiere(src) {
+  const s = String(src).trim();
+  if (s === '' || !istNeu(s)) return { legacy: true };
+  const r = kompiliere(s);
+  return r.error ? { error: r.error } : { ast: r.ast };
+}
+
+// ---------- MathML (page side only: needs a DOM) ----------
+const NS = 'http://www.w3.org/1998/Math/MathML';
+
+function bruch(v) {
+  if (!Number.isFinite(v) || Number.isInteger(v)) return null;
+  const a = Math.abs(v);
+  for (let q = 2; q <= 64; q++) {
+    const p = Math.round(a * q);
+    if (p > 0 && Math.abs(p / q - a) < 1e-9) return { s: v < 0 ? -1 : 1, p, q };
+  }
+  return null;
+}
+
+function rang(node) {
+  switch (node.t) {
+    case 'num': return node.v < 0 ? 1 : bruch(node.v) ? 3 : 5;
+    case 'bin': return node.op === '+' || node.op === '-' ? 1 : node.op === '/' ? 3 : node.op === '^' ? 4 : 2;
+    case 'neg': return 1;
+    case 'big': return 1.5;
+    default: return 5;
+  }
+}
+
+export function mathml(ast, doc = document) {
+  const el = (tag, ...kids) => {
+    const e = doc.createElementNS(NS, tag);
+    for (const k of kids) e.append(typeof k === 'string' ? doc.createTextNode(k) : k);
+    return e;
+  };
+  const mi = (s, normal) => { const e = el('mi', s); if (normal) e.setAttribute('mathvariant', 'normal'); return e; };
+  const mo = s => el('mo', s);
+  const klammer = (...inner) => el('mrow', mo('('), ...inner, mo(')'));
+  const mit = (node, min) => rang(node) < min ? klammer(r(node)) : r(node);
+  const zahl = v => {
+    const b = bruch(v);
+    if (!b) return el('mn', String(v));
+    const f = el('mfrac', el('mn', String(b.p)), el('mn', String(b.q)));
+    return b.s < 0 ? el('mrow', mo('−'), f) : f;
+  };
+  const r = node => {
+    switch (node.t) {
+      case 'num': return node.v < 0 && !bruch(node.v) ? el('mrow', mo('−'), el('mn', String(-node.v))) : zahl(node.v);
+      case 'const': return node.n === 'inf' ? mi('∞', true) : node.n === 'pi' ? mi('π', true) : mi('e', true);
+      case 'var': case 'name': return mi(node.n);
+      case 'neg': return el('mrow', mo('−'), mit(node.a, 2));
+      case 'bin':
+        switch (node.op) {
+          case '+': return el('mrow', mit(node.a, 1), mo('+'), mit(node.b, 1));
+          case '-': return el('mrow', mit(node.a, 1), mo('−'), mit(node.b, 2));
+          case '*': return el('mrow', mit(node.a, 2), mo('⋅'), mit(node.b, 2));
+          case '/': return el('mfrac', r(node.a), r(node.b));
+          case '^': return el('msup', mit(node.a, 5), r(node.b));
+          default: return el('mrow', mit(node.a, 3), mo('mod'), mit(node.b, 3));
+        }
+      case 'call':
+        if (node.n === 'sqrt') return el('msqrt', r(node.args[0]));
+        if (node.n === 'abs') return el('mrow', mo('|'), r(node.args[0]), mo('|'));
+        if (node.n === 'floor') return el('mrow', mo('⌊'), r(node.args[0]), mo('⌋'));
+        if (node.n === 'ceil') return el('mrow', mo('⌈'), r(node.args[0]), mo('⌉'));
+        return el('mrow', mi(node.n === 'fract' ? 'frac' : node.n, true), mo('⁡'), klammer(...komma(node.args.map(r))));
+      case 'euk':
+        return el('mrow', mi('E'), mo('⁡'), klammer(...komma([r(node.k), r(node.n), ...(node.r ? [r(node.r)] : [])])));
+      case 'ind': {
+        const grenzen = el('mrow', mo('['), r(node.a), mo(','), r(node.b), mo(node.close));
+        const arg = node.mod ? el('mrow', mi('t'), mo('mod'), mit(node.mod, 3)) : node.arg ? r(node.arg) : mi('t');
+        return el('mrow', el('msub', mi('\u{1D7D9}', true), grenzen), klammer(arg));
+      }
+      case 'big': {
+        const zeichen = node.op === 'prod' ? '∏' : '∑';
+        const unten = el('mrow', mi(node.v), mo('='), r(node.von));
+        return el('mrow', el('munderover', mo(zeichen), unten, r(node.bis)), mit(node.body, 2));
+      }
+    }
+    return mi('?');
+  };
+  const komma = list => list.flatMap((k, i) => i ? [mo(','), k] : [k]);
+  const math = el('math', el('mrow', mi('f'), klammer(mi('t')), mo('='), r(ast)));
+  math.setAttribute('display', 'block');
+  return math;
+}
+
 tools/1klang-worklet.js
 // AudioWorklet for 1klang.html. The formula is evaluated here, never on the page's main thread:
 // the worklet scope has no DOM, no fetch, no storage. It is checked against a whitelist
 // before it is compiled, so a shared URL can only ever run arithmetic.
 //
-// Formula language 1 (default): fractions. "1 - 1/4" takes the last quarter of every beat away,
-// "1 - 1/4 alle 4" the last quarter of every 4 beats (= every 4th beat), several terms subtract.
+// Formula language 1: intervals, periods, products, Euclid, fractions (tools/1klang-formel.js, t in beats).
+// "1 - [3/4, 1) mod 1" takes the last quarter of every beat away, "1 - 1/4" is its short form.
 // Formula language 2 (anything else): arithmetic in t (seconds), p (position in the beat), n (beat number), f.
 //
 // carrier on:  sound = wave(f) * clamp(formula, 0, 1)   (1 = the tone, taking away makes gaps)
 // carrier off: sound = clamp(formula, -1, 1)            (the formula is the membrane itself)
+
+import { kompiliere, istNeu, setRes } from './1klang-formel.js';
 
 const MATH = {
   pi: Math.PI, e: Math.E,
@@ -79494,36 +79964,13 @@ const VARS = ['t', 'p', 'n', 'f'];
 const NAMES = new Set([...Object.keys(MATH), ...VARS]);
 const MAX_LEN = 400;
 
-const FRAC_TERM = String.raw`\s*-\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)(?:\s+alle\s+(\d+(?:\.\d+)?))?`;
-const FRAC_ALL = new RegExp('^\\s*1(?:' + FRAC_TERM + ')*\\s*$', 'i');
-
-// "1 - 1/4 - 1/16 alle 4" -> { terms: [{ r: 0.25, N: 1 }, { r: 0.0625, N: 4 }] }, or { error } / null (not a fraction formula)
-function fractions(src) {
-  if (!FRAC_ALL.test(src)) return null;
-  const terms = [];
-  const re = new RegExp(FRAC_TERM, 'gi');
-  let m;
-  while ((m = re.exec(src.replace(/^\s*1/, ''))) !== null) {
-    const a = parseFloat(m[1]), b = parseFloat(m[2]), N = m[3] === undefined ? 1 : parseFloat(m[3]);
-    if (b === 0) return { error: 'durch 0' };
-    if (N === 0) return { error: 'alle 0' };
-    if (a > 0) terms.push({ r: Math.min(1, a / b), N });
-  }
-  return { terms };
-}
-
 // Returns { fn } or { error }. Never evaluates anything outside the whitelist.
 function compile(expr) {
   if (typeof expr !== 'string') return { error: 'keine Formel' };
   const src = expr.trim();
   if (src === '') return { fn: () => 0 };
   if (src.length > MAX_LEN) return { error: 'zu lang' };
-  const fr = fractions(src);
-  if (fr) {
-    if (fr.error) return fr;
-    const terms = fr.terms;
-    return { terms, fn: (t, p, n) => { const x = n + p; for (const k of terms) { const q = x / k.N; if (q - Math.floor(q) >= 1 - k.r) return 0; } return 1; } };
-  }
+  if (istNeu(src)) return kompiliere(src);
   if (!/^[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]*$/.test(src)) {
     return { error: 'Zeichen nicht erlaubt: ' + src.replace(/[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]/g, '').slice(0, 5) };
   }
@@ -79558,6 +80005,7 @@ class Klang extends AudioWorkletProcessor {
     this.expr = '1';
     this.fn = () => 1;
     this.terms = [];
+    this.neu = false;
     this.beat = 0;            // beats played (phase accumulator, so tempo changes never jump)
     this.tone = 0;
     this.samples = 0;
@@ -79575,7 +80023,7 @@ class Klang extends AudioWorkletProcessor {
       if (m.expr !== this.expr) {
         this.expr = m.expr;
         const r = compile(m.expr);
-        if (r.fn) { this.fn = r.fn; this.terms = r.terms || null; }   // last valid formula keeps running
+        if (r.fn) { this.fn = r.fn; this.terms = r.terms || null; this.neu = !!r.ast; }   // last valid formula keeps running
         this.error = r.fn ? '' : r.error;
       }
       this.port.postMessage({ type: 'formel-fehler', text: this.error || '' });
@@ -79601,29 +80049,29 @@ class Klang extends AudioWorkletProcessor {
     const w = beats / cols;
     const at = x => { const n = Math.floor(x); return this.level(tempo > 0 ? x / tempo : 0, x - n, n, f); };
     const snap = x => (d > 0 ? Math.floor(x / d + 1e-9) * d : x);
-    const K = this.terms ? 16 : 6;
+    const K = this.terms || this.neu ? 16 : 6;
     for (let i = 0; i < cols; i++) {
       const x0 = von + i * w;
       if (d > 0 && w <= d * 1.0001) {              // a column is at most one sample: show what the ear gets
-        const v = at(snap(x0)); lo[i] = hi[i] = cov[i] = v; continue;
+        setRes(d); const v = at(snap(x0)); lo[i] = hi[i] = cov[i] = v; continue;
       }
       let mn = Infinity, mx = -Infinity, sum = 0, off = 0, aus = 0;
       for (let j = 0; j < K; j++) {
         off = (off + 0.6180339887) % 1;
+        setRes(Math.max(w / K, d));                // "inf" in a formula reaches as deep as one sample of this column
         const v = at(snap(x0 + (j + off) / K * w));
         if (v < mn) mn = v; if (v > mx) mx = v; sum += v; if (v < 0.5) aus++;
       }
       cov[i] = sum / K;
-      if (this.terms) {                            // exact for fraction formulas: one gap anywhere in the column counts
+      if (this.terms) {                            // exact for gap formulas: one gap anywhere in the column counts
         const x1 = x0 + w;
         let luecke = false, voll = false, schmal = false;
-        for (const k of this.terms) {
-          const N = k.N, kk = Math.floor(x0 / N);
-          const s0 = kk * N + (1 - k.r) * N, e0 = (kk + 1) * N;
-          const s1 = e0 + (1 - k.r) * N;
-          const trifft = (e0 > x0 && s0 < x1) || s1 < x1;
-          if (trifft) { luecke = true; if (k.r * N < w) schmal = true; }
-          if (x0 >= s0 && x1 <= e0) voll = true;
+        for (const g of this.terms) {
+          const N = g.N, kk = Math.floor(x0 / N);
+          let trifft = w >= N;
+          if (!trifft) for (let q = kk; q <= kk + 1; q++) if (q * N + g.a < x1 && q * N + g.b > x0) trifft = true;
+          if (trifft) { luecke = true; if (g.b - g.a < w) schmal = true; }
+          if (!(w >= N)) for (let q = kk; q <= kk + 1; q++) if (x0 >= q * N + g.a && x1 <= q * N + g.b) voll = true;
         }
         mn = luecke ? 0 : 1; mx = voll ? 0 : 1;
         kerb[i] = luecke && !voll && schmal ? 1 : 0;
@@ -79640,6 +80088,7 @@ class Klang extends AudioWorkletProcessor {
     const { f, w, tempo, smooth, carrier } = this.prm;
     const shape = wave[w] || wave.sin;
     const dBeat = tempo / sampleRate;
+    setRes(dBeat);
     const dTone = f / sampleRate;
     const alpha = 1 - Math.exp(-1 / (sampleRate * 0.00025));   // 0.25 ms: kills clicks, keeps gaps of a few samples audible
     for (let i = 0; i < out.length; i++) {
@@ -79663,8 +80112,7 @@ class Klang extends AudioWorkletProcessor {
 
 registerProcessor('1klang', Klang);
 
-// Gate function exposed for unit tests (node), harmless inside the worklet scope.
-if (typeof module !== 'undefined') module.exports = { compile, wave };
+export { compile, wave };
 
 tools/aufnahme.js
 // Aufnahme: ein Knopf, der die Canvas der Seite plus Mikrofon aufnimmt und eine Debug-Spur mitschreibt.

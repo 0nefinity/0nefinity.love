@@ -76,6 +76,26 @@
 
 #regel { padding: 0 0.75rem 0.5rem; font-size: 0.8rem; line-height: 1.3; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
 
+#formelhilfe { padding: 0 0 0.25rem; }
+#mathe {
+  min-height: 3.6rem; padding: 0.25rem 0.75rem;
+  display: flex; align-items: center; overflow-x: auto; overflow-y: hidden;
+  font-size: 1.15rem; color: var(--text-color);
+}
+#mathe math { display: block; margin: 0 auto; }
+#vorlagen { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.25rem 0.75rem 0.5rem; }
+#vorlagen .knopf { font-size: 0.85rem; padding: 0 0.7rem; }
+#wie {
+  font-family: var(--font-family); font-size: 0.8rem; color: inherit;
+  background: none; border: 0; padding: 0 0.75rem; min-height: 44px; cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px; -webkit-tap-highlight-color: transparent;
+}
+#wie:focus-visible { outline: 2px solid var(--text-color); outline-offset: -2px; }
+#erklaerung { padding: 0 0.75rem 0.75rem; font-size: 0.8rem; line-height: 1.45; color: color-mix(in srgb, var(--text-color) 65%, transparent); }
+#erklaerung[hidden] { display: none; }
+#erklaerung p { margin: 0 0 0.5rem; }
+#erklaerung code { font-family: inherit; color: var(--text-color); }
+
 @media (hover: hover) {
   #ton:hover, .knopf:hover { background: color-mix(in srgb, var(--text-color) 12%, transparent); }
   #ton[aria-pressed="true"]:hover, .knopf.an:hover { background: var(--text-color); }
@@ -107,6 +127,7 @@ const fehlerEl = document.getElementById('fehler');
 const rausKnopf = document.getElementById('raus');
 const reinKnopf = document.getElementById('rein');
 const folgenKnopf = document.getElementById('folgen');
+let F = null;   // /tools/1klang-formel.js, for the typeset formula and the page-side error (the sound is computed in the worklet)
 
 // ---------- state (also the URL) ----------
 const WELLEN = ['sin', 'tri', 'square', 'saw'];
@@ -172,7 +193,18 @@ function paramSenden(){
 }
 function formelSenden(){
   if (node) node.port.postMessage({ type: 'formel', expr: cfg.formel });
+  matheZeigen();
   zeichnenPlanen();
+}
+
+// the formula as typeset maths under the input (native MathML); errors of the new language show at once, also before the audio exists
+function matheZeigen(){
+  if (!F || !matheEl) return;
+  const r = F.analysiere(cfg.formel);
+  matheEl.replaceChildren();
+  if (r.error) { fehlerEl.textContent = r.error; return; }
+  fehlerEl.textContent = '';
+  if (r.ast) matheEl.append(F.mathml(r.ast));
 }
 
 async function schalten(an){
@@ -336,8 +368,49 @@ requestAnimationFrame(schleife);
 // ---------- settings panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
 const hilfe = document.createElement('div');
-hilfe.id = 'regel';
-hilfe.textContent = '1 - 1/4: das letzte Viertel jedes Schlags fehlt. 1 - 1/4 alle 4: jeder 4. Schlag fehlt. Mehrere Terme: 1 - 1/4 - 1/16.';
+hilfe.id = 'formelhilfe';
+const matheEl = document.createElement('div');
+matheEl.id = 'mathe';
+matheEl.setAttribute('aria-label', 'Formel');
+const VORLAGEN = [
+  { name: 'Viertel weg', formel: '1 - [3/4, 1) mod 1', was: 'das letzte Viertel jedes Schlags fehlt' },
+  { name: 'Jeder 4.', formel: '1 - [3, 4) mod 4', was: 'jeder 4. Schlag fehlt' },
+  { name: '3 gegen 4', formel: '[0, 1/2) mod 3 + [0, 1/2) mod 4', was: 'alle 3 Schläge ein Treffer, alle 4 Schläge ein Treffer, Muster über 12' },
+  { name: 'Komplex', formel: '1 - [3/4, 1) mod 1 - [1/4, 3/8) mod 2 - [3, 4) mod 4', was: 'drei Lücken mit eigenen Perioden übereinander' },
+  { name: 'Cantor', formel: 'prod(k=1..inf) (1 - [1/3, 2/3)(frac(3^(k-1) * t)))', was: 'das mittlere Drittel fehlt, in jedem Rest wieder, bis unendlich' },
+  { name: '\u221A2 driftet', formel: '1 - [3/4, 1) mod sqrt(2)', was: 'Periode \u221A2 Schläge, die Lücke wandert gegen den Schlag' },
+  { name: 'Tresillo', formel: 'E(3,8)', was: '3 Schläge gleichmäßig auf 8 Schritte (Euklid)' },
+];
+const vorlagenEl = document.createElement('div');
+vorlagenEl.id = 'vorlagen';
+for (const v of VORLAGEN) {
+  const k = document.createElement('button');
+  k.type = 'button'; k.className = 'knopf'; k.textContent = v.name; k.title = v.formel + ' : ' + v.was;
+  k.addEventListener('click', () => { cfg.formel = v.formel; panel.set('formel', v.formel); formelSenden(); urlSchreiben(); });
+  vorlagenEl.append(k);
+}
+const regel = document.createElement('div');
+regel.id = 'regel';
+regel.textContent = '1 - [3/4, 1) mod 1: das letzte Viertel jedes Schlags fehlt. Kurz: 1 - 1/4.';
+const wieKnopf = document.createElement('button');
+wieKnopf.id = 'wie'; wieKnopf.type = 'button'; wieKnopf.textContent = 'Wie funktioniert das?';
+wieKnopf.setAttribute('aria-expanded', 'false'); wieKnopf.setAttribute('aria-controls', 'erklaerung');
+const erklaerung = document.createElement('div');
+erklaerung.id = 'erklaerung'; erklaerung.hidden = true;
+for (const z of [
+  '[a, b) mod N ist 1, wenn t mod N in [a, b) liegt, sonst 0. t zählt in Schlägen. 1 - [3, 4) mod 4: jeder 4. Schlag fehlt. Terme lassen sich mit + - * / ^ und Klammern kombinieren.',
+  '[a, b)(x) ist 1, wenn x in [a, b) liegt. Kurzformen: 1 - 1/4 ist 1 - [3/4, 1) mod 1, 1 - 1/4 alle 4 ist 1 - [3, 4) mod 4.',
+  'prod(k=1..inf) (...) und sum(k=1..inf) (...) laufen bis zur Auflösung (Sample, Pixel). Beim Hineinzoomen kommen neue Lücken. frac(x) ist der Rest hinter dem Komma.',
+  'E(k, n) oder E(k, n, r): k Schläge gleichmäßig auf n Schritte von je einem Schlag, r dreht das Muster. Die Verteilung stammt von Bjorklund, als Rhythmus beschrieben hat sie Toussaint (2005).',
+  'Alles andere, etwa sin(2*pi*f*t) oder 1 - (n%4==3), rechnet mit t in Sekunden.',
+]) { const q = document.createElement('p'); q.textContent = z; erklaerung.append(q); }
+wieKnopf.addEventListener('click', () => {
+  const auf = erklaerung.hidden;
+  erklaerung.hidden = !auf;
+  wieKnopf.setAttribute('aria-expanded', auf ? 'true' : 'false');
+  layout();
+});
+hilfe.append(matheEl, vorlagenEl, regel, wieKnopf, erklaerung);
 const LOG_MIN = Math.log(0.1), LOG_MAX = Math.log(2000);
 panel
   .addInput('formel', { label: 'Formel', value: cfg.formel, type: 'text', inputmode: 'text',
@@ -383,6 +456,7 @@ document.addEventListener('ctrl-panel-layout-change', layout);
 // Context and worklet load at once (suspended); sound waits for the tap (iOS).
 audioBauen().then(() => { if (ac.state === 'running') ac.suspend(); }).catch(() => {});
 requestAnimationFrame(layout);
+import('/tools/1klang-formel.js').then(m => { F = m; matheZeigen(); layout(); }).catch(e => { console.error('1klang: Formelmodul fehlt', e); fehlerEl.textContent = 'Formelmodul fehlt'; });
 
 window.__1klang = { cfg, setSpan: s => { span = s; zeichnenPlanen(); }, setVon: v => { von = v; folgenSetzen(false); zeichnenPlanen(); }, letzte: () => letzte, folgen: () => folgen, span: () => span };
 
