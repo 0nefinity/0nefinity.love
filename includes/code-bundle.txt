@@ -13536,6 +13536,399 @@ text.setAttribute("y",svgP.y)
 </body>
 </html>
 
+1klang.html
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+  <script src="/tools/math-notation.js" defer></script>
+<meta charset="UTF-8">
+<title>1klang</title>
+<style>
+#eins {
+  display: flex;
+  flex-direction: column;
+  white-space: normal;
+  touch-action: pan-y;
+  box-sizing: border-box;
+}
+#eins * { white-space: normal; text-shadow: none; }
+
+#ton {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 4.5rem; height: 4.5rem;
+  margin: 0.75rem 0 0.5rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text-color) 45%, transparent);
+  background: transparent;
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+#ton:active { background: color-mix(in srgb, var(--text-color) 15%, transparent); }
+#ton:focus-visible { outline: 2px solid var(--text-color); outline-offset: 3px; }
+#ton[aria-pressed="true"] { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
+
+#bild {
+  flex: 0 0 auto;
+  width: 100%;
+  height: clamp(7rem, 30vh, 16rem);
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+
+#leiste {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.5rem;
+}
+#fehler {
+  flex: 0 0 auto;
+  min-height: 1.4rem; line-height: 1.4rem;
+  padding: 0 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--text-color) 70%, transparent);
+}
+.knopf {
+  font-family: var(--font-family);
+  flex: 0 0 auto;
+  min-width: 44px; height: 44px;
+  padding: 0 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 1.2rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.knopf:active { background: color-mix(in srgb, var(--text-color) 15%, transparent); }
+.knopf:focus-visible { outline: 2px solid var(--text-color); outline-offset: 2px; }
+.knopf.an { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
+
+@media (hover: hover) {
+  #ton:hover, .knopf:hover { background: color-mix(in srgb, var(--text-color) 12%, transparent); }
+  #ton[aria-pressed="true"]:hover, .knopf.an:hover { background: var(--text-color); }
+}
+@media (prefers-reduced-motion: reduce) { #ton { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="eins" class="_018-canvas">
+  <button id="ton" type="button" aria-pressed="false" aria-label="Ton">0</button>
+  <canvas id="bild" aria-label="Lautstärke"></canvas>
+  <div id="leiste">
+    <button id="raus" class="knopf" type="button" aria-label="Herauszoomen">−</button>
+    <button id="rein" class="knopf" type="button" aria-label="Hineinzoomen">+</button>
+    <button id="folgen" class="knopf an" type="button" aria-pressed="true" aria-label="Abspielkopf folgen">›</button>
+  </div>
+  <div id="fehler" role="status"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const stage = document.getElementById('eins');
+const tonKnopf = document.getElementById('ton');
+const cvs = document.getElementById('bild');
+const fehlerEl = document.getElementById('fehler');
+const rausKnopf = document.getElementById('raus');
+const reinKnopf = document.getElementById('rein');
+const folgenKnopf = document.getElementById('folgen');
+
+// ---------- state (also the URL) ----------
+const WELLEN = ['sin', 'tri', 'square', 'saw'];
+const cfg = { f: 220, w: 'sin', tempo: 2, v: 0.5, glatt: true, formel: '1', traeger: true };
+
+(function ausUrl(){
+  const q = new URLSearchParams(location.search);
+  const num = (k, lo, hi) => { const x = parseFloat(q.get(k)); return Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
+  const f = num('f', 0, 1e6); if (f !== null) cfg.f = f;
+  const t = num('t', 0, 1e6); if (t !== null) cfg.tempo = t;
+  const v = num('v', 0, 1); if (v !== null) cfg.v = v;
+  if (WELLEN.includes(q.get('w'))) cfg.w = q.get('w');
+  if (q.get('g') === '0') cfg.glatt = false;
+  if (q.get('c') === '0') cfg.traeger = false;
+  if (q.has('a')) cfg.formel = q.get('a').slice(0, 400);
+})();
+
+let urlTimer = 0;
+function urlSchreiben(){
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(() => {
+    const q = new URLSearchParams(location.search);
+    for (const k of ['f', 't', 'v', 'w', 'g', 'c', 'a']) q.delete(k);
+    q.set('f', +cfg.f.toPrecision(10)); q.set('t', +cfg.tempo.toPrecision(10)); q.set('v', +cfg.v.toFixed(3)); q.set('w', cfg.w);
+    if (!cfg.glatt) q.set('g', '0');
+    if (!cfg.traeger) q.set('c', '0');
+    q.set('a', cfg.formel);
+    history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
+  }, 200);
+}
+
+// ---------- audio ----------
+let ac = null, node = null, master = null, laeuft = false, bereit = null;
+let beatNow = 0, beatZeit = 0;
+
+function audioBauen(){
+  if (bereit) return bereit;
+  bereit = (async () => {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    await ac.audioWorklet.addModule('/tools/1klang-worklet.js');
+    node = new AudioWorkletNode(ac, '1klang', { numberOfInputs: 0, outputChannelCount: [2] });
+    master = ac.createGain();
+    master.gain.value = 0;
+    node.connect(master).connect(ac.destination);
+    node.port.onmessage = ev => {
+      const m = ev.data;
+      if (m.type === 'takt') { beatNow = m.beat; beatZeit = performance.now(); }
+      else if (m.type === 'formel-fehler') { fehlerEl.textContent = m.text; }
+      else if (m.type === 'vorschau') { vorschauDa(m); }
+      else if (m.type === 'fehler') { console.error('1klang worklet:', m.text); fehlerEl.textContent = m.text; }
+    };
+    paramSenden(); formelSenden();
+    zeichnenPlanen();
+  })();
+  bereit.catch(e => { console.error('1klang: Audio nicht verfügbar', e); fehlerEl.textContent = 'Audio nicht verfügbar'; bereit = null; });
+  return bereit;
+}
+
+function paramSenden(){
+  if (node) node.port.postMessage({ type: 'param', prm: { f: cfg.f, w: cfg.w, tempo: cfg.tempo, smooth: cfg.glatt, carrier: cfg.traeger } });
+  if (master && laeuft) master.gain.setTargetAtTime(cfg.v, ac.currentTime, 0.01);
+  zeichnenPlanen();
+}
+function formelSenden(){
+  if (node) node.port.postMessage({ type: 'formel', expr: cfg.formel });
+  zeichnenPlanen();
+}
+
+async function schalten(an){
+  if (an) {
+    try { await audioBauen(); await ac.resume(); }
+    catch (e) { console.error('1klang: Start fehlgeschlagen', e); return; }
+    master.gain.setTargetAtTime(cfg.v, ac.currentTime, 0.01);
+    beatZeit = performance.now();
+  } else if (ac) {
+    master.gain.setTargetAtTime(0, ac.currentTime, 0.01);
+  }
+  laeuft = an;
+  tonKnopf.setAttribute('aria-pressed', an ? 'true' : 'false');
+  tonKnopf.textContent = an ? '1' : '0';
+  zeichnenPlanen();
+}
+tonKnopf.addEventListener('click', () => schalten(!laeuft));
+
+// playhead between two worklet reports (30 per second): extrapolate, so it glides
+function beatSchaetzung(){
+  return laeuft ? beatNow + (performance.now() - beatZeit) / 1000 * cfg.tempo : beatNow;
+}
+
+// ---------- display: the line over [von, von+span) beats, zoom down to single samples ----------
+const ctx = cvs.getContext('2d');
+let W = 1, H = 1, dpr = 1;
+let span = 8, von = 0, folgen = true;
+let letzte = null, geplant = false, vorschauId = 0;
+const OVERSAMPLE = 3;
+const ANKER = 0.85;      // while following, the playhead stays at this share of the width
+
+function farbe(){ return getComputedStyle(document.body).color; }
+function spanMin(){ return Math.max(1e-9, 4 * cfg.tempo / ((ac && ac.sampleRate) || 48000)); }
+
+function zeichnenPlanen(){
+  if (geplant) return;
+  geplant = true;
+  requestAnimationFrame(() => { geplant = false; zeichnen(); });
+}
+function sichtVon(){
+  return folgen ? Math.max(0, beatSchaetzung() - span * ANKER) : von;
+}
+function zeichnen(){
+  if (!node) { zeichnenLeer(); return; }
+  vorschauId++;
+  node.port.postMessage({ type: 'vorschau', id: vorschauId, von: sichtVon(), beats: span, points: W * OVERSAMPLE });
+}
+function vorschauDa(m){
+  if (m.id !== vorschauId) { zeichnenPlanen(); return; }
+  letzte = m;
+  malen();
+}
+function zeichnenLeer(){
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = farbe(); ctx.globalAlpha = 0.25;
+  ctx.fillRect(0, Math.round(H / 2), W, Math.max(1, dpr));
+  ctx.globalAlpha = 1;
+}
+function malen(){
+  if (!letzte) return;
+  const g = letzte.gate;
+  const dick = Math.max(1, Math.round(2 * dpr));
+  const mitte = Math.round(H / 2);
+  const kopf = beatSchaetzung();
+  const pxKopf = (kopf - letzte.von) / span * W;     // left of it the line has been played
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = farbe();
+  if (cfg.traeger) {
+    // one column per pixel: the lowest value of its samples, so a gap narrower than a pixel is never lost
+    for (let x = 0; x < W; x++) {
+      let lo = 1;
+      for (let k = 0; k < OVERSAMPLE; k++) { const y = g[x * OVERSAMPLE + k]; if (y < lo) lo = y; }
+      if (lo <= 0) continue;
+      ctx.globalAlpha = (x <= pxKopf ? 0.95 : 0.25) * Math.max(0.15, lo);
+      ctx.fillRect(x, mitte - Math.floor(dick / 2), 1, dick);
+    }
+  } else {
+    // the formula is the membrane: draw its value, up is +1
+    const hoch = H / 2 - 4 * dpr;
+    for (let x = 0; x < W; x++) {
+      let lo = 1, hi = -1;
+      for (let k = 0; k < OVERSAMPLE; k++) { const y = g[x * OVERSAMPLE + k]; if (y < lo) lo = y; if (y > hi) hi = y; }
+      ctx.globalAlpha = x <= pxKopf ? 0.95 : 0.25;
+      const y0 = mitte - Math.round(hi * hoch), y1 = mitte - Math.round(lo * hoch);
+      ctx.fillRect(x, y0, 1, Math.max(dick, y1 - y0 + 1));
+    }
+  }
+  // beat ticks
+  if (span <= 64) {
+    ctx.globalAlpha = 0.4;
+    const v0 = letzte.von;
+    for (let b = Math.ceil(v0); b < v0 + span; b++) ctx.fillRect(Math.round((b - v0) / span * W), H - 4 * dpr, 1, 3 * dpr);
+  }
+  if (laeuft && pxKopf >= 0 && pxKopf < W) { ctx.globalAlpha = 1; ctx.fillRect(Math.round(pxKopf), 0, Math.max(1, dpr), H); }
+  ctx.globalAlpha = 1;
+}
+function groesse(){
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  W = Math.max(1, Math.round(cvs.clientWidth * dpr));
+  H = Math.max(1, Math.round(cvs.clientHeight * dpr));
+  cvs.width = W; cvs.height = H;
+  zeichnenPlanen();
+}
+
+// ---------- zoom (wheel, pinch, buttons) and pan ----------
+function folgenSetzen(an){
+  if (an === folgen) return;
+  if (!an) von = sichtVon();
+  folgen = an;
+  folgenKnopf.classList.toggle('an', an);
+  folgenKnopf.setAttribute('aria-pressed', an ? 'true' : 'false');
+  zeichnenPlanen();
+}
+// factor < 1 zooms in. Following: the playhead stays put. Free: the point under the finger stays put.
+function zoomUm(faktor, ankerX){
+  const neu = Math.max(spanMin(), Math.min(1e7, span * faktor));
+  if (!folgen) {
+    const a = ankerX / cvs.clientWidth;
+    von = Math.max(0, von + a * span - a * neu);
+  }
+  span = neu;
+  zeichnenPlanen();
+}
+cvs.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  zoomUm(Math.exp(ev.deltaY * 0.0015), ev.clientX - cvs.getBoundingClientRect().left);
+}, { passive: false });
+const zeiger = new Map();
+let pinchStart = null;
+cvs.addEventListener('pointerdown', ev => {
+  cvs.setPointerCapture(ev.pointerId);
+  zeiger.set(ev.pointerId, { x: ev.clientX });
+  if (zeiger.size === 2) { const [a, b] = [...zeiger.values()]; pinchStart = { d: Math.abs(a.x - b.x) || 1, span }; }
+});
+cvs.addEventListener('pointermove', ev => {
+  const z = zeiger.get(ev.pointerId); if (!z) return;
+  const dx = ev.clientX - z.x; z.x = ev.clientX;
+  if (zeiger.size === 1) {
+    if (dx === 0) return;
+    folgenSetzen(false);
+    von = Math.max(0, von - dx / cvs.clientWidth * span);
+    zeichnenPlanen();
+  } else if (zeiger.size === 2 && pinchStart) {
+    const [a, b] = [...zeiger.values()];
+    const d = Math.abs(a.x - b.x) || 1;
+    const mitte = (a.x + b.x) / 2 - cvs.getBoundingClientRect().left;
+    zoomUm(Math.max(spanMin(), pinchStart.span * pinchStart.d / d) / span, mitte);
+  }
+});
+const loslassen = ev => { zeiger.delete(ev.pointerId); pinchStart = null; };
+cvs.addEventListener('pointerup', loslassen);
+cvs.addEventListener('pointercancel', loslassen);
+cvs.addEventListener('dblclick', () => { span = 8; folgenSetzen(true); zeichnenPlanen(); });
+rausKnopf.addEventListener('click', () => zoomUm(2, cvs.clientWidth * ANKER));
+reinKnopf.addEventListener('click', () => zoomUm(0.5, cvs.clientWidth * ANKER));
+folgenKnopf.addEventListener('click', () => folgenSetzen(!folgen));
+
+let letzterTakt = 0;
+function schleife(t){
+  if (laeuft && t - letzterTakt > 16) { letzterTakt = t; zeichnenPlanen(); }
+  requestAnimationFrame(schleife);
+}
+requestAnimationFrame(schleife);
+
+// ---------- settings panel ----------
+const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
+const LOG_MIN = Math.log(0.1), LOG_MAX = Math.log(2000);
+panel
+  .addInput('formel', { label: 'Formel', value: cfg.formel, type: 'text', inputmode: 'text',
+      onChange: v => { cfg.formel = v.slice(0, 400); formelSenden(); urlSchreiben(); } })
+  .addToggle('traeger', { label: 'Träger', value: cfg.traeger,
+      onChange: v => { cfg.traeger = v; paramSenden(); urlSchreiben(); } })
+  .addSlider('f', { label: 'Ton Hz', min: 20, max: 4000, step: 1, value: cfg.f, decimals: 1, grow: true,
+      transform: {
+        toSliderValue: v => 20 * Math.pow(4000 / 20, Math.min(1, Math.max(0, Math.log(Math.max(v, 1e-9) / 20) / Math.log(200)))) ,
+        fromSliderValue: v => v },
+      onChange: v => { cfg.f = Math.max(0, v); paramSenden(); urlSchreiben(); } })
+  .addSelect('w', { label: 'Wellenform', value: cfg.w,
+      options: [{ value: 'sin', label: 'Sinus' }, { value: 'tri', label: 'Dreieck' }, { value: 'square', label: 'Rechteck' }, { value: 'saw', label: 'Säge' }],
+      onChange: v => { cfg.w = v; paramSenden(); urlSchreiben(); } })
+  .addSlider('tempo', { label: 'Tempo Hz', min: 0, max: 1, step: 0.0005, value: cfg.tempo, decimals: 3, grow: true,
+      transform: {
+        toSliderValue: v => (Math.log(Math.min(2000, Math.max(0.1, v))) - LOG_MIN) / (LOG_MAX - LOG_MIN),
+        fromSliderValue: s => Math.exp(LOG_MIN + s * (LOG_MAX - LOG_MIN)) },
+      onChange: v => { cfg.tempo = Math.max(0, v); paramSenden(); urlSchreiben(); } })
+  .addSlider('v', { label: 'Lautstärke', min: 0, max: 1, step: 0.01, value: cfg.v, decimals: 2,
+      onChange: v => { cfg.v = v; paramSenden(); urlSchreiben(); } })
+  .addToggle('glatt', { label: 'Glätten', value: cfg.glatt,
+      onChange: v => { cfg.glatt = v; paramSenden(); urlSchreiben(); } })
+;
+
+function raumFuerPanel(){
+  const r = panel.el.getBoundingClientRect();
+  if (innerWidth <= 768) {
+    stage.style.paddingLeft = '';
+    stage.style.height = Math.max(0, r.top - stage.getBoundingClientRect().top) + 'px';
+  } else {
+    stage.style.height = '';
+    stage.style.paddingLeft = (r.left < 1 && innerWidth - r.right >= 480) ? r.right + 'px' : '';
+  }
+}
+function layout(){ raumFuerPanel(); groesse(); }
+addEventListener('resize', layout);
+stage.addEventListener('ctrl-panel-layout-change', layout);
+document.addEventListener('ctrl-panel-layout-change', layout);
+
+// Context and worklet load at once (suspended); sound waits for the tap (iOS).
+audioBauen().then(() => { if (ac.state === 'running') ac.suspend(); }).catch(() => {});
+requestAnimationFrame(layout);
+
+window.__1klang = { cfg, setSpan: s => { span = s; zeichnenPlanen(); }, setVon: v => { von = v; folgenSetzen(false); zeichnenPlanen(); }, letzte: () => letzte, folgen: () => folgen, span: () => span };
+
+})();
+</script>
+
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
+
 8Butterfly.md
 <!-- .md wegen dem praktischem Zeilenumbruch im Editor (eine von vielen möglichen Abkürzungen: mdwedeprEZ)-->
 
@@ -79073,6 +79466,143 @@ tools/0necanvas/ui.js
     buildDefaultScene: buildDefaultScene
   };
 })();
+
+tools/1klang-worklet.js
+// AudioWorklet for 1klang.html. The formula is evaluated here, never on the page's main thread:
+// the worklet scope has no DOM, no fetch, no storage. It is checked against a whitelist
+// before it is compiled, so a shared URL can only ever run arithmetic.
+//
+// carrier on:  sound = wave(f) * clamp(formula, 0, 1)   (1 = the tone, taking away makes gaps)
+// carrier off: sound = clamp(formula, -1, 1)            (the formula is the membrane itself)
+
+const MATH = {
+  pi: Math.PI, e: Math.E,
+  sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs, exp: Math.exp, log: Math.log,
+  floor: Math.floor, ceil: Math.ceil, round: Math.round, sqrt: Math.sqrt, pow: Math.pow,
+  min: Math.min, max: Math.max, sign: Math.sign,
+  fract: x => x - Math.floor(x),
+  rnd: x => { const s = Math.sin(x * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); },
+};
+const VARS = ['t', 'p', 'n', 'f'];
+const NAMES = new Set([...Object.keys(MATH), ...VARS]);
+const MAX_LEN = 400;
+
+// Returns { fn } or { error }. Never evaluates anything outside the whitelist.
+function compile(expr) {
+  if (typeof expr !== 'string') return { error: 'keine Formel' };
+  const src = expr.trim();
+  if (src === '') return { fn: () => 0 };
+  if (src.length > MAX_LEN) return { error: 'zu lang' };
+  if (!/^[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]*$/.test(src)) {
+    return { error: 'Zeichen nicht erlaubt: ' + src.replace(/[0-9a-zA-Z_\s+\-*/%&|^~<>=!?:(),.]/g, '').slice(0, 5) };
+  }
+  const bare = src.replace(/(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi, '0');
+  for (const id of bare.match(/[A-Za-z_][A-Za-z_0-9]*/g) || []) {
+    if (!NAMES.has(id)) return { error: 'unbekannt: ' + id };
+  }
+  if (/(^|[^=!<>])=($|[^=])/.test(bare.replace(/===?|!==?|<=|>=/g, ''))) return { error: 'Zuweisung nicht erlaubt' };
+  let fn;
+  try {
+    const names = Object.keys(MATH);
+    fn = new Function(...names, 'return function (t, p, n, f) { return +(' + src + '); };')(...names.map(k => MATH[k]));
+    fn(0, 0, 0, 220); fn(0.37, 0.5, 3, 220);
+  } catch (e) {
+    return { error: String(e && e.message || e).replace(/^.*?: /, '') };
+  }
+  return { fn };
+}
+
+const TWO_PI = Math.PI * 2;
+const wave = {
+  sin: x => Math.sin(TWO_PI * x),
+  tri: x => 1 - 4 * Math.abs(x - 0.5),
+  square: x => (x < 0.5 ? 1 : -1),
+  saw: x => 2 * x - 1,
+};
+
+class Klang extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.prm = { f: 220, w: 'sin', tempo: 2, smooth: true, carrier: true };
+    this.expr = '1';
+    this.fn = () => 1;
+    this.beat = 0;            // beats played (phase accumulator, so tempo changes never jump)
+    this.tone = 0;
+    this.samples = 0;
+    this.gs = 1;
+    this.sincePost = 0;
+    this.port.onmessage = ev => {
+      try { this.handle(ev.data); } catch (e) { this.port.postMessage({ type: 'fehler', text: String(e && e.message || e) }); }
+    };
+  }
+
+  handle(m) {
+    if (m.type === 'param') {
+      Object.assign(this.prm, m.prm);
+    } else if (m.type === 'formel') {
+      if (m.expr !== this.expr) {
+        this.expr = m.expr;
+        const r = compile(m.expr);
+        if (r.fn) this.fn = r.fn;                 // last valid formula keeps running
+        this.error = r.fn ? '' : r.error;
+      }
+      this.port.postMessage({ type: 'formel-fehler', text: this.error || '' });
+    } else if (m.type === 'vorschau') {
+      this.port.postMessage({ type: 'vorschau', id: m.id, gate: this.vorschau(m.von, m.beats, m.points), von: m.von, beats: m.beats });
+    }
+  }
+
+  // formula value at a point, as the carrier gain (0..1) or as the signal itself (-1..1)
+  level(t, p, n, f) {
+    const v = this.fn(t, p, n, f);
+    const x = v === v ? v : 0;                    // NaN counts as 0
+    if (this.prm.carrier) return x < 0 ? 0 : x > 1 ? 1 : x;
+    return x < -1 ? -1 : x > 1 ? 1 : x;
+  }
+
+  // Values over [von, von + beats) in beats, sampled at any resolution (zoom down to single samples).
+  vorschau(von, beats, points) {
+    const out = new Float32Array(points);
+    const { f, tempo } = this.prm;
+    for (let i = 0; i < points; i++) {
+      let x = von + (i / points) * beats;
+      if (tempo > 0) { const d = tempo / sampleRate; x = Math.floor(x / d + 1e-9) * d; }   // zoomed to single samples, show what the ear gets
+      const n = Math.floor(x);
+      out[i] = this.level(tempo > 0 ? x / tempo : 0, x - n, n, f);
+    }
+    return out;
+  }
+
+  process(_in, outputs) {
+    const out = outputs[0][0];
+    const { f, w, tempo, smooth, carrier } = this.prm;
+    const shape = wave[w] || wave.sin;
+    const dBeat = tempo / sampleRate;
+    const dTone = f / sampleRate;
+    const alpha = 1 - Math.exp(-1 / (sampleRate * 0.00025));   // 0.25 ms: kills clicks, keeps gaps of a few samples audible
+    for (let i = 0; i < out.length; i++) {
+      const n = Math.floor(this.beat);
+      const g = this.level(this.samples / sampleRate, this.beat - n, n, f);
+      this.gs = smooth ? this.gs + (g - this.gs) * alpha : g;
+      out[i] = carrier ? shape(this.tone) * this.gs : this.gs;
+      this.beat += dBeat;
+      this.tone += dTone; if (this.tone >= 1) this.tone -= Math.floor(this.tone);
+      this.samples++;
+    }
+    for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
+    this.sincePost += out.length;
+    if (this.sincePost >= sampleRate / 30) {
+      this.sincePost = 0;
+      this.port.postMessage({ type: 'takt', beat: this.beat });
+    }
+    return true;
+  }
+}
+
+registerProcessor('1klang', Klang);
+
+// Gate function exposed for unit tests (node), harmless inside the worklet scope.
+if (typeof module !== 'undefined') module.exports = { compile, wave };
 
 tools/aufnahme.js
 // Aufnahme: ein Knopf, der die Canvas der Seite plus Mikrofon aufnimmt und eine Debug-Spur mitschreibt.
