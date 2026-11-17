@@ -18,7 +18,7 @@ export class InfLetter extends InfElement {
   get char() { return this.getAttribute('char') || 'B'; }
   set char(c) { this.setAttribute('char', letztesZeichen(String(c)) || 'B'); }
 
-  leistenExtra() { return `<input class="wahl" type="text" aria-label="Zeichen" ${OHNE_AUTOFILL} enterkeyhint="done">`; }
+  leistenExtra() { return `<input class="wahl" type="search" aria-label="Zeichen" ${OHNE_AUTOFILL} enterkeyhint="done">`; }
   baueKopie() { const s = document.createElement('span'); s.className = 'zeichen'; s.part = 'item'; return s; }
   fuelleKopie(s) {
     s.textContent = this.char;

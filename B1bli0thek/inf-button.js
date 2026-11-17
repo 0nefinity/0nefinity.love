@@ -19,7 +19,7 @@ export class InfButton extends InfElement {
     .leiste .form[data-form="kreis"] i { width: 14px; height: 14px; border-radius: 50%; }`;
 
   leistenExtra() {
-    return `<input class="text" type="text" aria-label="Text" placeholder="Button" ${OHNE_AUTOFILL} enterkeyhint="done">
+    return `<input class="text" type="search" aria-label="Text" placeholder="Button" ${OHNE_AUTOFILL} enterkeyhint="done">
       <button type="button" class="form" aria-label="Form" title="Form"><i></i></button>`;
   }
 

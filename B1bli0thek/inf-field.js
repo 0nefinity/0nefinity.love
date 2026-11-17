@@ -12,7 +12,7 @@ export class InfField extends InfElement {
   constructor() { super(); this._wert = this.getAttribute('value') ?? ''; }
   baueKopie() {
     const f = document.createElement(this.hasAttribute('multiline') ? 'textarea' : 'input');
-    if (f.tagName === 'INPUT') f.type = 'text';
+    if (f.tagName === 'INPUT') f.type = 'search';
     f.className = 'feld';
     f.part = 'item';
     f.setAttribute('aria-label', 'Textfeld');

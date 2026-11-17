@@ -28,6 +28,7 @@ const GRUNDSTIL = `
   border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
   font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
 .leiste input { width: 44px; cursor: text; font-size: 16px; }
+input[type="search"]::-webkit-search-cancel-button, input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; display: none; }
 .leiste button[aria-pressed="true"] { background: var(--ui-fill-20, rgba(255,255,255,.2)); color: var(--text-color, white); }
 .leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
 @media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
@@ -311,7 +312,7 @@ export class InfElement extends HTMLElement {
 
   // Ein Finger zieht = verschieben. Zwei Finger: drehen = krümmen, spreizen = skalieren.
   _zieht(ziel) {
-    return !ziel.closest?.('input[type="range"], input[type="text"], input:not([type]), textarea, [contenteditable]');
+    return !ziel.closest?.('input[type="range"], input[type="text"], input[type="search"], input:not([type]), textarea, [contenteditable]');
   }
 
   _runter(e) {
@@ -382,10 +383,10 @@ export class InfElement extends HTMLElement {
 }
 
 // Gemeinsame Eingabefeld-Attribute: nie Autofill/Passwortleiste auslösen.
-export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"';
+export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" data-protonpass-ignore="true"';
 export function ohneAutofill(feld) {
   for (const [k, v] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['spellcheck', 'false'], ['autocapitalize', 'off'],
-    ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other']]) feld.setAttribute(k, v);
+    ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other'], ['data-protonpass-ignore', 'true']]) feld.setAttribute(k, v);
   return feld;
 }
 
