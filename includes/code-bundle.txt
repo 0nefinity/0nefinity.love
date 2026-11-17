@@ -12488,7 +12488,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 `tools/claude-chat.js`: Knopf und einklappbarer Rahmen mit iframe auf eigenem Origin, nur nach Login-Check sichtbar, Zustand gemerkt. Brauchbar, nur Dev-Hostnamen.
 
 ### Jedes Element unendlich wiederholen
-`B1bli0thek/kern.js` (`InfElement`): Web-Component-Basis, die Kopien eines beliebigen Elements auf einen gekrümmten, skalierten Pfad legt (Fluchtpunkt, Bogen, Spirale), mit Gesten (ziehen, zwei Finger krümmen/spreizen, Rad, Tasten), Zustand als Attribute und Ereignis `inf-change`; neues Element = eine Datei mit `baueKopie(i)`, Liste in `B1bli0thek/alle.js`; ab der zweiten Periode nur noch gespiegelt: ein Schnappschuss der echten Kopie (SVG-`foreignObject` als Textur-Array mit Mipmaps), per WebGL2-Instancing an Zehntausende Orte gezeichnet (`B1bli0thek/faltung.js`), Kopienzahl geregelt nach gemessenem Bildtakt statt Pauschale. Brauchbar.
+`B1bli0thek/kern.js` (`InfElement`): Web-Component-Basis, die Kopien eines beliebigen Elements auf einen gekrümmten, skalierten Pfad legt (Fluchtpunkt, Bogen, Spirale), mit Gesten (ziehen, zwei Finger krümmen/spreizen, Rad, Tasten), Zustand als Attribute und Ereignis `inf-change`; neues Element = eine Datei mit `baueKopie(i)`, Liste in `B1bli0thek/alle.js`; ab der zweiten Periode nur noch gespiegelt: ein Schnappschuss der echten Kopie (SVG-`foreignObject` als Textur-Array mit Mipmaps), per WebGL2-Instancing an Zehntausende Orte gezeichnet (`B1bli0thek/faltung.js`), Kopienzahl geregelt nach gemessenem Bildtakt statt Pauschale; periodische Pfade in geschlossener Form im Vertex-Shader (Ort aus Instanz-Nummer, nur das sichtbare Fenster, Kreis mod 360°), deckungsgleicher Stapel per Fragment-Shader als 1−(1−a)ᵐ bis m = ∞. Brauchbar.
 
 1c0de.html
 <!DOCTYPE html>
@@ -14134,11 +14134,13 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `bare` | (ohne Wert) | blendet die eigene Leiste (nur 0 1 ∞) aus |
 | `capacity` | (ohne Wert) | Kapazitätsmodus (`∞+`): bei `∞` darf die Zahl der Kopien 80 % eines Bildtakts verbrauchen statt 35 %; Entfernen setzt sofort zurück |
 
-Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Das Feld „Anzahl“ im Panel setzt `repeat` auf eine endliche Zahl (große Zahlen erlaubt, `∞` als Text schaltet auf adaptiv); bei ∞ läuft das Feld mit. Links in der Griffzeile steht dezent, wie viele Kopien gerade gezeigt werden („720 von 1.000.000“, wenn das Gerät weniger schafft); das Element meldet es als Ereignis `inf-zaehl` (`detail: { gezeigt, ziel }`, auch `el.gezaehlt`). Meldungen wie „Rückgängig“ sitzen immer über Panel-Oberkante und 0/1/∞-Leiste, nie darauf (`Controls.keepClear`).
+Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Das Feld „Anzahl“ im Panel setzt `repeat` auf eine endliche Zahl (große Zahlen erlaubt, `∞` als Text schaltet auf adaptiv); bei ∞ läuft das Feld mit. Links in der Griffzeile steht dezent die Gesamtzahl der Kopien, dieselbe Zahl wie im Feld „Anzahl“ (`∞`, wenn die Reihe nie endet); Antippen öffnet das Panel und setzt den Cursor ins Feld. Das Element meldet die Zahl als Ereignis `inf-zaehl` (`detail: { gezeigt, ziel }`, auch `el.gezaehlt`). Unter den Reglern steht, womit gezeichnet wird (`GPU`, `Software` oder `unbekannt`, mit Name des Renderers; ohne WebGL2 `DOM`). Meldungen wie „Rückgängig“ sitzen immer über Panel-Oberkante und 0/1/∞-Leiste, nie darauf (`Controls.keepClear`).
 
 Bei `∞` misst jedes Element, was das Gerät schafft: Es beginnt bei 720 Kopien und vergrößert die Zahl, solange Layoutzeit und Bildtakt (gemessen gegen die Bildwiederholrate des Bildschirms) Luft lassen; ruckelt es, geht die Zahl wieder zurück, nie unter 720. Keine Pauschale, die Obergrenze ist nur Schutz (4 194 304 gefaltete Kopien, 6000 auf dem DOM-Weg).
 
 Faltung (`faltung.js`): Bei `button`, `line`, `field`, `link`, `box`, `image`, `letter` und `text` bleibt nur die erste Periode echtes DOM (eine Kopie, bei `text` eine je Form). Von ihr nimmt die Seite ein Bild (SVG-`foreignObject`) und zeichnet es per WebGL2-Instancing an jeden weiteren Ort, je Kopie nur x, y, Drehung, Größe. Ein Klick auf ein Spiegelbild geht an dieselbe Stelle der echten Kopie, Eingaben erneuern das Bild. Ohne WebGL2 bleibt alles DOM (eine Meldung in der Konsole). `list`, `table`, `range` und `check` bleiben DOM.
+
+Geschlossene Form: Ist der Pfad periodisch (Drehung an, oder gerade, oder fester `gap`), rechnet die CPU keine Orte mehr. Kopie i = qP + r liegt bei z_r + D_r·(Wᵠ−1)/(W−1) mit W = scaleᴾ·e^{iPβ}; der Vertex-Shader rechnet das je Instanz aus der Instanz-Nummer. Gezeichnet wird nur das Fenster, das den Bildschirm berührt: beim Kreis eine Runde (mod 360°), bei der Spirale bis die Kopien unter einen halben Pixel schrumpfen. Liegen alle Kopien aufeinander (`gap` 0, Größe 1), zeichnet ein Fragment-Shader den ganzen Stapel als Deckkraft 1−(1−a)ᵐ, auch für m = ∞. Gezählt wird immer alles. Klicks auf Spiegelbilder findet die Seite über dieselbe Formel.
 
 Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
 Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
@@ -14277,6 +14279,105 @@ in vec3 v_uv;
 out vec4 o;
 void main() { o = texture(u_t, v_uv); }`;
 
+// Die Bahn: Orte rechnet die Grafikkarte selbst. Kopie j = q*P + v liegt bei z_v + D_v * (W^q - 1)/(W - 1),
+// W = scale^P * e^(i*P*bend), eine komplexe Zahl je Periode. Die CPU schickt nur den Anfang (q0), nie Millionen Orte.
+const BAHN = `#version 300 es
+uniform vec2 u_flaeche;
+uniform float u_rand;
+uniform int u_p;
+uniform int u_r0;
+uniform int u_eins;
+uniform int u_rot;
+uniform vec4 u_g[${FORMEN_MAX}];
+uniform vec4 u_b[${FORMEN_MAX}];
+uniform vec4 u_c[${FORMEN_MAX / 2}];
+uniform vec2 u_inv;
+uniform float u_a;
+uniform vec3 u_bt;
+uniform vec3 u_sicht;
+out vec3 v_uv;
+const float TAU = 6.283185307179586;
+float mitte(float x) { return x - TAU * floor(x / TAU + 0.5); }
+float expm1_(float x) { return abs(x) < 0.01 ? x * (1.0 + x * (0.5 + x * (1.0 / 6.0 + x / 24.0))) : exp(x) - 1.0; }
+void main() {
+  int id = gl_VertexID;
+  vec2 ecke = vec2((id == 1 || id == 2 || id == 4) ? 1.0 : 0.0, (id == 2 || id == 4 || id == 5) ? 1.0 : 0.0);
+  int j = gl_InstanceID + u_r0;
+  int v = j % u_p, k = j / u_p;
+  float fk = float(k);
+  // Der Winkel k*arg(W) in drei Byte-Stufen, jede schon auf den Kreis gefaltet: float reicht so für Millionen Runden.
+  float th = mitte(mitte(float(k >> 16) * u_bt.z + float((k >> 8) & 255) * u_bt.y) + float(k & 255) * u_bt.x);
+  vec2 G;
+  if (u_eins == 1) G = vec2(fk, 0.0);
+  else {
+    float ka = fk * u_a, sh = sin(0.5 * th);
+    vec2 w = vec2(expm1_(ka) * cos(th) - 2.0 * sh * sh, exp(ka) * sin(th));
+    G = vec2(w.x * u_inv.x - w.y * u_inv.y, w.x * u_inv.y + w.y * u_inv.x);
+  }
+  vec4 b = u_b[v];
+  vec2 pos = b.xy + vec2(b.z * G.x - b.w * G.y, b.z * G.y + b.w * G.x);
+  vec4 cc = u_c[v >> 1];
+  vec2 rl = (v & 1) == 0 ? cc.xy : cc.zw;
+  float rot = rl.x + float(u_rot) * th;
+  float s = exp(rl.y + fk * u_a);
+  vec4 g = u_g[v];
+  if (length(pos - u_sicht.xy) > u_sicht.z + s * 0.5 * length(g.xy + 2.0 * u_rand)) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    v_uv = vec3(0.0);
+    return;
+  }
+  vec2 p = ecke * (g.xy + 2.0 * u_rand) - u_rand - g.xy * 0.5;
+  float c = cos(rot), sn = sin(rot);
+  vec2 w2 = pos + s * vec2(c * p.x - sn * p.y, sn * p.x + c * p.y);
+  vec2 clip = w2 / u_flaeche * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+  v_uv = vec3(ecke * g.zw, float(v));
+}`;
+
+// Der Stapel: liegen alle Kopien einer Form genau aufeinander, rechnet jeder Bildpunkt die m Schichten auf einmal.
+// m Schichten mit Deckkraft a decken 1 - (1 - a)^m: für m = ∞ ist das 1, so viele wie gemeint, keine gezeichnet.
+const STAPEL_ECKE = `#version 300 es
+uniform vec2 u_flaeche;
+uniform vec4 u_kasten;
+out vec2 v_p;
+void main() {
+  int id = gl_VertexID;
+  vec2 ecke = vec2((id == 1 || id == 2 || id == 4) ? 1.0 : 0.0, (id == 2 || id == 4 || id == 5) ? 1.0 : 0.0);
+  v_p = mix(u_kasten.xy, u_kasten.zw, ecke);
+  vec2 clip = v_p / u_flaeche * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+}`;
+
+const STAPEL_FLAECHE = `#version 300 es
+precision highp float;
+precision mediump sampler2DArray;
+uniform sampler2DArray u_t;
+uniform float u_rand;
+uniform int u_p;
+uniform int u_rest;
+uniform float u_m;
+uniform vec4 u_g[${FORMEN_MAX}];
+uniform vec4 u_b[${FORMEN_MAX}];
+in vec2 v_p;
+out vec4 o;
+void main() {
+  vec4 B = vec4(0.0), R = vec4(0.0);
+  for (int r = 0; r < ${FORMEN_MAX}; r++) {
+    if (r >= u_p) break;
+    vec4 b = u_b[r], g = u_g[r];
+    vec2 d = v_p - b.xy;
+    vec2 l = vec2(b.z * d.x + b.w * d.y, -b.w * d.x + b.z * d.y);
+    vec2 q = (l + g.xy * 0.5 + u_rand) / (g.xy + 2.0 * u_rand);
+    vec4 f = texture(u_t, vec3(q * g.zw, float(r)));
+    f *= step(0.0, q.x) * step(0.0, q.y) * step(q.x, 1.0) * step(q.y, 1.0);
+    B = f + B * (1.0 - f.a);
+    if (r == u_rest - 1) R = B;
+  }
+  float A = u_m < 0.0 ? 1.0 : (u_m == 0.0 ? 0.0 : 1.0 - pow(max(0.0, 1.0 - B.a), u_m));
+  vec4 F = B.a > 0.0 ? B * (A / B.a) : vec4(0.0);
+  o = R + F * (1.0 - R.a);
+}`;
+
 // Was der Host an seine Kopien vererbt; im Bild gibt es keinen Host, also steht es dort ausdrücklich.
 const ERBE = ['color', 'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing', 'word-spacing',
   'text-shadow', 'text-transform', 'font-variant', 'font-stretch', '-webkit-font-smoothing'];
@@ -14287,6 +14388,17 @@ function shader(gl, art, quelle) {
   gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('Faltung: Shader ' + gl.getShaderInfoLog(s));
   return s;
+}
+
+function programm(gl, ecke, flaeche, namen) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl, gl.VERTEX_SHADER, ecke));
+  gl.attachShader(prog, shader(gl, gl.FRAGMENT_SHADER, flaeche));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Faltung: Programm ' + gl.getProgramInfoLog(prog));
+  const u = {};
+  for (const n of namen) u[n] = gl.getUniformLocation(prog, n);
+  return { prog, u };
 }
 
 const zweierpotenz = (x) => 2 ** Math.ceil(Math.log2(Math.max(1, x)));
@@ -14302,13 +14414,10 @@ export class Faltung {
     c.setAttribute('aria-hidden', 'true');
     const gl = (this.gl = c.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false }));
     if (!gl) throw new Error('B1bli0thek: kein WebGL2, Faltung aus, DOM-Weg');
-    const prog = (this.prog = gl.createProgram());
-    gl.attachShader(prog, shader(gl, gl.VERTEX_SHADER, ECKE));
-    gl.attachShader(prog, shader(gl, gl.FRAGMENT_SHADER, FLAECHE));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Faltung: Programm ' + gl.getProgramInfoLog(prog));
-    this.u = {};
-    for (const n of ['u_flaeche', 'u_rand', 'u_start', 'u_p', 'u_g', 'u_t']) this.u[n] = gl.getUniformLocation(prog, n);
+    ({ prog: this.prog, u: this.u } = programm(gl, ECKE, FLAECHE, ['u_flaeche', 'u_rand', 'u_start', 'u_p', 'u_g', 'u_t']));
+    this.pb = programm(gl, BAHN, FLAECHE, ['u_flaeche', 'u_rand', 'u_p', 'u_r0', 'u_eins', 'u_rot', 'u_g', 'u_b', 'u_c', 'u_inv', 'u_a', 'u_bt', 'u_sicht', 'u_t']);
+    this.ps = programm(gl, STAPEL_ECKE, STAPEL_FLAECHE, ['u_flaeche', 'u_kasten', 'u_t', 'u_rand', 'u_p', 'u_rest', 'u_m', 'u_g', 'u_b']);
+    this.leerVao = gl.createVertexArray();
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     this.puffer = gl.createBuffer();
@@ -14361,8 +14470,8 @@ export class Faltung {
     return s;
   }
 
-  // orte: x, y, Drehung (rad), Größe je Kopie; P Formen; gezeichnet werden P..n-1.
-  zeichne(orte, P, n, W, H, smax) {
+  // Leinwand, Bild und leeres Blatt: was jedem Zeichnen vorausgeht. false, solange das Bild der Formen fehlt.
+  _ruesten(P, W, H, smax) {
     const gl = this.gl, c = this.leinwand;
     const dpr = devicePixelRatio || 1;
     const bw = Math.max(1, Math.round(W * dpr)), bh = Math.max(1, Math.round(H * dpr));
@@ -14382,13 +14491,20 @@ export class Faltung {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.leer_ = false;
-    if (!this.tex || this.texP !== P) return;
+    if (!this.tex || this.texP !== P) return false;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tex);
+    return true;
+  }
+
+  // orte: x, y, Drehung (rad), Größe je Kopie; P Formen; gezeichnet werden P..n-1.
+  zeichne(orte, P, n, W, H, smax) {
+    const gl = this.gl;
+    if (!this._ruesten(P, W, H, smax)) return;
     gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.puffer);
     gl.bufferData(gl.ARRAY_BUFFER, orte.subarray(P * 4, n * 4), gl.DYNAMIC_DRAW);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tex);
     gl.uniform1i(this.u.u_t, 0);
     gl.uniform2f(this.u.u_flaeche, W, H);
     gl.uniform1f(this.u.u_rand, this.rand);
@@ -14396,6 +14512,49 @@ export class Faltung {
     gl.uniform1i(this.u.u_p, P);
     gl.uniform4fv(this.u.u_g, this.g);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n - P);
+    gl.bindVertexArray(null);
+  }
+
+  // d: Bahn ab Kopie d.lo, d.anzahl Stück. d.b = je Form (x, y, Dx, Dy) am Anfang, d.c = je Form (Drehung, ln Größe).
+  bahn(d, W, H, smax) {
+    const gl = this.gl, u = this.pb.u;
+    if (!this._ruesten(d.P, W, H, smax)) return;
+    gl.useProgram(this.pb.prog);
+    gl.bindVertexArray(this.leerVao);
+    gl.uniform1i(u.u_t, 0);
+    gl.uniform2f(u.u_flaeche, W, H);
+    gl.uniform1f(u.u_rand, this.rand);
+    gl.uniform1i(u.u_p, d.P);
+    gl.uniform1i(u.u_r0, d.r0);
+    gl.uniform1i(u.u_eins, d.eins ? 1 : 0);
+    gl.uniform1i(u.u_rot, d.rotate ? 1 : 0);
+    gl.uniform4fv(u.u_g, this.g);
+    gl.uniform4fv(u.u_b, d.b);
+    gl.uniform4fv(u.u_c, d.c);
+    gl.uniform2f(u.u_inv, d.ix, d.iy);
+    gl.uniform1f(u.u_a, d.a);
+    gl.uniform3f(u.u_bt, d.bt[0], d.bt[1], d.bt[2]);
+    gl.uniform3f(u.u_sicht, W / 2, H / 2, Math.hypot(W, H) / 2);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, d.anzahl);
+    gl.bindVertexArray(null);
+  }
+
+  // d.b = je Form (x, y, cos, sin), d.kasten = was alle Formen zusammen bedecken, d.m volle Schichten (-1 = ∞), d.rest.
+  stapel(d, W, H) {
+    const gl = this.gl, u = this.ps.u;
+    if (!this._ruesten(d.P, W, H, 1)) return;
+    gl.useProgram(this.ps.prog);
+    gl.bindVertexArray(this.leerVao);
+    gl.uniform1i(u.u_t, 0);
+    gl.uniform2f(u.u_flaeche, W, H);
+    gl.uniform4f(u.u_kasten, d.kasten[0], d.kasten[1], d.kasten[2], d.kasten[3]);
+    gl.uniform1f(u.u_rand, this.rand);
+    gl.uniform1i(u.u_p, d.P);
+    gl.uniform1i(u.u_rest, d.rest);
+    gl.uniform1f(u.u_m, d.m);
+    gl.uniform4fv(u.u_g, this.g);
+    gl.uniform4fv(u.u_b, d.b);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);
   }
 
@@ -14551,7 +14710,8 @@ B1bli0thek/index.html
 #buehne > *:focus-visible { outline: none; }
 /* Zähler: kleine Zahl links in der Griffzeile des Panels, fährt mit; Griff (Mitte) und Leiste bleiben frei. */
 .b1-zaehler { position: absolute; left: 14px; top: 14px; z-index: 1; font: 11px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums;
-  color: var(--text-color); opacity: .6; pointer-events: none; user-select: none; }
+  color: var(--text-color); opacity: .6; user-select: none; cursor: pointer; padding: 6px; margin: -6px; }
+.b1-grafik { display: block !important; grid-column: 1 / -1; text-align: left; font: 11px/1.4 system-ui, sans-serif; opacity: .6; overflow-wrap: anywhere; padding: 6px 12px; }
 .b1-zaehler:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
 </style>
@@ -14672,8 +14832,50 @@ const anzahlFeld = () => panel.el.querySelector('[data-key="anzahl"] input');
 const zaehlerEl = document.createElement('div');
 zaehlerEl.className = 'b1-zaehler';
 zaehlerEl.setAttribute('aria-live', 'off');
-zaehlerEl.title = 'Kopien gerade gezeigt';
+zaehlerEl.title = 'Anzahl';
 panel.el.append(zaehlerEl);
+// Zahl antippen: Panel auf, Anzahl-Feld bereit.
+zaehlerEl.addEventListener('click', () => {
+  const e = panel.el;
+  if (panel.openSheetIfClosed) {
+    const modus = panel.options.mobileInitialOpenMode;
+    panel.options.mobileInitialOpenMode = 'full';
+    panel.openSheetIfClosed();
+    panel.options.mobileInitialOpenMode = modus;
+  }
+  if (e.classList.contains('ctrl-panel-collapsed-body') && panel.bodyEl) {
+    const h = Math.round(innerHeight * 0.45) + 'px';
+    panel.bodyEl.style.height = h;
+    panel.bodyEl.style.maxHeight = h;
+    e.classList.remove('ctrl-panel-collapsed-body');
+  }
+  const f = anzahlFeld();
+  f?.focus({ preventScroll: true });
+  f?.select();
+  requestAnimationFrame(() => requestAnimationFrame(() => panel.reveal(['anzahl'])));
+});
+// Womit gezeichnet wird: Grafikkarte, Software-Renderer oder (ohne WebGL2) nur DOM.
+const grafikZeile = document.createElement('div');
+grafikZeile.className = 'ctrl-row b1-grafik';
+grafikZeile.dataset.key = 'grafik';
+anzahlFeld()?.closest('.ctrl-row')?.parentElement?.append(grafikZeile);
+const grafik = (() => {
+  let gl = null;
+  try { gl = document.createElement('canvas').getContext('webgl2'); } catch (e) { console.error(e); }
+  if (!gl) { console.error('B1bli0thek: kein WebGL2, alle Kopien laufen als DOM'); return { text: 'kein WebGL2 · DOM', gpu: false }; }
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  if (!name) return { text: 'unbekannt', gpu: null };
+  const soft = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+  return { text: `${soft ? 'Software' : 'GPU'} · ${name}`, gpu: !soft };
+})();
+let domGemeldet = false;
+const grafikZeigen = () => {
+  const dom = el && el._falten === false;
+  if (dom && !domGemeldet && grafik.gpu !== false) { domGemeldet = true; console.error('B1bli0thek: WebGL2 gescheitert, Kopien laufen als DOM'); }
+  grafikZeile.textContent = 'Grafik: ' + (dom ? 'DOM · ' : '') + grafik.text;
+};
 // Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
 function anzahlSetzen(text) {
   const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
@@ -14687,9 +14889,12 @@ const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : Str
 function zaehlen() {
   if (!el) return;
   const { gezeigt, ziel } = el.gezaehlt;
-  zaehlerEl.textContent = ziel === '∞' || gezeigt >= ziel ? zahlText(gezeigt) : `${zahlText(gezeigt)} von ${zahlText(ziel)}`;
+  // Eine Zahl für Zähler und Feld: alle Kopien, auch die neben dem Bild.
+  const zahl = zahlText(ziel === '∞' ? gezeigt : ziel);
+  zaehlerEl.textContent = zahl;
   const f = anzahlFeld();
-  if (f && document.activeElement !== f) f.value = zahlText(ziel === '∞' ? gezeigt : ziel);
+  if (f && document.activeElement !== f) f.value = zahl;
+  grafikZeigen();
 }
 const folge = () => {
   const z = el.zustand;
@@ -15248,6 +15453,9 @@ let BUDGET = 1000 / 60;
 }
 
 const gemeldet = new Set();
+const TAU = 2 * Math.PI;
+// Ein Winkel auf den Kreis gefaltet: -π..π. Wie oft man schon herum ist, vergisst er.
+const mitte = (x) => x - TAU * Math.round(x / TAU);
 const BASIS_ATTRIBUTE = new Set(['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity']);
 
 const GRUNDSTIL = `
@@ -15409,7 +15617,11 @@ export class InfElement extends HTMLElement {
   // Wie viele Kopien gerade gezeigt werden (bei ∞ laufend die der adaptiven Regelung) und wie viele gewollt sind.
   get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
-  eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._gezeigt; } this.mehr(1); }
+  eins() {
+    const z = this._zustand;
+    if (z.unendlich) { z.unendlich = false; z.anzahl = Number.isFinite(this._gezeigt) ? this._gezeigt : this._cap; }
+    this.mehr(1);
+  }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
@@ -15502,6 +15714,9 @@ export class InfElement extends HTMLElement {
     if (!breite || !hoehe) return false;
     const per = this._falten ? this.periode : 0;
     const P = (this._P = per > 0 && per <= FORMEN_MAX ? per : 0);
+    // Wiederholt sich der Schritt mit der Periode, ist der Pfad eine geschlossene Formel: die Grafikkarte rechnet die Orte.
+    if (P && (z.unendlich || z.anzahl > P) && (z.rotate || z.bend === 0 || z.gap !== null)) return this._bahnLayout(P, breite, hoehe);
+    this._b = null;
     const diag = Math.hypot(breite, hoehe);
     const mx = breite / 2 + z.dx, my = hoehe / 2 + z.dy;
     const kreis = z.unendlich && z.scale === 1 && z.bend !== 0 ? Math.ceil(360 / Math.abs(z.bend)) : Infinity;
@@ -15557,10 +15772,7 @@ export class InfElement extends HTMLElement {
       }
       this._faltung.zeichne(orte, P, n, breite, hoehe, smax);
     } else this._faltung?.leer();
-    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
-      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
-      this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
-    }
+    this._zaehle(n);
     this.nachLayout(dom);
     // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
     return n >= grenze;
@@ -15568,36 +15780,260 @@ export class InfElement extends HTMLElement {
 
   nachLayout() {}
 
+  // Die Bahn als Formel. z_r (r < 2P) wird einmal in double gegangen, danach gilt für Kopie i = q*P + r:
+  //   Ort z_r + D_r * (W^q - 1) / (W - 1), Drehung i * bend, Größe scale^i, mit D_r = z_(r+P) - z_r und W = scale^P * e^(i*P*bend).
+  // Gezählt wird alles, was es gibt (auch neben dem Bild), gezeichnet nur, was ins Bild fallen kann.
+  _bahnLayout(P, breite, hoehe) {
+    const z = this._zustand;
+    this._ziel = P;
+    const masse = this._masse;
+    for (let j = 0; j < P; j++) masse[j] || this._mass(j);
+    const GRAD = Math.PI / 180;
+    const a0 = z.angle * GRAD, be = z.bend * GRAD;
+    const ca = Math.abs(Math.cos(a0)), sa = Math.abs(Math.sin(a0));
+    const lang = (m) => ca * m.w + sa * m.h;
+    const ls = Math.log(z.scale);
+    const zx = new Float64Array(2 * P + 1), zy = new Float64Array(2 * P + 1);
+    zx[0] = breite / 2 + z.dx; zy[0] = hoehe / 2 + z.dy;
+    for (let i = 0; i < 2 * P; i++) {
+      const r = i % P;
+      const schritt = z.gap ?? ((lang(masse[r]) + lang(masse[(r + 1) % P])) / 2 + z.space);
+      const w = a0 + i * be, f = schritt * Math.exp(i * ls);
+      zx[i + 1] = zx[i] + Math.cos(w) * f;
+      zy[i + 1] = zy[i] + Math.sin(w) * f;
+    }
+    const dx = new Float64Array(P), dy = new Float64Array(P);
+    for (let r = 0; r < P; r++) { dx[r] = zx[r + P] - zx[r]; dy[r] = zy[r + P] - zy[r]; }
+    const a = P * ls, bm = mitte(P * be), sh = Math.sin(bm / 2);
+    const wx = Math.expm1(a) * Math.cos(bm) - 2 * sh * sh, wy = Math.exp(a) * Math.sin(bm);
+    const nn = wx * wx + wy * wy;
+    const eins = nn < 1e-28;
+    const ix = eins ? 0 : wx / nn, iy = eins ? 0 : -wy / nn;
+    const fx = new Float64Array(P), fy = new Float64Array(P), h = new Float64Array(P);
+    const rand = (this._faltung?.rand ?? 8) + 2;
+    for (let r = 0; r < P; r++) {
+      fx[r] = zx[r] - (dx[r] * ix - dy[r] * iy);
+      fy[r] = zy[r] - (dx[r] * iy + dy[r] * ix);
+      h[r] = Math.hypot(masse[r].w, masse[r].h) / 2 + rand;
+    }
+    const diag = Math.hypot(breite, hoehe);
+    // Bis zu welcher Kopie i Form r groß genug (bzw. klein genug) bleibt.
+    const bis = (r, grenze) => Math.log(grenze / masse[r].gross) / ls;
+    let N;
+    if (!z.unendlich) N = z.anzahl;
+    else if (ls === 0) N = Infinity;
+    else {
+      N = Infinity;
+      const grenze = ls < 0 ? 0.5 : diag * 4;
+      for (let r = 0; r < P; r++) {
+        let q = Math.max(0, Math.floor((bis(r, grenze) - r) / P) + 1);
+        if (q === 0 && r === 0) q = 1;
+        N = Math.min(N, q * P + r);
+      }
+    }
+    const B = (this._b = { P, zx, zy, dx, dy, fx, fy, h, eins, a, bm, be, ls, ix, iy, N, lo: 0, hi: 0, rotate: z.rotate, stapel: false, m: 0, rest: 0 });
+
+    const dom = Math.min(N, P);
+    this._abgleich(dom);
+    for (let i = 0; i < dom; i++) {
+      const k = this._kopien[i], mi = masse[i], o = this._ort(B, i);
+      const t = `translate(${o.x}px,${o.y}px) rotate(${o.rot / GRAD}deg) scale(${o.s}) translate(${-mi.w / 2}px,${-mi.h / 2}px)`;
+      if (k._t !== t) { k._t = t; k.style.transform = t; }
+    }
+
+    let voll = false, d = null;
+    let stillstand = eins;
+    for (let r = 0; r < P && stillstand; r++) if (Math.abs(dx[r]) > 1e-9 || Math.abs(dy[r]) > 1e-9) stillstand = false;
+    if (N > P && stillstand) {
+      // Alle Kopien einer Form liegen aufeinander: der Stapel, Schichten zählt jeder Bildpunkt selbst.
+      B.stapel = true;
+      B.m = N === Infinity ? -1 : Math.floor((N - P) / P);
+      B.rest = N === Infinity ? 0 : (N - P) % P;
+      const b = new Float32Array(FORMEN_MAX * 4);
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let r = 0; r < P; r++) {
+        const rot = z.rotate ? mitte(r * be) : 0;
+        b.set([zx[r], zy[r], Math.cos(rot), Math.sin(rot)], r * 4);
+        x0 = Math.min(x0, zx[r] - h[r]); y0 = Math.min(y0, zy[r] - h[r]);
+        x1 = Math.max(x1, zx[r] + h[r]); y1 = Math.max(y1, zy[r] + h[r]);
+      }
+      d = { P, b, kasten: [x0, y0, x1, y1], m: B.m, rest: B.rest };
+    } else if (N > P) {
+      const R = diag / 2, cx = breite / 2, cy = hoehe / 2;
+      // Gezeichnet wird zwischen halbem Bildpunkt und 64 Bildschirmdiagonalen, gezählt wird weiter alles.
+      const zeichenGrenze = ls < 0 ? 0.5 : diag * 64;
+      let lo = Infinity, hi = -Infinity;
+      for (let r = 0; r < P; r++) {
+        const w = this._qFenster(B, r, cx, cy, R);
+        if (!w) continue;
+        let qmax = Number.isFinite(N) ? Math.floor((N - 1 - r) / P) : Infinity;
+        if (ls !== 0) qmax = Math.min(qmax, Math.floor((bis(r, zeichenGrenze) - r) / P));
+        // Kreis: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten. Gezählt bleibt alles, gezeichnet wird mod 360°.
+        else if (!eins) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
+        const qlo = Math.max(0, Math.ceil(w[0]) - 1), qhi = Math.min(Math.floor(w[1]) + 1, qmax);
+        if (!(qlo <= qhi)) continue;
+        lo = Math.min(lo, qlo * P + r);
+        hi = Math.max(hi, qhi * P + r + 1);
+      }
+      lo = Math.max(lo, P);
+      hi = Math.min(hi, N);
+      if (hi - lo > this._cap) { voll = true; hi = lo + this._cap; }
+      if (lo < hi) {
+        B.lo = lo; B.hi = hi;
+        const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
+        const b = new Float32Array(FORMEN_MAX * 4), c = new Float32Array(FORMEN_MAX * 2);
+        let gx = q0, gy = 0, px = 1, py = 0;
+        if (!eins) {
+          const th = mitte(q0 * bm), e = Math.exp(q0 * a), s2 = Math.sin(th / 2);
+          const ux = Math.expm1(q0 * a) * Math.cos(th) - 2 * s2 * s2, uy = e * Math.sin(th);
+          gx = ux * ix - uy * iy; gy = ux * iy + uy * ix;
+          px = e * Math.cos(th); py = e * Math.sin(th);
+        }
+        for (let v = 0; v < P; v++) {
+          b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, dx[v] * px - dy[v] * py, dx[v] * py + dy[v] * px], v * 4);
+          c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
+          c[v * 2 + 1] = (q0 * P + v) * ls;
+        }
+        d = { P, r0, anzahl: hi - lo, eins, rotate: z.rotate, b, c, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)],
+          smax: Math.max(Math.exp(lo * ls), Math.exp((hi - 1) * ls)) };
+      }
+    }
+    if (d) {
+      if (!this._faltung) {
+        try { this._faltung = new Faltung(this); } catch (e) { this._faltFehler(e); return false; }
+      }
+      if (B.stapel) this._faltung.stapel(d, breite, hoehe);
+      else this._faltung.bahn(d, breite, hoehe, d.smax);
+    } else this._faltung?.leer();
+    this._zaehle(N);
+    this.nachLayout(dom);
+    return voll;
+  }
+
+  // Für welche q die Kopie q*P + r den Kreis (cx, cy, R) berühren kann: [von, bis] oder null.
+  _qFenster(B, r, cx, cy, R) {
+    const hh = B.h[r] * Math.exp(r * B.ls);
+    if (B.eins) {
+      // Gerade Reihe: |z_r + q*D - c| <= R + h, eine quadratische Ungleichung.
+      const ex = B.zx[r] - cx, ey = B.zy[r] - cy, A = B.dx[r] ** 2 + B.dy[r] ** 2;
+      const Bq = B.dx[r] * ex + B.dy[r] * ey, C = ex * ex + ey * ey - (R + hh) ** 2;
+      if (A < 1e-18) return C <= 0 ? [0, Infinity] : null;
+      const disk = Bq * Bq - A * C;
+      if (disk < 0) return null;
+      const w = Math.sqrt(disk);
+      return [(-Bq - w) / A, (-Bq + w) / A];
+    }
+    if (B.a === 0) return [0, Infinity];
+    // Spirale um F: Abstand und Größe wachsen beide mit e^(q*a).
+    const rho = Math.hypot(B.zx[r] - B.fx[r], B.zy[r] - B.fy[r]);
+    const dd = Math.hypot(B.fx[r] - cx, B.fy[r] - cy);
+    const u1 = rho - hh > 0 ? Math.log((dd + R) / (rho - hh)) : Infinity;
+    const u2 = dd - R > 0 ? Math.log((dd - R) / (rho + hh)) : -Infinity;
+    if (u2 > u1) return null;
+    return B.a < 0 ? [u1 / B.a, u2 / B.a] : [u2 / B.a, u1 / B.a];
+  }
+
+  // Ort der Kopie i in geschlossener Form.
+  _ort(B, i) {
+    const q = Math.floor(i / B.P), r = i - q * B.P;
+    let gx = q, gy = 0;
+    if (!B.eins) {
+      const th = mitte(q * B.bm), s2 = Math.sin(th / 2);
+      const ux = Math.expm1(q * B.a) * Math.cos(th) - 2 * s2 * s2, uy = Math.exp(q * B.a) * Math.sin(th);
+      gx = ux * B.ix - uy * B.iy; gy = ux * B.iy + uy * B.ix;
+    }
+    return {
+      x: B.zx[r] + B.dx[r] * gx - B.dy[r] * gy,
+      y: B.zy[r] + B.dx[r] * gy + B.dy[r] * gx,
+      rot: B.rotate ? mitte(mitte(q * B.bm) + r * B.be) : 0,
+      s: Math.exp(i * B.ls),
+    };
+  }
+
+  // Wo der Punkt (px, py) in Kopie o liegt, in Koordinaten der Form (0..w, 0..h), oder null.
+  _trifft(o, m, px, py) {
+    const c = Math.cos(o.rot), s = Math.sin(o.rot);
+    const dx = px - o.x, dy = py - o.y;
+    const lx = (c * dx + s * dy) / o.s + m.w / 2, ly = (-s * dx + c * dy) / o.s + m.h / 2;
+    return lx < 0 || ly < 0 || lx > m.w || ly > m.h ? null : [lx, ly];
+  }
+
+  _zaehle(n) {
+    const z = this._zustand;
+    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
+      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+      this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
+    }
+  }
+
   // Klick auf ein Spiegelbild: die oberste getroffene Kopie suchen und den Klick an ihre echte Vorlage weiterreichen.
   _weiterreichen(e) {
+    if (this._b) { if (this._faltung) this._weiterBahn(e); return; }
     const P = this._faltung ? this._P : 0;
     if (!P || this._weiter || this._gezeigt <= P) return;
     const b = this._buehne.getBoundingClientRect();
     const px = e.clientX - b.left, py = e.clientY - b.top;
     const orte = this._orte;
+    const ort = (i) => ({ x: orte[i * 4], y: orte[i * 4 + 1], rot: orte[i * 4 + 2], s: orte[i * 4 + 3] });
     for (let i = this._gezeigt - 1; i >= P; i--) {
-      const o = i * 4, m = this._masse[i % P];
+      const m = this._masse[i % P];
       if (!m) return;
-      const c = Math.cos(orte[o + 2]), s = Math.sin(orte[o + 2]);
-      const dx = px - orte[o], dy = py - orte[o + 1];
-      const lx = (c * dx + s * dy) / orte[o + 3] + m.w / 2, ly = (-s * dx + c * dy) / orte[o + 3] + m.h / 2;
-      if (lx < 0 || ly < 0 || lx > m.w || ly > m.h) continue;
-      const vorlage = this._kopien[i % P];
-      if (!vorlage || vorlage.contains(e.target)) return;
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // Derselbe Punkt auf der Vorlage: dort liegt, was getroffen gewesen wäre.
-      const v = (i % P) * 4, cv = Math.cos(orte[v + 2]), sv = Math.sin(orte[v + 2]), sk = orte[v + 3];
-      const qx = lx - m.w / 2, qy = ly - m.h / 2;
-      const zx = b.left + orte[v] + sk * (cv * qx - sv * qy), zy = b.top + orte[v + 1] + sk * (sv * qx + cv * qy);
-      const ziel = this._root.elementsFromPoint(zx, zy).find((x) => vorlage.contains(x)) || vorlage;
-      this._weiter = true;
-      try {
-        if (ziel.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea')) ziel.focus();
-        else ziel.click();
-      } finally { this._weiter = false; }
+      const l = this._trifft(ort(i), m, px, py);
+      if (!l) continue;
+      this._reiche(e, i % P, l, ort(i % P), b);
       return;
     }
+  }
+
+  _weiterBahn(e) {
+    const B = this._b, P = B.P;
+    if (this._weiter || B.N <= P) return;
+    const b = this._buehne.getBoundingClientRect();
+    const px = e.clientX - b.left, py = e.clientY - b.top;
+    if (B.stapel) {
+      const reihe = [];
+      for (let r = B.rest - 1; r >= 0; r--) reihe.push(r);
+      if (B.m !== 0) for (let r = P - 1; r >= 0; r--) reihe.push(r);
+      for (const r of reihe) {
+        const m = this._masse[r];
+        if (!m) return;
+        const l = this._trifft(this._ort(B, r), m, px, py);
+        if (l) { this._reiche(e, r, l, this._ort(B, r), b); return; }
+      }
+      return;
+    }
+    let best = -1, bl = null;
+    for (let r = 0; r < P; r++) {
+      const m = this._masse[r];
+      if (!m) return;
+      const w = this._qFenster(B, r, px, py, 0);
+      if (!w) continue;
+      const von = Math.max(Math.ceil(w[0]) - 1, Math.ceil((B.lo - r) / P));
+      for (let q = Math.min(Math.floor(w[1]) + 1, Math.floor((B.hi - 1 - r) / P)); q >= von; q--) {
+        const i = q * P + r;
+        if (i <= best) break;
+        const l = this._trifft(this._ort(B, i), m, px, py);
+        if (l) { best = i; bl = l; break; }
+      }
+    }
+    if (best >= 0) this._reiche(e, best % P, bl, this._ort(B, best % P), b);
+  }
+
+  // Den Klick an Vorlage v weitergeben, an denselben Punkt (l, in Koordinaten der Form): dort liegt, was getroffen gewesen wäre.
+  _reiche(e, v, l, ov, b) {
+    const vorlage = this._kopien[v], m = this._masse[v];
+    if (!vorlage || vorlage.contains(e.target)) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    const cv = Math.cos(ov.rot), sv = Math.sin(ov.rot);
+    const qx = l[0] - m.w / 2, qy = l[1] - m.h / 2;
+    const zx = b.left + ov.x + ov.s * (cv * qx - sv * qy), zy = b.top + ov.y + ov.s * (sv * qx + cv * qy);
+    const ziel = this._root.elementsFromPoint(zx, zy).find((x) => vorlage.contains(x)) || vorlage;
+    this._weiter = true;
+    try {
+      if (ziel.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea')) ziel.focus();
+      else ziel.click();
+    } finally { this._weiter = false; }
   }
 
   // Kopien 0..n-1 sind da und sichtbar, nie weniger als vorher (Vorausbau beim Messen).

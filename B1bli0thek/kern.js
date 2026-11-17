@@ -33,6 +33,9 @@ let BUDGET = 1000 / 60;
 }
 
 const gemeldet = new Set();
+const TAU = 2 * Math.PI;
+// Ein Winkel auf den Kreis gefaltet: -π..π. Wie oft man schon herum ist, vergisst er.
+const mitte = (x) => x - TAU * Math.round(x / TAU);
 const BASIS_ATTRIBUTE = new Set(['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity']);
 
 const GRUNDSTIL = `
@@ -194,7 +197,11 @@ export class InfElement extends HTMLElement {
   // Wie viele Kopien gerade gezeigt werden (bei ∞ laufend die der adaptiven Regelung) und wie viele gewollt sind.
   get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
-  eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._gezeigt; } this.mehr(1); }
+  eins() {
+    const z = this._zustand;
+    if (z.unendlich) { z.unendlich = false; z.anzahl = Number.isFinite(this._gezeigt) ? this._gezeigt : this._cap; }
+    this.mehr(1);
+  }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
@@ -287,6 +294,9 @@ export class InfElement extends HTMLElement {
     if (!breite || !hoehe) return false;
     const per = this._falten ? this.periode : 0;
     const P = (this._P = per > 0 && per <= FORMEN_MAX ? per : 0);
+    // Wiederholt sich der Schritt mit der Periode, ist der Pfad eine geschlossene Formel: die Grafikkarte rechnet die Orte.
+    if (P && (z.unendlich || z.anzahl > P) && (z.rotate || z.bend === 0 || z.gap !== null)) return this._bahnLayout(P, breite, hoehe);
+    this._b = null;
     const diag = Math.hypot(breite, hoehe);
     const mx = breite / 2 + z.dx, my = hoehe / 2 + z.dy;
     const kreis = z.unendlich && z.scale === 1 && z.bend !== 0 ? Math.ceil(360 / Math.abs(z.bend)) : Infinity;
@@ -342,10 +352,7 @@ export class InfElement extends HTMLElement {
       }
       this._faltung.zeichne(orte, P, n, breite, hoehe, smax);
     } else this._faltung?.leer();
-    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
-      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
-      this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
-    }
+    this._zaehle(n);
     this.nachLayout(dom);
     // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
     return n >= grenze;
@@ -353,36 +360,260 @@ export class InfElement extends HTMLElement {
 
   nachLayout() {}
 
+  // Die Bahn als Formel. z_r (r < 2P) wird einmal in double gegangen, danach gilt für Kopie i = q*P + r:
+  //   Ort z_r + D_r * (W^q - 1) / (W - 1), Drehung i * bend, Größe scale^i, mit D_r = z_(r+P) - z_r und W = scale^P * e^(i*P*bend).
+  // Gezählt wird alles, was es gibt (auch neben dem Bild), gezeichnet nur, was ins Bild fallen kann.
+  _bahnLayout(P, breite, hoehe) {
+    const z = this._zustand;
+    this._ziel = P;
+    const masse = this._masse;
+    for (let j = 0; j < P; j++) masse[j] || this._mass(j);
+    const GRAD = Math.PI / 180;
+    const a0 = z.angle * GRAD, be = z.bend * GRAD;
+    const ca = Math.abs(Math.cos(a0)), sa = Math.abs(Math.sin(a0));
+    const lang = (m) => ca * m.w + sa * m.h;
+    const ls = Math.log(z.scale);
+    const zx = new Float64Array(2 * P + 1), zy = new Float64Array(2 * P + 1);
+    zx[0] = breite / 2 + z.dx; zy[0] = hoehe / 2 + z.dy;
+    for (let i = 0; i < 2 * P; i++) {
+      const r = i % P;
+      const schritt = z.gap ?? ((lang(masse[r]) + lang(masse[(r + 1) % P])) / 2 + z.space);
+      const w = a0 + i * be, f = schritt * Math.exp(i * ls);
+      zx[i + 1] = zx[i] + Math.cos(w) * f;
+      zy[i + 1] = zy[i] + Math.sin(w) * f;
+    }
+    const dx = new Float64Array(P), dy = new Float64Array(P);
+    for (let r = 0; r < P; r++) { dx[r] = zx[r + P] - zx[r]; dy[r] = zy[r + P] - zy[r]; }
+    const a = P * ls, bm = mitte(P * be), sh = Math.sin(bm / 2);
+    const wx = Math.expm1(a) * Math.cos(bm) - 2 * sh * sh, wy = Math.exp(a) * Math.sin(bm);
+    const nn = wx * wx + wy * wy;
+    const eins = nn < 1e-28;
+    const ix = eins ? 0 : wx / nn, iy = eins ? 0 : -wy / nn;
+    const fx = new Float64Array(P), fy = new Float64Array(P), h = new Float64Array(P);
+    const rand = (this._faltung?.rand ?? 8) + 2;
+    for (let r = 0; r < P; r++) {
+      fx[r] = zx[r] - (dx[r] * ix - dy[r] * iy);
+      fy[r] = zy[r] - (dx[r] * iy + dy[r] * ix);
+      h[r] = Math.hypot(masse[r].w, masse[r].h) / 2 + rand;
+    }
+    const diag = Math.hypot(breite, hoehe);
+    // Bis zu welcher Kopie i Form r groß genug (bzw. klein genug) bleibt.
+    const bis = (r, grenze) => Math.log(grenze / masse[r].gross) / ls;
+    let N;
+    if (!z.unendlich) N = z.anzahl;
+    else if (ls === 0) N = Infinity;
+    else {
+      N = Infinity;
+      const grenze = ls < 0 ? 0.5 : diag * 4;
+      for (let r = 0; r < P; r++) {
+        let q = Math.max(0, Math.floor((bis(r, grenze) - r) / P) + 1);
+        if (q === 0 && r === 0) q = 1;
+        N = Math.min(N, q * P + r);
+      }
+    }
+    const B = (this._b = { P, zx, zy, dx, dy, fx, fy, h, eins, a, bm, be, ls, ix, iy, N, lo: 0, hi: 0, rotate: z.rotate, stapel: false, m: 0, rest: 0 });
+
+    const dom = Math.min(N, P);
+    this._abgleich(dom);
+    for (let i = 0; i < dom; i++) {
+      const k = this._kopien[i], mi = masse[i], o = this._ort(B, i);
+      const t = `translate(${o.x}px,${o.y}px) rotate(${o.rot / GRAD}deg) scale(${o.s}) translate(${-mi.w / 2}px,${-mi.h / 2}px)`;
+      if (k._t !== t) { k._t = t; k.style.transform = t; }
+    }
+
+    let voll = false, d = null;
+    let stillstand = eins;
+    for (let r = 0; r < P && stillstand; r++) if (Math.abs(dx[r]) > 1e-9 || Math.abs(dy[r]) > 1e-9) stillstand = false;
+    if (N > P && stillstand) {
+      // Alle Kopien einer Form liegen aufeinander: der Stapel, Schichten zählt jeder Bildpunkt selbst.
+      B.stapel = true;
+      B.m = N === Infinity ? -1 : Math.floor((N - P) / P);
+      B.rest = N === Infinity ? 0 : (N - P) % P;
+      const b = new Float32Array(FORMEN_MAX * 4);
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let r = 0; r < P; r++) {
+        const rot = z.rotate ? mitte(r * be) : 0;
+        b.set([zx[r], zy[r], Math.cos(rot), Math.sin(rot)], r * 4);
+        x0 = Math.min(x0, zx[r] - h[r]); y0 = Math.min(y0, zy[r] - h[r]);
+        x1 = Math.max(x1, zx[r] + h[r]); y1 = Math.max(y1, zy[r] + h[r]);
+      }
+      d = { P, b, kasten: [x0, y0, x1, y1], m: B.m, rest: B.rest };
+    } else if (N > P) {
+      const R = diag / 2, cx = breite / 2, cy = hoehe / 2;
+      // Gezeichnet wird zwischen halbem Bildpunkt und 64 Bildschirmdiagonalen, gezählt wird weiter alles.
+      const zeichenGrenze = ls < 0 ? 0.5 : diag * 64;
+      let lo = Infinity, hi = -Infinity;
+      for (let r = 0; r < P; r++) {
+        const w = this._qFenster(B, r, cx, cy, R);
+        if (!w) continue;
+        let qmax = Number.isFinite(N) ? Math.floor((N - 1 - r) / P) : Infinity;
+        if (ls !== 0) qmax = Math.min(qmax, Math.floor((bis(r, zeichenGrenze) - r) / P));
+        // Kreis: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten. Gezählt bleibt alles, gezeichnet wird mod 360°.
+        else if (!eins) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
+        const qlo = Math.max(0, Math.ceil(w[0]) - 1), qhi = Math.min(Math.floor(w[1]) + 1, qmax);
+        if (!(qlo <= qhi)) continue;
+        lo = Math.min(lo, qlo * P + r);
+        hi = Math.max(hi, qhi * P + r + 1);
+      }
+      lo = Math.max(lo, P);
+      hi = Math.min(hi, N);
+      if (hi - lo > this._cap) { voll = true; hi = lo + this._cap; }
+      if (lo < hi) {
+        B.lo = lo; B.hi = hi;
+        const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
+        const b = new Float32Array(FORMEN_MAX * 4), c = new Float32Array(FORMEN_MAX * 2);
+        let gx = q0, gy = 0, px = 1, py = 0;
+        if (!eins) {
+          const th = mitte(q0 * bm), e = Math.exp(q0 * a), s2 = Math.sin(th / 2);
+          const ux = Math.expm1(q0 * a) * Math.cos(th) - 2 * s2 * s2, uy = e * Math.sin(th);
+          gx = ux * ix - uy * iy; gy = ux * iy + uy * ix;
+          px = e * Math.cos(th); py = e * Math.sin(th);
+        }
+        for (let v = 0; v < P; v++) {
+          b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, dx[v] * px - dy[v] * py, dx[v] * py + dy[v] * px], v * 4);
+          c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
+          c[v * 2 + 1] = (q0 * P + v) * ls;
+        }
+        d = { P, r0, anzahl: hi - lo, eins, rotate: z.rotate, b, c, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)],
+          smax: Math.max(Math.exp(lo * ls), Math.exp((hi - 1) * ls)) };
+      }
+    }
+    if (d) {
+      if (!this._faltung) {
+        try { this._faltung = new Faltung(this); } catch (e) { this._faltFehler(e); return false; }
+      }
+      if (B.stapel) this._faltung.stapel(d, breite, hoehe);
+      else this._faltung.bahn(d, breite, hoehe, d.smax);
+    } else this._faltung?.leer();
+    this._zaehle(N);
+    this.nachLayout(dom);
+    return voll;
+  }
+
+  // Für welche q die Kopie q*P + r den Kreis (cx, cy, R) berühren kann: [von, bis] oder null.
+  _qFenster(B, r, cx, cy, R) {
+    const hh = B.h[r] * Math.exp(r * B.ls);
+    if (B.eins) {
+      // Gerade Reihe: |z_r + q*D - c| <= R + h, eine quadratische Ungleichung.
+      const ex = B.zx[r] - cx, ey = B.zy[r] - cy, A = B.dx[r] ** 2 + B.dy[r] ** 2;
+      const Bq = B.dx[r] * ex + B.dy[r] * ey, C = ex * ex + ey * ey - (R + hh) ** 2;
+      if (A < 1e-18) return C <= 0 ? [0, Infinity] : null;
+      const disk = Bq * Bq - A * C;
+      if (disk < 0) return null;
+      const w = Math.sqrt(disk);
+      return [(-Bq - w) / A, (-Bq + w) / A];
+    }
+    if (B.a === 0) return [0, Infinity];
+    // Spirale um F: Abstand und Größe wachsen beide mit e^(q*a).
+    const rho = Math.hypot(B.zx[r] - B.fx[r], B.zy[r] - B.fy[r]);
+    const dd = Math.hypot(B.fx[r] - cx, B.fy[r] - cy);
+    const u1 = rho - hh > 0 ? Math.log((dd + R) / (rho - hh)) : Infinity;
+    const u2 = dd - R > 0 ? Math.log((dd - R) / (rho + hh)) : -Infinity;
+    if (u2 > u1) return null;
+    return B.a < 0 ? [u1 / B.a, u2 / B.a] : [u2 / B.a, u1 / B.a];
+  }
+
+  // Ort der Kopie i in geschlossener Form.
+  _ort(B, i) {
+    const q = Math.floor(i / B.P), r = i - q * B.P;
+    let gx = q, gy = 0;
+    if (!B.eins) {
+      const th = mitte(q * B.bm), s2 = Math.sin(th / 2);
+      const ux = Math.expm1(q * B.a) * Math.cos(th) - 2 * s2 * s2, uy = Math.exp(q * B.a) * Math.sin(th);
+      gx = ux * B.ix - uy * B.iy; gy = ux * B.iy + uy * B.ix;
+    }
+    return {
+      x: B.zx[r] + B.dx[r] * gx - B.dy[r] * gy,
+      y: B.zy[r] + B.dx[r] * gy + B.dy[r] * gx,
+      rot: B.rotate ? mitte(mitte(q * B.bm) + r * B.be) : 0,
+      s: Math.exp(i * B.ls),
+    };
+  }
+
+  // Wo der Punkt (px, py) in Kopie o liegt, in Koordinaten der Form (0..w, 0..h), oder null.
+  _trifft(o, m, px, py) {
+    const c = Math.cos(o.rot), s = Math.sin(o.rot);
+    const dx = px - o.x, dy = py - o.y;
+    const lx = (c * dx + s * dy) / o.s + m.w / 2, ly = (-s * dx + c * dy) / o.s + m.h / 2;
+    return lx < 0 || ly < 0 || lx > m.w || ly > m.h ? null : [lx, ly];
+  }
+
+  _zaehle(n) {
+    const z = this._zustand;
+    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
+      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+      this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
+    }
+  }
+
   // Klick auf ein Spiegelbild: die oberste getroffene Kopie suchen und den Klick an ihre echte Vorlage weiterreichen.
   _weiterreichen(e) {
+    if (this._b) { if (this._faltung) this._weiterBahn(e); return; }
     const P = this._faltung ? this._P : 0;
     if (!P || this._weiter || this._gezeigt <= P) return;
     const b = this._buehne.getBoundingClientRect();
     const px = e.clientX - b.left, py = e.clientY - b.top;
     const orte = this._orte;
+    const ort = (i) => ({ x: orte[i * 4], y: orte[i * 4 + 1], rot: orte[i * 4 + 2], s: orte[i * 4 + 3] });
     for (let i = this._gezeigt - 1; i >= P; i--) {
-      const o = i * 4, m = this._masse[i % P];
+      const m = this._masse[i % P];
       if (!m) return;
-      const c = Math.cos(orte[o + 2]), s = Math.sin(orte[o + 2]);
-      const dx = px - orte[o], dy = py - orte[o + 1];
-      const lx = (c * dx + s * dy) / orte[o + 3] + m.w / 2, ly = (-s * dx + c * dy) / orte[o + 3] + m.h / 2;
-      if (lx < 0 || ly < 0 || lx > m.w || ly > m.h) continue;
-      const vorlage = this._kopien[i % P];
-      if (!vorlage || vorlage.contains(e.target)) return;
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // Derselbe Punkt auf der Vorlage: dort liegt, was getroffen gewesen wäre.
-      const v = (i % P) * 4, cv = Math.cos(orte[v + 2]), sv = Math.sin(orte[v + 2]), sk = orte[v + 3];
-      const qx = lx - m.w / 2, qy = ly - m.h / 2;
-      const zx = b.left + orte[v] + sk * (cv * qx - sv * qy), zy = b.top + orte[v + 1] + sk * (sv * qx + cv * qy);
-      const ziel = this._root.elementsFromPoint(zx, zy).find((x) => vorlage.contains(x)) || vorlage;
-      this._weiter = true;
-      try {
-        if (ziel.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea')) ziel.focus();
-        else ziel.click();
-      } finally { this._weiter = false; }
+      const l = this._trifft(ort(i), m, px, py);
+      if (!l) continue;
+      this._reiche(e, i % P, l, ort(i % P), b);
       return;
     }
+  }
+
+  _weiterBahn(e) {
+    const B = this._b, P = B.P;
+    if (this._weiter || B.N <= P) return;
+    const b = this._buehne.getBoundingClientRect();
+    const px = e.clientX - b.left, py = e.clientY - b.top;
+    if (B.stapel) {
+      const reihe = [];
+      for (let r = B.rest - 1; r >= 0; r--) reihe.push(r);
+      if (B.m !== 0) for (let r = P - 1; r >= 0; r--) reihe.push(r);
+      for (const r of reihe) {
+        const m = this._masse[r];
+        if (!m) return;
+        const l = this._trifft(this._ort(B, r), m, px, py);
+        if (l) { this._reiche(e, r, l, this._ort(B, r), b); return; }
+      }
+      return;
+    }
+    let best = -1, bl = null;
+    for (let r = 0; r < P; r++) {
+      const m = this._masse[r];
+      if (!m) return;
+      const w = this._qFenster(B, r, px, py, 0);
+      if (!w) continue;
+      const von = Math.max(Math.ceil(w[0]) - 1, Math.ceil((B.lo - r) / P));
+      for (let q = Math.min(Math.floor(w[1]) + 1, Math.floor((B.hi - 1 - r) / P)); q >= von; q--) {
+        const i = q * P + r;
+        if (i <= best) break;
+        const l = this._trifft(this._ort(B, i), m, px, py);
+        if (l) { best = i; bl = l; break; }
+      }
+    }
+    if (best >= 0) this._reiche(e, best % P, bl, this._ort(B, best % P), b);
+  }
+
+  // Den Klick an Vorlage v weitergeben, an denselben Punkt (l, in Koordinaten der Form): dort liegt, was getroffen gewesen wäre.
+  _reiche(e, v, l, ov, b) {
+    const vorlage = this._kopien[v], m = this._masse[v];
+    if (!vorlage || vorlage.contains(e.target)) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    const cv = Math.cos(ov.rot), sv = Math.sin(ov.rot);
+    const qx = l[0] - m.w / 2, qy = l[1] - m.h / 2;
+    const zx = b.left + ov.x + ov.s * (cv * qx - sv * qy), zy = b.top + ov.y + ov.s * (sv * qx + cv * qy);
+    const ziel = this._root.elementsFromPoint(zx, zy).find((x) => vorlage.contains(x)) || vorlage;
+    this._weiter = true;
+    try {
+      if (ziel.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea')) ziel.focus();
+      else ziel.click();
+    } finally { this._weiter = false; }
   }
 
   // Kopien 0..n-1 sind da und sichtbar, nie weniger als vorher (Vorausbau beim Messen).

@@ -37,6 +37,105 @@ in vec3 v_uv;
 out vec4 o;
 void main() { o = texture(u_t, v_uv); }`;
 
+// Die Bahn: Orte rechnet die Grafikkarte selbst. Kopie j = q*P + v liegt bei z_v + D_v * (W^q - 1)/(W - 1),
+// W = scale^P * e^(i*P*bend), eine komplexe Zahl je Periode. Die CPU schickt nur den Anfang (q0), nie Millionen Orte.
+const BAHN = `#version 300 es
+uniform vec2 u_flaeche;
+uniform float u_rand;
+uniform int u_p;
+uniform int u_r0;
+uniform int u_eins;
+uniform int u_rot;
+uniform vec4 u_g[${FORMEN_MAX}];
+uniform vec4 u_b[${FORMEN_MAX}];
+uniform vec4 u_c[${FORMEN_MAX / 2}];
+uniform vec2 u_inv;
+uniform float u_a;
+uniform vec3 u_bt;
+uniform vec3 u_sicht;
+out vec3 v_uv;
+const float TAU = 6.283185307179586;
+float mitte(float x) { return x - TAU * floor(x / TAU + 0.5); }
+float expm1_(float x) { return abs(x) < 0.01 ? x * (1.0 + x * (0.5 + x * (1.0 / 6.0 + x / 24.0))) : exp(x) - 1.0; }
+void main() {
+  int id = gl_VertexID;
+  vec2 ecke = vec2((id == 1 || id == 2 || id == 4) ? 1.0 : 0.0, (id == 2 || id == 4 || id == 5) ? 1.0 : 0.0);
+  int j = gl_InstanceID + u_r0;
+  int v = j % u_p, k = j / u_p;
+  float fk = float(k);
+  // Der Winkel k*arg(W) in drei Byte-Stufen, jede schon auf den Kreis gefaltet: float reicht so für Millionen Runden.
+  float th = mitte(mitte(float(k >> 16) * u_bt.z + float((k >> 8) & 255) * u_bt.y) + float(k & 255) * u_bt.x);
+  vec2 G;
+  if (u_eins == 1) G = vec2(fk, 0.0);
+  else {
+    float ka = fk * u_a, sh = sin(0.5 * th);
+    vec2 w = vec2(expm1_(ka) * cos(th) - 2.0 * sh * sh, exp(ka) * sin(th));
+    G = vec2(w.x * u_inv.x - w.y * u_inv.y, w.x * u_inv.y + w.y * u_inv.x);
+  }
+  vec4 b = u_b[v];
+  vec2 pos = b.xy + vec2(b.z * G.x - b.w * G.y, b.z * G.y + b.w * G.x);
+  vec4 cc = u_c[v >> 1];
+  vec2 rl = (v & 1) == 0 ? cc.xy : cc.zw;
+  float rot = rl.x + float(u_rot) * th;
+  float s = exp(rl.y + fk * u_a);
+  vec4 g = u_g[v];
+  if (length(pos - u_sicht.xy) > u_sicht.z + s * 0.5 * length(g.xy + 2.0 * u_rand)) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    v_uv = vec3(0.0);
+    return;
+  }
+  vec2 p = ecke * (g.xy + 2.0 * u_rand) - u_rand - g.xy * 0.5;
+  float c = cos(rot), sn = sin(rot);
+  vec2 w2 = pos + s * vec2(c * p.x - sn * p.y, sn * p.x + c * p.y);
+  vec2 clip = w2 / u_flaeche * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+  v_uv = vec3(ecke * g.zw, float(v));
+}`;
+
+// Der Stapel: liegen alle Kopien einer Form genau aufeinander, rechnet jeder Bildpunkt die m Schichten auf einmal.
+// m Schichten mit Deckkraft a decken 1 - (1 - a)^m: für m = ∞ ist das 1, so viele wie gemeint, keine gezeichnet.
+const STAPEL_ECKE = `#version 300 es
+uniform vec2 u_flaeche;
+uniform vec4 u_kasten;
+out vec2 v_p;
+void main() {
+  int id = gl_VertexID;
+  vec2 ecke = vec2((id == 1 || id == 2 || id == 4) ? 1.0 : 0.0, (id == 2 || id == 4 || id == 5) ? 1.0 : 0.0);
+  v_p = mix(u_kasten.xy, u_kasten.zw, ecke);
+  vec2 clip = v_p / u_flaeche * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+}`;
+
+const STAPEL_FLAECHE = `#version 300 es
+precision highp float;
+precision mediump sampler2DArray;
+uniform sampler2DArray u_t;
+uniform float u_rand;
+uniform int u_p;
+uniform int u_rest;
+uniform float u_m;
+uniform vec4 u_g[${FORMEN_MAX}];
+uniform vec4 u_b[${FORMEN_MAX}];
+in vec2 v_p;
+out vec4 o;
+void main() {
+  vec4 B = vec4(0.0), R = vec4(0.0);
+  for (int r = 0; r < ${FORMEN_MAX}; r++) {
+    if (r >= u_p) break;
+    vec4 b = u_b[r], g = u_g[r];
+    vec2 d = v_p - b.xy;
+    vec2 l = vec2(b.z * d.x + b.w * d.y, -b.w * d.x + b.z * d.y);
+    vec2 q = (l + g.xy * 0.5 + u_rand) / (g.xy + 2.0 * u_rand);
+    vec4 f = texture(u_t, vec3(q * g.zw, float(r)));
+    f *= step(0.0, q.x) * step(0.0, q.y) * step(q.x, 1.0) * step(q.y, 1.0);
+    B = f + B * (1.0 - f.a);
+    if (r == u_rest - 1) R = B;
+  }
+  float A = u_m < 0.0 ? 1.0 : (u_m == 0.0 ? 0.0 : 1.0 - pow(max(0.0, 1.0 - B.a), u_m));
+  vec4 F = B.a > 0.0 ? B * (A / B.a) : vec4(0.0);
+  o = R + F * (1.0 - R.a);
+}`;
+
 // Was der Host an seine Kopien vererbt; im Bild gibt es keinen Host, also steht es dort ausdrücklich.
 const ERBE = ['color', 'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing', 'word-spacing',
   'text-shadow', 'text-transform', 'font-variant', 'font-stretch', '-webkit-font-smoothing'];
@@ -47,6 +146,17 @@ function shader(gl, art, quelle) {
   gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('Faltung: Shader ' + gl.getShaderInfoLog(s));
   return s;
+}
+
+function programm(gl, ecke, flaeche, namen) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl, gl.VERTEX_SHADER, ecke));
+  gl.attachShader(prog, shader(gl, gl.FRAGMENT_SHADER, flaeche));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Faltung: Programm ' + gl.getProgramInfoLog(prog));
+  const u = {};
+  for (const n of namen) u[n] = gl.getUniformLocation(prog, n);
+  return { prog, u };
 }
 
 const zweierpotenz = (x) => 2 ** Math.ceil(Math.log2(Math.max(1, x)));
@@ -62,13 +172,10 @@ export class Faltung {
     c.setAttribute('aria-hidden', 'true');
     const gl = (this.gl = c.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false }));
     if (!gl) throw new Error('B1bli0thek: kein WebGL2, Faltung aus, DOM-Weg');
-    const prog = (this.prog = gl.createProgram());
-    gl.attachShader(prog, shader(gl, gl.VERTEX_SHADER, ECKE));
-    gl.attachShader(prog, shader(gl, gl.FRAGMENT_SHADER, FLAECHE));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Faltung: Programm ' + gl.getProgramInfoLog(prog));
-    this.u = {};
-    for (const n of ['u_flaeche', 'u_rand', 'u_start', 'u_p', 'u_g', 'u_t']) this.u[n] = gl.getUniformLocation(prog, n);
+    ({ prog: this.prog, u: this.u } = programm(gl, ECKE, FLAECHE, ['u_flaeche', 'u_rand', 'u_start', 'u_p', 'u_g', 'u_t']));
+    this.pb = programm(gl, BAHN, FLAECHE, ['u_flaeche', 'u_rand', 'u_p', 'u_r0', 'u_eins', 'u_rot', 'u_g', 'u_b', 'u_c', 'u_inv', 'u_a', 'u_bt', 'u_sicht', 'u_t']);
+    this.ps = programm(gl, STAPEL_ECKE, STAPEL_FLAECHE, ['u_flaeche', 'u_kasten', 'u_t', 'u_rand', 'u_p', 'u_rest', 'u_m', 'u_g', 'u_b']);
+    this.leerVao = gl.createVertexArray();
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     this.puffer = gl.createBuffer();
@@ -121,8 +228,8 @@ export class Faltung {
     return s;
   }
 
-  // orte: x, y, Drehung (rad), Größe je Kopie; P Formen; gezeichnet werden P..n-1.
-  zeichne(orte, P, n, W, H, smax) {
+  // Leinwand, Bild und leeres Blatt: was jedem Zeichnen vorausgeht. false, solange das Bild der Formen fehlt.
+  _ruesten(P, W, H, smax) {
     const gl = this.gl, c = this.leinwand;
     const dpr = devicePixelRatio || 1;
     const bw = Math.max(1, Math.round(W * dpr)), bh = Math.max(1, Math.round(H * dpr));
@@ -142,13 +249,20 @@ export class Faltung {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.leer_ = false;
-    if (!this.tex || this.texP !== P) return;
+    if (!this.tex || this.texP !== P) return false;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tex);
+    return true;
+  }
+
+  // orte: x, y, Drehung (rad), Größe je Kopie; P Formen; gezeichnet werden P..n-1.
+  zeichne(orte, P, n, W, H, smax) {
+    const gl = this.gl;
+    if (!this._ruesten(P, W, H, smax)) return;
     gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.puffer);
     gl.bufferData(gl.ARRAY_BUFFER, orte.subarray(P * 4, n * 4), gl.DYNAMIC_DRAW);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tex);
     gl.uniform1i(this.u.u_t, 0);
     gl.uniform2f(this.u.u_flaeche, W, H);
     gl.uniform1f(this.u.u_rand, this.rand);
@@ -156,6 +270,49 @@ export class Faltung {
     gl.uniform1i(this.u.u_p, P);
     gl.uniform4fv(this.u.u_g, this.g);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n - P);
+    gl.bindVertexArray(null);
+  }
+
+  // d: Bahn ab Kopie d.lo, d.anzahl Stück. d.b = je Form (x, y, Dx, Dy) am Anfang, d.c = je Form (Drehung, ln Größe).
+  bahn(d, W, H, smax) {
+    const gl = this.gl, u = this.pb.u;
+    if (!this._ruesten(d.P, W, H, smax)) return;
+    gl.useProgram(this.pb.prog);
+    gl.bindVertexArray(this.leerVao);
+    gl.uniform1i(u.u_t, 0);
+    gl.uniform2f(u.u_flaeche, W, H);
+    gl.uniform1f(u.u_rand, this.rand);
+    gl.uniform1i(u.u_p, d.P);
+    gl.uniform1i(u.u_r0, d.r0);
+    gl.uniform1i(u.u_eins, d.eins ? 1 : 0);
+    gl.uniform1i(u.u_rot, d.rotate ? 1 : 0);
+    gl.uniform4fv(u.u_g, this.g);
+    gl.uniform4fv(u.u_b, d.b);
+    gl.uniform4fv(u.u_c, d.c);
+    gl.uniform2f(u.u_inv, d.ix, d.iy);
+    gl.uniform1f(u.u_a, d.a);
+    gl.uniform3f(u.u_bt, d.bt[0], d.bt[1], d.bt[2]);
+    gl.uniform3f(u.u_sicht, W / 2, H / 2, Math.hypot(W, H) / 2);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, d.anzahl);
+    gl.bindVertexArray(null);
+  }
+
+  // d.b = je Form (x, y, cos, sin), d.kasten = was alle Formen zusammen bedecken, d.m volle Schichten (-1 = ∞), d.rest.
+  stapel(d, W, H) {
+    const gl = this.gl, u = this.ps.u;
+    if (!this._ruesten(d.P, W, H, 1)) return;
+    gl.useProgram(this.ps.prog);
+    gl.bindVertexArray(this.leerVao);
+    gl.uniform1i(u.u_t, 0);
+    gl.uniform2f(u.u_flaeche, W, H);
+    gl.uniform4f(u.u_kasten, d.kasten[0], d.kasten[1], d.kasten[2], d.kasten[3]);
+    gl.uniform1f(u.u_rand, this.rand);
+    gl.uniform1i(u.u_p, d.P);
+    gl.uniform1i(u.u_rest, d.rest);
+    gl.uniform1f(u.u_m, d.m);
+    gl.uniform4fv(u.u_g, this.g);
+    gl.uniform4fv(u.u_b, d.b);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);
   }
 
