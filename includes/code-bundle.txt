@@ -14134,7 +14134,7 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `bare` | (ohne Wert) | blendet die eigene Leiste (nur 0 1 ∞) aus |
 | `capacity` | (ohne Wert) | Kapazitätsmodus (`∞+`): bei `∞` darf die Zahl der Kopien 80 % eines Bildtakts verbrauchen statt 35 %; Entfernen setzt sofort zurück |
 
-Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1).
+Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Das Feld „Anzahl“ im Panel setzt `repeat` auf eine endliche Zahl (große Zahlen erlaubt, `∞` als Text schaltet auf adaptiv); bei ∞ läuft das Feld mit. Links in der Griffzeile steht dezent, wie viele Kopien gerade gezeigt werden („720 von 1.000.000“, wenn das Gerät weniger schafft); das Element meldet es als Ereignis `inf-zaehl` (`detail: { gezeigt, ziel }`, auch `el.gezaehlt`). Meldungen wie „Rückgängig“ sitzen immer über Panel-Oberkante und 0/1/∞-Leiste, nie darauf (`Controls.keepClear`).
 
 Bei `∞` misst jedes Element, was das Gerät schafft: Es beginnt bei 720 Kopien und vergrößert die Zahl, solange Layoutzeit und Bildtakt (gemessen gegen die Bildwiederholrate des Bildschirms) Luft lassen; ruckelt es, geht die Zahl wieder zurück, nie unter 720. Keine Pauschale, die Obergrenze ist nur Schutz (4 194 304 gefaltete Kopien, 6000 auf dem DOM-Weg).
 
@@ -14549,6 +14549,10 @@ B1bli0thek/index.html
 #buehne { flex: 1 1 auto; position: relative; min-height: 0; }
 #buehne > * { position: absolute; inset: 0; height: auto; }
 #buehne > *:focus-visible { outline: none; }
+/* Zähler: kleine Zahl links in der Griffzeile des Panels, fährt mit; Griff (Mitte) und Leiste bleiben frei. */
+.b1-zaehler { position: absolute; left: 14px; top: 14px; z-index: 1; font: 11px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  color: var(--text-color); opacity: .6; pointer-events: none; user-select: none; }
+.b1-zaehler:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
 </style>
 </head>
@@ -14629,6 +14633,7 @@ const eigene = {
 panel
   .beginSection('eigene').endSection()
   .beginSection('gemeinsam')
+  .addInput('anzahl', { label: 'Anzahl', value: '', type: 'text', inputmode: 'numeric', commit: 'enter', onChange: (v) => anzahlSetzen(v) })
   .addToggle('capacity', { label: '∞+', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
   .addSlider('bend', { label: 'Krümmung', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
   .addSlider('angle', { label: 'Winkel', min: -180, max: 180, step: 1, value: 0, onChange: (v) => setze('angle', v) })
@@ -14661,8 +14666,34 @@ panel.el.addEventListener('pointerdown', (e) => {
 });
 
 // Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
+// Meldungen (Rückgängig) sitzen über der 0/1/∞-Leiste, nie darauf.
+window.Controls.keepClear.add(() => el?.shadowRoot.querySelector('.leiste')?.getBoundingClientRect());
+const anzahlFeld = () => panel.el.querySelector('[data-key="anzahl"] input');
+const zaehlerEl = document.createElement('div');
+zaehlerEl.className = 'b1-zaehler';
+zaehlerEl.setAttribute('aria-live', 'off');
+zaehlerEl.title = 'Kopien gerade gezeigt';
+panel.el.append(zaehlerEl);
+// Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
+function anzahlSetzen(text) {
+  const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
+  if (t === '') return;
+  if (['∞', 'inf', 'unendlich', 'infinity'].includes(t)) el.unendlich();
+  else if (/^\d+$/.test(t)) el.setzeAnzahl(Number(t));
+  else { zaehlen(); return; }
+  anzahlFeld()?.blur();
+}
+const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : String(n));
+function zaehlen() {
+  if (!el) return;
+  const { gezeigt, ziel } = el.gezaehlt;
+  zaehlerEl.textContent = ziel === '∞' || gezeigt >= ziel ? zahlText(gezeigt) : `${zahlText(gezeigt)} von ${zahlText(ziel)}`;
+  const f = anzahlFeld();
+  if (f && document.activeElement !== f) f.value = zahlText(ziel === '∞' ? gezeigt : ziel);
+}
 const folge = () => {
   const z = el.zustand;
+  zaehlen();
   panel.set('bend', z.bend);
   panel.set('scale', z.scale);
 };
@@ -14699,6 +14730,7 @@ const zeige = () => {
   el = document.createElement(e.tag);
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
   el.addEventListener('inf-change', folge);
+  el.addEventListener('inf-zaehl', zaehlen);
   buehne.replaceChildren(el);
   baueEigene(e.tag);
   folge();
@@ -15367,6 +15399,15 @@ export class InfElement extends HTMLElement {
 
   // Öffentliche Befehle
   mehr(n = 1) { const z = this._zustand; if (!z.unendlich) z.anzahl = Math.max(0, z.anzahl + n); this._schreibe(); this.zeichne(); }
+  // Endliche Anzahl setzen (Feld "Anzahl"). Mehr, als das Gerät flüssig schafft, bleibt mitgemeint: gezeigt wird so viel wie geht.
+  setzeAnzahl(n) {
+    const z = this._zustand;
+    z.unendlich = false;
+    z.anzahl = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)));
+    this._schreibe(); this.zeichne();
+  }
+  // Wie viele Kopien gerade gezeigt werden (bei ∞ laufend die der adaptiven Regelung) und wie viele gewollt sind.
+  get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
   eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._gezeigt; } this.mehr(1); }
   ursprung() {
@@ -15516,7 +15557,10 @@ export class InfElement extends HTMLElement {
       }
       this._faltung.zeichne(orte, P, n, breite, hoehe, smax);
     } else this._faltung?.leer();
-    this._gezeigt = n;
+    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
+      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+      this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
+    }
     this.nachLayout(dom);
     // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
     return n >= grenze;
@@ -83197,6 +83241,32 @@ tools/controls.js
         return data;
     }
 
+    // Meldungen sitzen unten mittig, weichen aber der Oberkante jedes Panels aus, das sie ueberdecken wuerden
+    // (Handy-Blatt eingeklappt: Griff liegt ganz unten). Folgt dem Panel auch beim Ziehen und Aufklappen.
+    function placeToastAbovePanels(t) {
+        const step = () => {
+            if (!t.isConnected) return;
+            const vh = window.innerHeight;
+            const r = t.getBoundingClientRect();
+            const base = 16;
+            let lift = base;
+            document.querySelectorAll('.ctrl-panel').forEach(p => {
+                const pr = p.getBoundingClientRect();
+                if (pr.width < 1 || pr.height < 1 || getComputedStyle(p).visibility === 'hidden') return;
+                if (pr.right <= r.left || pr.left >= r.right || pr.bottom <= vh - 400) return;
+                if (pr.top < r.height + 24) return; // Griff ganz oben: Meldung bleibt unten, ueber dem Panelinhalt
+                lift = Math.max(lift, vh - pr.top + 8);
+            });
+            window.Controls?.keepClear.forEach(fn => {
+                const k = fn();
+                if (k && k.width > 0 && k.right > r.left && k.left < r.right) lift = Math.max(lift, vh - k.top + 8);
+            });
+            t.style.bottom = `calc(${lift}px + env(safe-area-inset-bottom, 0px))`;
+            requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    }
+
     // Meldung unten mittig. undo: Knopf "Rückgängig" (Gmail-Muster, 6 s). retry: Fehler mit "nochmal", bleibt stehen.
     function defaultsToast(text, { undo = null, retry = null, fatal = false } = {}) {
         document.querySelectorAll('.ctrl-defaults-toast').forEach(t => t.remove());
@@ -83224,6 +83294,7 @@ tools/controls.js
             setTimeout(() => t.remove(), undo ? 6000 : 4000);
         }
         document.body.appendChild(t);
+        placeToastAbovePanels(t);
     }
 
     // Schreibt in den Quelltext der Seite (Editor-Endpunkt "source", Commit auf claude-dev). Alle Schreibzuege laufen
@@ -83631,6 +83702,7 @@ tools/controls.js
         t.append(btn);
         if (undo) setTimeout(() => t.remove(), 5000);
         document.body.appendChild(t);
+        placeToastAbovePanels(t);
     }
 
     // === PANEL CLASS ===
@@ -87733,6 +87805,9 @@ tools/controls.js
 
     // === PUBLIC API ===
     window.Controls = {
+        // Seiten tragen Funktionen ein, die das Rechteck eines Bedienelements liefern (oder null), das Meldungen nicht
+        // ueberdecken duerfen, z.B. eine Leiste auf der Panel-Oberkante: Controls.keepClear.add(() => el.getBoundingClientRect()).
+        keepClear: new Set(),
         /**
          * Create a new control panel
          * @param {Object} options - Panel options

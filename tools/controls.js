@@ -604,6 +604,32 @@
         return data;
     }
 
+    // Meldungen sitzen unten mittig, weichen aber der Oberkante jedes Panels aus, das sie ueberdecken wuerden
+    // (Handy-Blatt eingeklappt: Griff liegt ganz unten). Folgt dem Panel auch beim Ziehen und Aufklappen.
+    function placeToastAbovePanels(t) {
+        const step = () => {
+            if (!t.isConnected) return;
+            const vh = window.innerHeight;
+            const r = t.getBoundingClientRect();
+            const base = 16;
+            let lift = base;
+            document.querySelectorAll('.ctrl-panel').forEach(p => {
+                const pr = p.getBoundingClientRect();
+                if (pr.width < 1 || pr.height < 1 || getComputedStyle(p).visibility === 'hidden') return;
+                if (pr.right <= r.left || pr.left >= r.right || pr.bottom <= vh - 400) return;
+                if (pr.top < r.height + 24) return; // Griff ganz oben: Meldung bleibt unten, ueber dem Panelinhalt
+                lift = Math.max(lift, vh - pr.top + 8);
+            });
+            window.Controls?.keepClear.forEach(fn => {
+                const k = fn();
+                if (k && k.width > 0 && k.right > r.left && k.left < r.right) lift = Math.max(lift, vh - k.top + 8);
+            });
+            t.style.bottom = `calc(${lift}px + env(safe-area-inset-bottom, 0px))`;
+            requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    }
+
     // Meldung unten mittig. undo: Knopf "Rückgängig" (Gmail-Muster, 6 s). retry: Fehler mit "nochmal", bleibt stehen.
     function defaultsToast(text, { undo = null, retry = null, fatal = false } = {}) {
         document.querySelectorAll('.ctrl-defaults-toast').forEach(t => t.remove());
@@ -631,6 +657,7 @@
             setTimeout(() => t.remove(), undo ? 6000 : 4000);
         }
         document.body.appendChild(t);
+        placeToastAbovePanels(t);
     }
 
     // Schreibt in den Quelltext der Seite (Editor-Endpunkt "source", Commit auf claude-dev). Alle Schreibzuege laufen
@@ -1038,6 +1065,7 @@
         t.append(btn);
         if (undo) setTimeout(() => t.remove(), 5000);
         document.body.appendChild(t);
+        placeToastAbovePanels(t);
     }
 
     // === PANEL CLASS ===
@@ -5140,6 +5168,9 @@
 
     // === PUBLIC API ===
     window.Controls = {
+        // Seiten tragen Funktionen ein, die das Rechteck eines Bedienelements liefern (oder null), das Meldungen nicht
+        // ueberdecken duerfen, z.B. eine Leiste auf der Panel-Oberkante: Controls.keepClear.add(() => el.getBoundingClientRect()).
+        keepClear: new Set(),
         /**
          * Create a new control panel
          * @param {Object} options - Panel options

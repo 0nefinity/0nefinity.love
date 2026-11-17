@@ -26,6 +26,10 @@
 #buehne { flex: 1 1 auto; position: relative; min-height: 0; }
 #buehne > * { position: absolute; inset: 0; height: auto; }
 #buehne > *:focus-visible { outline: none; }
+/* Zähler: kleine Zahl links in der Griffzeile des Panels, fährt mit; Griff (Mitte) und Leiste bleiben frei. */
+.b1-zaehler { position: absolute; left: 14px; top: 14px; z-index: 1; font: 11px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  color: var(--text-color); opacity: .6; pointer-events: none; user-select: none; }
+.b1-zaehler:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
 </style>
 </head>
@@ -106,6 +110,7 @@ const eigene = {
 panel
   .beginSection('eigene').endSection()
   .beginSection('gemeinsam')
+  .addInput('anzahl', { label: 'Anzahl', value: '', type: 'text', inputmode: 'numeric', commit: 'enter', onChange: (v) => anzahlSetzen(v) })
   .addToggle('capacity', { label: '∞+', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
   .addSlider('bend', { label: 'Krümmung', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
   .addSlider('angle', { label: 'Winkel', min: -180, max: 180, step: 1, value: 0, onChange: (v) => setze('angle', v) })
@@ -138,8 +143,34 @@ panel.el.addEventListener('pointerdown', (e) => {
 });
 
 // Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
+// Meldungen (Rückgängig) sitzen über der 0/1/∞-Leiste, nie darauf.
+window.Controls.keepClear.add(() => el?.shadowRoot.querySelector('.leiste')?.getBoundingClientRect());
+const anzahlFeld = () => panel.el.querySelector('[data-key="anzahl"] input');
+const zaehlerEl = document.createElement('div');
+zaehlerEl.className = 'b1-zaehler';
+zaehlerEl.setAttribute('aria-live', 'off');
+zaehlerEl.title = 'Kopien gerade gezeigt';
+panel.el.append(zaehlerEl);
+// Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
+function anzahlSetzen(text) {
+  const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
+  if (t === '') return;
+  if (['∞', 'inf', 'unendlich', 'infinity'].includes(t)) el.unendlich();
+  else if (/^\d+$/.test(t)) el.setzeAnzahl(Number(t));
+  else { zaehlen(); return; }
+  anzahlFeld()?.blur();
+}
+const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : String(n));
+function zaehlen() {
+  if (!el) return;
+  const { gezeigt, ziel } = el.gezaehlt;
+  zaehlerEl.textContent = ziel === '∞' || gezeigt >= ziel ? zahlText(gezeigt) : `${zahlText(gezeigt)} von ${zahlText(ziel)}`;
+  const f = anzahlFeld();
+  if (f && document.activeElement !== f) f.value = zahlText(ziel === '∞' ? gezeigt : ziel);
+}
 const folge = () => {
   const z = el.zustand;
+  zaehlen();
   panel.set('bend', z.bend);
   panel.set('scale', z.scale);
 };
@@ -176,6 +207,7 @@ const zeige = () => {
   el = document.createElement(e.tag);
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
   el.addEventListener('inf-change', folge);
+  el.addEventListener('inf-zaehl', zaehlen);
   buehne.replaceChildren(el);
   baueEigene(e.tag);
   folge();
