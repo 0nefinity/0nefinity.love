@@ -36,6 +36,7 @@ const gemeldet = new Set();
 const TAU = 2 * Math.PI;
 // Ein Winkel auf den Kreis gefaltet: -π..π. Wie oft man schon herum ist, vergisst er.
 const mitte = (x) => x - TAU * Math.round(x / TAU);
+const ggt = (x, y) => (y ? ggt(y, x % y) : x);
 const BASIS_ATTRIBUTE = new Set(['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity']);
 
 const GRUNDSTIL = `
@@ -86,6 +87,8 @@ export class InfElement extends HTMLElement {
     this._kopien = [];
     this._sichtbar = 0;
     this._gezeigt = 0;
+    this._gemalt = 0;
+    this._grund = null;
     this._cap = DECKEL;
     this._gedeckelt = false;
     this._takt = 0;
@@ -195,11 +198,12 @@ export class InfElement extends HTMLElement {
     this._schreibe(); this.zeichne();
   }
   // Wie viele Kopien gerade gezeigt werden (bei ∞ laufend die der adaptiven Regelung) und wie viele gewollt sind.
-  get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl }; }
+  // grund: null, wenn das Bild bei ∞ das unendliche ist; sonst ein Wort, warum es nur gezeigt viele sind.
+  get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl, grund: this._grund }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
   eins() {
     const z = this._zustand;
-    if (z.unendlich) { z.unendlich = false; z.anzahl = Number.isFinite(this._gezeigt) ? this._gezeigt : this._cap; }
+    if (z.unendlich) { z.unendlich = false; z.anzahl = this._gemalt > (this._P || 0) ? this._gemalt : this._cap; }
     this.mehr(1);
   }
   ursprung() {
@@ -313,12 +317,13 @@ export class InfElement extends HTMLElement {
     const cb = Math.cos(z.bend * GRAD), sb = Math.sin(z.bend * GRAD);
     const lang = (m, cc, ss) => (z.rotate ? ca * m.w + sa * m.h : Math.abs(cc) * m.w + Math.abs(ss) * m.h);
     let orte = this._orte;
-    let x = mx, y = my, s = 1, r = 0, n = 0, smax = 0;
+    let x = mx, y = my, s = 1, r = 0, n = 0, smax = 0, raus = false;
     let m = ziel > 0 ? masse[0] || this._mass(0) : null;
     for (let i = 0; i < Infinity && i < ziel; i++) {
       if (z.unendlich && i > 0) {
         const gx = x - breite / 2, gy = y - hoehe / 2, weg2 = gx * gx + gy * gy;
-        if (s * m.gross < 0.5 || s * m.gross > riesig || (weg2 > weit2 && weg2 > fern2)) break;
+        if (weg2 > weit2 && weg2 > fern2) { raus = true; break; }
+        if (s * m.gross < 0.5 || s * m.gross > riesig) break;
       }
       if (n * 4 + 4 > orte.length) { const neu = new Float32Array(orte.length * 2); neu.set(orte); orte = this._orte = neu; }
       const o = n * 4;
@@ -352,7 +357,14 @@ export class InfElement extends HTMLElement {
       }
       this._faltung.zeichne(orte, P, n, breite, hoehe, smax);
     } else this._faltung?.leer();
-    this._zaehle(n);
+    if (!z.unendlich) this._zaehle(n);
+    else {
+      // Exakt ∞ ist hier nur die gerade Reihe, die das Bild verlässt (dahinter kommt nichts mehr ins Bild),
+      // und der Kreis, der sich nach ganzen Schritten schließt (jede weitere Kopie liegt auf einer gezeichneten).
+      const runde = 360 / Math.abs(z.bend);
+      const exakt = z.scale === 1 && ((z.bend === 0 && raus) || (Number.isInteger(runde) && n >= kreis));
+      this._zaehle(exakt ? Infinity : n, n, exakt ? null : P ? 'schwingt' : 'DOM');
+    }
     this.nachLayout(dom);
     // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
     return n >= grenze;
@@ -399,18 +411,9 @@ export class InfElement extends HTMLElement {
     const diag = Math.hypot(breite, hoehe);
     // Bis zu welcher Kopie i Form r groß genug (bzw. klein genug) bleibt.
     const bis = (r, grenze) => Math.log(grenze / masse[r].gross) / ls;
-    let N;
-    if (!z.unendlich) N = z.anzahl;
-    else if (ls === 0) N = Infinity;
-    else {
-      N = Infinity;
-      const grenze = ls < 0 ? 0.5 : diag * 4;
-      for (let r = 0; r < P; r++) {
-        let q = Math.max(0, Math.floor((bis(r, grenze) - r) / P) + 1);
-        if (q === 0 && r === 0) q = 1;
-        N = Math.min(N, q * P + r);
-      }
-    }
+    // ∞ ist ∞: gezählt wird nie eine Abbruchgrenze, nur gezeichnet wird so viel, dass das Bild das Grenzbild ist.
+    const N = z.unendlich ? Infinity : z.anzahl;
+    let grund = null;
     const B = (this._b = { P, zx, zy, dx, dy, fx, fy, h, eins, a, bm, be, ls, ix, iy, N, lo: 0, hi: 0, rotate: z.rotate, stapel: false, m: 0, rest: 0 });
 
     const dom = Math.min(N, P);
@@ -440,14 +443,35 @@ export class InfElement extends HTMLElement {
       d = { P, b, kasten: [x0, y0, x1, y1], m: B.m, rest: B.rest };
     } else if (N > P) {
       const R = diag / 2, cx = breite / 2, cy = hoehe / 2;
-      // Gezeichnet wird zwischen halbem Bildpunkt und 64 Bildschirmdiagonalen, gezählt wird weiter alles.
-      const zeichenGrenze = ls < 0 ? 0.5 : diag * 64;
+      const dpr = devicePixelRatio || 1;
+      // Kreis: bend steht auf 0,001° genau, also schließt sich die Bahn nach b Perioden (P·b·bend ein Vielfaches von 360°).
+      // ∞ ist ein Vielfaches jedes Zyklus: eine Runde wird gezeichnet, die Faltung rechnet daraus den unendlichen Stapel.
+      let zyklus = 0;
+      if (z.unendlich && !eins && a === 0) {
+        const k = Math.round(z.bend * 1000);
+        if (Math.abs(z.bend * 1000 - k) < 1e-6) {
+          const b = 360000 / ggt((((k * P) % 360000) + 360000) % 360000, 360000);
+          if (b * P <= FALT_MAX) zyklus = b;
+        }
+        if (!zyklus) grund = 'dicht';
+      }
       let lo = Infinity, hi = -Infinity;
       for (let r = 0; r < P; r++) {
         const w = this._qFenster(B, r, cx, cy, R);
         if (!w) continue;
         let qmax = Number.isFinite(N) ? Math.floor((N - 1 - r) / P) : Infinity;
-        if (ls !== 0) qmax = Math.min(qmax, Math.floor((bis(r, zeichenGrenze) - r) / P));
+        if (ls < 0) {
+          // Schrumpfend: alles ab Kopie qmax bedeckt zusammen weniger als ein 256stel Bildpunkt (geometrische Reihe der Flächen).
+          // Kopien unter einem Bildpunkt zeichnet die Grafikkarte als Fleck mit ihrer Fläche, so landet die Dichte am Grenzpunkt.
+          const m = masse[r], kasten = (m.w + 2 * rand) * (m.h + 2 * rand) * dpr * dpr;
+          const rhs = -Math.expm1(2 * a) / (256 * P * kasten);
+          qmax = Math.min(qmax, Math.ceil((Math.log(rhs) / (2 * ls) - r) / P));
+        } else if (ls > 0) {
+          // Wachsend: ab 64 Bildschirmdiagonalen ist der Bildschirm kleiner als ein halber Texel der Kopie.
+          qmax = Math.min(qmax, Math.floor((bis(r, diag * 64) - r) / P));
+          // Liegt der Grenzpunkt in der Kopie, sieht jeder Bildpunkt immer denselben Texel, solange die Kopie mitdreht.
+          if (z.unendlich && w[1] === Infinity && !z.rotate && Math.abs(bm) > 1e-12) grund = 'schwingt';
+        } else if (zyklus) qmax = Math.min(qmax, zyklus);
         // Kreis: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten. Gezählt bleibt alles, gezeichnet wird mod 360°.
         else if (!eins) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
         const qlo = Math.max(0, Math.ceil(w[0]) - 1), qhi = Math.min(Math.floor(w[1]) + 1, qmax);
@@ -457,7 +481,10 @@ export class InfElement extends HTMLElement {
       }
       lo = Math.max(lo, P);
       hi = Math.min(hi, N);
-      if (hi - lo > this._cap) { voll = true; hi = lo + this._cap; }
+      if (z.unendlich) {
+        // Bei ∞ regelt kein Takt die Menge, nur der Speicher: mehr als FALT_MAX Orte ist ehrlich nicht ∞.
+        if (hi - lo > FALT_MAX) { grund = 'dicht'; hi = lo + FALT_MAX; }
+      } else if (hi - lo > this._cap) { voll = true; hi = lo + this._cap; }
       if (lo < hi) {
         B.lo = lo; B.hi = hi;
         const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
@@ -474,7 +501,7 @@ export class InfElement extends HTMLElement {
           c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
           c[v * 2 + 1] = (q0 * P + v) * ls;
         }
-        d = { P, r0, anzahl: hi - lo, eins, rotate: z.rotate, b, c, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)],
+        d = { P, r0, anzahl: hi - lo, eins, rotate: z.rotate, runde: zyklus > 0, b, c, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)],
           smax: Math.max(Math.exp(lo * ls), Math.exp((hi - 1) * ls)) };
       }
     }
@@ -483,9 +510,12 @@ export class InfElement extends HTMLElement {
         try { this._faltung = new Faltung(this); } catch (e) { this._faltFehler(e); return false; }
       }
       if (B.stapel) this._faltung.stapel(d, breite, hoehe);
-      else this._faltung.bahn(d, breite, hoehe, d.smax);
+      else {
+        try { this._faltung.bahn(d, breite, hoehe, d.smax); } catch (e) { this._faltFehler(e); return false; }
+      }
     } else this._faltung?.leer();
-    this._zaehle(N);
+    const gemalt = B.stapel || !d ? Math.min(N, P) : B.hi;
+    this._zaehle(grund ? gemalt : N, Number.isFinite(N) ? N : gemalt, grund);
     this.nachLayout(dom);
     return voll;
   }
@@ -538,10 +568,12 @@ export class InfElement extends HTMLElement {
     return lx < 0 || ly < 0 || lx > m.w || ly > m.h ? null : [lx, ly];
   }
 
-  _zaehle(n) {
+  // n gezählt, gemalt davon gezeichnet (DOM mitgezählt), grund wie bei gezaehlt.
+  _zaehle(n, gemalt = n, grund = null) {
     const z = this._zustand;
-    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
-      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+    this._gemalt = gemalt;
+    if (this._gezeigt !== n || this._grund !== grund || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
+      this._gezeigt = n; this._grund = grund; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
       this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
     }
   }
@@ -550,12 +582,12 @@ export class InfElement extends HTMLElement {
   _weiterreichen(e) {
     if (this._b) { if (this._faltung) this._weiterBahn(e); return; }
     const P = this._faltung ? this._P : 0;
-    if (!P || this._weiter || this._gezeigt <= P) return;
+    if (!P || this._weiter || this._gemalt <= P) return;
     const b = this._buehne.getBoundingClientRect();
     const px = e.clientX - b.left, py = e.clientY - b.top;
     const orte = this._orte;
     const ort = (i) => ({ x: orte[i * 4], y: orte[i * 4 + 1], rot: orte[i * 4 + 2], s: orte[i * 4 + 3] });
-    for (let i = this._gezeigt - 1; i >= P; i--) {
+    for (let i = this._gemalt - 1; i >= P; i--) {
       const m = this._masse[i % P];
       if (!m) return;
       const l = this._trifft(ort(i), m, px, py);

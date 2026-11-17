@@ -53,7 +53,9 @@ uniform vec2 u_inv;
 uniform float u_a;
 uniform vec3 u_bt;
 uniform vec3 u_sicht;
+uniform float u_px;
 out vec3 v_uv;
+out float v_k;
 const float TAU = 6.283185307179586;
 float mitte(float x) { return x - TAU * floor(x / TAU + 0.5); }
 float expm1_(float x) { return abs(x) < 0.01 ? x * (1.0 + x * (0.5 + x * (1.0 / 6.0 + x / 24.0))) : exp(x) - 1.0; }
@@ -82,15 +84,30 @@ void main() {
   if (length(pos - u_sicht.xy) > u_sicht.z + s * 0.5 * length(g.xy + 2.0 * u_rand)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     v_uv = vec3(0.0);
+    v_k = 0.0;
     return;
   }
-  vec2 p = ecke * (g.xy + 2.0 * u_rand) - u_rand - g.xy * 0.5;
+  // Unter u_px träfe die Kopie kaum einen Bildpunkt: sie wird ein Fleck von u_px, gedimmt auf ihre echte Fläche.
+  // Die gröbste Mipmap-Stufe liefert dazu ihre mittlere Farbe; so summieren unendlich viele Winzlinge richtig.
+  vec2 kante = g.xy + 2.0 * u_rand;
+  float s2 = max(s, u_px / max(kante.x, kante.y));
+  v_k = (s / s2) * (s / s2);
+  vec2 p = ecke * kante - u_rand - g.xy * 0.5;
   float c = cos(rot), sn = sin(rot);
-  vec2 w2 = pos + s * vec2(c * p.x - sn * p.y, sn * p.x + c * p.y);
+  vec2 w2 = pos + s2 * vec2(c * p.x - sn * p.y, sn * p.x + c * p.y);
   vec2 clip = w2 / u_flaeche * 2.0 - 1.0;
   gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
   v_uv = vec3(ecke * g.zw, float(v));
 }`;
+
+const BAHN_FLAECHE = `#version 300 es
+precision highp float;
+precision mediump sampler2DArray;
+uniform sampler2DArray u_t;
+in vec3 v_uv;
+in float v_k;
+out vec4 o;
+void main() { o = texture(u_t, v_uv) * v_k; }`;
 
 // Der Stapel: liegen alle Kopien einer Form genau aufeinander, rechnet jeder Bildpunkt die m Schichten auf einmal.
 // m Schichten mit Deckkraft a decken 1 - (1 - a)^m: für m = ∞ ist das 1, so viele wie gemeint, keine gezeichnet.
@@ -136,6 +153,27 @@ void main() {
   o = R + F * (1.0 - R.a);
 }`;
 
+// Die Runde: schließt sich die Bahn nach einer Runde, liegt der Rest des Unendlichen Runde auf Runde darüber.
+// Eine Runde deckt (F, A); unendlich viele x = F + x(1 - A) haben den Fixpunkt F / A. Gezeichnet wird eine, gemeint sind alle.
+const RUNDE_ECKE = `#version 300 es
+out vec2 v_p;
+void main() {
+  int id = gl_VertexID;
+  v_p = vec2((id == 1 || id == 2 || id == 4) ? 1.0 : 0.0, (id == 2 || id == 4 || id == 5) ? 1.0 : 0.0);
+  gl_Position = vec4(v_p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+const RUNDE_FLAECHE = `#version 300 es
+precision highp float;
+uniform sampler2D u_r;
+in vec2 v_p;
+out vec4 o;
+void main() {
+  vec4 f = texture(u_r, v_p);
+  // Unter einem Byte-Schritt (1/255) ist A kein Stoff, nur Abtast-Staub vom Filtern: der bleibt, was er ist.
+  o = f.a >= 1.0 / 255.0 ? f / f.a : f;
+}`;
+
 // Was der Host an seine Kopien vererbt; im Bild gibt es keinen Host, also steht es dort ausdrücklich.
 const ERBE = ['color', 'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing', 'word-spacing',
   'text-shadow', 'text-transform', 'font-variant', 'font-stretch', '-webkit-font-smoothing'];
@@ -173,8 +211,10 @@ export class Faltung {
     const gl = (this.gl = c.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false }));
     if (!gl) throw new Error('B1bli0thek: kein WebGL2, Faltung aus, DOM-Weg');
     ({ prog: this.prog, u: this.u } = programm(gl, ECKE, FLAECHE, ['u_flaeche', 'u_rand', 'u_start', 'u_p', 'u_g', 'u_t']));
-    this.pb = programm(gl, BAHN, FLAECHE, ['u_flaeche', 'u_rand', 'u_p', 'u_r0', 'u_eins', 'u_rot', 'u_g', 'u_b', 'u_c', 'u_inv', 'u_a', 'u_bt', 'u_sicht', 'u_t']);
+    this.pb = programm(gl, BAHN, BAHN_FLAECHE, ['u_flaeche', 'u_rand', 'u_p', 'u_r0', 'u_eins', 'u_rot', 'u_g', 'u_b', 'u_c', 'u_inv', 'u_a', 'u_bt', 'u_sicht', 'u_px', 'u_t']);
     this.ps = programm(gl, STAPEL_ECKE, STAPEL_FLAECHE, ['u_flaeche', 'u_kasten', 'u_t', 'u_rand', 'u_p', 'u_rest', 'u_m', 'u_g', 'u_b']);
+    this.pr = programm(gl, RUNDE_ECKE, RUNDE_FLAECHE, ['u_r']);
+    this.halbfloat = !!gl.getExtension('EXT_color_buffer_float');
     this.leerVao = gl.createVertexArray();
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
@@ -293,8 +333,48 @@ export class Faltung {
     gl.uniform1f(u.u_a, d.a);
     gl.uniform3f(u.u_bt, d.bt[0], d.bt[1], d.bt[2]);
     gl.uniform3f(u.u_sicht, W / 2, H / 2, Math.hypot(W, H) / 2);
+    gl.uniform1f(u.u_px, 2 / (devicePixelRatio || 1));
+    if (d.runde) {
+      const bw = this.leinwand.width, bh = this.leinwand.height;
+      if (!this.rf || this.rw !== bw || this.rh !== bh) this._rundeRuesten(bw, bh);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.rf);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, d.anzahl);
+    if (d.runde) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.useProgram(this.pr.prog);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.rt);
+      gl.uniform1i(this.pr.u.u_r, 1);
+      gl.disable(gl.BLEND);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.enable(gl.BLEND);
+      gl.activeTexture(gl.TEXTURE0);
+    }
     gl.bindVertexArray(null);
+  }
+
+  // Ablage für eine Runde, halbe Gleitkommazahl, wo es geht: F / A teilt durch kleine Deckkräfte.
+  _rundeRuesten(bw, bh) {
+    const gl = this.gl;
+    if (this.rt) gl.deleteTexture(this.rt);
+    this.rt = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.rt);
+    if (this.halbfloat) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, bw, bh, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, bw, bh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    this.rf ||= gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rf);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.rt, 0);
+    const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (st !== gl.FRAMEBUFFER_COMPLETE) throw new Error('B1bli0thek: Ablage für die Runde unvollständig (' + st + ')');
+    this.rw = bw; this.rh = bh;
   }
 
   // d.b = je Form (x, y, cos, sin), d.kasten = was alle Formen zusammen bedecken, d.m volle Schichten (-1 = ∞), d.rest.
