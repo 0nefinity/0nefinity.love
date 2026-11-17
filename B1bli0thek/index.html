@@ -71,70 +71,14 @@ for (const e of elemente) {
   gruppen.get(e.gruppe).append(a);
 }
 
-
-// Das Control Panel (tools/controls.js): gemeinsame Regler für jedes Element, dazu die eigenen des gewählten.
-const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left' });
-let el = null;
-const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
-const eigene = {
-  'inf-letter': [
-    ['input', 'char', { label: 'Zeichen', value: 'B' }, (v) => { if (v) el.char = v; }],
-  ],
-  'inf-button': [
-    ['select', 'shape', { label: 'Form', value: 'standard', options: ['standard', 'eckig', 'rund', 'pille', 'kreis'].map((v) => ({ value: v, label: v })) }, (v) => (v === 'standard' ? el.removeAttribute('shape') : setze('shape', v))],
-    ['input', 'label', { label: 'Text', value: 'Button' }, (v) => setze('label', v)],
-  ],
-};
-panel
-  .beginSection('eigene').endSection()
-  .beginSection('gemeinsam')
-  .addButtonGroup('leiste', { buttons: [
-    { key: 'null', label: '0', title: 'zurück auf eins', onClick: () => el.ursprung() },
-    { key: 'eins', label: '1', title: 'eins mehr', onClick: () => el.eins() },
-    { key: 'unendlich', label: '∞', title: 'unendlich', onClick: () => el.unendlich() },
-  ] })
-  .addToggle('inf', { label: '∞', value: true, onChange: (v) => setze('repeat', v ? '∞' : Math.max(0, panel.get('repeat') ?? 1)) })
-  .addSlider('repeat', { label: 'repeat', min: 0, max: 100, step: 1, value: 1, onChange: (v) => { panel.set('inf', false); setze('repeat', v); } })
-  .addSlider('bend', { label: 'bend', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
-  .addSlider('scale', { label: 'scale', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
-  .addSlider('angle', { label: 'angle', min: 0, max: 360, step: 1, wrap: true, value: 0, onChange: (v) => setze('angle', v) })
-  .addSlider('space', { label: 'space', min: -50, max: 200, step: 1, value: 8, onChange: (v) => setze('space', v) })
-  .addToggle('capacity', { label: 'Kapazität', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
-  .endSection();
-
-// Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
-const folge = () => {
-  const z = el.zustand;
-  panel.set('inf', z.repeat === '∞');
-  if (z.repeat !== '∞') panel.set('repeat', z.repeat);
-  panel.set('bend', z.bend);
-  panel.set('scale', z.scale);
-};
-const baueEigene = (tag) => {
-  panel.fillSection('eigene', (p) => {
-    for (const [art, key, cfg, fn] of eigene[tag] || []) {
-      p[art === 'select' ? 'addSelect' : 'addInput'](key, { ...cfg, onChange: fn });
-    }
-  });
-};
-
 const zeige = () => {
   const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
   for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
   wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  el = document.createElement(e.tag);
-  el.setAttribute('bare', '');
+  const el = document.createElement(e.tag);
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
-  el.addEventListener('inf-change', folge);
   buehne.replaceChildren(el);
-  baueEigene(e.tag);
-  folge();
-  const v = el.constructor.vorgaben;
-  panel.set('angle', v.angle);
-  panel.set('space', v.space);
-  panel.set('capacity', false);
 };
-panel.addResetButton({ onClick: () => zeige() });
 addEventListener('hashchange', zeige);
 await bereit;
 zeige();

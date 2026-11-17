@@ -14127,12 +14127,12 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `bend` | Grad | Krümmung je Kopie |
 | `scale` | Faktor | Größe je Kopie im Verhältnis zur vorigen |
 | `angle` | Grad | Richtung, in die die Reihe wächst |
-| `space` | px | Abstand zwischen Kopien |
+| `space` | px | Schritt zwischen Kopien: `0` legt alle deckungsgleich übereinander, positive Werte führen sie auseinander. Ohne Attribut: Abstand aus der Größe |
 | `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
-| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus (die Seite nutzt dafür das Control Panel, `tools/controls.js`) |
-| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
+| `bare` | (ohne Wert) | blendet die eigene Leiste (0 1 ∞, Kapazität, je Element Extras) aus |
+| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück; in der Leiste der Knopf `∞+` |
 
 Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
 Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
@@ -14142,7 +14142,7 @@ Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/wenige
 
 ## Elemente
 
-Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`:
+Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`. In der Leiste: Textfeld für `label`, Knopf für `shape` (schaltet durch):
 ```html
 <inf-button label="Button" shape="rund"></inf-button>
 ```
@@ -14305,70 +14305,14 @@ for (const e of elemente) {
   gruppen.get(e.gruppe).append(a);
 }
 
-
-// Das Control Panel (tools/controls.js): gemeinsame Regler für jedes Element, dazu die eigenen des gewählten.
-const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left' });
-let el = null;
-const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
-const eigene = {
-  'inf-letter': [
-    ['input', 'char', { label: 'Zeichen', value: 'B' }, (v) => { if (v) el.char = v; }],
-  ],
-  'inf-button': [
-    ['select', 'shape', { label: 'Form', value: 'standard', options: ['standard', 'eckig', 'rund', 'pille', 'kreis'].map((v) => ({ value: v, label: v })) }, (v) => (v === 'standard' ? el.removeAttribute('shape') : setze('shape', v))],
-    ['input', 'label', { label: 'Text', value: 'Button' }, (v) => setze('label', v)],
-  ],
-};
-panel
-  .beginSection('eigene').endSection()
-  .beginSection('gemeinsam')
-  .addButtonGroup('leiste', { buttons: [
-    { key: 'null', label: '0', title: 'zurück auf eins', onClick: () => el.ursprung() },
-    { key: 'eins', label: '1', title: 'eins mehr', onClick: () => el.eins() },
-    { key: 'unendlich', label: '∞', title: 'unendlich', onClick: () => el.unendlich() },
-  ] })
-  .addToggle('inf', { label: '∞', value: true, onChange: (v) => setze('repeat', v ? '∞' : Math.max(0, panel.get('repeat') ?? 1)) })
-  .addSlider('repeat', { label: 'repeat', min: 0, max: 100, step: 1, value: 1, onChange: (v) => { panel.set('inf', false); setze('repeat', v); } })
-  .addSlider('bend', { label: 'bend', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
-  .addSlider('scale', { label: 'scale', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
-  .addSlider('angle', { label: 'angle', min: 0, max: 360, step: 1, wrap: true, value: 0, onChange: (v) => setze('angle', v) })
-  .addSlider('space', { label: 'space', min: -50, max: 200, step: 1, value: 8, onChange: (v) => setze('space', v) })
-  .addToggle('capacity', { label: 'Kapazität', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
-  .endSection();
-
-// Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
-const folge = () => {
-  const z = el.zustand;
-  panel.set('inf', z.repeat === '∞');
-  if (z.repeat !== '∞') panel.set('repeat', z.repeat);
-  panel.set('bend', z.bend);
-  panel.set('scale', z.scale);
-};
-const baueEigene = (tag) => {
-  panel.fillSection('eigene', (p) => {
-    for (const [art, key, cfg, fn] of eigene[tag] || []) {
-      p[art === 'select' ? 'addSelect' : 'addInput'](key, { ...cfg, onChange: fn });
-    }
-  });
-};
-
 const zeige = () => {
   const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
   for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
   wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  el = document.createElement(e.tag);
-  el.setAttribute('bare', '');
+  const el = document.createElement(e.tag);
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
-  el.addEventListener('inf-change', folge);
   buehne.replaceChildren(el);
-  baueEigene(e.tag);
-  folge();
-  const v = el.constructor.vorgaben;
-  panel.set('angle', v.angle);
-  panel.set('space', v.space);
-  panel.set('capacity', false);
 };
-panel.addResetButton({ onClick: () => zeige() });
 addEventListener('hashchange', zeige);
 await bereit;
 zeige();
@@ -14413,7 +14357,9 @@ export class InfBox extends InfElement {
 registriere('inf-box', InfBox);
 
 B1bli0thek/inf-button.js
-import { InfElement, STEUERSTIL, registriere } from './kern.js';
+import { InfElement, OHNE_AUTOFILL, STEUERSTIL, registriere } from './kern.js';
+
+const FORMEN = ['standard', 'eckig', 'rund', 'pille', 'kreis'];
 
 // Jeder Druck auf einen Button ist ein Button mehr.
 export class InfButton extends InfElement {
@@ -14423,7 +14369,18 @@ export class InfButton extends InfElement {
     :host([shape="eckig"]) button.ding { border-radius: 0; }
     :host([shape="rund"]) button.ding { border-radius: 12px; }
     :host([shape="pille"]) button.ding { border-radius: 999px; }
-    :host([shape="kreis"]) button.ding { border-radius: 50%; aspect-ratio: 1; padding: 0 .5rem; }`;
+    :host([shape="kreis"]) button.ding { border-radius: 50%; aspect-ratio: 1; padding: 0 .5rem; }
+    .leiste input.text { width: 68px; padding: 0 .25rem; }
+    .leiste .form i { display: block; width: 20px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px; }
+    .leiste .form[data-form="eckig"] i { border-radius: 0; }
+    .leiste .form[data-form="rund"] i { border-radius: 6px; }
+    .leiste .form[data-form="pille"] i { border-radius: 999px; }
+    .leiste .form[data-form="kreis"] i { width: 14px; height: 14px; border-radius: 50%; }`;
+
+  leistenExtra() {
+    return `<input class="text" type="text" aria-label="Text" placeholder="Button" ${OHNE_AUTOFILL} enterkeyhint="done">
+      <button type="button" class="form" aria-label="Form" title="Form"><i></i></button>`;
+  }
 
   baueKopie() {
     const b = document.createElement('button');
@@ -14433,8 +14390,23 @@ export class InfButton extends InfElement {
     return b;
   }
   fuelleKopie(b) { b.textContent = this.getAttribute('label') ?? 'Button'; }
-  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
+  attributGeaendert() {
+    for (const k of this.kopien) this.fuelleKopie(k);
+    const t = this._root.querySelector('.text');
+    if (t && this._root.activeElement !== t) t.value = this.getAttribute('label') ?? '';
+    const f = this._root.querySelector('.form');
+    if (f) f.dataset.form = this.getAttribute('shape') || 'standard';
+  }
   verbunden() {
+    const t = this._root.querySelector('.text');
+    t.value = this.getAttribute('label') ?? '';
+    t.addEventListener('input', () => (t.value === '' ? this.removeAttribute('label') : this.setAttribute('label', t.value)));
+    const f = this._root.querySelector('.form');
+    f.dataset.form = this.getAttribute('shape') || 'standard';
+    f.addEventListener('click', () => {
+      const n = FORMEN[(FORMEN.indexOf(this.getAttribute('shape') || 'standard') + 1) % FORMEN.length];
+      if (n === 'standard') this.removeAttribute('shape'); else this.setAttribute('shape', n);
+    });
     this._root.querySelector('.buehne').addEventListener('click', (e) => {
       if (e.target.closest('button.ding')) this.mehr(1);
     });
@@ -14840,12 +14812,13 @@ const GRUNDSTIL = `
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
 .kopie[hidden] { display: none !important; }
-.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; gap: .25rem; z-index: 1; }
+.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
 .leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
   border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
   font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
 .leiste input { width: 44px; cursor: text; font-size: 16px; }
+.leiste button[aria-pressed="true"] { background: var(--ui-fill-20, rgba(255,255,255,.2)); color: var(--text-color, white); }
 .leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
 @media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
 .leiste button:focus-visible, .leiste input:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
@@ -14875,6 +14848,7 @@ export class InfElement extends HTMLElement {
         <button type="button" data-z="0" aria-label="zurück auf eins">0</button>
         <button type="button" data-z="1" aria-label="eins mehr">1</button>
         <button type="button" data-z="∞" aria-label="unendlich">∞</button>
+        <button type="button" data-z="kap" aria-label="so weit die Rechenkapazität reicht" title="so weit die Rechenkapazität reicht" aria-pressed="false">∞+</button>
       </div>`;
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
@@ -14916,10 +14890,14 @@ export class InfElement extends HTMLElement {
   attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
+    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; this._zeigeKapazitaet(); }
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
+  }
+
+  _zeigeKapazitaet() {
+    this._root.querySelector('[data-z="kap"]').setAttribute('aria-pressed', String(this._zustand.kapazitaet));
   }
 
   // Haken für Unterklassen
@@ -14933,6 +14911,8 @@ export class InfElement extends HTMLElement {
     const v = this.constructor.vorgaben;
     const a = (n) => this.getAttribute(n);
     const r = (a('repeat') ?? String(v.repeat)).trim().toLowerCase();
+    const sp = a('space');
+    const fest = sp === null || sp.trim() === '' || !Number.isFinite(Number(sp)) ? null : Number(sp);
     const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
@@ -14941,7 +14921,8 @@ export class InfElement extends HTMLElement {
       scale: Math.max(0.01, zahl(a('scale'), v.scale)),
       angle: zahl(a('angle'), v.angle),
       space: zahl(a('space'), v.space),
-      gap: (a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null),
+      // Ausdrücklich gesetztes space ist der Schritt selbst: 0 = alle Kopien deckungsgleich. Ohne Attribut: Abstand aus der Größe.
+      gap: a('gap') !== null || fest === null ? ((a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null)) : fest,
       dx: schub[0] || 0,
       dy: schub[1] ?? 0,
       rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
@@ -15114,6 +15095,7 @@ export class InfElement extends HTMLElement {
     const z = b.dataset.z;
     if (z === '0') this.ursprung();
     else if (z === '1') this.eins();
+    else if (z === 'kap') this.toggleAttribute('capacity');
     else this.unendlich();
   }
 
