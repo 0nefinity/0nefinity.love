@@ -13,7 +13,7 @@
 #marke span { display: inline-block; transition: transform 200ms ease; }
 #marke.liegt span.acht { transform: rotate(90deg); }
 #marke:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
-#wahl { display: flex; gap: .25rem; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+#wahl { display: flex; gap: .25rem; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 2px; touch-action: pan-x; overscroll-behavior-x: contain; }
 #wahl::-webkit-scrollbar { display: none; }
 #wahl .gruppe { flex: 0 0 auto; display: flex; gap: .25rem; align-items: center; }
 #wahl .gruppe + .gruppe { padding-left: .5rem; margin-left: .25rem; border-left: 1px solid var(--ui-fill-20); }
@@ -29,8 +29,8 @@
 @media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
 </style>
 </head>
-<body class="_018-canvas">
-<main id="b1">
+<body>
+<main id="b1" class="_018-canvas">
   <div id="kopf">
     <button id="marke" type="button"></button>
     <nav id="wahl"></nav>
@@ -74,6 +74,24 @@ for (const e of elemente) {
 // Das Control Panel (tools/controls.js) liegt eingeklappt unten und lässt sich hochschieben. Die 0/1/∞-Leiste des Elements
 // sitzt auf seiner Oberkante und fährt mit (--leiste-hoch).
 const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left', mobileInitialOpenMode: 'peek', desktopInitialHeightFraction: 0 });
+// Der Claude-Chat (tools/claude-chat.js) setzt .cc-an und fuellt den Panelkoerper; bei eingeklapptem Panel hat er Hoehe 0.
+new MutationObserver(() => {
+  const e = panel.el;
+  if (!e.classList.contains('cc-an')) return;
+  if (panel.openSheetIfClosed) {
+    // Peek reicht fuer den Chat nicht: einmalig ganz oeffnen, danach Modus zurueck.
+    const modus = panel.options.mobileInitialOpenMode;
+    panel.options.mobileInitialOpenMode = 'full';
+    panel.openSheetIfClosed();
+    panel.options.mobileInitialOpenMode = modus;
+  }
+  if (e.classList.contains('ctrl-panel-collapsed-body') && panel.bodyEl) {
+    const h = Math.round(innerHeight * 0.45) + 'px';
+    panel.bodyEl.style.height = h;
+    panel.bodyEl.style.maxHeight = h;
+    e.classList.remove('ctrl-panel-collapsed-body');
+  }
+}).observe(panel.el, { attributes: true, attributeFilter: ['class'] });
 let el = null;
 const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
 const eigene = {
