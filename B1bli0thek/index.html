@@ -28,7 +28,8 @@
 #buehne > *:focus-visible { outline: none; }
 /* Zähler: kleine Zahl links in der Griffzeile des Panels, fährt mit; Griff (Mitte) und Leiste bleiben frei. */
 .b1-zaehler { position: absolute; left: 14px; top: 14px; z-index: 1; font: 11px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums;
-  color: var(--text-color); opacity: .6; pointer-events: none; user-select: none; }
+  color: var(--text-color); opacity: .6; user-select: none; cursor: pointer; padding: 6px; margin: -6px; }
+.b1-grafik { display: block !important; grid-column: 1 / -1; text-align: left; font: 11px/1.4 system-ui, sans-serif; opacity: .6; overflow-wrap: anywhere; padding: 6px 12px; }
 .b1-zaehler:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
 </style>
@@ -149,8 +150,50 @@ const anzahlFeld = () => panel.el.querySelector('[data-key="anzahl"] input');
 const zaehlerEl = document.createElement('div');
 zaehlerEl.className = 'b1-zaehler';
 zaehlerEl.setAttribute('aria-live', 'off');
-zaehlerEl.title = 'Kopien gerade gezeigt';
+zaehlerEl.title = 'Anzahl';
 panel.el.append(zaehlerEl);
+// Zahl antippen: Panel auf, Anzahl-Feld bereit.
+zaehlerEl.addEventListener('click', () => {
+  const e = panel.el;
+  if (panel.openSheetIfClosed) {
+    const modus = panel.options.mobileInitialOpenMode;
+    panel.options.mobileInitialOpenMode = 'full';
+    panel.openSheetIfClosed();
+    panel.options.mobileInitialOpenMode = modus;
+  }
+  if (e.classList.contains('ctrl-panel-collapsed-body') && panel.bodyEl) {
+    const h = Math.round(innerHeight * 0.45) + 'px';
+    panel.bodyEl.style.height = h;
+    panel.bodyEl.style.maxHeight = h;
+    e.classList.remove('ctrl-panel-collapsed-body');
+  }
+  const f = anzahlFeld();
+  f?.focus({ preventScroll: true });
+  f?.select();
+  requestAnimationFrame(() => requestAnimationFrame(() => panel.reveal(['anzahl'])));
+});
+// Womit gezeichnet wird: Grafikkarte, Software-Renderer oder (ohne WebGL2) nur DOM.
+const grafikZeile = document.createElement('div');
+grafikZeile.className = 'ctrl-row b1-grafik';
+grafikZeile.dataset.key = 'grafik';
+anzahlFeld()?.closest('.ctrl-row')?.parentElement?.append(grafikZeile);
+const grafik = (() => {
+  let gl = null;
+  try { gl = document.createElement('canvas').getContext('webgl2'); } catch (e) { console.error(e); }
+  if (!gl) { console.error('B1bli0thek: kein WebGL2, alle Kopien laufen als DOM'); return { text: 'kein WebGL2 · DOM', gpu: false }; }
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  if (!name) return { text: 'unbekannt', gpu: null };
+  const soft = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+  return { text: `${soft ? 'Software' : 'GPU'} · ${name}`, gpu: !soft };
+})();
+let domGemeldet = false;
+const grafikZeigen = () => {
+  const dom = el && el._falten === false;
+  if (dom && !domGemeldet && grafik.gpu !== false) { domGemeldet = true; console.error('B1bli0thek: WebGL2 gescheitert, Kopien laufen als DOM'); }
+  grafikZeile.textContent = 'Grafik: ' + (dom ? 'DOM · ' : '') + grafik.text;
+};
 // Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
 function anzahlSetzen(text) {
   const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
@@ -164,9 +207,12 @@ const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : Str
 function zaehlen() {
   if (!el) return;
   const { gezeigt, ziel } = el.gezaehlt;
-  zaehlerEl.textContent = ziel === '∞' || gezeigt >= ziel ? zahlText(gezeigt) : `${zahlText(gezeigt)} von ${zahlText(ziel)}`;
+  // Eine Zahl für Zähler und Feld: alle Kopien, auch die neben dem Bild.
+  const zahl = zahlText(ziel === '∞' ? gezeigt : ziel);
+  zaehlerEl.textContent = zahl;
   const f = anzahlFeld();
-  if (f && document.activeElement !== f) f.value = zahlText(ziel === '∞' ? gezeigt : ziel);
+  if (f && document.activeElement !== f) f.value = zahl;
+  grafikZeigen();
 }
 const folge = () => {
   const z = el.zustand;
