@@ -2,16 +2,36 @@
 // Jede Kopie i liegt auf einem Pfad: Schrittweite * scale^i, Richtung angle + i * bend.
 // scale < 1 läuft in einen Fluchtpunkt (Unendlichkeit im Endlichen), bend != 0 krümmt zu Bogen und Spirale.
 
+import { Faltung, FORMEN_MAX } from './faltung.js';
+
 const UNENDLICH = new Set(['∞', 'inf', 'unendlich', 'infinity']);
-// So viele Kopien zeigt ∞: 720, zwei volle Umdrehungen. Mehr fasst kein Bildschirm, der Rest ist mitgemeint.
+// Darunter geht ∞ nie: 720, zwei volle Umdrehungen. Darüber entscheidet das Gerät.
 const DECKEL = 720;
-// Kapazitätsmodus: so weit die Rechenkapazität reicht, nie über diese Grenze (Knoten und Speicher bleiben beschränkt).
+// Technischer Schutz für echte DOM-Kopien (Knoten und Speicher bleiben beschränkt).
 const KAPAZITAET_MAX = 6000;
+// Technischer Schutz für gefaltete Kopien: 2^22 Orte, je 16 Byte.
+const FALT_MAX = 1 << 22;
 // Pro Messdurchgang so viele Kopien vorausbauen: ein Reflow je Stapel statt einer je Kopie.
 const STAPEL = 64;
-// Länger als das braucht ein Zug im Kapazitätsmodus nie, sonst geht er zurück.
-const ZUG_MS = 24;
-const TAKT_MS = 50;
+// Welchen Teil eines Bildes ein Zug verbrauchen darf: ∞ lässt dem Rest der Seite Luft, ∞+ (capacity) schöpft aus.
+const ANTEIL = 0.35, ANTEIL_VOLL = 0.8;
+
+// Die Bildrate des Geräts, einmal gemessen: Median der Abstände von zwölf leeren Bildern. Ziel ist sie, nicht 60.
+let BUDGET = 1000 / 60;
+{
+  const t = [];
+  let davor = 0;
+  const bild = (ts) => {
+    if (davor) t.push(ts - davor);
+    davor = ts;
+    if (t.length < 12) { requestAnimationFrame(bild); return; }
+    t.sort((a, b) => a - b);
+    BUDGET = Math.min(50, Math.max(4, t[6]));
+  };
+  requestAnimationFrame(bild);
+}
+
+const gemeldet = new Set();
 const BASIS_ATTRIBUTE = new Set(['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity']);
 
 const GRUNDSTIL = `
@@ -22,6 +42,7 @@ const GRUNDSTIL = `
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
 .kopie[hidden] { display: none !important; }
+.faltung { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .leiste { position: absolute; left: calc(50% + var(--leiste-versatz, 0px)); bottom: calc(.5rem + var(--leiste-hoch, 0px)); transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
 .leiste button { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
@@ -60,10 +81,15 @@ export class InfElement extends HTMLElement {
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
     this._sichtbar = 0;
+    this._gezeigt = 0;
     this._cap = DECKEL;
     this._gedeckelt = false;
     this._takt = 0;
+    this._ruckler = 0;
     this._masse = [];
+    this._orte = new Float32Array(4096);
+    this._falten = true;
+    this._faltung = null;
     this._zeiger = new Map();
     this._schreibt = false;
     this._geplant = 0;
@@ -74,14 +100,18 @@ export class InfElement extends HTMLElement {
   connectedCallback() {
     if (this._verbunden) return;
     this._verbunden = true;
-    this._groesse = new ResizeObserver(() => { this._masse = []; this.zeichne(); });
+    this._groesse = new ResizeObserver(() => { this._masse = []; this._faltung?.veraltet(); this.zeichne(); });
     this._groesse.observe(this);
     this._root.querySelector('.leiste').addEventListener('click', (e) => this._leiste(e));
     this._buehne.addEventListener('pointerdown', (e) => this._runter(e));
     this._buehne.addEventListener('pointermove', (e) => this._bewegt(e));
     this._buehne.addEventListener('pointerup', (e) => this._hoch(e));
     this._buehne.addEventListener('pointercancel', (e) => this._hoch(e));
-    this._buehne.addEventListener('click', (e) => { if (this._gezogen) { e.stopPropagation(); e.preventDefault(); this._gezogen = false; } }, true);
+    this._buehne.addEventListener('click', (e) => {
+      if (this._gezogen) { e.stopPropagation(); e.preventDefault(); this._gezogen = false; return; }
+      this._weiterreichen(e);
+    }, true);
+    this._buehne.addEventListener('input', () => { if (this._faltung) { this._faltung.veraltet(); this.zeichne(); } });
     this.addEventListener('wheel', (e) => this._rad(e), { passive: false });
     this.addEventListener('keydown', (e) => this._taste(e));
     if (!this.hasAttribute('tabindex')) this.tabIndex = 0;
@@ -97,7 +127,7 @@ export class InfElement extends HTMLElement {
   attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
+    if (name === 'capacity' || (name === 'repeat' && this._zustand.unendlich)) this._gedeckelt = false;
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
@@ -118,7 +148,7 @@ export class InfElement extends HTMLElement {
     const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
-      anzahl: UNENDLICH.has(r) ? KAPAZITAET_MAX : Math.max(0, Math.floor(zahl(r, 1))),
+      anzahl: UNENDLICH.has(r) ? FALT_MAX : Math.max(0, Math.floor(zahl(r, 1))),
       bend: zahl(a('bend'), v.bend),
       scale: Math.max(0.01, zahl(a('scale'), v.scale)),
       angle: zahl(a('angle'), v.angle),
@@ -152,8 +182,8 @@ export class InfElement extends HTMLElement {
 
   // Öffentliche Befehle
   mehr(n = 1) { const z = this._zustand; if (!z.unendlich) z.anzahl = Math.max(0, z.anzahl + n); this._schreibe(); this.zeichne(); }
-  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = KAPAZITAET_MAX; this._schreibe(); this.zeichne(); }
-  eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._sichtbar; } this.mehr(1); }
+  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
+  eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._gezeigt; } this.mehr(1); }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
@@ -168,73 +198,157 @@ export class InfElement extends HTMLElement {
     this._geplant = requestAnimationFrame((ts) => { this._geplant = 0; this._zug(ts); });
   }
 
-  // Ein Zug: layouten und im Kapazitätsmodus Zeit, Takt und Speicher mitmessen.
+  // Ein Zug: layouten und dabei Zeit und Takt messen. Die Zahl der Kopien folgt dem Gerät, nicht einer Pauschale.
   _zug(ts) {
     const z = this._zustand;
     const t0 = performance.now();
-    const takt = this._takt && ts - this._takt < 100 ? ts - this._takt : 0;
+    // Längere Lücken sind meist Ruhe, kein Ruckeln; nur wenn der Regler selbst den nächsten Zug bestellt hat, zählt jede.
+    const takt = this._takt && (this._kette || ts - this._takt < 250) ? ts - this._takt : 0;
     this._takt = ts;
+    this._kette = false;
     const vorher = this._kopien.length;
     const voll = this._layout();
-    if (!z.kapazitaet) return;
     // Der Aufbau neuer Kopien zählt nicht: erst der Zug danach misst nur das Layout.
-    if (this._kopien.length > vorher) { this.zeichne(); return; }
+    if (this._kopien.length > vorher) { this._kette = true; this.zeichne(); return; }
     const dauer = performance.now() - t0;
+    // Was die Grafikkarte zu lange braucht, sieht man nicht an der Zugzeit, nur am Takt.
+    // Einzelne Ausreißer verzeihen, Ruckeln jedes zweiten Bilds nicht: ein guter Takt zieht nur einen halben ab.
+    this._ruckler = takt > BUDGET * 1.5 ? this._ruckler + 1 : Math.max(0, this._ruckler - 0.5);
+    const anteil = (z.kapazitaet ? ANTEIL_VOLL : ANTEIL) * BUDGET;
+    const max = this._P ? FALT_MAX : KAPAZITAET_MAX;
     const m = performance.memory;
-    const speicherknapp = m && m.usedJSHeapSize > m.jsHeapSizeLimit * 0.6;
-    if (this._cap > DECKEL && (dauer > ZUG_MS || takt > TAKT_MS || speicherknapp)) {
+    const speicherknapp = !this._faltung && m && m.usedJSHeapSize > m.jsHeapSizeLimit * 0.6;
+    if (this._cap > DECKEL && (dauer > anteil || this._ruckler >= 3 || speicherknapp)) {
       this._cap = Math.max(DECKEL, Math.floor(this._cap / 1.5));
       this._gedeckelt = true;
+      this._ruckler = 0;
+      this._kette = true;
       this.zeichne();
-    } else if (voll && !this._gedeckelt && this._cap < KAPAZITAET_MAX && dauer < ZUG_MS / 2) {
-      this._cap = Math.min(KAPAZITAET_MAX, Math.ceil(this._cap * 1.5));
+    } else if (voll && !this._gedeckelt && this._ruckler < 1 && this._cap < max && dauer < anteil / 2) {
+      // Ohne gemessenen Takt erst einen Zug zum Messen, dann wachsen.
+      if (takt) this._cap = Math.min(max, Math.ceil(this._cap * 1.5));
+      this._kette = true;
       this.zeichne();
     }
   }
 
-  get kapazitaet() { return this._zustand.kapazitaet ? this._cap : DECKEL; }
+  get kapazitaet() { return this._cap; }
+
+  // Wie viele Formen sich wiederholen. 0 = keine Faltung, jede Kopie bleibt echtes DOM.
+  get periode() { return this.constructor.periode || 0; }
+
+  _faltFehler(e) {
+    if (!gemeldet.has(e.message)) { gemeldet.add(e.message); console.error(e); }
+    this._falten = false;
+    this._faltung?.weg_();
+    this._faltung = null;
+    this._masse = [];
+    this._cap = Math.min(this._cap, KAPAZITAET_MAX);
+    this.zeichne();
+  }
 
   // Wieviele Kopien sichtbar bleiben: bei ∞ bis aus dem Bild, unter einen halben Pixel oder ein Kreis geschlossen ist.
+  // Die ersten P Kopien (eine Periode) sind DOM, alle weiteren nur noch Orte: x, y, Drehung, Größe.
   _layout() {
     const z = this._zustand;
     const breite = this.clientWidth, hoehe = this.clientHeight;
     if (!breite || !hoehe) return false;
+    const per = this._falten ? this.periode : 0;
+    const P = (this._P = per > 0 && per <= FORMEN_MAX ? per : 0);
     const diag = Math.hypot(breite, hoehe);
     const mx = breite / 2 + z.dx, my = hoehe / 2 + z.dy;
-    let x = mx, y = my, s = 1, richtung = z.angle;
     const kreis = z.unendlich && z.scale === 1 && z.bend !== 0 ? Math.ceil(360 / Math.abs(z.bend)) : Infinity;
-    const grenze = z.kapazitaet ? this._cap : DECKEL;
+    const grenze = this._cap;
     const ziel = Math.min(z.anzahl, grenze, kreis);
-    this._ziel = ziel + 1;
-    const orte = [];
-    for (let i = 0; i < ziel; i++) {
-      const m = this._mass(i, richtung);
+    this._ziel = P ? Math.min(ziel + 1, P) : ziel + 1;
+    const masse = this._masse;
+    const GRAD = Math.PI / 180;
+    const fern = Math.hypot(z.dx, z.dy) + diag * 0.6;
+    const fern2 = fern * fern, weit2 = (diag * 1.2) ** 2, riesig = diag * 4;
+    const ca = Math.abs(Math.cos(z.angle * GRAD)), sa = Math.abs(Math.sin(z.angle * GRAD));
+    // Die Richtung dreht je Schritt um bend: statt cos/sin je Kopie eine Drehung des Vorgängers.
+    let c = Math.cos(z.angle * GRAD), sn = Math.sin(z.angle * GRAD);
+    const cb = Math.cos(z.bend * GRAD), sb = Math.sin(z.bend * GRAD);
+    const lang = (m, cc, ss) => (z.rotate ? ca * m.w + sa * m.h : Math.abs(cc) * m.w + Math.abs(ss) * m.h);
+    let orte = this._orte;
+    let x = mx, y = my, s = 1, r = 0, n = 0, smax = 0;
+    let m = ziel > 0 ? masse[0] || this._mass(0) : null;
+    for (let i = 0; i < Infinity && i < ziel; i++) {
       if (z.unendlich && i > 0) {
-        const weg = Math.hypot(x - breite / 2, y - hoehe / 2);
-        if (s * m.gross < 0.5 || s * m.gross > diag * 4 || (weg > diag * 1.2 && weg > Math.hypot(z.dx, z.dy) + diag * 0.6)) break;
+        const gx = x - breite / 2, gy = y - hoehe / 2, weg2 = gx * gx + gy * gy;
+        if (s * m.gross < 0.5 || s * m.gross > riesig || (weg2 > weit2 && weg2 > fern2)) break;
       }
-      orte.push({ x, y, s, r: z.rotate ? richtung - z.angle : 0, m });
-      const naechstes = this._mass(i + 1, richtung + z.bend);
-      const schritt = z.gap ?? ((m.lang + naechstes.lang) / 2 + z.space);
-      const rad = (richtung * Math.PI) / 180;
-      x += Math.cos(rad) * schritt * s;
-      y += Math.sin(rad) * schritt * s;
+      if (n * 4 + 4 > orte.length) { const neu = new Float32Array(orte.length * 2); neu.set(orte); orte = this._orte = neu; }
+      const o = n * 4;
+      orte[o] = x; orte[o + 1] = y; orte[o + 2] = z.rotate ? r : 0; orte[o + 3] = s;
+      n++;
+      if (i >= P && s > smax) smax = s;
+      const j = i + 1, mj = P ? j % P : j;
+      const naechstes = j < ziel ? (masse[mj] || this._mass(mj)) : m;
+      let c2 = c * cb - sn * sb, s2 = sn * cb + c * sb;
+      if ((j & 1023) === 0) { const l = Math.hypot(c2, s2); c2 /= l; s2 /= l; }
+      const schritt = z.gap ?? ((lang(m, c, sn) + lang(naechstes, c2, s2)) / 2 + z.space);
+      x += c * schritt * s;
+      y += sn * schritt * s;
       s *= z.scale;
-      richtung += z.bend;
+      r += z.bend * GRAD;
+      c = c2; sn = s2;
+      m = naechstes;
     }
-    this._abgleich(orte.length);
-    for (let i = 0; i < orte.length; i++) {
-      const o = orte[i];
+    const dom = P ? Math.min(n, P) : n;
+    this._abgleich(dom);
+    for (let i = 0; i < dom; i++) {
+      const o = i * 4;
       const k = this._kopien[i];
-      const t = `translate(${o.x}px,${o.y}px) rotate(${o.r}deg) scale(${o.s}) translate(${-o.m.w / 2}px,${-o.m.h / 2}px)`;
+      const mi = masse[i];
+      const t = `translate(${orte[o]}px,${orte[o + 1]}px) rotate(${orte[o + 2] / GRAD}deg) scale(${orte[o + 3]}) translate(${-mi.w / 2}px,${-mi.h / 2}px)`;
       if (k._t !== t) { k._t = t; k.style.transform = t; }
     }
-    this.nachLayout(orte.length);
+    if (P && n > P) {
+      if (!this._faltung) {
+        try { this._faltung = new Faltung(this); } catch (e) { this._faltFehler(e); return false; }
+      }
+      this._faltung.zeichne(orte, P, n, breite, hoehe, smax);
+    } else this._faltung?.leer();
+    this._gezeigt = n;
+    this.nachLayout(dom);
     // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
-    return orte.length >= grenze;
+    return n >= grenze;
   }
 
   nachLayout() {}
+
+  // Klick auf ein Spiegelbild: die oberste getroffene Kopie suchen und den Klick an ihre echte Vorlage weiterreichen.
+  _weiterreichen(e) {
+    const P = this._faltung ? this._P : 0;
+    if (!P || this._weiter || this._gezeigt <= P) return;
+    const b = this._buehne.getBoundingClientRect();
+    const px = e.clientX - b.left, py = e.clientY - b.top;
+    const orte = this._orte;
+    for (let i = this._gezeigt - 1; i >= P; i--) {
+      const o = i * 4, m = this._masse[i % P];
+      if (!m) return;
+      const c = Math.cos(orte[o + 2]), s = Math.sin(orte[o + 2]);
+      const dx = px - orte[o], dy = py - orte[o + 1];
+      const lx = (c * dx + s * dy) / orte[o + 3] + m.w / 2, ly = (-s * dx + c * dy) / orte[o + 3] + m.h / 2;
+      if (lx < 0 || ly < 0 || lx > m.w || ly > m.h) continue;
+      const vorlage = this._kopien[i % P];
+      if (!vorlage || vorlage.contains(e.target)) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      // Derselbe Punkt auf der Vorlage: dort liegt, was getroffen gewesen wäre.
+      const v = (i % P) * 4, cv = Math.cos(orte[v + 2]), sv = Math.sin(orte[v + 2]), sk = orte[v + 3];
+      const qx = lx - m.w / 2, qy = ly - m.h / 2;
+      const zx = b.left + orte[v] + sk * (cv * qx - sv * qy), zy = b.top + orte[v + 1] + sk * (sv * qx + cv * qy);
+      const ziel = this._root.elementsFromPoint(zx, zy).find((x) => vorlage.contains(x)) || vorlage;
+      this._weiter = true;
+      try {
+        if (ziel.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea')) ziel.focus();
+        else ziel.click();
+      } finally { this._weiter = false; }
+      return;
+    }
+  }
 
   // Kopien 0..n-1 sind da und sichtbar, nie weniger als vorher (Vorausbau beim Messen).
   _bis(n) {
@@ -246,7 +360,8 @@ export class InfElement extends HTMLElement {
       k.classList.add('kopie');
       k.dataset.i = i;
       this.fuelleKopie(k, i);
-      this._buehne.append(k);
+      // Unter die Faltung: die Spiegelbilder liegen wie bisher die späteren Kopien obenauf.
+      this._buehne.insertBefore(k, this._faltung?.leinwand ?? null);
       pool.push(k);
     }
     if (n > this._sichtbar) this._sichtbar = n;
@@ -265,30 +380,27 @@ export class InfElement extends HTMLElement {
     for (const k of this._kopien.splice(0)) k.remove();
     this._sichtbar = 0;
     this._masse = [];
+    this._faltung?.veraltet();
   }
 
   // Maße einer Kopie ohne Transformation. Kopien werden einmal gemessen und gecacht, stapelweise.
-  _mass(i, richtung) {
+  _mass(i) {
     let m = this._masse[i];
     if (!m) {
       const bis = Math.max(i + 1, Math.min(i + STAPEL, this._ziel || 0));
       this._bis(bis);
-      const frisch = [];
-      for (let j = i; j < bis; j++) if (!this._masse[j]) frisch.push(j);
-      for (const j of frisch) {
+      for (let j = i; j < bis; j++) {
+        if (this._masse[j]) continue;
         const k = this._kopien[j];
         const w = k.offsetWidth, h = k.offsetHeight;
         this._masse[j] = { w, h, gross: Math.max(w, h, 1) };
       }
       m = this._masse[i];
     }
-    const z = this._zustand;
-    // Pfadrichtung im eigenen Rahmen der Kopie: gedreht wird nur um das, was die Krümmung dazugibt.
-    const rad = ((z.rotate ? z.angle : richtung) * Math.PI) / 180;
-    return { ...m, lang: Math.abs(Math.cos(rad)) * m.w + Math.abs(Math.sin(rad)) * m.h };
+    return m;
   }
 
-  vermessen() { this._masse = []; this.zeichne(); }
+  vermessen() { this._masse = []; this._faltung?.veraltet(); this.zeichne(); }
   get kopien() { return this._kopien.slice(0, this._sichtbar); }
 
   _leiste(e) {

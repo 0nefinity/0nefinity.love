@@ -23,6 +23,7 @@ export class InfText extends InfElement {
     const liste = f.split(/[\s,|]+/).filter((x) => FORMEN.includes(x));
     return liste.length ? liste : ['span'];
   }
+  get periode() { return this.formen.length; }
   get text() { return this.getAttribute('text') ?? (this.textContent.trim() || NAME); }
 
   baueKopie(i) {

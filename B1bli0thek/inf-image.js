@@ -2,6 +2,7 @@ import { InfElement, registriere } from './kern.js';
 
 // Das Bild im Bild im Bild: Schrittweite 0, jede Kopie kleiner, bis sie unter einen Pixel fällt.
 export class InfImage extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: '∞', gap: 0, scale: 0.8, bend: 0 };
   static eigeneAttribute = ['src', 'alt', 'size'];
   static stil = `img.kopie { display: block; pointer-events: none; -webkit-user-drag: none; }`;

@@ -37,9 +37,13 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
 | `bare` | (ohne Wert) | blendet die eigene Leiste (nur 0 1 ∞) aus |
-| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
+| `capacity` | (ohne Wert) | Kapazitätsmodus (`∞+`): bei `∞` darf die Zahl der Kopien 80 % eines Bildtakts verbrauchen statt 35 %; Entfernen setzt sofort zurück |
 
 Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1).
+
+Bei `∞` misst jedes Element, was das Gerät schafft: Es beginnt bei 720 Kopien und vergrößert die Zahl, solange Layoutzeit und Bildtakt (gemessen gegen die Bildwiederholrate des Bildschirms) Luft lassen; ruckelt es, geht die Zahl wieder zurück, nie unter 720. Keine Pauschale, die Obergrenze ist nur Schutz (4 194 304 gefaltete Kopien, 6000 auf dem DOM-Weg).
+
+Faltung (`faltung.js`): Bei `button`, `line`, `field`, `link`, `box`, `image`, `letter` und `text` bleibt nur die erste Periode echtes DOM (eine Kopie, bei `text` eine je Form). Von ihr nimmt die Seite ein Bild (SVG-`foreignObject`) und zeichnet es per WebGL2-Instancing an jeden weiteren Ort, je Kopie nur x, y, Drehung, Größe. Ein Klick auf ein Spiegelbild geht an dieselbe Stelle der echten Kopie, Eingaben erneuern das Bild. Ohne WebGL2 bleibt alles DOM (eine Meldung in der Konsole). `list`, `table`, `range` und `check` bleiben DOM.
 
 Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
 Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).

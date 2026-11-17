@@ -11,6 +11,7 @@ const letztesZeichen = (s) => {
 };
 
 export class InfLetter extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: '∞', scale: 0.88, bend: 24, space: 0 };
   static eigeneAttribute = ['char', 'size'];
   static stil = `.zeichen { font-size: var(--groesse, 8rem); line-height: 1; padding: 0 .02em; }`;
