@@ -206,10 +206,11 @@ function anzahlSetzen(text) {
 const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : String(n));
 function zaehlen() {
   if (!el) return;
-  const { gezeigt, ziel } = el.gezaehlt;
-  // Eine Zahl für Zähler und Feld: alle Kopien, auch die neben dem Bild.
-  const zahl = zahlText(ziel === '∞' ? gezeigt : ziel);
-  zaehlerEl.textContent = zahl;
+  const { gezeigt, ziel, grund } = el.gezaehlt;
+  // Eine Zahl für Zähler und Feld: alle Kopien, auch die neben dem Bild. Bei ∞ steht ∞, außer das Bild ist nicht das
+  // unendliche: dann die echte Zahl und in einem Wort, warum.
+  const zahl = zahlText(ziel);
+  zaehlerEl.textContent = ziel === '∞' && grund ? `${zahlText(gezeigt)} · ${grund}` : zahl;
   const f = anzahlFeld();
   if (f && document.activeElement !== f) f.value = zahl;
   grafikZeigen();
