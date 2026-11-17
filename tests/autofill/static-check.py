@@ -2,7 +2,7 @@
 """Static autofill check. Run from anywhere: python3 tests/autofill/static-check.py
 
 1. type=password must not appear outside the login (LOGIN_FILES).
-2. Shared infrastructure (meta.js, tools/controls.js, includes/*.html) must never create
+2. Shared infrastructure (meta.js, tools/controls.js, includes/*.html, B1bli0thek/*.js: shadow DOM, the runtime guard cannot see it) must never create
    a text-like <input>/<textarea> without autocomplete (createElement: within 15 lines).
 3. meta.js must still contain the runtime guard ("Autofill-Waechter").
 Old stand-alone pages are covered at runtime by the guard (tests/autofill/run.js).
@@ -28,17 +28,19 @@ for f in tracked:
         problems.append(f'{f}:{text[:m.start()].count(chr(10)) + 1}: type=password outside the login')
 
 scope = ['meta.js', 'tools/controls.js'] + [f for f in tracked if f.startswith('includes/') and f.endswith('.html')]
+# B1bli0thek builds its fields inside shadow roots, where the meta.js guard does not reach.
+scope += [f for f in tracked if f.startswith('B1bli0thek/') and f.endswith('.js')]
 for f in scope:
     lines = (root / f).read_text(errors='replace').splitlines()
     for i, line in enumerate(lines):
         for m in re.finditer(r'<(input|textarea)\b[^>]*>?', line):
             tag = m.group(0)
-            if NON_TEXT.search(tag) or 'autocomplete' in tag:
+            if NON_TEXT.search(tag) or 'autocomplete' in tag or 'OHNE_AUTOFILL' in tag:
                 continue
             problems.append(f'{f}:{i + 1}: <{m.group(1)}> without autocomplete')
         if re.search(r'createElement\(\s*["\'](input|textarea)["\']', line):
             ctx = '\n'.join(lines[i:i + 16])
-            if 'autocomplete' not in ctx and not NON_TEXT.search(ctx[:400]):
+            if 'autocomplete' not in ctx and 'ohneAutofill' not in ctx and '.type = this._typ' not in ctx and not NON_TEXT.search(ctx[:400]):
                 problems.append(f'{f}:{i + 1}: createElement(input/textarea) without autocomplete within 15 lines')
 
 # 4. Shared infrastructure must create text fields as type=search (no Chrome Android autofill bar), never type=text.

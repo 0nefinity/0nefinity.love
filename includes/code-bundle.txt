@@ -14378,7 +14378,7 @@ export class InfButton extends InfElement {
     .leiste .form[data-form="kreis"] i { width: 14px; height: 14px; border-radius: 50%; }`;
 
   leistenExtra() {
-    return `<input class="text" type="text" aria-label="Text" placeholder="Button" ${OHNE_AUTOFILL} enterkeyhint="done">
+    return `<input class="text" type="search" aria-label="Text" placeholder="Button" ${OHNE_AUTOFILL} enterkeyhint="done">
       <button type="button" class="form" aria-label="Form" title="Form"><i></i></button>`;
   }
 
@@ -14494,7 +14494,7 @@ export class InfField extends InfElement {
   constructor() { super(); this._wert = this.getAttribute('value') ?? ''; }
   baueKopie() {
     const f = document.createElement(this.hasAttribute('multiline') ? 'textarea' : 'input');
-    if (f.tagName === 'INPUT') f.type = 'text';
+    if (f.tagName === 'INPUT') f.type = 'search';
     f.className = 'feld';
     f.part = 'item';
     f.setAttribute('aria-label', 'Textfeld');
@@ -14564,7 +14564,7 @@ export class InfLetter extends InfElement {
   get char() { return this.getAttribute('char') || 'B'; }
   set char(c) { this.setAttribute('char', letztesZeichen(String(c)) || 'B'); }
 
-  leistenExtra() { return `<input class="wahl" type="text" aria-label="Zeichen" ${OHNE_AUTOFILL} enterkeyhint="done">`; }
+  leistenExtra() { return `<input class="wahl" type="search" aria-label="Zeichen" ${OHNE_AUTOFILL} enterkeyhint="done">`; }
   baueKopie() { const s = document.createElement('span'); s.className = 'zeichen'; s.part = 'item'; return s; }
   fuelleKopie(s) {
     s.textContent = this.char;
@@ -14852,6 +14852,7 @@ const GRUNDSTIL = `
   border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
   font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
 .leiste input { width: 44px; cursor: text; font-size: 16px; }
+input[type="search"]::-webkit-search-cancel-button, input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; display: none; }
 .leiste button[aria-pressed="true"] { background: var(--ui-fill-20, rgba(255,255,255,.2)); color: var(--text-color, white); }
 .leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
 @media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
@@ -15135,7 +15136,7 @@ export class InfElement extends HTMLElement {
 
   // Ein Finger zieht = verschieben. Zwei Finger: drehen = krümmen, spreizen = skalieren.
   _zieht(ziel) {
-    return !ziel.closest?.('input[type="range"], input[type="text"], input:not([type]), textarea, [contenteditable]');
+    return !ziel.closest?.('input[type="range"], input[type="text"], input[type="search"], input:not([type]), textarea, [contenteditable]');
   }
 
   _runter(e) {
@@ -15206,10 +15207,10 @@ export class InfElement extends HTMLElement {
 }
 
 // Gemeinsame Eingabefeld-Attribute: nie Autofill/Passwortleiste auslösen.
-export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"';
+export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" data-protonpass-ignore="true"';
 export function ohneAutofill(feld) {
   for (const [k, v] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['spellcheck', 'false'], ['autocapitalize', 'off'],
-    ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other']]) feld.setAttribute(k, v);
+    ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other'], ['data-protonpass-ignore', 'true']]) feld.setAttribute(k, v);
   return feld;
 }
 
