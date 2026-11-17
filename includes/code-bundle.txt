@@ -15190,6 +15190,7 @@ import { Faltung, FORMEN_MAX } from './faltung.js';
 const UNENDLICH = new Set(['∞', 'inf', 'unendlich', 'infinity']);
 // Darunter geht ∞ nie: 720, zwei volle Umdrehungen. Darüber entscheidet das Gerät, der Rest ist mitgemeint.
 const DECKEL = 720;
+const PROBE_BILDER = 6;
 // Technischer Schutz für echte DOM-Kopien (Knoten und Speicher bleiben beschränkt).
 const KAPAZITAET_MAX = 6000;
 // Technischer Schutz für gefaltete Kopien: 2^22 Orte, je 16 Byte.
@@ -15269,6 +15270,7 @@ export class InfElement extends HTMLElement {
     this._gedeckelt = false;
     this._takt = 0;
     this._ruckler = 0;
+    this._probe = null;
     this._masse = [];
     this._orte = new Float32Array(4096);
     this._falten = true;
@@ -15401,17 +15403,38 @@ export class InfElement extends HTMLElement {
     const max = this._P ? FALT_MAX : KAPAZITAET_MAX;
     const m = performance.memory;
     const speicherknapp = !this._faltung && m && m.usedJSHeapSize > m.jsHeapSizeLimit * 0.6;
-    if (this._cap > DECKEL && (dauer > anteil || this._ruckler >= 3 || speicherknapp)) {
-      this._cap = Math.max(DECKEL, Math.floor(this._cap / 1.5));
+    const schlecht = dauer > anteil || takt > BUDGET * 1.5 || speicherknapp;
+    const probe = this._probe;
+    if (probe && this._cap > probe.gut && schlecht) {
+      // Der Probeschritt war zu viel: sofort zurück auf den letzten guten Stand, kein Nachlauf über mehrere Bilder.
+      this._cap = probe.gut;
+      this._probe = null;
       this._gedeckelt = true;
       this._ruckler = 0;
       this._kette = true;
       this.zeichne();
-    } else if (voll && !this._gedeckelt && this._ruckler < 1 && this._cap < max && dauer < anteil / 2) {
-      // Ohne gemessenen Takt erst einen Zug zum Messen, dann wachsen.
-      if (takt) this._cap = Math.min(max, Math.ceil(this._cap * 1.5));
+    } else if (this._cap > DECKEL && (dauer > anteil || this._ruckler >= 3 || speicherknapp)) {
+      this._cap = Math.max(DECKEL, Math.floor(this._cap / 1.5));
+      this._probe = null;
+      this._gedeckelt = true;
+      this._ruckler = 0;
       this._kette = true;
       this.zeichne();
+    } else if (probe && probe.warte > 0) {
+      // Die Grafikkarte zeigt ihre Last erst verzögert am Takt: ein Schritt gilt erst nach einigen guten Bildern.
+      probe.warte--;
+      this._kette = true;
+      this.zeichne();
+    } else if (voll && !this._gedeckelt && this._ruckler < 1 && this._cap < max && dauer < anteil / 2) {
+      // Ohne gemessenen Takt erst einen Zug zum Messen, dann wachsen.
+      if (takt) {
+        this._probe = { gut: this._cap, warte: PROBE_BILDER };
+        this._cap = Math.min(max, Math.ceil(this._cap * 1.5));
+      }
+      this._kette = true;
+      this.zeichne();
+    } else {
+      this._probe = null;
     }
   }
 
@@ -15654,7 +15677,10 @@ export class InfElement extends HTMLElement {
   }
 
   _taste(e) {
-    if (e.target !== this || e.altKey || e.ctrlKey || e.metaKey) return;
+    // Im Shadow DOM zeigt target am Host immer auf den Host selbst: der wirkliche Ursprung steht in composedPath.
+    // Ein Eingabefeld (auch eine der Kopien) behält jede Taste.
+    const ursprung = e.composedPath()[0];
+    if (ursprung !== this || e.altKey || e.ctrlKey || e.metaKey) return;
     const schritt = e.shiftKey ? 40 : 8;
     const tasten = {
       ArrowLeft: () => this.verschiebe(-schritt, 0), ArrowRight: () => this.verschiebe(schritt, 0),
