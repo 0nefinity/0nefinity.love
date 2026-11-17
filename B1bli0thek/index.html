@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+<meta charset="UTF-8">
+<title></title>
+<style>
+#b1 { position: fixed; inset: 0; display: flex; flex-direction: column; white-space: normal; text-shadow: none; font-size: 1rem; line-height: normal; }
+#b1 * { white-space: normal; }
+#kopf { flex: 0 0 auto; padding: .75rem 4.5rem 0; display: flex; flex-direction: column; align-items: center; gap: .5rem; min-width: 0; }
+#marke { all: unset; cursor: pointer; font-size: 1.5rem; letter-spacing: .04em; line-height: 44px; min-height: 44px;
+  padding: 0 .5rem; border-radius: 4px; color: var(--text-color); -webkit-tap-highlight-color: transparent; }
+#marke span { display: inline-block; transition: transform 200ms ease; }
+#marke.liegt span.acht { transform: rotate(90deg); }
+#marke:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
+#wahl { display: flex; gap: .25rem; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+#wahl::-webkit-scrollbar { display: none; }
+#wahl .gruppe { flex: 0 0 auto; display: flex; gap: .25rem; align-items: center; }
+#wahl .gruppe + .gruppe { padding-left: .5rem; margin-left: .25rem; border-left: 1px solid var(--ui-fill-20); }
+#wahl a { flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 .75rem; border-radius: 4px;
+  color: var(--ui-text-60); text-decoration: none; font-size: .95rem; -webkit-tap-highlight-color: transparent; }
+#wahl a[aria-current="true"] { color: var(--text-color); background: var(--ui-fill-10); }
+#wahl a:active { background: var(--ui-fill-20); }
+@media (hover: hover) { #wahl a:hover { color: var(--text-color); } }
+#wahl a:focus-visible { outline: 1px solid var(--text-color); outline-offset: -1px; }
+#buehne { flex: 1 1 auto; position: relative; min-height: 0; }
+#buehne > * { position: absolute; inset: 0; height: auto; }
+#buehne > *:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
+</style>
+</head>
+<body class="_018-canvas">
+<main id="b1">
+  <div id="kopf">
+    <button id="marke" type="button"></button>
+    <nav id="wahl"></nav>
+  </div>
+  <div id="buehne"></div>
+</main>
+<script type="module">
+import { NAME, elemente, bereit } from './alle.js';
+
+document.title = NAME;
+const marke = document.getElementById('marke');
+// B, b und 8 sind aufgestellte Unendlichkeiten; antippen legt sie hin.
+for (const z of NAME) {
+  const s = document.createElement('span');
+  s.textContent = z;
+  if ('Bb8'.includes(z)) s.className = 'acht';
+  marke.append(s);
+}
+marke.setAttribute('aria-label', NAME);
+marke.addEventListener('click', () => marke.classList.toggle('liegt'));
+
+const wahl = document.getElementById('wahl');
+const buehne = document.getElementById('buehne');
+const kurz = (tag) => tag.replace(/^inf-/, '');
+const gruppen = new Map();
+for (const e of elemente) {
+  if (!gruppen.has(e.gruppe)) {
+    const g = document.createElement('div');
+    g.className = 'gruppe';
+    g.setAttribute('aria-label', e.gruppe);
+    wahl.append(g);
+    gruppen.set(e.gruppe, g);
+  }
+  const a = document.createElement('a');
+  a.href = '#' + kurz(e.tag);
+  a.textContent = e.name;
+  a.dataset.tag = e.tag;
+  gruppen.get(e.gruppe).append(a);
+}
+
+const zeige = () => {
+  const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
+  for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
+  wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const el = document.createElement(e.tag);
+  for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
+  buehne.replaceChildren(el);
+};
+addEventListener('hashchange', zeige);
+await bereit;
+zeige();
+</script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
