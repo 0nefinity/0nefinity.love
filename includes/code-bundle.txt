@@ -12487,6 +12487,9 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ### iframe-Chat-Knopf (nur dev)
 `tools/claude-chat.js`: Knopf und einklappbarer Rahmen mit iframe auf eigenem Origin, nur nach Login-Check sichtbar, Zustand gemerkt. Brauchbar, nur Dev-Hostnamen.
 
+### Jedes Element unendlich wiederholen
+`B1bli0thek/kern.js` (`InfElement`): Web-Component-Basis, die Kopien eines beliebigen Elements auf einen gekrümmten, skalierten Pfad legt (Fluchtpunkt, Bogen, Spirale), mit Gesten (ziehen, zwei Finger krümmen/spreizen, Rad, Tasten), Zustand als Attribute und Ereignis `inf-change`; neues Element = eine Datei mit `baueKopie(i)`, Liste in `B1bli0thek/alle.js`. Brauchbar.
+
 1c0de.html
 <!DOCTYPE html>
 <html lang="de">
@@ -14088,6 +14091,1001 @@ naja, müsste wohl noch css-technisch aufgehübscht werden, sonst nur mittels mi
 ∞∞
 ∞
 3 Schmetterlinge oder 2 oder 1?
+
+B1bli0thek/README.md
+# inf-Elemente
+
+Jedes Grundelement des Browsers als Web Component, das sich wiederholen, verschieben, krümmen und skalieren lässt.
+Ein ES-Modul je Element, ohne Abhängigkeiten. `alle.js` registriert alle auf einmal.
+Der sichtbare Name steht nur in `name.js`. Alle Pfade sind relativ, der Ordner lässt sich umbenennen.
+
+## Einbinden
+
+Alle Elemente:
+
+```html
+<script type="module" src="./alle.js"></script>
+<inf-button></inf-button>
+```
+
+Nur eines:
+
+```html
+<script type="module" src="./inf-line.js"></script>
+<inf-line repeat="∞" bend="2"></inf-line>
+```
+
+Das Element ist ein Block mit `height: 16rem`; Größe per CSS setzen, z. B. `inf-box { height: 100vh; }`.
+
+## Gemeinsame Attribute
+
+Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zurück in die Attribute, sie sind die API.
+
+| Attribut | Wert | Bedeutung |
+|---|---|---|
+| `repeat` | Zahl oder `∞` | Anzahl Kopien, `0` ist erlaubt |
+| `bend` | Grad | Krümmung je Kopie |
+| `scale` | Faktor | Größe je Kopie im Verhältnis zur vorigen |
+| `angle` | Grad | Richtung, in die die Reihe wächst |
+| `space` | px | Abstand zwischen Kopien |
+| `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
+| `shift` | `x y` in px | Verschiebung des Ursprungs |
+| `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
+| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus |
+
+Methoden: `mehr(n)`, `unendlich()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
+Lesbar: `zustand`, `kopien`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
+
+Gesten: ein Finger zieht, zwei Finger drehen (krümmen) und spreizen (skalieren). Mausrad krümmt, mit Umschalt/Strg skaliert es.
+Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/weniger, `[` `]` krümmen, `,` `.` skalieren, `0` zurück, `8` unendlich.
+
+## Elemente
+
+Button, jeder Druck ein Button mehr:
+```html
+<inf-button label="1"></inf-button>
+```
+
+Linie (`art` wie `border-style`):
+```html
+<inf-line length="50vmin" weight="1px" art="dashed"></inf-line>
+```
+
+Textfeld, alle Kopien schreiben mit (`multiline` für mehrzeilig):
+```html
+<inf-field value="018"></inf-field>
+```
+
+Checkbox oder Radio, die Wahl läuft als Welle durch:
+```html
+<inf-check type="radio"></inf-check>
+```
+
+Schieberegler, alle folgen um `phase` versetzt:
+```html
+<inf-range min="0" max="100" value="50" phase="7"></inf-range>
+```
+
+Link; ohne `href` gibt er sich selbst ein weiteres Mal, mit `href` ist er ein echter Link:
+```html
+<inf-link text="∞" href="/018"></inf-link>
+```
+
+Bild, ineinander:
+```html
+<inf-image src="../assets/circle.svg" size="60vmin" scale="0.8"></inf-image>
+```
+
+Liste (`type="ul"` für Punkte, `marker` ersetzt den Punkt):
+```html
+<inf-list type="ul" text="0" marker="1"></inf-list>
+```
+
+Tabelle (`cell="index"` schreibt Zeile und Spalte in jede Zelle):
+```html
+<inf-table cols="5" cell="index"></inf-table>
+```
+
+Box, Antippen schaltet die Ecken durch:
+```html
+<inf-box size="60vmin" radius="0" border="1" shadow="0"></inf-box>
+```
+
+Text in jeder Form (`form="alle"`, eine Form wie `h1` oder eine Liste `h1 p code`):
+```html
+<inf-text form="h1 p code" text="0 1 ∞"></inf-text>
+```
+
+Buchstabe, jedes Zeichen:
+```html
+<inf-letter char="∞" size="8rem"></inf-letter>
+```
+
+## Neues Element
+
+Eine Datei `inf-<name>.js`, die von `InfElement` aus `kern.js` erbt und `baueKopie(i)` (und bei Bedarf `fuelleKopie(k, i)`) überschreibt, dann eine Zeile in `elemente` in `alle.js`. Die Sammelseite liest die Liste von dort.
+
+B1bli0thek/alle.js
+// Sammel-Modul: registriert alle Elemente. Ein neues Element = eine Zeile in `elemente`.
+// Einbinden: <script type="module" src="./alle.js"></script>, dann z. B. <inf-button></inf-button>.
+import { NAME } from './name.js';
+export { NAME };
+
+export const elemente = [
+  { gruppe: 'Elemente', tag: 'inf-button', name: 'Button', modul: './inf-button.js' },
+  { gruppe: 'Elemente', tag: 'inf-line', name: 'Linie', modul: './inf-line.js' },
+  { gruppe: 'Elemente', tag: 'inf-field', name: 'Textfeld', modul: './inf-field.js' },
+  { gruppe: 'Elemente', tag: 'inf-check', name: 'Checkbox', modul: './inf-check.js' },
+  { gruppe: 'Elemente', tag: 'inf-range', name: 'Schieberegler', modul: './inf-range.js', attribute: { phase: '7' } },
+  { gruppe: 'Elemente', tag: 'inf-link', name: 'Link', modul: './inf-link.js' },
+  { gruppe: 'Elemente', tag: 'inf-image', name: 'Bild', modul: './inf-image.js' },
+  { gruppe: 'Elemente', tag: 'inf-list', name: 'Liste', modul: './inf-list.js' },
+  { gruppe: 'Elemente', tag: 'inf-table', name: 'Tabelle', modul: './inf-table.js' },
+  { gruppe: 'Elemente', tag: 'inf-box', name: 'Box', modul: './inf-box.js' },
+  { gruppe: 'Text', tag: 'inf-text', name: 'Text', modul: './inf-text.js' },
+  { gruppe: 'Text', tag: 'inf-letter', name: 'Buchstabe', modul: './inf-letter.js' },
+];
+
+// Alle laden; jedes Modul registriert sich selbst. Ein Fehler bricht laut ab.
+export const bereit = Promise.all(elemente.map((e) => import(new URL(e.modul, import.meta.url).href)));
+bereit.catch((fehler) => { console.error(NAME, fehler); });
+
+B1bli0thek/index.html
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+<meta charset="UTF-8">
+<title></title>
+<style>
+#b1 { position: fixed; inset: 0; display: flex; flex-direction: column; white-space: normal; text-shadow: none; font-size: 1rem; line-height: normal; }
+#b1 * { white-space: normal; }
+#kopf { flex: 0 0 auto; padding: .75rem 4.5rem 0; display: flex; flex-direction: column; align-items: center; gap: .5rem; min-width: 0; }
+#marke { all: unset; cursor: pointer; font-size: 1.5rem; letter-spacing: .04em; line-height: 44px; min-height: 44px;
+  padding: 0 .5rem; border-radius: 4px; color: var(--text-color); -webkit-tap-highlight-color: transparent; }
+#marke span { display: inline-block; transition: transform 200ms ease; }
+#marke.liegt span.acht { transform: rotate(90deg); }
+#marke:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
+#wahl { display: flex; gap: .25rem; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+#wahl::-webkit-scrollbar { display: none; }
+#wahl .gruppe { flex: 0 0 auto; display: flex; gap: .25rem; align-items: center; }
+#wahl .gruppe + .gruppe { padding-left: .5rem; margin-left: .25rem; border-left: 1px solid var(--ui-fill-20); }
+#wahl a { flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 .75rem; border-radius: 4px;
+  color: var(--ui-text-60); text-decoration: none; font-size: .95rem; -webkit-tap-highlight-color: transparent; }
+#wahl a[aria-current="true"] { color: var(--text-color); background: var(--ui-fill-10); }
+#wahl a:active { background: var(--ui-fill-20); }
+@media (hover: hover) { #wahl a:hover { color: var(--text-color); } }
+#wahl a:focus-visible { outline: 1px solid var(--text-color); outline-offset: -1px; }
+#buehne { flex: 1 1 auto; position: relative; min-height: 0; }
+#buehne > * { position: absolute; inset: 0; height: auto; }
+#buehne > *:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
+</style>
+</head>
+<body class="_018-canvas">
+<main id="b1">
+  <div id="kopf">
+    <button id="marke" type="button"></button>
+    <nav id="wahl"></nav>
+  </div>
+  <div id="buehne"></div>
+</main>
+<script type="module">
+import { NAME, elemente, bereit } from './alle.js';
+
+document.title = NAME;
+const marke = document.getElementById('marke');
+// B, b und 8 sind aufgestellte Unendlichkeiten; antippen legt sie hin.
+for (const z of NAME) {
+  const s = document.createElement('span');
+  s.textContent = z;
+  if ('Bb8'.includes(z)) s.className = 'acht';
+  marke.append(s);
+}
+marke.setAttribute('aria-label', NAME);
+marke.addEventListener('click', () => marke.classList.toggle('liegt'));
+
+const wahl = document.getElementById('wahl');
+const buehne = document.getElementById('buehne');
+const kurz = (tag) => tag.replace(/^inf-/, '');
+const gruppen = new Map();
+for (const e of elemente) {
+  if (!gruppen.has(e.gruppe)) {
+    const g = document.createElement('div');
+    g.className = 'gruppe';
+    g.setAttribute('aria-label', e.gruppe);
+    wahl.append(g);
+    gruppen.set(e.gruppe, g);
+  }
+  const a = document.createElement('a');
+  a.href = '#' + kurz(e.tag);
+  a.textContent = e.name;
+  a.dataset.tag = e.tag;
+  gruppen.get(e.gruppe).append(a);
+}
+
+const zeige = () => {
+  const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
+  for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
+  wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const el = document.createElement(e.tag);
+  for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
+  buehne.replaceChildren(el);
+};
+addEventListener('hashchange', zeige);
+await bereit;
+zeige();
+</script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
+
+B1bli0thek/inf-box.js
+import { InfElement, registriere } from './kern.js';
+
+// Kasten im Kasten. Antippen rundet die Ecken weiter: 0, ein wenig, ganz (Kreis).
+const ECKEN = ['0', '8px', '50%'];
+
+export class InfBox extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', gap: 0, scale: 0.9, bend: 3 };
+  static eigeneAttribute = ['size', 'radius', 'shadow', 'border'];
+  static stil = `.kasten { box-sizing: border-box; border: var(--rand, 1px) solid var(--text-color, white); cursor: pointer; }
+    .kopie.kasten:not(:first-child) { pointer-events: none; }`;
+
+  constructor() { super(); this._ecke = null; }
+  baueKopie() { const d = document.createElement('div'); d.className = 'kasten'; d.part = 'item'; return d; }
+  fuelleKopie(d) {
+    const g = this.getAttribute('size') || '60vmin';
+    d.style.width = g;
+    d.style.height = g;
+    d.style.borderRadius = this._ecke ?? this.getAttribute('radius') ?? '0';
+    d.style.setProperty('--rand', (this.getAttribute('border') ?? '1') + 'px');
+    const sch = Number(this.getAttribute('shadow') ?? 0);
+    d.style.boxShadow = sch ? `0 0 ${sch}px var(--ui-text-60, rgba(255,255,255,.6))` : 'none';
+  }
+  attributGeaendert() { this._ecke = null; for (const k of this.kopien) this.fuelleKopie(k); }
+  verbunden() {
+    this._root.querySelector('.buehne').addEventListener('click', (e) => {
+      if (!e.target.closest('.kasten')) return;
+      const jetzt = this._ecke ?? this.getAttribute('radius') ?? '0';
+      this._ecke = ECKEN[(ECKEN.indexOf(jetzt) + 1) % ECKEN.length];
+      for (const k of this.kopien) k.style.borderRadius = this._ecke;
+    });
+  }
+}
+registriere('inf-box', InfBox);
+
+B1bli0thek/inf-button.js
+import { InfElement, STEUERSTIL, registriere } from './kern.js';
+
+// Jeder Druck auf einen Button ist ein Button mehr.
+export class InfButton extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: 1, space: 8 };
+  static eigeneAttribute = ['label'];
+  static stil = STEUERSTIL;
+
+  baueKopie() {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ding';
+    b.part = 'item';
+    return b;
+  }
+  fuelleKopie(b) { b.textContent = this.getAttribute('label') ?? '1'; }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
+  verbunden() {
+    this._root.querySelector('.buehne').addEventListener('click', (e) => {
+      if (e.target.closest('button.ding')) this.mehr(1);
+    });
+  }
+}
+registriere('inf-button', InfButton);
+
+B1bli0thek/inf-check.js
+import { InfElement, STEUERSTIL, registriere } from './kern.js';
+
+// Ein Haken pflanzt sich als Welle fort, ein Radio wandert weiter.
+let gruppe = 0;
+
+export class InfCheck extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', space: 0 };
+  static eigeneAttribute = ['type', 'checked'];
+  static stil = STEUERSTIL + `input { width: 22px; height: 22px; margin: 0; cursor: pointer; }`;
+
+  constructor() {
+    super();
+    this._name = 'inf-check-' + (gruppe++);
+    this._an = new Set(this.hasAttribute('checked') ? [0] : []);
+    this._wellen = [];
+  }
+  get _typ() { return this.getAttribute('type') === 'radio' ? 'radio' : 'checkbox'; }
+  baueKopie(i) {
+    const l = document.createElement('label');
+    l.className = 'ziel';
+    l.part = 'item';
+    const f = document.createElement('input');
+    f.type = this._typ;
+    f.name = this._name;
+    f.setAttribute('aria-label', String(i + 1));
+    l.append(f);
+    return l;
+  }
+  fuelleKopie(l, i) { l.firstChild.checked = this._an.has(i); }
+  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  verbunden() {
+    this._root.querySelector('.buehne').addEventListener('change', (e) => {
+      const start = Number(e.target.closest('.kopie').dataset.i);
+      const wert = e.target.checked;
+      for (const t of this._wellen.splice(0)) clearTimeout(t);
+      if (this._typ === 'radio') return this._wandere(start);
+      // Welle nach beiden Seiten, ein Schritt je 30 ms
+      this.kopien.forEach((k, i) => {
+        if (i === start) { this._setze(i, wert); return; }
+        this._wellen.push(setTimeout(() => { this._setze(i, wert); }, Math.abs(i - start) * 30));
+      });
+    });
+  }
+  _setze(i, wert) {
+    if (wert) this._an.add(i); else this._an.delete(i);
+    const k = this.kopien[i];
+    if (k) k.firstChild.checked = wert;
+  }
+  _wandere(i) {
+    this._an = new Set([i]);
+    const n = this.kopien.length;
+    if (n < 2) return;
+    const weiter = () => {
+      const k = this.kopien[(i = (i + 1) % this.kopien.length)];
+      if (!k) return;
+      k.firstChild.checked = true;
+      this._an = new Set([i]);
+      if (i !== 0) this._wellen.push(setTimeout(weiter, 60));
+    };
+    this._wellen.push(setTimeout(weiter, 60));
+  }
+}
+registriere('inf-check', InfCheck);
+
+B1bli0thek/inf-field.js
+import { InfElement, STEUERSTIL, ohneAutofill, registriere } from './kern.js';
+
+// Was man in ein Feld schreibt, steht in allen.
+export class InfField extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', angle: 90, space: 8 };
+  static eigeneAttribute = ['value', 'multiline'];
+  static stil = STEUERSTIL + `
+    .feld { box-sizing: border-box; font: inherit; font-size: 16px; color: var(--text-color, white); width: 12rem; min-height: 44px;
+      padding: .5rem .75rem; border: 0; border-radius: 4px; background: var(--ui-fill-10, rgba(255,255,255,.1)); resize: none; }
+    textarea.feld { height: 5rem; }`;
+
+  constructor() { super(); this._wert = this.getAttribute('value') ?? ''; }
+  baueKopie() {
+    const f = document.createElement(this.hasAttribute('multiline') ? 'textarea' : 'input');
+    if (f.tagName === 'INPUT') f.type = 'text';
+    f.className = 'feld';
+    f.part = 'item';
+    f.setAttribute('aria-label', 'Textfeld');
+    return ohneAutofill(f);
+  }
+  fuelleKopie(f) { f.value = this._wert; }
+  attributGeaendert() {
+    this._wert = this.getAttribute('value') ?? this._wert;
+    if ((this.kopien[0]?.tagName === 'TEXTAREA') !== this.hasAttribute('multiline')) { for (const k of this.kopien.splice(0)) k.remove(); }
+    for (const k of this.kopien) this.fuelleKopie(k);
+  }
+  get value() { return this._wert; }
+  set value(v) { this._wert = String(v); for (const k of this.kopien) k.value = this._wert; }
+  verbunden() {
+    this._root.querySelector('.buehne').addEventListener('input', (e) => {
+      this._wert = e.target.value;
+      for (const k of this.kopien) if (k !== e.target) k.value = this._wert;
+    });
+  }
+}
+registriere('inf-field', InfField);
+
+B1bli0thek/inf-image.js
+import { InfElement, registriere } from './kern.js';
+
+// Das Bild im Bild im Bild: Schrittweite 0, jede Kopie kleiner, bis sie unter einen Pixel fällt.
+export class InfImage extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', gap: 0, scale: 0.8, bend: 0 };
+  static eigeneAttribute = ['src', 'alt', 'size'];
+  static stil = `img.kopie { display: block; pointer-events: none; -webkit-user-drag: none; }`;
+
+  baueKopie() {
+    const b = document.createElement('img');
+    b.part = 'item';
+    b.draggable = false;
+    b.decoding = 'async';
+    b.addEventListener('load', () => this.vermessen(), { once: true });
+    return b;
+  }
+  fuelleKopie(b, i) {
+    b.src = this.getAttribute('src') || new URL('../assets/circle.svg', import.meta.url).href;
+    b.alt = i === 0 ? (this.getAttribute('alt') ?? '') : '';
+    b.style.width = this.getAttribute('size') || '60vmin';
+  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k, Number(k.dataset.i)); }
+}
+registriere('inf-image', InfImage);
+
+B1bli0thek/inf-letter.js
+import { InfElement, OHNE_AUTOFILL, registriere } from './kern.js';
+
+// Ein einzelnes Zeichen. B ist die aufgestellte 8, die aufgestellte 8 ist ∞.
+const segmente = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter() : null;
+const letztesZeichen = (s) => {
+  if (!s) return '';
+  if (!segmente) return [...s].pop();
+  let z = '';
+  for (const { segment } of segmente.segment(s)) z = segment;
+  return z;
+};
+
+export class InfLetter extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', scale: 0.88, bend: 24, space: 0 };
+  static eigeneAttribute = ['char', 'size'];
+  static stil = `.zeichen { font-size: var(--groesse, 8rem); line-height: 1; padding: 0 .02em; }`;
+
+  get char() { return this.getAttribute('char') || 'B'; }
+  set char(c) { this.setAttribute('char', letztesZeichen(String(c)) || 'B'); }
+
+  leistenExtra() { return `<input class="wahl" type="text" aria-label="Zeichen" ${OHNE_AUTOFILL} enterkeyhint="done">`; }
+  baueKopie() { const s = document.createElement('span'); s.className = 'zeichen'; s.part = 'item'; return s; }
+  fuelleKopie(s) {
+    s.textContent = this.char;
+    s.style.setProperty('--groesse', this.getAttribute('size') || '8rem');
+  }
+  attributGeaendert() {
+    for (const k of this.kopien) this.fuelleKopie(k);
+    const w = this._root.querySelector('.wahl');
+    if (w && document.activeElement !== this) w.value = this.char;
+  }
+  verbunden() {
+    const w = this._root.querySelector('.wahl');
+    w.value = this.char;
+    w.addEventListener('focus', () => w.select());
+    w.addEventListener('input', () => {
+      const z = letztesZeichen(w.value);
+      if (!z) return;
+      w.value = z;
+      this.char = z;
+      w.select();
+    });
+  }
+}
+registriere('inf-letter', InfLetter);
+
+B1bli0thek/inf-line.js
+import { InfElement, registriere } from './kern.js';
+
+// Ein Strich, quer zu seinem Weg. Gerade = Raster, gekrümmt = Strahlenkranz.
+export class InfLine extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', space: 10 };
+  static eigeneAttribute = ['length', 'weight', 'art'];
+  static stil = `.kopie.strich { width: 0; border-left: var(--w, 1px) var(--art, solid) var(--text-color, white); }`;
+
+  baueKopie() { const d = document.createElement('div'); d.className = 'strich'; d.part = 'item'; return d; }
+  fuelleKopie(d) {
+    d.style.height = this.getAttribute('length') || '50vmin';
+    d.style.setProperty('--w', (this.getAttribute('weight') || '1') + 'px');
+    d.style.setProperty('--art', this.getAttribute('art') || 'solid');
+  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
+}
+registriere('inf-line', InfLine);
+
+B1bli0thek/inf-link.js
+import { InfElement, STEUERSTIL, registriere } from './kern.js';
+
+// Ohne href verweist der Link auf sich selbst: ein Klick, ein Link mehr.
+export class InfLink extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: 1, space: 4 };
+  static eigeneAttribute = ['href', 'text'];
+  static stil = STEUERSTIL + `a.ding { border: 0; padding: 0 .5rem; text-decoration: underline; text-underline-offset: .2em; }`;
+
+  baueKopie() { const a = document.createElement('a'); a.className = 'ding'; a.part = 'item'; return a; }
+  fuelleKopie(a) {
+    a.href = this.getAttribute('href') || '#';
+    a.textContent = this.getAttribute('text') ?? '∞';
+  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
+  verbunden() {
+    this._root.querySelector('.buehne').addEventListener('click', (e) => {
+      if (!e.target.closest('a.ding') || this.getAttribute('href')) return;
+      e.preventDefault();
+      this.mehr(1);
+    });
+  }
+}
+registriere('inf-link', InfLink);
+
+B1bli0thek/inf-list.js
+import { InfElement, registriere } from './kern.js';
+
+// Eine Liste, die nicht aufhört zu zählen.
+export class InfList extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', angle: 90, space: 4 };
+  static eigeneAttribute = ['type', 'text', 'marker'];
+  static stil = `
+    .liste { margin: 0; padding: 0; list-style-position: inside; }
+    .liste li { min-height: 1.5em; line-height: 1.5; }
+    ul.liste li::marker { content: var(--marker, '• '); }`;
+
+  baueKopie() {
+    const l = document.createElement(this.getAttribute('type') === 'ul' ? 'ul' : 'ol');
+    l.className = 'liste';
+    l.part = 'item';
+    l.append(document.createElement('li'));
+    return l;
+  }
+  fuelleKopie(l, i) {
+    const li = l.firstChild;
+    li.value = i + 1;
+    li.textContent = this.getAttribute('text') ?? '';
+    const m = this.getAttribute('marker');
+    if (m !== null) l.style.setProperty('--marker', JSON.stringify(m + ' '));
+  }
+  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+}
+registriere('inf-list', InfList);
+
+B1bli0thek/inf-range.js
+import { InfElement, registriere } from './kern.js';
+
+// Ein Regler bewegt alle. phase verschiebt jede Kopie um ein Stück weiter, im Kreis.
+export class InfRange extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', angle: 90, space: 0 };
+  static eigeneAttribute = ['min', 'max', 'step', 'value', 'phase'];
+  static stil = `
+    input { width: 14rem; height: 44px; margin: 0; cursor: pointer; background: transparent; color-scheme: dark;
+      accent-color: var(--text-color, white); touch-action: none; }
+    input:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }`;
+
+  constructor() { super(); this._wert = null; }
+  get _min() { return Number(this.getAttribute('min') ?? 0); }
+  get _max() { return Number(this.getAttribute('max') ?? 100); }
+  baueKopie() {
+    const r = document.createElement('input');
+    r.type = 'range';
+    r.part = 'item';
+    r.setAttribute('aria-label', 'Schieberegler');
+    return r;
+  }
+  fuelleKopie(r, i) {
+    r.min = String(this._min);
+    r.max = String(this._max);
+    r.step = this.getAttribute('step') ?? 'any';
+    r.value = String(this._fuer(i));
+  }
+  _fuer(i) {
+    const min = this._min, spanne = this._max - min;
+    const w = this._wert ?? Number(this.getAttribute('value') ?? (min + spanne / 2));
+    const phase = Number(this.getAttribute('phase') ?? 0);
+    if (!phase || !spanne) return w;
+    return min + ((((w - min + i * phase) % spanne) + spanne) % spanne);
+  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k, Number(k.dataset.i)); }
+  get value() { return this._fuer(0); }
+  set value(v) { this._wert = Number(v); this.attributGeaendert(); }
+  verbunden() {
+    this._root.querySelector('.buehne').addEventListener('input', (e) => {
+      const i = Number(e.target.dataset.i);
+      const phase = Number(this.getAttribute('phase') ?? 0);
+      this._wert = Number(e.target.value) - i * phase;
+      for (const k of this.kopien) if (k !== e.target) k.value = String(this._fuer(Number(k.dataset.i)));
+    });
+  }
+}
+registriere('inf-range', InfRange);
+
+B1bli0thek/inf-table.js
+import { InfElement, registriere } from './kern.js';
+
+// Zeile um Zeile, die Ränder fallen zusammen. Gekrümmt wird die Tabelle zum Rad.
+export class InfTable extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', angle: 90, space: -1 };
+  static eigeneAttribute = ['cols', 'cell'];
+  static stil = `
+    table { border-collapse: collapse; }
+    td { width: var(--zelle, 3rem); height: var(--zelle-h, 2rem); border: 1px solid var(--ui-text-60, rgba(255,255,255,.6));
+      text-align: center; font-variant-numeric: tabular-nums; padding: 0 .25rem; }`;
+
+  baueKopie(i) {
+    const t = document.createElement('table');
+    t.part = 'item';
+    const tr = t.insertRow();
+    const spalten = Math.max(0, Math.floor(Number(this.getAttribute('cols') ?? 5)) || 0);
+    for (let j = 0; j < spalten; j++) tr.insertCell();
+    t.dataset.zeile = i;
+    return t;
+  }
+  fuelleKopie(t, i) {
+    const inhalt = this.getAttribute('cell');
+    const zellen = t.rows[0].cells;
+    for (let j = 0; j < zellen.length; j++) zellen[j].textContent = inhalt === 'index' ? `${i},${j}` : (inhalt ?? '');
+  }
+  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+}
+registriere('inf-table', InfTable);
+
+B1bli0thek/inf-text.js
+import { InfElement, registriere } from './kern.js';
+import { NAME } from './name.js';
+
+// Jede Form von Text. Die Kopien gehen der Reihe nach durch alle Formen und fangen dann wieder vorn an.
+export const FORMEN = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'b', 'strong', 'i', 'em', 'u', 's', 'del', 'ins', 'mark',
+  'small', 'sup', 'sub', 'code', 'kbd', 'samp', 'var', 'pre', 'blockquote', 'q', 'cite', 'dfn', 'abbr', 'time', 'span'];
+
+export class InfText extends InfElement {
+  static vorgaben = { ...InfElement.vorgaben, repeat: '∞', angle: 90, space: 6 };
+  static eigeneAttribute = ['form', 'text'];
+  static stil = `
+    .kopie > * { margin: 0; color: inherit; font-family: inherit; }
+    h1 { font-size: 2.5rem; } h2 { font-size: 2rem; } h3 { font-size: 1.6rem; } h4 { font-size: 1.3rem; } h5 { font-size: 1.1rem; } h6 { font-size: .95rem; }
+    code, kbd, samp, pre, var { font-family: ui-monospace, Consolas, monospace; }
+    kbd { border: 1px solid var(--ui-text-60, rgba(255,255,255,.6)); border-radius: 4px; padding: 0 .3em; }
+    mark { background: var(--text-color, white); color: var(--bg-color, black); }
+    blockquote { border-left: 2px solid var(--ui-text-60, rgba(255,255,255,.6)); padding-left: .75rem; }
+    abbr { text-decoration: underline dotted; }`;
+
+  get formen() {
+    const f = (this.getAttribute('form') || 'alle').trim().toLowerCase();
+    if (f === 'alle' || f === 'all') return FORMEN;
+    const liste = f.split(/[\s,|]+/).filter((x) => FORMEN.includes(x));
+    return liste.length ? liste : ['span'];
+  }
+  get text() { return this.getAttribute('text') ?? (this.textContent.trim() || NAME); }
+
+  baueKopie(i) {
+    const huelle = document.createElement('div');
+    huelle.part = 'item';
+    const form = this.formen[i % this.formen.length];
+    const el = document.createElement(form);
+    if (form === 'time') el.dateTime = new Date().toISOString().slice(0, 10);
+    if (form === 'abbr') el.title = this.text;
+    huelle.append(el);
+    huelle.dataset.form = form;
+    return huelle;
+  }
+  fuelleKopie(h) { h.firstChild.textContent = this.text; }
+  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+}
+registriere('inf-text', InfText);
+
+B1bli0thek/kern.js
+// Gemeinsame Basis aller Elemente: wiederholen, verschieben, krümmen, skalieren.
+// Jede Kopie i liegt auf einem Pfad: Schrittweite * scale^i, Richtung angle + i * bend.
+// scale < 1 läuft in einen Fluchtpunkt (Unendlichkeit im Endlichen), bend != 0 krümmt zu Bogen und Spirale.
+
+const UNENDLICH = new Set(['∞', 'inf', 'unendlich', 'infinity']);
+// So viele Kopien zeigt ∞: 720, zwei volle Umdrehungen. Mehr fasst kein Bildschirm, der Rest ist mitgemeint.
+const DECKEL = 720;
+
+const GRUNDSTIL = `
+:host { display: block; position: relative; height: 16rem; overflow: hidden; white-space: normal; line-height: normal;
+  color: var(--text-color, white); font-family: var(--font-family, system-ui, sans-serif);
+  -webkit-tap-highlight-color: transparent; touch-action: none; user-select: none; -webkit-user-select: none; }
+:host([hidden]) { display: none; }
+.buehne { position: absolute; inset: 0; outline: none; }
+.kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
+.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; gap: .25rem; z-index: 1; }
+.leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
+  display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
+  border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
+  font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
+.leiste input { width: 44px; cursor: text; font-size: 16px; }
+.leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
+@media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
+.leiste button:focus-visible, .leiste input:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
+:host([bare]) .leiste { display: none; }
+`;
+
+const zahl = (wert, ersatz) => {
+  if (wert === null || wert === undefined || wert === '') return ersatz;
+  const n = Number(wert);
+  return Number.isFinite(n) ? n : ersatz;
+};
+
+export class InfElement extends HTMLElement {
+  // Unterklassen überschreiben: Startwerte, eigenes CSS, eine Kopie bauen.
+  static vorgaben = { repeat: '∞', bend: 0, scale: 1, angle: 0, space: 8, gap: 'auto', rotate: true };
+  static stil = '';
+  static get observedAttributes() {
+    return ['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', ...(this.eigeneAttribute || [])];
+  }
+
+  constructor() {
+    super();
+    this._root = this.attachShadow({ mode: 'open' });
+    this._root.innerHTML = `<style>${GRUNDSTIL}${this.constructor.stil}</style>
+      <div class="buehne" part="stage"></div>
+      <div class="leiste" part="controls">${this.leistenExtra()}
+        <button type="button" data-z="0" aria-label="zurück auf eins">0</button>
+        <button type="button" data-z="1" aria-label="eins mehr">1</button>
+        <button type="button" data-z="∞" aria-label="unendlich">∞</button>
+      </div>`;
+    this._buehne = this._root.querySelector('.buehne');
+    this._kopien = [];
+    this._masse = [];
+    this._zeiger = new Map();
+    this._schreibt = false;
+    this._geplant = 0;
+    this._zustand = {};
+    this._leseAttribute();
+  }
+
+  connectedCallback() {
+    if (this._verbunden) return;
+    this._verbunden = true;
+    this._groesse = new ResizeObserver(() => { this._masse = []; this.zeichne(); });
+    this._groesse.observe(this);
+    this._root.querySelector('.leiste').addEventListener('click', (e) => this._leiste(e));
+    this._buehne.addEventListener('pointerdown', (e) => this._runter(e));
+    this._buehne.addEventListener('pointermove', (e) => this._bewegt(e));
+    this._buehne.addEventListener('pointerup', (e) => this._hoch(e));
+    this._buehne.addEventListener('pointercancel', (e) => this._hoch(e));
+    this._buehne.addEventListener('click', (e) => { if (this._gezogen) { e.stopPropagation(); e.preventDefault(); this._gezogen = false; } }, true);
+    this.addEventListener('wheel', (e) => this._rad(e), { passive: false });
+    this.addEventListener('keydown', (e) => this._taste(e));
+    if (!this.hasAttribute('tabindex')) this.tabIndex = 0;
+    this.verbunden();
+    this.zeichne();
+  }
+
+  disconnectedCallback() {
+    this._groesse?.disconnect();
+    this._verbunden = false;
+  }
+
+  attributeChangedCallback() {
+    if (this._schreibt) return;
+    this._leseAttribute();
+    this._masse = [];
+    this.attributGeaendert();
+    this.zeichne();
+  }
+
+  // Haken für Unterklassen
+  verbunden() {}
+  attributGeaendert() {}
+  leistenExtra() { return ''; }
+  baueKopie() { return document.createElement('span'); }
+  fuelleKopie() {}
+
+  _leseAttribute() {
+    const v = this.constructor.vorgaben;
+    const a = (n) => this.getAttribute(n);
+    const r = (a('repeat') ?? String(v.repeat)).trim().toLowerCase();
+    const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
+    this._zustand = {
+      unendlich: UNENDLICH.has(r),
+      anzahl: UNENDLICH.has(r) ? DECKEL : Math.max(0, Math.floor(zahl(r, 1))),
+      bend: zahl(a('bend'), v.bend),
+      scale: Math.max(0.01, zahl(a('scale'), v.scale)),
+      angle: zahl(a('angle'), v.angle),
+      space: zahl(a('space'), v.space),
+      gap: (a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null),
+      dx: schub[0] || 0,
+      dy: schub[1] ?? 0,
+      rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
+    };
+  }
+
+  // Zustand als Attribute zurückschreiben: die Attribute sind die API.
+  _schreibe() {
+    const z = this._zustand;
+    const rund = (n) => String(Math.round(n * 1000) / 1000);
+    this._schreibt = true;
+    this.setAttribute('repeat', z.unendlich ? '∞' : String(z.anzahl));
+    this.setAttribute('bend', rund(z.bend));
+    this.setAttribute('scale', rund(z.scale));
+    this.setAttribute('shift', `${rund(z.dx)} ${rund(z.dy)}`);
+    this._schreibt = false;
+    this.dispatchEvent(new CustomEvent('inf-change', { bubbles: true, composed: true, detail: this.zustand }));
+  }
+
+  get zustand() {
+    const z = this._zustand;
+    return { repeat: z.unendlich ? '∞' : z.anzahl, bend: z.bend, scale: z.scale, angle: z.angle, shift: [z.dx, z.dy] };
+  }
+
+  // Öffentliche Befehle
+  mehr(n = 1) { const z = this._zustand; if (!z.unendlich) z.anzahl = Math.max(0, z.anzahl + n); this._schreibe(); this.zeichne(); }
+  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = DECKEL; this._schreibe(); this.zeichne(); }
+  ursprung() {
+    const v = this.constructor.vorgaben;
+    Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
+    this._schreibe(); this.zeichne();
+  }
+  kruemme(grad) { this._zustand.bend += grad; this._schreibe(); this.zeichne(); }
+  skaliere(faktor) { const z = this._zustand; z.scale = Math.max(0.01, z.scale * faktor); this._schreibe(); this.zeichne(); }
+  verschiebe(dx, dy) { const z = this._zustand; z.dx += dx; z.dy += dy; this._schreibe(); this.zeichne(); }
+
+  zeichne() {
+    if (!this._verbunden || this._geplant) return;
+    this._geplant = requestAnimationFrame(() => { this._geplant = 0; this._layout(); });
+  }
+
+  // Wieviele Kopien sichtbar bleiben: bei ∞ bis aus dem Bild, unter einen halben Pixel oder ein Kreis geschlossen ist.
+  _layout() {
+    const z = this._zustand;
+    const breite = this.clientWidth, hoehe = this.clientHeight;
+    if (!breite || !hoehe) return;
+    const diag = Math.hypot(breite, hoehe);
+    const mx = breite / 2 + z.dx, my = hoehe / 2 + z.dy;
+    let x = mx, y = my, s = 1, richtung = z.angle;
+    const kreis = z.unendlich && z.scale === 1 && z.bend !== 0 ? Math.ceil(360 / Math.abs(z.bend)) : Infinity;
+    const ziel = Math.min(z.anzahl, DECKEL, kreis);
+    const orte = [];
+    for (let i = 0; i < ziel; i++) {
+      const m = this._mass(i, richtung);
+      if (z.unendlich && i > 0) {
+        const weg = Math.hypot(x - breite / 2, y - hoehe / 2);
+        if (s * m.gross < 0.5 || s * m.gross > diag * 4 || (weg > diag * 1.2 && weg > Math.hypot(z.dx, z.dy) + diag * 0.6)) break;
+      }
+      orte.push({ x, y, s, r: z.rotate ? richtung - z.angle : 0, m });
+      const naechstes = this._mass(i + 1, richtung + z.bend);
+      const schritt = z.gap ?? ((m.lang + naechstes.lang) / 2 + z.space);
+      const rad = (richtung * Math.PI) / 180;
+      x += Math.cos(rad) * schritt * s;
+      y += Math.sin(rad) * schritt * s;
+      s *= z.scale;
+      richtung += z.bend;
+    }
+    this._abgleich(orte.length);
+    for (let i = 0; i < orte.length; i++) {
+      const o = orte[i];
+      this._kopien[i].style.transform =
+        `translate(${o.x}px,${o.y}px) rotate(${o.r}deg) scale(${o.s}) translate(${-o.m.w / 2}px,${-o.m.h / 2}px)`;
+    }
+    this.nachLayout(orte.length);
+  }
+
+  nachLayout() {}
+
+  _abgleich(n) {
+    while (this._kopien.length < n) {
+      const i = this._kopien.length;
+      const k = this.baueKopie(i);
+      k.classList.add('kopie');
+      k.dataset.i = i;
+      this.fuelleKopie(k, i);
+      this._buehne.append(k);
+      this._kopien.push(k);
+    }
+    while (this._kopien.length > n) this._kopien.pop().remove();
+  }
+
+  // Maße einer Kopie ohne Transformation. Kopien werden einmal gemessen und gecacht.
+  _mass(i, richtung) {
+    let m = this._masse[i];
+    if (!m) {
+      this._abgleich(Math.max(this._kopien.length, i + 1));
+      const k = this._kopien[i];
+      m = { w: k.offsetWidth, h: k.offsetHeight };
+      m.gross = Math.max(m.w, m.h, 1);
+      this._masse[i] = m;
+    }
+    const z = this._zustand;
+    // Pfadrichtung im eigenen Rahmen der Kopie: gedreht wird nur um das, was die Krümmung dazugibt.
+    const rad = ((z.rotate ? z.angle : richtung) * Math.PI) / 180;
+    return { ...m, lang: Math.abs(Math.cos(rad)) * m.w + Math.abs(Math.sin(rad)) * m.h };
+  }
+
+  vermessen() { this._masse = []; this.zeichne(); }
+  get kopien() { return this._kopien; }
+
+  _leiste(e) {
+    const b = e.target.closest('button[data-z]');
+    if (!b) return;
+    const z = b.dataset.z;
+    if (z === '0') this.ursprung();
+    else if (z === '1') { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._kopien.length; } this.mehr(1); }
+    else this.unendlich();
+  }
+
+  // Ein Finger zieht = verschieben. Zwei Finger: drehen = krümmen, spreizen = skalieren.
+  _zieht(ziel) {
+    return !ziel.closest?.('input[type="range"], input[type="text"], input:not([type]), textarea, [contenteditable]');
+  }
+
+  _runter(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const zweiter = this._zeiger.size === 1;
+    if (!this._zieht(e.target) && !zweiter) return;
+    this._zeiger.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    this._gezogen = false;
+    if (this._zeiger.size === 2) this._zweiStart();
+  }
+
+  _zweiStart() {
+    const [a, b] = [...this._zeiger.values()];
+    this._paar = { w: Math.atan2(b.y - a.y, b.x - a.x), d: Math.hypot(b.x - a.x, b.y - a.y) || 1, bend: this._zustand.bend, scale: this._zustand.scale };
+    this._gezogen = true;
+    for (const id of this._zeiger.keys()) { try { this._buehne.setPointerCapture(id); } catch { /* Zeiger schon weg */ } }
+  }
+
+  _bewegt(e) {
+    const p = this._zeiger.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (this._zeiger.size === 1) {
+      if (!this._gezogen && Math.hypot(p.x - p.x0, p.y - p.y0) < 6) return;
+      if (!this._gezogen) { this._gezogen = true; try { this._buehne.setPointerCapture(e.pointerId); } catch { /* Zeiger schon weg */ } }
+      const z = this._zustand;
+      z.dx += dx;
+      z.dy += dy;
+      this._schreibe(); this.zeichne();
+    } else if (this._zeiger.size === 2 && this._paar) {
+      const [a, b] = [...this._zeiger.values()];
+      const w = Math.atan2(b.y - a.y, b.x - a.x), d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      let dw = ((w - this._paar.w) * 180) / Math.PI;
+      if (dw > 180) dw -= 360; if (dw < -180) dw += 360;
+      this._zustand.bend = this._paar.bend + dw * 0.25;
+      this._zustand.scale = Math.max(0.01, this._paar.scale * Math.pow(d / this._paar.d, 0.15));
+      this._schreibe(); this.zeichne();
+    }
+  }
+
+  _hoch(e) {
+    this._zeiger.delete(e.pointerId);
+    if (this._zeiger.size < 2) this._paar = null;
+    if (this._zeiger.size === 0 && e.type === 'pointercancel') this._gezogen = false;
+  }
+
+  // Rad krümmt, mit Umschalt/Strg (auch Trackpad-Spreizen) skaliert es.
+  _rad(e) {
+    e.preventDefault();
+    const d = Math.max(-100, Math.min(100, e.deltaY || e.deltaX));
+    if (e.ctrlKey || e.shiftKey || e.metaKey) this.skaliere(Math.exp(-d * 0.002));
+    else this.kruemme(d * 0.02);
+  }
+
+  _taste(e) {
+    if (e.target !== this || e.altKey || e.ctrlKey || e.metaKey) return;
+    const schritt = e.shiftKey ? 40 : 8;
+    const tasten = {
+      ArrowLeft: () => this.verschiebe(-schritt, 0), ArrowRight: () => this.verschiebe(schritt, 0),
+      ArrowUp: () => this.verschiebe(0, -schritt), ArrowDown: () => this.verschiebe(0, schritt),
+      '+': () => this.mehr(1), '-': () => this.mehr(-1), '0': () => this.ursprung(), '8': () => this.unendlich(),
+      '[': () => this.kruemme(-1), ']': () => this.kruemme(1), ',': () => this.skaliere(0.98), '.': () => this.skaliere(1 / 0.98),
+    };
+    const f = tasten[e.key];
+    if (f) { e.preventDefault(); f(); }
+  }
+}
+
+// Gemeinsame Eingabefeld-Attribute: nie Autofill/Passwortleiste auslösen.
+export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"';
+export function ohneAutofill(feld) {
+  for (const [k, v] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['spellcheck', 'false'], ['autocapitalize', 'off'],
+    ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other']]) feld.setAttribute(k, v);
+  return feld;
+}
+
+export function registriere(name, klasse) {
+  if (!customElements.get(name)) customElements.define(name, klasse);
+}
+
+export const STEUERSTIL = `
+.ziel { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+:where(button.ding, a.ding) { all: unset; }
+button.ding, a.ding { box-sizing: border-box; cursor: pointer; min-width: 44px; min-height: 44px; padding: 0 1rem;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font: inherit; color: var(--text-color, white);
+  border: 1px solid var(--ui-text-60, rgba(255,255,255,.6)); background: transparent; touch-action: manipulation; }
+button.ding:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
+@media (hover: hover) { button.ding:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); } }
+button.ding:focus-visible, a.ding:focus-visible, input:focus-visible, textarea:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
+input, textarea { color-scheme: dark; accent-color: var(--text-color, white); }
+`;
+
+B1bli0thek/name.js
+// Der sichtbare Name, genau hier und nirgends sonst.
+// Zwei B, dazwischen die 1: eine Eins eingequetscht zwischen zwei Unendlichkeiten (B ist die aufgestellte 8).
+export const NAME = 'B1bli0thek';
 
 EinNullgespräch.html
 <!DOCTYPE html>
@@ -76114,7 +77112,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -80166,7 +81175,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '', letzterStand = '', diagBis = {};
+  let letzterDiag = '';
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -80194,25 +81203,8 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
-    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
-    if (typeof d === 'object' && typeof d.text === 'string') {
-      const neu = (liste, feld) => {
-        if (!Array.isArray(liste)) return;
-        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
-        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
-      };
-      neu(d.rahmen, 'rahmen');
-      neu(d.ereignisse, 'ereignisse');
-      const stand = {};
-      if (d.fahrt) stand.fahrt = d.fahrt;
-      if (d.turm) stand.turm = d.turm;
-      if (Object.keys(stand).length) {
-        const st = JSON.stringify(stand);
-        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
-      }
-      d = { text: d.text };
-    }
+    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
+    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -80237,7 +81229,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);

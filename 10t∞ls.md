@@ -263,3 +263,6 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
 ### iframe-Chat-Knopf (nur dev)
 `tools/claude-chat.js`: Knopf und einklappbarer Rahmen mit iframe auf eigenem Origin, nur nach Login-Check sichtbar, Zustand gemerkt. Brauchbar, nur Dev-Hostnamen.
+
+### Jedes Element unendlich wiederholen
+`B1bli0thek/kern.js` (`InfElement`): Web-Component-Basis, die Kopien eines beliebigen Elements auf einen gekrümmten, skalierten Pfad legt (Fluchtpunkt, Bogen, Spirale), mit Gesten (ziehen, zwei Finger krümmen/spreizen, Rad, Tasten), Zustand als Attribute und Ereignis `inf-change`; neues Element = eine Datei mit `baueKopie(i)`, Liste in `B1bli0thek/alle.js`. Brauchbar.
