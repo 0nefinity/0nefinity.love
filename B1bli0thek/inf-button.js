@@ -2,6 +2,7 @@ import { InfElement, STEUERSTIL, registriere } from './kern.js';
 
 // Jeder Druck auf einen Button ist ein Button mehr.
 export class InfButton extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: 1, space: 8 };
   static eigeneAttribute = ['label', 'shape'];
   static stil = STEUERSTIL + `

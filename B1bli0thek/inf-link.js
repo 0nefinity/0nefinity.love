@@ -2,6 +2,7 @@ import { InfElement, STEUERSTIL, registriere } from './kern.js';
 
 // Ohne href verweist der Link auf sich selbst: ein Klick, ein Link mehr.
 export class InfLink extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: 1, space: 4 };
   static eigeneAttribute = ['href', 'text'];
   static stil = STEUERSTIL + `a.ding { border: 0; padding: 0 .5rem; text-decoration: underline; text-underline-offset: .2em; }`;

@@ -4,6 +4,7 @@ import { InfElement, registriere } from './kern.js';
 const ECKEN = ['0', '8px', '50%'];
 
 export class InfBox extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: '∞', gap: 0, scale: 0.9, bend: 3 };
   static eigeneAttribute = ['size', 'radius', 'shadow', 'border'];
   static stil = `.kasten { box-sizing: border-box; border: var(--rand, 1px) solid var(--text-color, white); cursor: pointer; }

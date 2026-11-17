@@ -2,6 +2,7 @@ import { InfElement, registriere } from './kern.js';
 
 // Ein Strich, quer zu seinem Weg. Gerade = Raster, gekrümmt = Strahlenkranz.
 export class InfLine extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: '∞', space: 10 };
   static eigeneAttribute = ['length', 'weight', 'art'];
   static stil = `.kopie.strich { width: 0; border-left: var(--w, 1px) var(--art, solid) var(--text-color, white); }`;

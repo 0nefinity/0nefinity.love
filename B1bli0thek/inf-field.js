@@ -2,6 +2,7 @@ import { InfElement, STEUERSTIL, ohneAutofill, registriere } from './kern.js';
 
 // Was man in ein Feld schreibt, steht in allen.
 export class InfField extends InfElement {
+  static periode = 1;
   static vorgaben = { ...InfElement.vorgaben, repeat: '∞', angle: 90, space: 8 };
   static eigeneAttribute = ['value', 'multiline'];
   static stil = STEUERSTIL + `
@@ -25,7 +26,7 @@ export class InfField extends InfElement {
     for (const k of this.kopien) this.fuelleKopie(k);
   }
   get value() { return this._wert; }
-  set value(v) { this._wert = String(v); for (const k of this.kopien) k.value = this._wert; }
+  set value(v) { this._wert = String(v); for (const k of this.kopien) k.value = this._wert; this._faltung?.veraltet(); this.zeichne(); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('input', (e) => {
       this._wert = e.target.value;
