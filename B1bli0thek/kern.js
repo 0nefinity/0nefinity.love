@@ -22,17 +22,14 @@ const GRUNDSTIL = `
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
 .kopie[hidden] { display: none !important; }
-.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
-.leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
+.leiste { position: absolute; left: calc(50% + var(--leiste-versatz, 0px)); bottom: calc(.5rem + var(--leiste-hoch, 0px)); transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
+.leiste button { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
   border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
   font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
-.leiste input { width: 44px; cursor: text; font-size: 16px; }
-input[type="search"]::-webkit-search-cancel-button, input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; display: none; }
-.leiste button[aria-pressed="true"] { background: var(--ui-fill-20, rgba(255,255,255,.2)); color: var(--text-color, white); }
 .leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
 @media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
-.leiste button:focus-visible, .leiste input:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
+.leiste button:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
 :host([bare]) .leiste { display: none; }
 `;
 
@@ -55,11 +52,10 @@ export class InfElement extends HTMLElement {
     this._root = this.attachShadow({ mode: 'open' });
     this._root.innerHTML = `<style>${GRUNDSTIL}${this.constructor.stil}</style>
       <div class="buehne" part="stage"></div>
-      <div class="leiste" part="controls">${this.leistenExtra()}
+      <div class="leiste" part="controls">
         <button type="button" data-z="0" aria-label="zurück auf eins">0</button>
         <button type="button" data-z="1" aria-label="eins mehr">1</button>
         <button type="button" data-z="∞" aria-label="unendlich">∞</button>
-        <button type="button" data-z="kap" aria-label="so weit die Rechenkapazität reicht" title="so weit die Rechenkapazität reicht" aria-pressed="false">∞+</button>
       </div>`;
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
@@ -101,20 +97,15 @@ export class InfElement extends HTMLElement {
   attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; this._zeigeKapazitaet(); }
+    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
   }
 
-  _zeigeKapazitaet() {
-    this._root.querySelector('[data-z="kap"]').setAttribute('aria-pressed', String(this._zustand.kapazitaet));
-  }
-
   // Haken für Unterklassen
   verbunden() {}
   attributGeaendert() {}
-  leistenExtra() { return ''; }
   baueKopie() { return document.createElement('span'); }
   fuelleKopie() {}
 
@@ -306,7 +297,6 @@ export class InfElement extends HTMLElement {
     const z = b.dataset.z;
     if (z === '0') this.ursprung();
     else if (z === '1') this.eins();
-    else if (z === 'kap') this.toggleAttribute('capacity');
     else this.unendlich();
   }
 
@@ -383,7 +373,6 @@ export class InfElement extends HTMLElement {
 }
 
 // Gemeinsame Eingabefeld-Attribute: nie Autofill/Passwortleiste auslösen.
-export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" data-protonpass-ignore="true"';
 export function ohneAutofill(feld) {
   for (const [k, v] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['spellcheck', 'false'], ['autocapitalize', 'off'],
     ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other'], ['data-protonpass-ignore', 'true']]) feld.setAttribute(k, v);

@@ -71,14 +71,103 @@ for (const e of elemente) {
   gruppen.get(e.gruppe).append(a);
 }
 
+// Das Control Panel (tools/controls.js) liegt eingeklappt unten und lässt sich hochschieben. Die 0/1/∞-Leiste des Elements
+// sitzt auf seiner Oberkante und fährt mit (--leiste-hoch).
+const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left', mobileInitialOpenMode: 'peek', desktopInitialHeightFraction: 0 });
+let el = null;
+const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
+const eigene = {
+  'inf-letter': [
+    ['input', 'char', { label: 'Zeichen', value: 'B' }, (v) => { if (v) el.char = v; }],
+  ],
+  'inf-button': [
+    ['select', 'shape', { label: 'Form', value: 'standard', options: ['standard', 'eckig', 'rund', 'pille', 'kreis'].map((v) => ({ value: v, label: v })) }, (v) => (v === 'standard' ? el.removeAttribute('shape') : setze('shape', v))],
+    ['input', 'label', { label: 'Text', value: 'Button' }, (v) => (v === '' ? el.removeAttribute('label') : setze('label', v))],
+  ],
+};
+panel
+  .beginSection('eigene').endSection()
+  .beginSection('gemeinsam')
+  .addToggle('capacity', { label: '∞+', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
+  .addSlider('bend', { label: 'Krümmung', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
+  .addSlider('angle', { label: 'Winkel', min: -180, max: 180, step: 1, value: 0, onChange: (v) => setze('angle', v) })
+  .addSlider('space', { label: 'Abstand', min: -100, max: 100, step: 1, value: 8, onChange: (v) => setze('space', v) })
+  .addSlider('scale', { label: 'Größe', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
+  .endSection();
+
+// Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Maus: dblclick; Touch: zwei kurze Tipps ohne Zug
+// (Touch löst nicht verlässlich dblclick aus).
+const zuruecksetzen = (r) => {
+  const key = r.closest('[data-key]')?.dataset.key || r.dataset.key;
+  if (!key || !el) return;
+  const nullwert = key === 'scale' ? 1 : 0;
+  panel.set(key, nullwert);
+  setze(key, nullwert);
+};
+panel.el.addEventListener('dblclick', (e) => {
+  const r = e.target.closest('input[type="range"]');
+  if (r) zuruecksetzen(r);
+});
+let tipp = null;
+panel.el.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  const r = e.target.closest('input[type="range"]');
+  if (!r) { tipp = null; return; }
+  const jetzt = performance.now();
+  const doppelt = tipp && tipp.r === r && jetzt - tipp.t < 400 && Math.abs(e.clientX - tipp.x) < 12;
+  tipp = doppelt ? null : { r, t: jetzt, x: e.clientX };
+  if (doppelt) setTimeout(() => zuruecksetzen(r), 0);
+});
+
+// Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
+const folge = () => {
+  const z = el.zustand;
+  panel.set('bend', z.bend);
+  panel.set('scale', z.scale);
+};
+const baueEigene = (tag) => {
+  panel.fillSection('eigene', (p) => {
+    for (const [art, key, cfg, fn] of eigene[tag] || []) {
+      p[art === 'select' ? 'addSelect' : 'addInput'](key, { ...cfg, onChange: fn });
+    }
+  });
+};
+
+// Die Leiste auf die Oberkante des Panels heben: Abstand zwischen Unterkante der Bühne und Oberkante des Panels.
+let hubZeile = 0;
+const hub = () => {
+  hubZeile = 0;
+  if (!el) return;
+  const b = buehne.getBoundingClientRect(), p = panel.el.getBoundingClientRect();
+  const wert = { '--leiste-hoch': Math.max(0, Math.round(b.bottom - p.top)) + 'px', '--leiste-versatz': Math.round(p.left + p.width / 2 - (b.left + b.width / 2)) + 'px' };
+  for (const [k, v] of Object.entries(wert)) if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v);
+};
+const hubPlanen = () => { if (!hubZeile) hubZeile = requestAnimationFrame(hub); };
+// Panel bewegt sich (Ziehen, Animation, Einklappen, Fenstergröße): Leiste folgt Bild für Bild.
+new ResizeObserver(hubPlanen).observe(panel.el);
+new MutationObserver(hubPlanen).observe(panel.el, { attributes: true, attributeFilter: ['style', 'class'] });
+const folgeAnimation = () => { hub(); if (panel.el.getAnimations().length) requestAnimationFrame(folgeAnimation); };
+panel.el.addEventListener('transitionrun', folgeAnimation);
+addEventListener('resize', hubPlanen);
+addEventListener('pointermove', hubPlanen);
+
 const zeige = () => {
   const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
   for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
   wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  const el = document.createElement(e.tag);
+  el = document.createElement(e.tag);
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
+  el.addEventListener('inf-change', folge);
   buehne.replaceChildren(el);
+  baueEigene(e.tag);
+  folge();
+  const v = el.constructor.vorgaben;
+  panel.set('angle', v.angle);
+  panel.set('space', v.space);
+  panel.set('capacity', false);
+  hub();
 };
+panel.addResetButton({ onClick: () => zeige() });
 addEventListener('hashchange', zeige);
 await bereit;
 zeige();
