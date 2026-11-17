@@ -14136,7 +14136,7 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 
 Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Das Feld „Anzahl“ im Panel setzt `repeat` auf eine endliche Zahl (große Zahlen erlaubt, `∞` als Text schaltet auf adaptiv); bei ∞ läuft das Feld mit. Links in der Griffzeile steht dezent die Gesamtzahl der Kopien, dieselbe Zahl wie im Feld „Anzahl“ (`∞`, wenn die Reihe nie endet); Antippen öffnet das Panel und setzt den Cursor ins Feld. Das Element meldet die Zahl als Ereignis `inf-zaehl` (`detail: { gezeigt, ziel, grund }`, auch `el.gezaehlt`). Bei `∞` steht dort `∞`, wenn das Bild das unendliche ist; sonst die Zahl der gezeichneten Kopien mit einem Wort, warum nicht (`grund`: `dicht`, `schwingt`, `DOM`). Unter den Reglern steht, womit gezeichnet wird (`GPU`, `Software` oder `unbekannt`, mit Name des Renderers; ohne WebGL2 `DOM`). Meldungen wie „Rückgängig“ sitzen immer über Panel-Oberkante und 0/1/∞-Leiste, nie darauf (`Controls.keepClear`).
 
-`∞` heißt unendlich, nicht viel. `∞` bleibt `∞`, egal welcher Regler sich danach bewegt; nur 0, 1 oder eine eingetippte Anzahl verlassen es. Gezeichnet wird das Grenzbild der unendlichen Folge (siehe Geschlossene Form). Wo das nicht exakt geht, zählt der Zähler ehrlich die gezeichneten Kopien mit einem Wort: `dicht` (mehr als 4 194 304 Orte im Bild, oder der Kreis schließt sich nicht auf 0,001°), `schwingt` (wachsende Spirale ohne Drehung, deren Grenzpunkt in der Kopie liegt), `DOM` (Elemente ohne Faltung, und der DOM-Weg).
+`∞` heißt unendlich, nicht viel. `∞` bleibt `∞`, egal welcher Regler sich danach bewegt; nur 0 oder eine eingetippte Anzahl verlassen es. 1 ist eine Kopie mehr, bei `∞` bleibt es `∞` (∞ + 1 = ∞). Gezeichnet wird das Grenzbild der unendlichen Folge (siehe Geschlossene Form). Wo das nicht exakt geht, zählt der Zähler ehrlich die gezeichneten Kopien mit einem Wort: `dicht` (mehr als 4 194 304 Orte im Bild, oder der Kreis schließt sich nicht auf 0,001°), `schwingt` (wachsende Spirale ohne Drehung, deren Grenzpunkt in der Kopie liegt), `DOM` (Elemente ohne Faltung, und der DOM-Weg).
 
 Adaptiv ist nur, was endlich ist, und die Qualität: Auf dem DOM-Weg (und bei endlichen Anzahlen) misst jedes Element, was das Gerät schafft. Es beginnt bei 720 Kopien und vergrößert die Zahl, solange Layoutzeit und Bildtakt (gemessen gegen die Bildwiederholrate des Bildschirms) Luft lassen; ruckelt es, geht die Zahl wieder zurück, nie unter 720. Keine Pauschale, die Obergrenze ist nur Schutz (4 194 304 gefaltete Kopien, 6000 auf dem DOM-Weg).
 
@@ -15711,11 +15711,8 @@ export class InfElement extends HTMLElement {
   // grund: null, wenn das Bild bei ∞ das unendliche ist; sonst ein Wort, warum es nur gezeigt viele sind.
   get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl, grund: this._grund }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
-  eins() {
-    const z = this._zustand;
-    if (z.unendlich) { z.unendlich = false; z.anzahl = this._gemalt > (this._P || 0) ? this._gemalt : this._cap; }
-    this.mehr(1);
-  }
+  // ∞ + 1 = ∞: im ∞-Zustand ändert 1 nichts an der Zahl (mehr() lässt ∞ stehen).
+  eins() { this.mehr(1); }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
