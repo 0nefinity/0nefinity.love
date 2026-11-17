@@ -5,6 +5,14 @@
 const UNENDLICH = new Set(['∞', 'inf', 'unendlich', 'infinity']);
 // So viele Kopien zeigt ∞: 720, zwei volle Umdrehungen. Mehr fasst kein Bildschirm, der Rest ist mitgemeint.
 const DECKEL = 720;
+// Kapazitätsmodus: so weit die Rechenkapazität reicht, nie über diese Grenze (Knoten und Speicher bleiben beschränkt).
+const KAPAZITAET_MAX = 6000;
+// Pro Messdurchgang so viele Kopien vorausbauen: ein Reflow je Stapel statt einer je Kopie.
+const STAPEL = 64;
+// Länger als das braucht ein Zug im Kapazitätsmodus nie, sonst geht er zurück.
+const ZUG_MS = 24;
+const TAKT_MS = 50;
+const BASIS_ATTRIBUTE = new Set(['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity']);
 
 const GRUNDSTIL = `
 :host { display: block; position: relative; height: 16rem; overflow: hidden; white-space: normal; line-height: normal;
@@ -13,6 +21,7 @@ const GRUNDSTIL = `
 :host([hidden]) { display: none; }
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
+.kopie[hidden] { display: none !important; }
 .leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; gap: .25rem; z-index: 1; }
 .leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
@@ -36,7 +45,7 @@ export class InfElement extends HTMLElement {
   static vorgaben = { repeat: '∞', bend: 0, scale: 1, angle: 0, space: 8, gap: 'auto', rotate: true };
   static stil = '';
   static get observedAttributes() {
-    return ['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', ...(this.eigeneAttribute || [])];
+    return ['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity', ...(this.eigeneAttribute || [])];
   }
 
   constructor() {
@@ -51,6 +60,10 @@ export class InfElement extends HTMLElement {
       </div>`;
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
+    this._sichtbar = 0;
+    this._cap = DECKEL;
+    this._gedeckelt = false;
+    this._takt = 0;
     this._masse = [];
     this._zeiger = new Map();
     this._schreibt = false;
@@ -82,11 +95,12 @@ export class InfElement extends HTMLElement {
     this._verbunden = false;
   }
 
-  attributeChangedCallback() {
+  attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    this._masse = [];
-    this.attributGeaendert();
+    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
+    // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
+    if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
   }
 
@@ -104,7 +118,7 @@ export class InfElement extends HTMLElement {
     const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
-      anzahl: UNENDLICH.has(r) ? DECKEL : Math.max(0, Math.floor(zahl(r, 1))),
+      anzahl: UNENDLICH.has(r) ? KAPAZITAET_MAX : Math.max(0, Math.floor(zahl(r, 1))),
       bend: zahl(a('bend'), v.bend),
       scale: Math.max(0.01, zahl(a('scale'), v.scale)),
       angle: zahl(a('angle'), v.angle),
@@ -113,6 +127,7 @@ export class InfElement extends HTMLElement {
       dx: schub[0] || 0,
       dy: schub[1] ?? 0,
       rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
+      kapazitaet: a('capacity') !== null && a('capacity') !== 'false',
     };
   }
 
@@ -136,7 +151,8 @@ export class InfElement extends HTMLElement {
 
   // Öffentliche Befehle
   mehr(n = 1) { const z = this._zustand; if (!z.unendlich) z.anzahl = Math.max(0, z.anzahl + n); this._schreibe(); this.zeichne(); }
-  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = DECKEL; this._schreibe(); this.zeichne(); }
+  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = KAPAZITAET_MAX; this._schreibe(); this.zeichne(); }
+  eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._sichtbar; } this.mehr(1); }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
@@ -148,19 +164,47 @@ export class InfElement extends HTMLElement {
 
   zeichne() {
     if (!this._verbunden || this._geplant) return;
-    this._geplant = requestAnimationFrame(() => { this._geplant = 0; this._layout(); });
+    this._geplant = requestAnimationFrame((ts) => { this._geplant = 0; this._zug(ts); });
   }
+
+  // Ein Zug: layouten und im Kapazitätsmodus Zeit, Takt und Speicher mitmessen.
+  _zug(ts) {
+    const z = this._zustand;
+    const t0 = performance.now();
+    const takt = this._takt && ts - this._takt < 100 ? ts - this._takt : 0;
+    this._takt = ts;
+    const vorher = this._kopien.length;
+    const voll = this._layout();
+    if (!z.kapazitaet) return;
+    // Der Aufbau neuer Kopien zählt nicht: erst der Zug danach misst nur das Layout.
+    if (this._kopien.length > vorher) { this.zeichne(); return; }
+    const dauer = performance.now() - t0;
+    const m = performance.memory;
+    const speicherknapp = m && m.usedJSHeapSize > m.jsHeapSizeLimit * 0.6;
+    if (this._cap > DECKEL && (dauer > ZUG_MS || takt > TAKT_MS || speicherknapp)) {
+      this._cap = Math.max(DECKEL, Math.floor(this._cap / 1.5));
+      this._gedeckelt = true;
+      this.zeichne();
+    } else if (voll && !this._gedeckelt && this._cap < KAPAZITAET_MAX && dauer < ZUG_MS / 2) {
+      this._cap = Math.min(KAPAZITAET_MAX, Math.ceil(this._cap * 1.5));
+      this.zeichne();
+    }
+  }
+
+  get kapazitaet() { return this._zustand.kapazitaet ? this._cap : DECKEL; }
 
   // Wieviele Kopien sichtbar bleiben: bei ∞ bis aus dem Bild, unter einen halben Pixel oder ein Kreis geschlossen ist.
   _layout() {
     const z = this._zustand;
     const breite = this.clientWidth, hoehe = this.clientHeight;
-    if (!breite || !hoehe) return;
+    if (!breite || !hoehe) return false;
     const diag = Math.hypot(breite, hoehe);
     const mx = breite / 2 + z.dx, my = hoehe / 2 + z.dy;
     let x = mx, y = my, s = 1, richtung = z.angle;
     const kreis = z.unendlich && z.scale === 1 && z.bend !== 0 ? Math.ceil(360 / Math.abs(z.bend)) : Infinity;
-    const ziel = Math.min(z.anzahl, DECKEL, kreis);
+    const grenze = z.kapazitaet ? this._cap : DECKEL;
+    const ziel = Math.min(z.anzahl, grenze, kreis);
+    this._ziel = ziel + 1;
     const orte = [];
     for (let i = 0; i < ziel; i++) {
       const m = this._mass(i, richtung);
@@ -180,36 +224,62 @@ export class InfElement extends HTMLElement {
     this._abgleich(orte.length);
     for (let i = 0; i < orte.length; i++) {
       const o = orte[i];
-      this._kopien[i].style.transform =
-        `translate(${o.x}px,${o.y}px) rotate(${o.r}deg) scale(${o.s}) translate(${-o.m.w / 2}px,${-o.m.h / 2}px)`;
+      const k = this._kopien[i];
+      const t = `translate(${o.x}px,${o.y}px) rotate(${o.r}deg) scale(${o.s}) translate(${-o.m.w / 2}px,${-o.m.h / 2}px)`;
+      if (k._t !== t) { k._t = t; k.style.transform = t; }
     }
     this.nachLayout(orte.length);
+    // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
+    return orte.length >= grenze;
   }
 
   nachLayout() {}
 
-  _abgleich(n) {
-    while (this._kopien.length < n) {
-      const i = this._kopien.length;
-      const k = this.baueKopie(i);
+  // Kopien 0..n-1 sind da und sichtbar, nie weniger als vorher (Vorausbau beim Messen).
+  _bis(n) {
+    const pool = this._kopien;
+    for (let i = this._sichtbar; i < n; i++) {
+      let k = pool[i];
+      if (k) { k.hidden = false; this.fuelleKopie(k, i); continue; }
+      k = this.baueKopie(i);
       k.classList.add('kopie');
       k.dataset.i = i;
       this.fuelleKopie(k, i);
       this._buehne.append(k);
-      this._kopien.push(k);
+      pool.push(k);
     }
-    while (this._kopien.length > n) this._kopien.pop().remove();
+    if (n > this._sichtbar) this._sichtbar = n;
   }
 
-  // Maße einer Kopie ohne Transformation. Kopien werden einmal gemessen und gecacht.
+  // Genau n Kopien zeigen. Der Rest bleibt versteckt im Pool, so wackelt die Zahl ohne DOM-Umbau.
+  _abgleich(n) {
+    this._bis(n);
+    const pool = this._kopien;
+    for (let i = n; i < this._sichtbar; i++) pool[i].hidden = true;
+    this._sichtbar = n;
+    while (pool.length > Math.max(n, DECKEL)) pool.pop().remove();
+  }
+
+  leereKopien() {
+    for (const k of this._kopien.splice(0)) k.remove();
+    this._sichtbar = 0;
+    this._masse = [];
+  }
+
+  // Maße einer Kopie ohne Transformation. Kopien werden einmal gemessen und gecacht, stapelweise.
   _mass(i, richtung) {
     let m = this._masse[i];
     if (!m) {
-      this._abgleich(Math.max(this._kopien.length, i + 1));
-      const k = this._kopien[i];
-      m = { w: k.offsetWidth, h: k.offsetHeight };
-      m.gross = Math.max(m.w, m.h, 1);
-      this._masse[i] = m;
+      const bis = Math.max(i + 1, Math.min(i + STAPEL, this._ziel || 0));
+      this._bis(bis);
+      const frisch = [];
+      for (let j = i; j < bis; j++) if (!this._masse[j]) frisch.push(j);
+      for (const j of frisch) {
+        const k = this._kopien[j];
+        const w = k.offsetWidth, h = k.offsetHeight;
+        this._masse[j] = { w, h, gross: Math.max(w, h, 1) };
+      }
+      m = this._masse[i];
     }
     const z = this._zustand;
     // Pfadrichtung im eigenen Rahmen der Kopie: gedreht wird nur um das, was die Krümmung dazugibt.
@@ -218,14 +288,14 @@ export class InfElement extends HTMLElement {
   }
 
   vermessen() { this._masse = []; this.zeichne(); }
-  get kopien() { return this._kopien; }
+  get kopien() { return this._kopien.slice(0, this._sichtbar); }
 
   _leiste(e) {
     const b = e.target.closest('button[data-z]');
     if (!b) return;
     const z = b.dataset.z;
     if (z === '0') this.ursprung();
-    else if (z === '1') { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._kopien.length; } this.mehr(1); }
+    else if (z === '1') this.eins();
     else this.unendlich();
   }
 

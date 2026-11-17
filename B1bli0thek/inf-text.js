@@ -37,6 +37,6 @@ export class InfText extends InfElement {
     return huelle;
   }
   fuelleKopie(h) { h.firstChild.textContent = this.text; }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-text', InfText);

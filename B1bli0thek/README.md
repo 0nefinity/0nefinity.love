@@ -36,19 +36,20 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
-| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus |
+| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus (die Seite nutzt dafür das Control Panel, `tools/controls.js`) |
+| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
 
-Methoden: `mehr(n)`, `unendlich()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
-Lesbar: `zustand`, `kopien`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
+Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
+Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
 
 Gesten: ein Finger zieht, zwei Finger drehen (krümmen) und spreizen (skalieren). Mausrad krümmt, mit Umschalt/Strg skaliert es.
 Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/weniger, `[` `]` krümmen, `,` `.` skalieren, `0` zurück, `8` unendlich.
 
 ## Elemente
 
-Button, jeder Druck ein Button mehr:
+Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`:
 ```html
-<inf-button label="1"></inf-button>
+<inf-button label="Button" shape="rund"></inf-button>
 ```
 
 Linie (`art` wie `border-style`):
