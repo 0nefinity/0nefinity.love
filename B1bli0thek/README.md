@@ -36,8 +36,10 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
-| `bare` | (ohne Wert) | blendet die eigene Leiste (0 1 ∞, Kapazität, je Element Extras) aus |
-| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück; in der Leiste der Knopf `∞+` |
+| `bare` | (ohne Wert) | blendet die eigene Leiste (nur 0 1 ∞) aus |
+| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
+
+Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1).
 
 Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
 Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
@@ -47,7 +49,7 @@ Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/wenige
 
 ## Elemente
 
-Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`. In der Leiste: Textfeld für `label`, Knopf für `shape` (schaltet durch):
+Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`. Im Panel der Seite: Auswahl für `shape`, Textfeld für `label`:
 ```html
 <inf-button label="Button" shape="rund"></inf-button>
 ```

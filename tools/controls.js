@@ -2263,6 +2263,10 @@
 	                const nextHeight = Math.ceil(bodyHeight);
 	                this.bodyEl.style.height = nextHeight + 'px';
 	                this.bodyEl.style.maxHeight = nextHeight + 'px';
+	            } else if (naturalBodyHeight > 0) {
+	                // Start eingeklappt (desktopInitialHeightFraction 0): Hoehe 0 statt natuerlicher Hoehe.
+	                this.bodyEl.style.height = '0px';
+	                this.bodyEl.style.maxHeight = '0px';
 	            } else {
 	                this.bodyEl.style.height = '';
 	                this.bodyEl.style.maxHeight = '';

@@ -14131,8 +14131,10 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
-| `bare` | (ohne Wert) | blendet die eigene Leiste (0 1 ∞, Kapazität, je Element Extras) aus |
-| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück; in der Leiste der Knopf `∞+` |
+| `bare` | (ohne Wert) | blendet die eigene Leiste (nur 0 1 ∞) aus |
+| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
+
+Die Leiste jedes Elements hat nur 0 1 ∞. Alles andere (Form, Text, `∞+`, Krümmung, Winkel, Abstand, Größe) liegt im eingeklappten controls.js-Panel der Seite darunter; es lässt sich am Griff hochziehen (Maus oder Wischen), die Leiste fährt oben auf der Kante mit. Die Seite setzt dafür `--leiste-hoch` und `--leiste-versatz` (px) auf das Element. Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1).
 
 Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
 Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
@@ -14142,7 +14144,7 @@ Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/wenige
 
 ## Elemente
 
-Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`. In der Leiste: Textfeld für `label`, Knopf für `shape` (schaltet durch):
+Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`. Im Panel der Seite: Auswahl für `shape`, Textfeld für `label`:
 ```html
 <inf-button label="Button" shape="rund"></inf-button>
 ```
@@ -14305,14 +14307,103 @@ for (const e of elemente) {
   gruppen.get(e.gruppe).append(a);
 }
 
+// Das Control Panel (tools/controls.js) liegt eingeklappt unten und lässt sich hochschieben. Die 0/1/∞-Leiste des Elements
+// sitzt auf seiner Oberkante und fährt mit (--leiste-hoch).
+const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left', mobileInitialOpenMode: 'peek', desktopInitialHeightFraction: 0 });
+let el = null;
+const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
+const eigene = {
+  'inf-letter': [
+    ['input', 'char', { label: 'Zeichen', value: 'B' }, (v) => { if (v) el.char = v; }],
+  ],
+  'inf-button': [
+    ['select', 'shape', { label: 'Form', value: 'standard', options: ['standard', 'eckig', 'rund', 'pille', 'kreis'].map((v) => ({ value: v, label: v })) }, (v) => (v === 'standard' ? el.removeAttribute('shape') : setze('shape', v))],
+    ['input', 'label', { label: 'Text', value: 'Button' }, (v) => (v === '' ? el.removeAttribute('label') : setze('label', v))],
+  ],
+};
+panel
+  .beginSection('eigene').endSection()
+  .beginSection('gemeinsam')
+  .addToggle('capacity', { label: '∞+', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
+  .addSlider('bend', { label: 'Krümmung', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
+  .addSlider('angle', { label: 'Winkel', min: -180, max: 180, step: 1, value: 0, onChange: (v) => setze('angle', v) })
+  .addSlider('space', { label: 'Abstand', min: -100, max: 100, step: 1, value: 8, onChange: (v) => setze('space', v) })
+  .addSlider('scale', { label: 'Größe', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
+  .endSection();
+
+// Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Maus: dblclick; Touch: zwei kurze Tipps ohne Zug
+// (Touch löst nicht verlässlich dblclick aus).
+const zuruecksetzen = (r) => {
+  const key = r.closest('[data-key]')?.dataset.key || r.dataset.key;
+  if (!key || !el) return;
+  const nullwert = key === 'scale' ? 1 : 0;
+  panel.set(key, nullwert);
+  setze(key, nullwert);
+};
+panel.el.addEventListener('dblclick', (e) => {
+  const r = e.target.closest('input[type="range"]');
+  if (r) zuruecksetzen(r);
+});
+let tipp = null;
+panel.el.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  const r = e.target.closest('input[type="range"]');
+  if (!r) { tipp = null; return; }
+  const jetzt = performance.now();
+  const doppelt = tipp && tipp.r === r && jetzt - tipp.t < 400 && Math.abs(e.clientX - tipp.x) < 12;
+  tipp = doppelt ? null : { r, t: jetzt, x: e.clientX };
+  if (doppelt) setTimeout(() => zuruecksetzen(r), 0);
+});
+
+// Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
+const folge = () => {
+  const z = el.zustand;
+  panel.set('bend', z.bend);
+  panel.set('scale', z.scale);
+};
+const baueEigene = (tag) => {
+  panel.fillSection('eigene', (p) => {
+    for (const [art, key, cfg, fn] of eigene[tag] || []) {
+      p[art === 'select' ? 'addSelect' : 'addInput'](key, { ...cfg, onChange: fn });
+    }
+  });
+};
+
+// Die Leiste auf die Oberkante des Panels heben: Abstand zwischen Unterkante der Bühne und Oberkante des Panels.
+let hubZeile = 0;
+const hub = () => {
+  hubZeile = 0;
+  if (!el) return;
+  const b = buehne.getBoundingClientRect(), p = panel.el.getBoundingClientRect();
+  const wert = { '--leiste-hoch': Math.max(0, Math.round(b.bottom - p.top)) + 'px', '--leiste-versatz': Math.round(p.left + p.width / 2 - (b.left + b.width / 2)) + 'px' };
+  for (const [k, v] of Object.entries(wert)) if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v);
+};
+const hubPlanen = () => { if (!hubZeile) hubZeile = requestAnimationFrame(hub); };
+// Panel bewegt sich (Ziehen, Animation, Einklappen, Fenstergröße): Leiste folgt Bild für Bild.
+new ResizeObserver(hubPlanen).observe(panel.el);
+new MutationObserver(hubPlanen).observe(panel.el, { attributes: true, attributeFilter: ['style', 'class'] });
+const folgeAnimation = () => { hub(); if (panel.el.getAnimations().length) requestAnimationFrame(folgeAnimation); };
+panel.el.addEventListener('transitionrun', folgeAnimation);
+addEventListener('resize', hubPlanen);
+addEventListener('pointermove', hubPlanen);
+
 const zeige = () => {
   const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
   for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
   wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  const el = document.createElement(e.tag);
+  el = document.createElement(e.tag);
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
+  el.addEventListener('inf-change', folge);
   buehne.replaceChildren(el);
+  baueEigene(e.tag);
+  folge();
+  const v = el.constructor.vorgaben;
+  panel.set('angle', v.angle);
+  panel.set('space', v.space);
+  panel.set('capacity', false);
+  hub();
 };
+panel.addResetButton({ onClick: () => zeige() });
 addEventListener('hashchange', zeige);
 await bereit;
 zeige();
@@ -14357,9 +14448,7 @@ export class InfBox extends InfElement {
 registriere('inf-box', InfBox);
 
 B1bli0thek/inf-button.js
-import { InfElement, OHNE_AUTOFILL, STEUERSTIL, registriere } from './kern.js';
-
-const FORMEN = ['standard', 'eckig', 'rund', 'pille', 'kreis'];
+import { InfElement, STEUERSTIL, registriere } from './kern.js';
 
 // Jeder Druck auf einen Button ist ein Button mehr.
 export class InfButton extends InfElement {
@@ -14369,18 +14458,7 @@ export class InfButton extends InfElement {
     :host([shape="eckig"]) button.ding { border-radius: 0; }
     :host([shape="rund"]) button.ding { border-radius: 12px; }
     :host([shape="pille"]) button.ding { border-radius: 999px; }
-    :host([shape="kreis"]) button.ding { border-radius: 50%; aspect-ratio: 1; padding: 0 .5rem; }
-    .leiste input.text { width: 68px; padding: 0 .25rem; }
-    .leiste .form i { display: block; width: 20px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px; }
-    .leiste .form[data-form="eckig"] i { border-radius: 0; }
-    .leiste .form[data-form="rund"] i { border-radius: 6px; }
-    .leiste .form[data-form="pille"] i { border-radius: 999px; }
-    .leiste .form[data-form="kreis"] i { width: 14px; height: 14px; border-radius: 50%; }`;
-
-  leistenExtra() {
-    return `<input class="text" type="search" aria-label="Text" placeholder="Button" ${OHNE_AUTOFILL} enterkeyhint="done">
-      <button type="button" class="form" aria-label="Form" title="Form"><i></i></button>`;
-  }
+    :host([shape="kreis"]) button.ding { border-radius: 50%; aspect-ratio: 1; padding: 0 .5rem; }`;
 
   baueKopie() {
     const b = document.createElement('button');
@@ -14390,23 +14468,8 @@ export class InfButton extends InfElement {
     return b;
   }
   fuelleKopie(b) { b.textContent = this.getAttribute('label') ?? 'Button'; }
-  attributGeaendert() {
-    for (const k of this.kopien) this.fuelleKopie(k);
-    const t = this._root.querySelector('.text');
-    if (t && this._root.activeElement !== t) t.value = this.getAttribute('label') ?? '';
-    const f = this._root.querySelector('.form');
-    if (f) f.dataset.form = this.getAttribute('shape') || 'standard';
-  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
   verbunden() {
-    const t = this._root.querySelector('.text');
-    t.value = this.getAttribute('label') ?? '';
-    t.addEventListener('input', () => (t.value === '' ? this.removeAttribute('label') : this.setAttribute('label', t.value)));
-    const f = this._root.querySelector('.form');
-    f.dataset.form = this.getAttribute('shape') || 'standard';
-    f.addEventListener('click', () => {
-      const n = FORMEN[(FORMEN.indexOf(this.getAttribute('shape') || 'standard') + 1) % FORMEN.length];
-      if (n === 'standard') this.removeAttribute('shape'); else this.setAttribute('shape', n);
-    });
     this._root.querySelector('.buehne').addEventListener('click', (e) => {
       if (e.target.closest('button.ding')) this.mehr(1);
     });
@@ -14544,7 +14607,7 @@ export class InfImage extends InfElement {
 registriere('inf-image', InfImage);
 
 B1bli0thek/inf-letter.js
-import { InfElement, OHNE_AUTOFILL, registriere } from './kern.js';
+import { InfElement, registriere } from './kern.js';
 
 // Ein einzelnes Zeichen. B ist die aufgestellte 8, die aufgestellte 8 ist ∞.
 const segmente = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter() : null;
@@ -14564,29 +14627,12 @@ export class InfLetter extends InfElement {
   get char() { return this.getAttribute('char') || 'B'; }
   set char(c) { this.setAttribute('char', letztesZeichen(String(c)) || 'B'); }
 
-  leistenExtra() { return `<input class="wahl" type="search" aria-label="Zeichen" ${OHNE_AUTOFILL} enterkeyhint="done">`; }
   baueKopie() { const s = document.createElement('span'); s.className = 'zeichen'; s.part = 'item'; return s; }
   fuelleKopie(s) {
     s.textContent = this.char;
     s.style.setProperty('--groesse', this.getAttribute('size') || '8rem');
   }
-  attributGeaendert() {
-    for (const k of this.kopien) this.fuelleKopie(k);
-    const w = this._root.querySelector('.wahl');
-    if (w && document.activeElement !== this) w.value = this.char;
-  }
-  verbunden() {
-    const w = this._root.querySelector('.wahl');
-    w.value = this.char;
-    w.addEventListener('focus', () => w.select());
-    w.addEventListener('input', () => {
-      const z = letztesZeichen(w.value);
-      if (!z) return;
-      w.value = z;
-      this.char = z;
-      w.select();
-    });
-  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
 }
 registriere('inf-letter', InfLetter);
 
@@ -14846,17 +14892,14 @@ const GRUNDSTIL = `
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
 .kopie[hidden] { display: none !important; }
-.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
-.leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
+.leiste { position: absolute; left: calc(50% + var(--leiste-versatz, 0px)); bottom: calc(.5rem + var(--leiste-hoch, 0px)); transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
+.leiste button { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
   border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
   font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
-.leiste input { width: 44px; cursor: text; font-size: 16px; }
-input[type="search"]::-webkit-search-cancel-button, input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; display: none; }
-.leiste button[aria-pressed="true"] { background: var(--ui-fill-20, rgba(255,255,255,.2)); color: var(--text-color, white); }
 .leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
 @media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
-.leiste button:focus-visible, .leiste input:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
+.leiste button:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
 :host([bare]) .leiste { display: none; }
 `;
 
@@ -14879,11 +14922,10 @@ export class InfElement extends HTMLElement {
     this._root = this.attachShadow({ mode: 'open' });
     this._root.innerHTML = `<style>${GRUNDSTIL}${this.constructor.stil}</style>
       <div class="buehne" part="stage"></div>
-      <div class="leiste" part="controls">${this.leistenExtra()}
+      <div class="leiste" part="controls">
         <button type="button" data-z="0" aria-label="zurück auf eins">0</button>
         <button type="button" data-z="1" aria-label="eins mehr">1</button>
         <button type="button" data-z="∞" aria-label="unendlich">∞</button>
-        <button type="button" data-z="kap" aria-label="so weit die Rechenkapazität reicht" title="so weit die Rechenkapazität reicht" aria-pressed="false">∞+</button>
       </div>`;
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
@@ -14925,20 +14967,15 @@ export class InfElement extends HTMLElement {
   attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; this._zeigeKapazitaet(); }
+    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
   }
 
-  _zeigeKapazitaet() {
-    this._root.querySelector('[data-z="kap"]').setAttribute('aria-pressed', String(this._zustand.kapazitaet));
-  }
-
   // Haken für Unterklassen
   verbunden() {}
   attributGeaendert() {}
-  leistenExtra() { return ''; }
   baueKopie() { return document.createElement('span'); }
   fuelleKopie() {}
 
@@ -15130,7 +15167,6 @@ export class InfElement extends HTMLElement {
     const z = b.dataset.z;
     if (z === '0') this.ursprung();
     else if (z === '1') this.eins();
-    else if (z === 'kap') this.toggleAttribute('capacity');
     else this.unendlich();
   }
 
@@ -15207,7 +15243,6 @@ export class InfElement extends HTMLElement {
 }
 
 // Gemeinsame Eingabefeld-Attribute: nie Autofill/Passwortleiste auslösen.
-export const OHNE_AUTOFILL = 'autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" data-protonpass-ignore="true"';
 export function ohneAutofill(feld) {
   for (const [k, v] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['spellcheck', 'false'], ['autocapitalize', 'off'],
     ['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other'], ['data-protonpass-ignore', 'true']]) feld.setAttribute(k, v);
@@ -84370,6 +84405,10 @@ tools/controls.js
 	                const nextHeight = Math.ceil(bodyHeight);
 	                this.bodyEl.style.height = nextHeight + 'px';
 	                this.bodyEl.style.maxHeight = nextHeight + 'px';
+	            } else if (naturalBodyHeight > 0) {
+	                // Start eingeklappt (desktopInitialHeightFraction 0): Hoehe 0 statt natuerlicher Hoehe.
+	                this.bodyEl.style.height = '0px';
+	                this.bodyEl.style.maxHeight = '0px';
 	            } else {
 	                this.bodyEl.style.height = '';
 	                this.bodyEl.style.maxHeight = '';
