@@ -22,12 +22,13 @@ const GRUNDSTIL = `
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
 .kopie[hidden] { display: none !important; }
-.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; gap: .25rem; z-index: 1; }
+.leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 1rem); gap: .25rem; z-index: 1; }
 .leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
   border-radius: 4px; color: var(--ui-text-80, rgba(255,255,255,.8)); background: var(--ui-fill-05, rgba(255,255,255,.05));
   font: inherit; font-size: 1.125rem; line-height: 1; touch-action: manipulation; }
 .leiste input { width: 44px; cursor: text; font-size: 16px; }
+.leiste button[aria-pressed="true"] { background: var(--ui-fill-20, rgba(255,255,255,.2)); color: var(--text-color, white); }
 .leiste button:active { background: var(--ui-fill-20, rgba(255,255,255,.2)); }
 @media (hover: hover) { .leiste button:hover { background: var(--ui-fill-10, rgba(255,255,255,.1)); color: var(--text-color, white); } }
 .leiste button:focus-visible, .leiste input:focus-visible { outline: 1px solid var(--text-color, white); outline-offset: 2px; }
@@ -57,6 +58,7 @@ export class InfElement extends HTMLElement {
         <button type="button" data-z="0" aria-label="zurück auf eins">0</button>
         <button type="button" data-z="1" aria-label="eins mehr">1</button>
         <button type="button" data-z="∞" aria-label="unendlich">∞</button>
+        <button type="button" data-z="kap" aria-label="so weit die Rechenkapazität reicht" title="so weit die Rechenkapazität reicht" aria-pressed="false">∞+</button>
       </div>`;
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
@@ -98,10 +100,14 @@ export class InfElement extends HTMLElement {
   attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
+    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; this._zeigeKapazitaet(); }
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
+  }
+
+  _zeigeKapazitaet() {
+    this._root.querySelector('[data-z="kap"]').setAttribute('aria-pressed', String(this._zustand.kapazitaet));
   }
 
   // Haken für Unterklassen
@@ -115,6 +121,8 @@ export class InfElement extends HTMLElement {
     const v = this.constructor.vorgaben;
     const a = (n) => this.getAttribute(n);
     const r = (a('repeat') ?? String(v.repeat)).trim().toLowerCase();
+    const sp = a('space');
+    const fest = sp === null || sp.trim() === '' || !Number.isFinite(Number(sp)) ? null : Number(sp);
     const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
@@ -123,7 +131,8 @@ export class InfElement extends HTMLElement {
       scale: Math.max(0.01, zahl(a('scale'), v.scale)),
       angle: zahl(a('angle'), v.angle),
       space: zahl(a('space'), v.space),
-      gap: (a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null),
+      // Ausdrücklich gesetztes space ist der Schritt selbst: 0 = alle Kopien deckungsgleich. Ohne Attribut: Abstand aus der Größe.
+      gap: a('gap') !== null || fest === null ? ((a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null)) : fest,
       dx: schub[0] || 0,
       dy: schub[1] ?? 0,
       rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
@@ -296,6 +305,7 @@ export class InfElement extends HTMLElement {
     const z = b.dataset.z;
     if (z === '0') this.ursprung();
     else if (z === '1') this.eins();
+    else if (z === 'kap') this.toggleAttribute('capacity');
     else this.unendlich();
   }
 

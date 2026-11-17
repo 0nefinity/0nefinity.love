@@ -32,12 +32,12 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `bend` | Grad | Krümmung je Kopie |
 | `scale` | Faktor | Größe je Kopie im Verhältnis zur vorigen |
 | `angle` | Grad | Richtung, in die die Reihe wächst |
-| `space` | px | Abstand zwischen Kopien |
+| `space` | px | Schritt zwischen Kopien: `0` legt alle deckungsgleich übereinander, positive Werte führen sie auseinander. Ohne Attribut: Abstand aus der Größe |
 | `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
-| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus (die Seite nutzt dafür das Control Panel, `tools/controls.js`) |
-| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
+| `bare` | (ohne Wert) | blendet die eigene Leiste (0 1 ∞, Kapazität, je Element Extras) aus |
+| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück; in der Leiste der Knopf `∞+` |
 
 Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
 Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
@@ -47,7 +47,7 @@ Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/wenige
 
 ## Elemente
 
-Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`:
+Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`. In der Leiste: Textfeld für `label`, Knopf für `shape` (schaltet durch):
 ```html
 <inf-button label="Button" shape="rund"></inf-button>
 ```
