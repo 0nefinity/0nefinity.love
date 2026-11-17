@@ -67,9 +67,9 @@ Checkbox oder Radio, die Wahl läuft als Welle durch:
 <inf-check type="radio"></inf-check>
 ```
 
-Schieberegler, alle folgen um `phase` versetzt:
+Schieberegler mit Nullpunkt in der Mitte (Mittelmarke, Doppelklick/Doppeltipp setzt auf 0; `min`/`max` frei, auch negativ), alle folgen um `phase` versetzt:
 ```html
-<inf-range min="0" max="100" value="50" phase="7"></inf-range>
+<inf-range min="-100" max="100" value="0" phase="7"></inf-range>
 ```
 
 Link; ohne `href` gibt er sich selbst ein weiteres Mal, mit `href` ist er ein echter Link:
