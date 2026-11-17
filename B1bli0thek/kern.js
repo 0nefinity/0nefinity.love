@@ -184,6 +184,15 @@ export class InfElement extends HTMLElement {
 
   // Öffentliche Befehle
   mehr(n = 1) { const z = this._zustand; if (!z.unendlich) z.anzahl = Math.max(0, z.anzahl + n); this._schreibe(); this.zeichne(); }
+  // Endliche Anzahl setzen (Feld "Anzahl"). Mehr, als das Gerät flüssig schafft, bleibt mitgemeint: gezeigt wird so viel wie geht.
+  setzeAnzahl(n) {
+    const z = this._zustand;
+    z.unendlich = false;
+    z.anzahl = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)));
+    this._schreibe(); this.zeichne();
+  }
+  // Wie viele Kopien gerade gezeigt werden (bei ∞ laufend die der adaptiven Regelung) und wie viele gewollt sind.
+  get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
   eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._gezeigt; } this.mehr(1); }
   ursprung() {
@@ -333,7 +342,10 @@ export class InfElement extends HTMLElement {
       }
       this._faltung.zeichne(orte, P, n, breite, hoehe, smax);
     } else this._faltung?.leer();
-    this._gezeigt = n;
+    if (this._gezeigt !== n || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
+      this._gezeigt = n; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+      this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
+    }
     this.nachLayout(dom);
     // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
     return n >= grenze;
