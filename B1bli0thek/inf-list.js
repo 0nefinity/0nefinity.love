@@ -23,6 +23,6 @@ export class InfList extends InfElement {
     const m = this.getAttribute('marker');
     if (m !== null) l.style.setProperty('--marker', JSON.stringify(m + ' '));
   }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-list', InfList);

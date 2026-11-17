@@ -14131,19 +14131,20 @@ Die Attribute setzen den Startzustand. Jede Geste schreibt den neuen Zustand zur
 | `gap` | px oder `auto` | fester Schritt statt Abstand aus der Größe |
 | `shift` | `x y` in px | Verschiebung des Ursprungs |
 | `rotate` | `false` | Kopien folgen der Krümmung nicht mit |
-| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus |
+| `bare` | (ohne Wert) | blendet die Leiste 0 1 ∞ aus (die Seite nutzt dafür das Control Panel, `tools/controls.js`) |
+| `capacity` | (ohne Wert) | Kapazitätsmodus: bei `∞` wächst die Zahl der Kopien über 720 hinaus, solange Layoutzeit, Bildtakt und Speicher es zulassen (Obergrenze 6000); Entfernen setzt sofort auf 720 zurück |
 
-Methoden: `mehr(n)`, `unendlich()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
-Lesbar: `zustand`, `kopien`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
+Methoden: `mehr(n)`, `unendlich()`, `eins()`, `ursprung()`, `kruemme(grad)`, `skaliere(faktor)`, `verschiebe(dx, dy)`, `vermessen()`.
+Lesbar: `zustand`, `kopien`, `kapazitaet`. Ereignis bei jeder Änderung: `inf-change` (Detail = `zustand`).
 
 Gesten: ein Finger zieht, zwei Finger drehen (krümmen) und spreizen (skalieren). Mausrad krümmt, mit Umschalt/Strg skaliert es.
 Tasten: Pfeile verschieben (mit Umschalt weiter), `+` `-` eine Kopie mehr/weniger, `[` `]` krümmen, `,` `.` skalieren, `0` zurück, `8` unendlich.
 
 ## Elemente
 
-Button, jeder Druck ein Button mehr:
+Button, jeder Druck ein Button mehr. `label` (Standard `Button`) ändert den Text, `shape` die Form: `eckig`, `rund`, `pille`, `kreis`:
 ```html
-<inf-button label="1"></inf-button>
+<inf-button label="Button" shape="rund"></inf-button>
 ```
 
 Linie (`art` wie `border-style`):
@@ -14304,14 +14305,70 @@ for (const e of elemente) {
   gruppen.get(e.gruppe).append(a);
 }
 
+
+// Das Control Panel (tools/controls.js): gemeinsame Regler für jedes Element, dazu die eigenen des gewählten.
+const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left' });
+let el = null;
+const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
+const eigene = {
+  'inf-letter': [
+    ['input', 'char', { label: 'Zeichen', value: 'B' }, (v) => { if (v) el.char = v; }],
+  ],
+  'inf-button': [
+    ['select', 'shape', { label: 'Form', value: 'standard', options: ['standard', 'eckig', 'rund', 'pille', 'kreis'].map((v) => ({ value: v, label: v })) }, (v) => (v === 'standard' ? el.removeAttribute('shape') : setze('shape', v))],
+    ['input', 'label', { label: 'Text', value: 'Button' }, (v) => setze('label', v)],
+  ],
+};
+panel
+  .beginSection('eigene').endSection()
+  .beginSection('gemeinsam')
+  .addButtonGroup('leiste', { buttons: [
+    { key: 'null', label: '0', title: 'zurück auf eins', onClick: () => el.ursprung() },
+    { key: 'eins', label: '1', title: 'eins mehr', onClick: () => el.eins() },
+    { key: 'unendlich', label: '∞', title: 'unendlich', onClick: () => el.unendlich() },
+  ] })
+  .addToggle('inf', { label: '∞', value: true, onChange: (v) => setze('repeat', v ? '∞' : Math.max(0, panel.get('repeat') ?? 1)) })
+  .addSlider('repeat', { label: 'repeat', min: 0, max: 100, step: 1, value: 1, onChange: (v) => { panel.set('inf', false); setze('repeat', v); } })
+  .addSlider('bend', { label: 'bend', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
+  .addSlider('scale', { label: 'scale', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
+  .addSlider('angle', { label: 'angle', min: 0, max: 360, step: 1, wrap: true, value: 0, onChange: (v) => setze('angle', v) })
+  .addSlider('space', { label: 'space', min: -50, max: 200, step: 1, value: 8, onChange: (v) => setze('space', v) })
+  .addToggle('capacity', { label: 'Kapazität', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
+  .endSection();
+
+// Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
+const folge = () => {
+  const z = el.zustand;
+  panel.set('inf', z.repeat === '∞');
+  if (z.repeat !== '∞') panel.set('repeat', z.repeat);
+  panel.set('bend', z.bend);
+  panel.set('scale', z.scale);
+};
+const baueEigene = (tag) => {
+  panel.fillSection('eigene', (p) => {
+    for (const [art, key, cfg, fn] of eigene[tag] || []) {
+      p[art === 'select' ? 'addSelect' : 'addInput'](key, { ...cfg, onChange: fn });
+    }
+  });
+};
+
 const zeige = () => {
   const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
   for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
   wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  const el = document.createElement(e.tag);
+  el = document.createElement(e.tag);
+  el.setAttribute('bare', '');
   for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
+  el.addEventListener('inf-change', folge);
   buehne.replaceChildren(el);
+  baueEigene(e.tag);
+  folge();
+  const v = el.constructor.vorgaben;
+  panel.set('angle', v.angle);
+  panel.set('space', v.space);
+  panel.set('capacity', false);
 };
+panel.addResetButton({ onClick: () => zeige() });
 addEventListener('hashchange', zeige);
 await bereit;
 zeige();
@@ -14361,8 +14418,12 @@ import { InfElement, STEUERSTIL, registriere } from './kern.js';
 // Jeder Druck auf einen Button ist ein Button mehr.
 export class InfButton extends InfElement {
   static vorgaben = { ...InfElement.vorgaben, repeat: 1, space: 8 };
-  static eigeneAttribute = ['label'];
-  static stil = STEUERSTIL;
+  static eigeneAttribute = ['label', 'shape'];
+  static stil = STEUERSTIL + `
+    :host([shape="eckig"]) button.ding { border-radius: 0; }
+    :host([shape="rund"]) button.ding { border-radius: 12px; }
+    :host([shape="pille"]) button.ding { border-radius: 999px; }
+    :host([shape="kreis"]) button.ding { border-radius: 50%; aspect-ratio: 1; padding: 0 .5rem; }`;
 
   baueKopie() {
     const b = document.createElement('button');
@@ -14371,7 +14432,7 @@ export class InfButton extends InfElement {
     b.part = 'item';
     return b;
   }
-  fuelleKopie(b) { b.textContent = this.getAttribute('label') ?? '1'; }
+  fuelleKopie(b) { b.textContent = this.getAttribute('label') ?? 'Button'; }
   attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('click', (e) => {
@@ -14411,7 +14472,7 @@ export class InfCheck extends InfElement {
     return l;
   }
   fuelleKopie(l, i) { l.firstChild.checked = this._an.has(i); }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('change', (e) => {
       const start = Number(e.target.closest('.kopie').dataset.i);
@@ -14470,7 +14531,7 @@ export class InfField extends InfElement {
   fuelleKopie(f) { f.value = this._wert; }
   attributGeaendert() {
     this._wert = this.getAttribute('value') ?? this._wert;
-    if ((this.kopien[0]?.tagName === 'TEXTAREA') !== this.hasAttribute('multiline')) { for (const k of this.kopien.splice(0)) k.remove(); }
+    if ((this.kopien[0]?.tagName === 'TEXTAREA') !== this.hasAttribute('multiline')) { this.leereKopien(); }
     for (const k of this.kopien) this.fuelleKopie(k);
   }
   get value() { return this._wert; }
@@ -14627,7 +14688,7 @@ export class InfList extends InfElement {
     const m = this.getAttribute('marker');
     if (m !== null) l.style.setProperty('--marker', JSON.stringify(m + ' '));
   }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-list', InfList);
 
@@ -14706,7 +14767,7 @@ export class InfTable extends InfElement {
     const zellen = t.rows[0].cells;
     for (let j = 0; j < zellen.length; j++) zellen[j].textContent = inhalt === 'index' ? `${i},${j}` : (inhalt ?? '');
   }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-table', InfTable);
 
@@ -14750,7 +14811,7 @@ export class InfText extends InfElement {
     return huelle;
   }
   fuelleKopie(h) { h.firstChild.textContent = this.text; }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-text', InfText);
 
@@ -14762,6 +14823,14 @@ B1bli0thek/kern.js
 const UNENDLICH = new Set(['∞', 'inf', 'unendlich', 'infinity']);
 // So viele Kopien zeigt ∞: 720, zwei volle Umdrehungen. Mehr fasst kein Bildschirm, der Rest ist mitgemeint.
 const DECKEL = 720;
+// Kapazitätsmodus: so weit die Rechenkapazität reicht, nie über diese Grenze (Knoten und Speicher bleiben beschränkt).
+const KAPAZITAET_MAX = 6000;
+// Pro Messdurchgang so viele Kopien vorausbauen: ein Reflow je Stapel statt einer je Kopie.
+const STAPEL = 64;
+// Länger als das braucht ein Zug im Kapazitätsmodus nie, sonst geht er zurück.
+const ZUG_MS = 24;
+const TAKT_MS = 50;
+const BASIS_ATTRIBUTE = new Set(['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity']);
 
 const GRUNDSTIL = `
 :host { display: block; position: relative; height: 16rem; overflow: hidden; white-space: normal; line-height: normal;
@@ -14770,6 +14839,7 @@ const GRUNDSTIL = `
 :host([hidden]) { display: none; }
 .buehne { position: absolute; inset: 0; outline: none; }
 .kopie { position: absolute; left: 0; top: 0; transform-origin: 0 0; white-space: nowrap; }
+.kopie[hidden] { display: none !important; }
 .leiste { position: absolute; left: 50%; bottom: .5rem; transform: translateX(-50%); display: flex; gap: .25rem; z-index: 1; }
 .leiste button, .leiste input { all: unset; box-sizing: border-box; min-width: 44px; height: 44px; padding: 0 .5rem;
   display: inline-flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
@@ -14793,7 +14863,7 @@ export class InfElement extends HTMLElement {
   static vorgaben = { repeat: '∞', bend: 0, scale: 1, angle: 0, space: 8, gap: 'auto', rotate: true };
   static stil = '';
   static get observedAttributes() {
-    return ['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', ...(this.eigeneAttribute || [])];
+    return ['repeat', 'bend', 'scale', 'angle', 'space', 'gap', 'shift', 'rotate', 'capacity', ...(this.eigeneAttribute || [])];
   }
 
   constructor() {
@@ -14808,6 +14878,10 @@ export class InfElement extends HTMLElement {
       </div>`;
     this._buehne = this._root.querySelector('.buehne');
     this._kopien = [];
+    this._sichtbar = 0;
+    this._cap = DECKEL;
+    this._gedeckelt = false;
+    this._takt = 0;
     this._masse = [];
     this._zeiger = new Map();
     this._schreibt = false;
@@ -14839,11 +14913,12 @@ export class InfElement extends HTMLElement {
     this._verbunden = false;
   }
 
-  attributeChangedCallback() {
+  attributeChangedCallback(name) {
     if (this._schreibt) return;
     this._leseAttribute();
-    this._masse = [];
-    this.attributGeaendert();
+    if (name === 'capacity') { this._cap = DECKEL; this._gedeckelt = false; }
+    // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
+    if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
     this.zeichne();
   }
 
@@ -14861,7 +14936,7 @@ export class InfElement extends HTMLElement {
     const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
-      anzahl: UNENDLICH.has(r) ? DECKEL : Math.max(0, Math.floor(zahl(r, 1))),
+      anzahl: UNENDLICH.has(r) ? KAPAZITAET_MAX : Math.max(0, Math.floor(zahl(r, 1))),
       bend: zahl(a('bend'), v.bend),
       scale: Math.max(0.01, zahl(a('scale'), v.scale)),
       angle: zahl(a('angle'), v.angle),
@@ -14870,6 +14945,7 @@ export class InfElement extends HTMLElement {
       dx: schub[0] || 0,
       dy: schub[1] ?? 0,
       rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
+      kapazitaet: a('capacity') !== null && a('capacity') !== 'false',
     };
   }
 
@@ -14893,7 +14969,8 @@ export class InfElement extends HTMLElement {
 
   // Öffentliche Befehle
   mehr(n = 1) { const z = this._zustand; if (!z.unendlich) z.anzahl = Math.max(0, z.anzahl + n); this._schreibe(); this.zeichne(); }
-  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = DECKEL; this._schreibe(); this.zeichne(); }
+  unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = KAPAZITAET_MAX; this._schreibe(); this.zeichne(); }
+  eins() { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._sichtbar; } this.mehr(1); }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
@@ -14905,19 +14982,47 @@ export class InfElement extends HTMLElement {
 
   zeichne() {
     if (!this._verbunden || this._geplant) return;
-    this._geplant = requestAnimationFrame(() => { this._geplant = 0; this._layout(); });
+    this._geplant = requestAnimationFrame((ts) => { this._geplant = 0; this._zug(ts); });
   }
+
+  // Ein Zug: layouten und im Kapazitätsmodus Zeit, Takt und Speicher mitmessen.
+  _zug(ts) {
+    const z = this._zustand;
+    const t0 = performance.now();
+    const takt = this._takt && ts - this._takt < 100 ? ts - this._takt : 0;
+    this._takt = ts;
+    const vorher = this._kopien.length;
+    const voll = this._layout();
+    if (!z.kapazitaet) return;
+    // Der Aufbau neuer Kopien zählt nicht: erst der Zug danach misst nur das Layout.
+    if (this._kopien.length > vorher) { this.zeichne(); return; }
+    const dauer = performance.now() - t0;
+    const m = performance.memory;
+    const speicherknapp = m && m.usedJSHeapSize > m.jsHeapSizeLimit * 0.6;
+    if (this._cap > DECKEL && (dauer > ZUG_MS || takt > TAKT_MS || speicherknapp)) {
+      this._cap = Math.max(DECKEL, Math.floor(this._cap / 1.5));
+      this._gedeckelt = true;
+      this.zeichne();
+    } else if (voll && !this._gedeckelt && this._cap < KAPAZITAET_MAX && dauer < ZUG_MS / 2) {
+      this._cap = Math.min(KAPAZITAET_MAX, Math.ceil(this._cap * 1.5));
+      this.zeichne();
+    }
+  }
+
+  get kapazitaet() { return this._zustand.kapazitaet ? this._cap : DECKEL; }
 
   // Wieviele Kopien sichtbar bleiben: bei ∞ bis aus dem Bild, unter einen halben Pixel oder ein Kreis geschlossen ist.
   _layout() {
     const z = this._zustand;
     const breite = this.clientWidth, hoehe = this.clientHeight;
-    if (!breite || !hoehe) return;
+    if (!breite || !hoehe) return false;
     const diag = Math.hypot(breite, hoehe);
     const mx = breite / 2 + z.dx, my = hoehe / 2 + z.dy;
     let x = mx, y = my, s = 1, richtung = z.angle;
     const kreis = z.unendlich && z.scale === 1 && z.bend !== 0 ? Math.ceil(360 / Math.abs(z.bend)) : Infinity;
-    const ziel = Math.min(z.anzahl, DECKEL, kreis);
+    const grenze = z.kapazitaet ? this._cap : DECKEL;
+    const ziel = Math.min(z.anzahl, grenze, kreis);
+    this._ziel = ziel + 1;
     const orte = [];
     for (let i = 0; i < ziel; i++) {
       const m = this._mass(i, richtung);
@@ -14937,36 +15042,62 @@ export class InfElement extends HTMLElement {
     this._abgleich(orte.length);
     for (let i = 0; i < orte.length; i++) {
       const o = orte[i];
-      this._kopien[i].style.transform =
-        `translate(${o.x}px,${o.y}px) rotate(${o.r}deg) scale(${o.s}) translate(${-o.m.w / 2}px,${-o.m.h / 2}px)`;
+      const k = this._kopien[i];
+      const t = `translate(${o.x}px,${o.y}px) rotate(${o.r}deg) scale(${o.s}) translate(${-o.m.w / 2}px,${-o.m.h / 2}px)`;
+      if (k._t !== t) { k._t = t; k.style.transform = t; }
     }
     this.nachLayout(orte.length);
+    // voll: die Grenze war der Grund aufzuhören, es gäbe mehr zu zeigen.
+    return orte.length >= grenze;
   }
 
   nachLayout() {}
 
-  _abgleich(n) {
-    while (this._kopien.length < n) {
-      const i = this._kopien.length;
-      const k = this.baueKopie(i);
+  // Kopien 0..n-1 sind da und sichtbar, nie weniger als vorher (Vorausbau beim Messen).
+  _bis(n) {
+    const pool = this._kopien;
+    for (let i = this._sichtbar; i < n; i++) {
+      let k = pool[i];
+      if (k) { k.hidden = false; this.fuelleKopie(k, i); continue; }
+      k = this.baueKopie(i);
       k.classList.add('kopie');
       k.dataset.i = i;
       this.fuelleKopie(k, i);
       this._buehne.append(k);
-      this._kopien.push(k);
+      pool.push(k);
     }
-    while (this._kopien.length > n) this._kopien.pop().remove();
+    if (n > this._sichtbar) this._sichtbar = n;
   }
 
-  // Maße einer Kopie ohne Transformation. Kopien werden einmal gemessen und gecacht.
+  // Genau n Kopien zeigen. Der Rest bleibt versteckt im Pool, so wackelt die Zahl ohne DOM-Umbau.
+  _abgleich(n) {
+    this._bis(n);
+    const pool = this._kopien;
+    for (let i = n; i < this._sichtbar; i++) pool[i].hidden = true;
+    this._sichtbar = n;
+    while (pool.length > Math.max(n, DECKEL)) pool.pop().remove();
+  }
+
+  leereKopien() {
+    for (const k of this._kopien.splice(0)) k.remove();
+    this._sichtbar = 0;
+    this._masse = [];
+  }
+
+  // Maße einer Kopie ohne Transformation. Kopien werden einmal gemessen und gecacht, stapelweise.
   _mass(i, richtung) {
     let m = this._masse[i];
     if (!m) {
-      this._abgleich(Math.max(this._kopien.length, i + 1));
-      const k = this._kopien[i];
-      m = { w: k.offsetWidth, h: k.offsetHeight };
-      m.gross = Math.max(m.w, m.h, 1);
-      this._masse[i] = m;
+      const bis = Math.max(i + 1, Math.min(i + STAPEL, this._ziel || 0));
+      this._bis(bis);
+      const frisch = [];
+      for (let j = i; j < bis; j++) if (!this._masse[j]) frisch.push(j);
+      for (const j of frisch) {
+        const k = this._kopien[j];
+        const w = k.offsetWidth, h = k.offsetHeight;
+        this._masse[j] = { w, h, gross: Math.max(w, h, 1) };
+      }
+      m = this._masse[i];
     }
     const z = this._zustand;
     // Pfadrichtung im eigenen Rahmen der Kopie: gedreht wird nur um das, was die Krümmung dazugibt.
@@ -14975,14 +15106,14 @@ export class InfElement extends HTMLElement {
   }
 
   vermessen() { this._masse = []; this.zeichne(); }
-  get kopien() { return this._kopien; }
+  get kopien() { return this._kopien.slice(0, this._sichtbar); }
 
   _leiste(e) {
     const b = e.target.closest('button[data-z]');
     if (!b) return;
     const z = b.dataset.z;
     if (z === '0') this.ursprung();
-    else if (z === '1') { if (this._zustand.unendlich) { this._zustand.unendlich = false; this._zustand.anzahl = this._kopien.length; } this.mehr(1); }
+    else if (z === '1') this.eins();
     else this.unendlich();
   }
 

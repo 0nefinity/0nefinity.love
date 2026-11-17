@@ -21,7 +21,7 @@ export class InfField extends InfElement {
   fuelleKopie(f) { f.value = this._wert; }
   attributGeaendert() {
     this._wert = this.getAttribute('value') ?? this._wert;
-    if ((this.kopien[0]?.tagName === 'TEXTAREA') !== this.hasAttribute('multiline')) { for (const k of this.kopien.splice(0)) k.remove(); }
+    if ((this.kopien[0]?.tagName === 'TEXTAREA') !== this.hasAttribute('multiline')) { this.leereKopien(); }
     for (const k of this.kopien) this.fuelleKopie(k);
   }
   get value() { return this._wert; }

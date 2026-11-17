@@ -27,7 +27,7 @@ export class InfCheck extends InfElement {
     return l;
   }
   fuelleKopie(l, i) { l.firstChild.checked = this._an.has(i); }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('change', (e) => {
       const start = Number(e.target.closest('.kopie').dataset.i);

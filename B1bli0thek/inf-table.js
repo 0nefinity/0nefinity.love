@@ -23,6 +23,6 @@ export class InfTable extends InfElement {
     const zellen = t.rows[0].cells;
     for (let j = 0; j < zellen.length; j++) zellen[j].textContent = inhalt === 'index' ? `${i},${j}` : (inhalt ?? '');
   }
-  attributGeaendert() { for (const k of this.kopien.splice(0)) k.remove(); }
+  attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-table', InfTable);
