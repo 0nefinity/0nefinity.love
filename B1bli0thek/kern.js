@@ -5,7 +5,7 @@
 import { Faltung, FORMEN_MAX } from './faltung.js';
 
 const UNENDLICH = new Set(['∞', 'inf', 'unendlich', 'infinity']);
-// Darunter geht ∞ nie: 720, zwei volle Umdrehungen. Darüber entscheidet das Gerät.
+// Darunter geht ∞ nie: 720, zwei volle Umdrehungen. Darüber entscheidet das Gerät, der Rest ist mitgemeint.
 const DECKEL = 720;
 // Technischer Schutz für echte DOM-Kopien (Knoten und Speicher bleiben beschränkt).
 const KAPAZITAET_MAX = 6000;
