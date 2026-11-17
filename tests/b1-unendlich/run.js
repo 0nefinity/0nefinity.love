@@ -3,7 +3,7 @@
 // Regel: Ist ∞ aktiv, bleibt repeat="∞", egal welcher Regler danach geändert wird (Winkel, Krümmung, Abstand, Größe,
 // Form, Text). Der Zähler zeigt dann "∞"; nur wo das Bild nicht exakt das unendliche ist, die echte Zahl mit einem Wort.
 // Bei gefalteten Elementen (Button, Box, Buchstabe, Text, Linie) ist jede geprüfte Einstellung exakt: nur "∞" zählt.
-// Nur 0, 1 und eine eingetippte Anzahl verlassen ∞.
+// Nur 0 und eine eingetippte Anzahl verlassen ∞. 1 ist eine Kopie mehr; ∞ + 1 = ∞.
 // Umgebung: PLAYWRIGHT_PATH, CHROME_PATH. Exit 1 bei Verstößen.
 const path = require('path');
 const pw = require(process.env.PLAYWRIGHT_PATH || 'playwright');
@@ -59,8 +59,8 @@ const SCHRITTE = [['angle', 30], ['bend', 20], ['bend', 7], ['bend', 0.3], ['ben
           await pruefe(`${k}=${v}`);
         }
       }
-      // Raus aus ∞: 0, 1, eingetippte Anzahl.
-      for (const weg of ['0', '1', 'tippen']) {
+      // Raus aus ∞: 0, eingetippte Anzahl.
+      for (const weg of ['0', 'tippen']) {
         await leiste('∞');
         await p.waitForTimeout(300);
         if (weg === 'tippen') {
@@ -76,6 +76,23 @@ const SCHRITTE = [['angle', 30], ['bend', 20], ['bend', 7], ['bend', 0.3], ['ben
         const s = await stand();
         if (s.repeat === '∞' || !/^\d+$/.test(s.repeat)) fehler.push(`${tag} raus per ${weg}: repeat=${s.repeat}`);
         if (weg === 'tippen' && s.repeat !== '12') fehler.push(`${tag} getippt 12: repeat=${s.repeat}`);
+        if (weg === '0' && s.repeat !== '1') fehler.push(`${tag} 0 nach ∞: repeat=${s.repeat}`);
+      }
+      // 0 = nur das Element, jede 1 eine Kopie mehr; 1 bei ∞ lässt ∞ stehen (keine geräteabhängige Zahl).
+      await leiste('0');
+      for (let k = 2; k <= 4; k++) {
+        await leiste('1');
+        await p.waitForTimeout(200);
+        const s = await stand();
+        if (s.repeat !== String(k)) fehler.push(`${tag} ${k - 1}× 1 nach 0: repeat=${s.repeat}`);
+      }
+      for (let runde = 0; runde < 2; runde++) {
+        await leiste('∞');
+        await p.waitForTimeout(500);
+        await pruefe(`Wechsel ${runde} ∞`);
+        await leiste('1');
+        await p.waitForTimeout(500);
+        await pruefe(`Wechsel ${runde} ∞ dann 1`);
       }
       console.log(tag, 'geprüft');
       await p.close();

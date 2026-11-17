@@ -201,11 +201,8 @@ export class InfElement extends HTMLElement {
   // grund: null, wenn das Bild bei ∞ das unendliche ist; sonst ein Wort, warum es nur gezeigt viele sind.
   get gezaehlt() { return { gezeigt: this._gezeigt, ziel: this._zustand.unendlich ? '∞' : this._zustand.anzahl, grund: this._grund }; }
   unendlich() { const z = this._zustand; z.unendlich = true; z.anzahl = FALT_MAX; this._gedeckelt = false; this._schreibe(); this.zeichne(); }
-  eins() {
-    const z = this._zustand;
-    if (z.unendlich) { z.unendlich = false; z.anzahl = this._gemalt > (this._P || 0) ? this._gemalt : this._cap; }
-    this.mehr(1);
-  }
+  // ∞ + 1 = ∞: im ∞-Zustand ändert 1 nichts an der Zahl (mehr() lässt ∞ stehen).
+  eins() { this.mehr(1); }
   ursprung() {
     const v = this.constructor.vorgaben;
     Object.assign(this._zustand, { unendlich: false, anzahl: 1, bend: v.bend, scale: v.scale, dx: 0, dy: 0 });
