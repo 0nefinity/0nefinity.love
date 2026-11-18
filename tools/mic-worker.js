@@ -153,7 +153,11 @@ function oszillator(y, o, n, hz, rate, amp, spalten, phase) {
 const LR = 48, LC = 96;
 function leben(x, rate, zusatz = {}) {
   const n = x.length, dur = n / rate, hi = hoch(rate);
-  const G = Math.max(2, Math.min(32, Math.round(30 / Math.max(dur, 0.05))));
+  // Kurze Clips: eine Generation = ein Durchlauf. Lange: eine Generation alle 2,5 s, der Clip läuft weiter,
+  // Ausgabe höchstens so lang wie der Clip oder 30 s. So hat jede Welt Zeit, sich zu entwickeln.
+  let G, D;
+  if (dur <= 2.5) { D = n; G = Math.max(2, Math.min(32, Math.round(30 / Math.max(dur, 0.05)))); }
+  else { const T = Math.max(n, Math.round(30 * rate)); G = Math.max(12, Math.min(64, Math.round(T / (2.5 * rate)))); D = Math.ceil(T / G); }
   const F = Math.ceil(n / LH) + 1, B = LN / 2 + 1;
   const re = new Float64Array(LN), im = new Float64Array(LN);
   const band = new Int16Array(B), spalteVon = fr => Math.min(LC - 1, Math.max(0, Math.floor(fr * LH / n * LC)));
@@ -193,44 +197,47 @@ function leben(x, rate, zusatz = {}) {
     if (!lebt || gleich || gleich2) for (let z = 0; z < neu.length; z++) neu[z] |= saat[z];
   }
 
-  // Klang: je Generation ein Durchlauf des Clips (Länge n), Maske aus der Welt, dazu Töne der Neugeborenen.
-  const y = new Float32Array(G * n), norm = new Float64Array(n);
-  for (let fr = 0; fr < F; fr++) { const s0 = fr * LH - LN / 2; for (let i = 0; i < LN; i++) { const j = s0 + i; if (j >= 0 && j < n) norm[j] += lWin[i] * lWin[i]; } }
+  // Klang: eine gleichmäßige STFT über die ganze Ausgabe. Der Clip läuft im Kreis (Lesezeiger mod n),
+  // die Welt wechselt alle D Samples; Maske aus der Welt, dazu Töne der Neugeborenen.
+  const L = G * D, y = new Float32Array(L), normP = new Float64Array(LH);
+  for (let k = 0; k < LH; k++) for (let i = k; i < LN; i += LH) normP[k] += lWin[i] * lWin[i];
   const spitze = spitzeVon(x) || 1, fz = new Float64Array(LR), phase = new Float64Array(LR);
   for (let r = 0; r < LR; r++) fz[r] = hzVon((r + 0.5) / LR, rate);
-  const amp = new Float32Array(LC);
-  for (let g = 0; g < G; g++) {
-    const w = welten.subarray(g * LC * LR, (g + 1) * LC * LR), o = g * n;
-    for (let fr = 0; fr < F; fr++) {
-      const u = fr * LH / n * LC - 0.5, c0 = Math.max(0, Math.min(LC - 1, Math.floor(u))), c1 = Math.min(LC - 1, c0 + 1), t = Math.max(0, Math.min(1, u - c0));
-      const s0 = fr * LH - LN / 2;
-      let still = true;
-      for (let r = 0; r < LR && still; r++) if (w[c0 * LR + r] || w[c1 * LR + r]) still = false;
-      if (still) continue;
-      // Spektrum je Rahmen neu statt gespeichert: der Speicher bleibt klein, egal wie lang der Clip ist.
-      for (let i = 0; i < LN; i++) { const j = s0 + i; re[i] = j >= 0 && j < n ? x[j] * lWin[i] : 0; im[i] = 0; }
-      fftL(re, im);
-      for (let k = 0; k < B; k++) {
-        const r = band[k], m = r < 0 ? 0 : w[c0 * LR + r] * (1 - t) + w[c1 * LR + r] * t;
-        re[k] *= m; im[k] *= m;
-      }
-      for (let k = 1; k < LN / 2; k++) { re[LN - k] = re[k]; im[LN - k] = -im[k]; }
-      for (let k = 0; k < LN; k++) im[k] = -im[k];
-      fftL(re, im);
-      for (let i = 0; i < LN; i++) { const j = s0 + i; if (j >= 0 && j < n && norm[j] > 1e-6) y[o + j] += re[i] / LN * lWin[i] / norm[j]; }
+  const mod = (a, m) => ((a % m) + m) % m;
+  for (let fr = -LN / LH / 2; fr * LH - LN / 2 < L; fr++) {
+    const o = fr * LH, s0 = o - LN / 2, g = Math.max(0, Math.min(G - 1, Math.floor(o / D)));
+    const w = welten.subarray(g * LC * LR, (g + 1) * LC * LR);
+    const u = mod(o, n) / n * LC - 0.5, fu = Math.floor(u), c0 = mod(fu, LC), c1 = (c0 + 1) % LC, t = u - fu;
+    let still = true;
+    for (let r = 0; r < LR && still; r++) if (w[c0 * LR + r] || w[c1 * LR + r]) still = false;
+    if (still) continue;
+    // Spektrum je Rahmen neu statt gespeichert: der Speicher bleibt klein, egal wie lang der Clip ist.
+    for (let i = 0; i < LN; i++) { re[i] = x[mod(s0 + i, n)] * lWin[i]; im[i] = 0; }
+    fftL(re, im);
+    for (let k = 0; k < B; k++) {
+      const r = band[k], m = r < 0 ? 0 : w[c0 * LR + r] * (1 - t) + w[c1 * LR + r] * t;
+      re[k] *= m; im[k] *= m;
     }
+    for (let k = 1; k < LN / 2; k++) { re[LN - k] = re[k]; im[LN - k] = -im[k]; }
+    for (let k = 0; k < LN; k++) im[k] = -im[k];
+    fftL(re, im);
+    for (let i = 0; i < LN; i++) { const j = s0 + i; if (j >= 0 && j < L) y[j] += re[i] / LN * lWin[i] / normP[i % LH]; }
+  }
+  const K2 = Math.max(2, Math.round(LC * D / n)), amp = new Float32Array(K2), lebend = new Float32Array(LC);
+  for (let g = 0; g < G; g++) {
+    const w = welten.subarray(g * LC * LR, (g + 1) * LC * LR);
+    for (let c = 0; c < LC; c++) { let l = 0; for (let q = 0; q < LR; q++) l += w[c * LR + q]; lebend[c] = l; }
     for (let r = 0; r < LR; r++) {
       let jemand = false;
-      for (let c = 0; c < LC; c++) {
-        let lebend = 0; for (let q = 0; q < LR; q++) lebend += w[c * LR + q];
-        const z = c * LR + r, geboren = w[z] && E[z] < schwelle;
-        amp[c] = geboren ? 0.35 * spitze / Math.sqrt(lebend) : 0; if (amp[c]) jemand = true;
+      for (let j = 0; j < K2; j++) {
+        const c = Math.min(LC - 1, Math.floor(mod(g * D + (j + 0.5) * D / K2, n) / n * LC)), z = c * LR + r;
+        amp[j] = w[z] && E[z] < schwelle ? 0.35 * spitze / Math.sqrt(lebend[c]) : 0; if (amp[j]) jemand = true;
       }
-      if (jemand) phase[r] = oszillator(y, o, n, fz[r], rate, amp, LC, phase[r]);
-      else phase[r] += 2 * Math.PI * fz[r] * n / rate;
+      if (jemand) phase[r] = oszillator(y, g * D, D, fz[r], rate, amp, K2, phase[r]);
+      else phase[r] += 2 * Math.PI * fz[r] * D / rate;
     }
   }
-  zusatz.welten = welten; zusatz.G = G; zusatz.C = LC; zusatz.R = LR;
+  zusatz.welten = welten; zusatz.G = G; zusatz.C = LC; zusatz.R = LR; zusatz.D = D / n;
   return aufSpitze(y, spitze);
 }
 
@@ -268,9 +275,50 @@ function malen(x, rate, striche) {
   return sy > 0.99 ? aufSpitze(p, 0.99) : p;
 }
 
+// Moment einfrieren: das Spektrum an der Stelle p (Anteil am Clip) klingt weiter, jede Teilfrequenz dreht ihre
+// Phase im eigenen Tempo, ein Hauch Zufall hält es lebendig. Tempo und Zufall sind so gerundet, dass nach L Samples
+// jede Phase genau dort steht, wo sie anfing: der Moment ist ein Kreis, der Loop hat keine Naht und braucht keine Blende.
+function einfrieren(x, rate, p) {
+  const n = x.length, HF = LH * 2, nH = Math.max(8, Math.round(4 * rate / HF)), L = nH * HF;
+  const c = Math.round(p * n), B = LN / 2 + 1, TAU = 2 * Math.PI;
+  const re = new Float64Array(LN), im = new Float64Array(LN), mag = new Float64Array(B), dphi = new Float64Array(B), ph0 = new Float64Array(B);
+  const rahmen = s0 => { for (let i = 0; i < LN; i++) { const j = s0 + i; re[i] = j >= 0 && j < n ? x[j] * lWin[i] : 0; im[i] = 0; } fftL(re, im); };
+  // Betrag gemittelt über drei Nachbarrahmen, Phasenvorschub aus zwei Rahmen im Abstand HF.
+  for (const d of [-HF, 0, HF]) { rahmen(c - LN / 2 + d); for (let k = 0; k < B; k++) mag[k] += Math.hypot(re[k], im[k]) / 3; }
+  rahmen(c - LN / 2); for (let k = 0; k < B; k++) ph0[k] = Math.atan2(im[k], re[k]);
+  rahmen(c - LN / 2 + HF);
+  for (let k = 0; k < B; k++) { const d = Math.atan2(im[k], re[k]) - ph0[k]; dphi[k] = TAU * Math.round(d * nH / TAU) / nH; }
+  // Zufall als Irrfahrt, die zu sich zurückkehrt (Mittel abgezogen): Summe über den Kreis = 0.
+  let zufall = 0x018;
+  const wuerfel = () => { zufall = (zufall * 1103515245 + 12345) >>> 0; return zufall / 4294967296 - 0.5; };
+  const irr = new Float32Array(B * nH);
+  for (let k = 0; k < B; k++) {
+    let m = 0; for (let h = 0; h < nH; h++) { const w = 0.25 * wuerfel(); irr[k * nH + h] = w; m += w; }
+    m /= nH; let acc = 0; for (let h = 0; h < nH; h++) { acc += irr[k * nH + h] - m; irr[k * nH + h] = acc; }
+  }
+  const Y = L + 2 * LN, y = new Float32Array(Y + LN), normP = new Float64Array(HF);
+  for (let k = 0; k < HF; k++) for (let i = k; i < LN; i += HF) normP[k] += lWin[i] * lWin[i];
+  for (let h = 0, o = 0; o < Y; h++, o += HF) {
+    const hh = h % nH;
+    for (let k = 0; k < B; k++) { const f = ph0[k] + hh * dphi[k] + irr[k * nH + hh]; re[k] = mag[k] * Math.cos(f); im[k] = mag[k] * Math.sin(f); }
+    for (let k = 1; k < LN / 2; k++) { re[LN - k] = re[k]; im[LN - k] = -im[k]; }
+    for (let k = 0; k < LN; k++) im[k] = -im[k];
+    fftL(re, im);
+    for (let i = 0; i < LN; i++) y[o + i] += re[i] / LN * lWin[i] / normP[i % HF];
+  }
+  // Ab LN ist das Fenster eingeschwungen; ein Kreisumlauf von dort.
+  const z = y.slice(LN, LN + L);
+  // Lautheit wie die eingefrorene Stelle (RMS über ein Fenster), Spitze unter 1.
+  let e = 0, m = 0; for (let i = Math.max(0, c - LN); i < Math.min(n, c + LN); i++) { e += x[i] * x[i]; m++; }
+  let ez = 0; for (let i = 0; i < L; i++) ez += z[i] * z[i];
+  const ziel = Math.sqrt(e / Math.max(1, m)), ist = Math.sqrt(ez / L);
+  if (ist > 1e-9) { const g = ziel / ist; for (let i = 0; i < L; i++) z[i] *= g; }
+  return spitzeVon(z) > 0.99 ? aufSpitze(z, 0.99) : z;
+}
+
 self.onmessage = ev => {
-  const { op, x, rate, s, striche } = ev.data, zusatz = {};
+  const { op, x, rate, s, striche, p } = ev.data, zusatz = {};
   const y = op === 'tit' ? tonImTon(x, rate, zusatz) : op === 'ton' ? steigTon(x, rate) : op === 'tempo' ? steigTempo(x, rate)
-    : op === 'leben' ? leben(x, rate, zusatz) : op === 'malen' ? malen(x, rate, striche) : wsola(x, rate, s);
+    : op === 'leben' ? leben(x, rate, zusatz) : op === 'malen' ? malen(x, rate, striche) : op === 'frei' ? einfrieren(x, rate, p) : wsola(x, rate, s);
   self.postMessage({ y, zusatz }, [y.buffer]);
 };
