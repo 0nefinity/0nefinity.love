@@ -163,6 +163,8 @@ const HILFEN = () => {
     async stand() {
       const t0 = performance.now();
       await bild();
+      // Ein Zeitgeber (Welle der Checkbox am Ziel) kann kurz vorher einen Zug bestellt haben: erst den abwarten.
+      for (let i = 0; i < 5 && el()?._geplant; i++) await bild();
       const bildzeit = performance.now() - t0;
       const e = el();
       const at = {};
