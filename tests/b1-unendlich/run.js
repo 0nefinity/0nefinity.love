@@ -9,14 +9,16 @@ const path = require('path');
 const pw = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const { start } = require('../lib/serve.js');
 
-const root = process.argv[2] || path.resolve(__dirname, '../..');
+const root = /^https?:/.test(process.argv[2] || "") ? "" : process.argv[2] || path.resolve(__dirname, '../..');
 const GEFALTET = ['button', 'box', 'letter', 'text', 'line'];
 const DOM = ['check', 'list'];
 const SCHRITTE = [['angle', 30], ['bend', 20], ['bend', 7], ['bend', 0.3], ['bend', 0], ['space', 0], ['space', -20], ['space', 40],
   ['scale', 0.9], ['scale', 1.1], ['scale', 0.5], ['scale', 1.5], ['scale', 0.95], ['bend', 45], ['scale', 1], ['angle', -60]];
 
 (async () => {
-  const { server, base } = await start(root);
+  // Eine URL statt Repo-Pfad prüft die laufende Seite (dev oder live).
+  const fern = /^https?:/.test(process.argv[2] || '');
+  const { server, base } = fern ? { server: { close() {} }, base: process.argv[2].replace(/\/$/, '') } : await start(root);
   const b = await pw.chromium.launch({ executablePath: process.env.CHROME_PATH, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
   const fehler = [];
   try {
@@ -119,6 +121,20 @@ const SCHRITTE = [['angle', 30], ['bend', 20], ['bend', 7], ['bend', 0.3], ['ben
         await leiste('1');
         await p.waitForTimeout(500);
         await pruefe(`Wechsel ${runde} ∞ dann 1`);
+      }
+      // Handy verliert den WebGL-Kontext (Hintergrund, Speicher): ∞ muss zurückkommen, nicht "13 · DOM" (Tim, Kreis -27.8 / 19).
+      if (GEFALTET.includes(tag)) {
+        await leiste('∞');
+        await p.evaluate(() => { const el = document.querySelector('#buehne > *'); el.setAttribute('bend', '-27.8'); el.setAttribute('angle', '19'); });
+        await p.waitForTimeout(600);
+        for (let v = 0; v < 2; v++) {
+          await p.evaluate(() => document.querySelector('#buehne > *')._faltung?.gl.getExtension('WEBGL_lose_context').loseContext());
+          await p.waitForTimeout(1200);
+          const ok = await p.evaluate(() => document.querySelector('#buehne > *')._falten);
+          if (!ok) fehler.push(`${tag} Kontextverlust ${v + 1}: DOM-Weg statt Faltung`);
+          await pruefe(`Kontextverlust ${v + 1}`);
+        }
+        await p.evaluate(() => document.querySelector('#buehne > *').setAttribute('bend', '0'));
       }
       console.log(tag, 'geprüft');
       await p.close();
