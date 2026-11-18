@@ -34,7 +34,7 @@ const P = {
   tempo: 1, st: 0, rueck: false, pegel: 1,
   filter: 'aus', fhz: 1000, fq: 1,
   echoS: 0.3, echoFb: 0.4, echoMix: 0, hallMix: 0, hallS: 2, verz: 0,
-  tit: false, bit: false, steig: 'aus',
+  tit: false, bit: false, steig: 'aus', leben: false,
 };
 let src = new Float32Array(0);      // Quelle mono
 let sr = 44100;
@@ -142,13 +142,14 @@ function regionHolen() {
 
 // WSOLA und die 0n-Rechnungen (Ton im Ton, endlos steigend) laufen im Worker (tools/mic-worker.js); ein neuer Auftrag verwirft den laufenden.
 let wk = null, wkJob = null;
-const wsolaAsync = (x, rate, s) => workerAuftrag({ x, rate, s });
+const wsolaAsync = (x, rate, s) => workerAuftrag({ x, rate, s }).then(d => d && d.y);
+// Antwort: {y, zusatz} (zusatz: Ebenen von Ton im Ton, Welten von game of life) oder null, wenn überholt.
 function workerAuftrag(auftrag) {
   return new Promise((res, rej) => {
     if (wkJob) { wkJob(null); wk.terminate(); wk = null; wkJob = null; }
     const w = wk = new Worker('/tools/mic-worker.js');
     wkJob = res;
-    w.onmessage = ev => { if (wk === w) wkJob = null; w.terminate(); res(ev.data.y); };
+    w.onmessage = ev => { if (wk === w) wkJob = null; w.terminate(); res(ev.data); };
     w.onerror = e => { if (wk === w) wkJob = null; rej(new Error(e.message || 'worker')); };
     w.postMessage(auftrag);
   });
@@ -180,8 +181,10 @@ async function rendern() {
     let x = regionHolen();
     if (!x.length) { out = null; return; }
     if (P.rueck) { x = Float32Array.from(x).reverse(); }
-    if (P.tit) { x = await workerAuftrag({ op: 'tit', x, rate: sr }); if (x === null || my !== renderToken) return; }
-    if (P.steig !== 'aus') { x = await workerAuftrag({ op: P.steig, x, rate: sr }); if (x === null || my !== renderToken) return; }
+    let tit = null, leben = null, d;
+    if (P.tit) { d = await workerAuftrag({ op: 'tit', x, rate: sr }); if (!d || my !== renderToken) return; x = d.y; tit = d.zusatz.ebenen; }
+    if (P.steig !== 'aus') { d = await workerAuftrag({ op: P.steig, x, rate: sr }); if (!d || my !== renderToken) return; x = d.y; }
+    if (P.leben) { d = await workerAuftrag({ op: 'leben', x, rate: sr }); if (!d || my !== renderToken) return; x = d.y; leben = d.zusatz; }
     const p =Math.pow(2, P.st / 12), t = Math.max(0.01, P.tempo), s = p / t;
     if (Math.abs(s - 1) > 1e-3) { x = await wsolaAsync(x, sr, s); if (x === null || my !== renderToken) return; }
     await new Promise(r => setTimeout(r, 0));
@@ -219,8 +222,10 @@ async function rendern() {
     q.start();
     const r = await oc.startRendering();
     if (my !== renderToken) return;
-    out = { ch: [r.getChannelData(0), r.getChannelData(1)], sr: r.sampleRate, bit: P.bit };
+    // haupt: Anteil des Puffers, den der Clip selbst füllt (danach nur Echo-/Hallfahne).
+    out = { ch: [r.getChannelData(0), r.getChannelData(1)], sr: r.sampleRate, bit: P.bit, tit, leben, haupt: Math.min(1, x.length / p / len) };
     if (P.bit) einBit(out.ch);
+    malSpurAbgeholt(my);
     if (wiedergabe) abspielen(f);
     zeichneAnalyse();
   } catch (e) { fehler(e, 'render'); }
@@ -251,9 +256,9 @@ function hoerbar() {
   }
   return { x: orig, rate: sr };
 }
-let hoerCache = { out: null, orig: null, ab: -1, v: null };
+let hoerCache = { out: null, orig: null, ab: -1, v: null }, hoerVer = 0;
 function hoerbarCache() {
-  if (hoerCache.out !== out || hoerCache.orig !== orig || hoerCache.ab !== ab) { hoerCache = { out, orig, ab, v: hoerbar() }; }
+  if (hoerCache.out !== out || hoerCache.orig !== orig || hoerCache.ab !== ab) { hoerCache = { out, orig, ab, v: hoerbar() }; hoerVer++; }
   return hoerCache.v;
 }
 
@@ -714,7 +719,10 @@ function linieAn(c, q, a = 1) {
   const x = c.getContext('2d'), p = Math.round(q * c.width);
   x.fillStyle = rgb(FG, a); x.fillRect(p, 0, Math.max(1, Math.round(dpr())), c.height);
 }
+// game of life spielt den Clip G-mal hintereinander, je Generation einmal: jeder Durchlauf liegt wieder auf demselben Clip.
+const durchlauf = fr => out && out.leben ? (Math.min(fr / out.haupt, 0.99999) * out.leben.G) % 1 : fr;
 function posAufQuelle(fr) {
+  if (ab === 1) fr = durchlauf(fr);
   const a = sel ? sel.a : 0, b = sel ? sel.b : 1;
   return a + (P.rueck ? 1 - fr : fr) * (b - a);
 }
@@ -750,6 +758,7 @@ function zeichneMod() {
   const W = cM.width;
   if (!out || !src.length) { welleMalen(cM, null, null, 0); return; }
   if (ab === 1 && out.bit) { bitsMalen(); return; }
+  if (ab === 1 && out.tit) { titMalen(); return; }
   const m = hoerbarCache(), e = spitzen(m.x, W);
   welleMalen(cM, e.mn, e.mx, W);
   linieAn(cM, f, 1);
@@ -773,6 +782,38 @@ function bitsMalen() {
   }
   x.fillStyle = rgb(FG, 0.25); x.fillRect(0, Math.floor(H / 2), W, 1);
   linieAn(cM, (Math.floor(k / 2) + 0.5) / k, 0.6);
+}
+
+// Ton im Ton sichtbar: ein Zoom in die Welle, der nie ankommt. Jede Ebene ist der ganze Clip, halb so lang, doppelt so oft;
+// nach einer Verdopplung sieht die nächste Ebene aus wie die vorige, darum ist der Zoom eine Schleife. Die Umrisse
+// kommen aus derselben Rechnung wie der Ton (tonImTon im Worker). Mitte = Abspielpunkt in jeder Kopie.
+const ruhig = matchMedia('(prefers-reduced-motion: reduce)');
+let titRaf = 0;
+function titMalen() {
+  const x = cM.getContext('2d'), W = cM.width, H = cM.height, m = H / 2, eb = out.tit, d = dpr();
+  x.clearRect(0, 0, W, H);
+  x.fillStyle = rgb(FG, 0.25); x.fillRect(0, Math.floor(m), W, 1);
+  const z = ruhig.matches ? 0.35 : (performance.now() / 1600) % 1;
+  const p = durchlauf(f), sp = Math.max(1, Math.round(d)), cols = Math.ceil(W / sp);
+  for (let j = 0; j < eb.length; j++) {
+    const t = j - z;
+    if (t <= -1 || t >= 4) continue;
+    const a = Math.sin(Math.PI * (t + 1) / 5) ** 2, k = Math.pow(2, t), { mn, mx } = eb[j], B = mn.length;
+    let s = 1e-9; for (let i = 0; i < B; i++) s = Math.max(s, mx[i], -mn[i]);
+    const amp = 0.9 * m / s;
+    x.fillStyle = rgb(FG, 0.9 * a);
+    let vor = -1;
+    for (let c = 0; c < cols; c++) {
+      const u = (c * sp / W - 0.5) * k + p, ph = u - Math.floor(u), b = Math.min(B - 1, Math.floor(ph * B));
+      const y1 = m - mx[b] * amp, y2 = m - mn[b] * amp;
+      x.fillRect(c * sp, y1, sp, Math.max(1, y2 - y1));
+      const kachel = Math.floor(u);
+      if (vor !== -1 && kachel !== vor) { x.fillStyle = rgb(FG, 0.18 * a); x.fillRect(c * sp, 0, 1, H); x.fillStyle = rgb(FG, 0.9 * a); }
+      vor = kachel;
+    }
+  }
+  linieAn(cM, 0.5, 0.5);
+  if (!titRaf && !wiedergabe && !ruhig.matches) titRaf = requestAnimationFrame(() => { titRaf = 0; if (!wiedergabe && !rec && ab === 1 && out && out.tit && !out.bit) zeichneMod(); });
 }
 
 // Spektrogramm
@@ -803,7 +844,8 @@ function clearSg() {
 function sgStatisch() {
   dim(cS);
   const W = cS.width, H = cS.height, h = hoerbarCache();
-  const key = [W, H, ab, h.x.length, h.rate, out ? out.ch[0].length : 0, src.length, sel ? sel.a + ',' + sel.b : '', JSON.stringify(P)].join('|');
+  if (ab === 1 && out && out.leben && h.x.length) { lebenMalen(W, H, h); malSpurMalen(); return; }
+  const key = [W, H, ab, hoerVer, h.x.length, h.rate, out ? out.ch[0].length : 0, src.length, sel ? sel.a + ',' + sel.b : '', JSON.stringify(P)].join('|');
   if (key !== sgKey) {
     sgKey = key;
     const img = new ImageData(W, H), db = new Float32Array(NF / 2);
@@ -816,6 +858,104 @@ function sgStatisch() {
   }
   cS.getContext('2d').putImageData(sgBild, 0, 0);
   if (h.x.length) linieAn(cS, f, 0.9);
+  malSpurMalen();
+}
+
+// game of life sichtbar: das Spektrogramm einer Generation, darüber ihre Zellen. Der Abspielpunkt wischt die neue
+// Generation über die alte; geboren hell, überlebt halb, gestorben ein Schatten. Man sieht, was man hört.
+let lebenBilder = { key: '', m: new Map() };
+function generationsBild(g, h, H) {
+  const n = h.x.length, G = out.leben.G, K = Math.min(cS.width, 240), key = hoerVer + '|' + H + '|' + K;
+  if (lebenBilder.key !== key) lebenBilder = { key, m: new Map() };
+  let c = lebenBilder.m.get(g);
+  if (c) return c;
+  const img = new ImageData(K, H), db = new Float32Array(NF / 2), a = g / G * out.haupt * n, l = out.haupt * n / G;
+  for (let col = 0; col < K; col++) spalteMalen(img, col, spektrumAb(h.x, Math.floor(a + (col + 0.5) / K * l - NF / 2), db), h.rate);
+  c = document.createElement('canvas'); c.width = K; c.height = H; c.getContext('2d').putImageData(img, 0, 0);
+  if (lebenBilder.m.size > 4) lebenBilder.m.delete(lebenBilder.m.keys().next().value);
+  lebenBilder.m.set(g, c);
+  return c;
+}
+function lebenMalen(W, H, h) {
+  const x = cS.getContext('2d'), { welten, G, C, R } = out.leben, CR = C * R;
+  const pos = Math.min(f / out.haupt, 0.99999) * G, g = Math.min(G - 1, Math.floor(pos)), scan = pos - g;
+  x.fillStyle = rgb(BG); x.fillRect(0, 0, W, H);
+  x.globalAlpha = 0.5; x.imageSmoothingEnabled = true;
+  x.drawImage(generationsBild(g, h, H), 0, 0, W, H);
+  x.globalAlpha = 1;
+  const xs = Math.round(scan * W), zelle = (gg, c, r) => gg >= 0 ? welten[gg * CR + c * R + r] : 0;
+  for (let c = 0; c < C; c++) {
+    const x0 = Math.round(c / C * W), x1 = Math.round((c + 1) / C * W), neu = x0 < xs;
+    const jetzt = neu ? g : g - 1, vorher = jetzt - 1;
+    for (let r = 0; r < R; r++) {
+      const da = zelle(jetzt, c, r), war = zelle(vorher, c, r);
+      if (!da && !war) continue;
+      const a = da ? (war ? 0.5 : 0.9) : 0.15;
+      const y0 = Math.round((1 - (r + 1) / R) * (H - 1)), y1 = Math.round((1 - r / R) * (H - 1));
+      x.fillStyle = rgb(FG, a); x.fillRect(x0 + 1, y0 + 1, Math.max(1, x1 - x0 - 1), Math.max(1, y1 - y0 - 1));
+    }
+  }
+  linieAn(cS, scan, 0.9);
+}
+
+// malen: Striche ins Spektrogramm werden Sinustöne im Clip (Worker-op 'malen'), als Bearbeitung mit Rückgängig.
+// Ein Strich bleibt sichtbar, bis das Spektrogramm ihn selbst zeigt. Ein eigener Worker je Auftrag, damit Rendern ihn nicht verwirft.
+let malAn = false, malStriche = [], malZug = null, malKette = Promise.resolve();
+function sgZuQuelle(q) {
+  if (ab === 1 && out) return posAufQuelle(out.leben ? (Math.floor(Math.min(f / out.haupt, 0.99999) * out.leben.G) + q) / out.leben.G * out.haupt : q);
+  return sel ? sel.a + q * (sel.b - sel.a) : q;
+}
+function malSpurMalen() {
+  if (!malStriche.length) return;
+  const x = cS.getContext('2d'), W = cS.width, H = cS.height;
+  x.strokeStyle = rgb(FG, 0.95); x.lineWidth = Math.max(2, 2 * dpr()); x.lineCap = x.lineJoin = 'round';
+  for (const s of malStriche) {
+    const p = s.bild; if (!p.length) continue;
+    x.beginPath();
+    x.moveTo(p[0] * W, p[1] * H);
+    for (let i = 2; i < p.length; i += 2) x.lineTo(p[i] * W, p[i + 1] * H);
+    if (p.length === 2) x.lineTo(p[0] * W + 0.5, p[1] * H);
+    x.stroke();
+  }
+}
+function malSpurAbgeholt(my) { if (malStriche.some(s => s.T != null && my > s.T)) malStriche = malStriche.filter(s => s.T == null || my <= s.T); }
+function wackeln(el) { el.classList.remove('wackel'); void el.offsetWidth; el.classList.add('wackel'); }
+function malPunkt(e) {
+  const r = cS.getBoundingClientRect(), qx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), qy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+  malZug.bild.push(qx, qy); malZug.ton.push(sgZuQuelle(qx), 1 - qy);
+}
+function malStart(e) {
+  if (rec || !aktuell()) { wackeln(cS); return; }
+  cS.setPointerCapture(e.pointerId);
+  malZug = { bild: [], ton: [], id: curId, T: null };
+  malStriche.push(malZug); malPunkt(e); sgStatisch();
+}
+function malZiehen(e) { if (!malZug) return; for (const k of (e.getCoalescedEvents ? e.getCoalescedEvents() : [e])) malPunkt(k); sgStatisch(); }
+function malEnde() {
+  if (!malZug) return;
+  const s = malZug; malZug = null;
+  malKette = malKette.then(() => malEinarbeiten(s)).catch(e => { malStriche = malStriche.filter(k => k !== s); sgStatisch(); fehler(e, 'malen'); });
+}
+async function malEinarbeiten(s) {
+  for (;;) {
+    const c = clips.find(k => k.id === s.id);
+    if (!c) { malStriche = malStriche.filter(k => k !== s); wackeln(cS); sgStatisch(); return; }
+    const y = await new Promise((res, rej) => {
+      const w = new Worker('/tools/mic-worker.js');
+      w.onmessage = ev => { w.terminate(); res(ev.data.y); };
+      w.onerror = e => { w.terminate(); rej(new Error(e.message || 'worker')); };
+      w.postMessage({ op: 'malen', x: c.data, rate: c.sr, striche: [s.ton] });
+    });
+    const jetzt = clips.find(k => k.id === s.id);
+    if (jetzt && jetzt.data !== c.data) continue;
+    if (!jetzt) continue;
+    const lief = !!wiedergabe, f0 = lief ? posF() : f, s0 = sel;
+    aendern(() => { clips = clips.map(k => k.id === s.id ? { ...k, data: y } : k); }, null, s.id !== curId);
+    if (s.id === curId) { sel = s0; f = f0; planen(); if (lief) abspielen(f); else zeichneAlles(); editKnoepfe(); }
+    s.T = renderToken;
+    if (s.id !== curId) malStriche = malStriche.filter(k => k !== s);
+    return;
+  }
 }
 const dbLive = new Float32Array(1024);
 function sgLive() {
@@ -992,7 +1132,16 @@ function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, 
     const neu = sp * Math.exp(e.deltaY * 0.002), anker = view.a + m * sp;
     setView(anker - m * neu, anker - m * neu + neu);
   }, { passive: false });
-  for (const c of [cS, cM]) c.addEventListener('pointerdown', e => { if (!rec && src.length) spulen(anteil(c, e)); });
+  cM.addEventListener('pointerdown', e => { if (!rec && src.length) spulen(anteil(cM, e)); });
+  cS.addEventListener('pointerdown', e => {
+    if (malAn) { malStart(e); return; }
+    if (rec || !src.length) return;
+    const q = anteil(cS, e);
+    if (ab === 1 && out && out.leben) { const G = out.leben.G; spulen((Math.floor(Math.min(f / out.haupt, 0.99999) * G) + q) / G * out.haupt); }
+    else spulen(q);
+  });
+  cS.addEventListener('pointermove', e => { if (malZug) malZiehen(e); });
+  for (const t of ['pointerup', 'pointercancel']) cS.addEventListener(t, malEnde);
 })();
 
 // ---------- Panel ----------
@@ -1083,7 +1232,9 @@ panel.addDivider()
   .addToggle('bit', { label: '1-Bit', value: P.bit, onChange: v => { P.bit = v; neuPlanen(); } })
   .addSelect('steig', { label: 'endlos steigend', value: P.steig, options: [
       { value: 'aus', label: 'aus' }, { value: 'ton', label: 'Tonhöhe' }, { value: 'tempo', label: 'Tempo' }],
-    onChange: v => { P.steig = v; neuPlanen(); } });
+    onChange: v => { P.steig = v; neuPlanen(); } })
+  .addToggle('leben', { label: 'game of life', value: P.leben, onChange: v => { P.leben = v; neuPlanen(); } })
+  .addToggle('malen', { label: 'malen', value: false, onChange: v => { malAn = v; cS.classList.toggle('malt', v); } });
 
 // Ziehen: eigener Zeiger statt nativem Range. Weiter weg vom Regler (senkrecht) = feiner (1, 1/4, 1/16 der Strecke),
 // und Tonhöhe rastet auf ganze Halbtöne, solange der Finger nah dran bleibt.
@@ -1184,6 +1335,8 @@ clipsLaden();
 knoepfe();
 requestAnimationFrame(layout);
 
-window.__mic = { planen, E, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
+window.__mic = { planen, E, get malAn() { return malAn; }, get malStriche() { return malStriche; },
+  malen: (ton, bild) => { const z = { bild: bild || [], ton, id: curId, T: null }; malStriche.push(z); return (malKette = malKette.then(() => malEinarbeiten(z))); },
+  get f() { return f; }, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
 
 })();
