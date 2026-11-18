@@ -101,7 +101,11 @@ let el = null;
 // Ein Regler, der über alle Grenzen gewachsen ist, liefert ±Infinity: das Element bekommt die größte endliche Zahl, die es nimmt.
 const setze = (name, wert) => {
   if (!el || Number.isNaN(wert)) return;
-  el.setAttribute(name, String(wert === Infinity || wert === -Infinity ? Math.sign(wert) * 1e9 : wert));
+  if (wert === Infinity || wert === -Infinity) {
+    wert = Math.sign(wert) * 1e9;
+    panel.set(name, wert);
+  }
+  el.setAttribute(name, String(wert));
 };
 const eigene = {
   'inf-letter': [
