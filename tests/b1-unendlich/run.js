@@ -25,6 +25,8 @@ const SCHRITTE = [['angle', 30], ['bend', 20], ['bend', 7], ['bend', 0.3], ['ben
     for (const tag of [...GEFALTET, ...DOM]) {
       const p = await b.newPage({ viewport: { width: 412, height: 800 } });
       p.on('pageerror', (e) => fehler.push(`${tag}: pageerror ${e.message}`));
+      // faltFehler meldet sich nur in console.error: auch das ist ein Fehler.
+      p.on('console', (m) => { if (m.type() === 'error' && /B1bli0thek|Faltung|WebGL|shader/i.test(m.text())) fehler.push(`${tag}: console.error ${m.text().slice(0, 200)}`); });
       await p.goto(base + '/B1bli0thek/index.html#' + tag);
       await p.waitForSelector('#buehne > *', { state: 'attached', timeout: 15000 });
       await p.waitForTimeout(1200);

@@ -197,11 +197,13 @@ const grafikZeigen = () => {
 // Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
 function anzahlSetzen(text) {
   const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
-  if (t === '') return;
   if (['∞', 'inf', 'unendlich', 'infinity'].includes(t)) el.unendlich();
   else if (/^\d+$/.test(t)) el.setzeAnzahl(Number(t));
-  else { zaehlen(); return; }
-  anzahlFeld()?.blur();
+  // Was keine Anzahl ist, bleibt nicht stehen: das Feld zeigt danach immer, was wirkt.
+  const f = anzahlFeld();
+  f?.blur();
+  zaehlen();
+  if (f) f.value = zahlText(el.gezaehlt.ziel);
 }
 const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : String(n));
 function zaehlen() {

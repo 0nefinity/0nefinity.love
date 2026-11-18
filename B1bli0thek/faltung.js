@@ -330,9 +330,6 @@ export class Faltung {
     gl.uniform1i(u.u_eins, d.eins ? 1 : 0);
     gl.uniform1i(u.u_rot, d.rotate ? 1 : 0);
     gl.uniform4fv(u.u_g, this.g);
-    gl.uniform2f(u.u_inv, d.ix, d.iy);
-    gl.uniform1f(u.u_a, d.a);
-    gl.uniform3f(u.u_bt, d.bt[0], d.bt[1], d.bt[2]);
     gl.uniform3f(u.u_sicht, W / 2, H / 2, Math.hypot(W, H) / 2);
     gl.uniform1f(u.u_px, 2 / (devicePixelRatio || 1));
     if (d.runde) {
@@ -342,6 +339,10 @@ export class Faltung {
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
     for (const t of d.teile) {
+      // Jedes Stück hat seinen eigenen Schritt W^S (ausgedünnt, wo die Kopien dichter als ein Bildpunkt liegen).
+      gl.uniform2f(u.u_inv, t.inv[0], t.inv[1]);
+      gl.uniform1f(u.u_a, t.a);
+      gl.uniform3f(u.u_bt, t.bt[0], t.bt[1], t.bt[2]);
       gl.uniform1i(u.u_r0, t.r0);
       gl.uniform4fv(u.u_b, t.b);
       gl.uniform4fv(u.u_c, t.c);
