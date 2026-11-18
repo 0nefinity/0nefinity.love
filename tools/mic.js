@@ -648,6 +648,36 @@ async function clipsLaden() {
   } catch (e) { fehler(e, 'laden'); }
 }
 
+// ---------- Mikrofon wählen ----------
+const micSchluessel = 'mic.eingang';
+function micGemerkt() { try { return localStorage.getItem(micSchluessel) || ''; } catch (e) { return ''; } }
+function micMerken(id) { try { id ? localStorage.setItem(micSchluessel, id) : localStorage.removeItem(micSchluessel); } catch (e) { console.warn('mic: Auswahl nicht gespeichert', e); } }
+let micGeraete = [];
+// Namen gibt es erst nach der ersten Freigabe; "communications" und ein "default", das ein echtes Gerät doppelt, fallen weg.
+async function micListe(stream) {
+  const md = navigator.mediaDevices, sel = $('quellewahl'), box = $('quelle');
+  if (!md || !md.enumerateDevices) return;
+  try {
+    const alle = (await md.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'communications');
+    micGeraete = alle.filter(d => d.deviceId !== 'default' || !alle.some(o => o !== d && o.groupId && o.groupId === d.groupId));
+    const tr = stream && stream.getAudioTracks()[0], aktiv = (tr && tr.getSettings().deviceId) || micGemerkt();
+    const gemerkt = micGemerkt();
+    if (gemerkt && !micGeraete.some(d => d.deviceId === gemerkt) && micGeraete.some(d => d.label)) {
+      micMerken(''); fehler({ message: 'gewähltes Mikrofon nicht gefunden, nehme das Standard-Mikrofon' }, 'mic');
+    }
+    sel.textContent = '';
+    micGeraete.forEach((d, i) => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || 'mikrofon' + (micGeraete.length > 1 ? ' ' + (i + 1) : ''); sel.appendChild(o); });
+    const ziel = micGeraete.find(d => d.deviceId === micGemerkt()) || micGeraete.find(d => d.deviceId === aktiv) || micGeraete.find(d => d.deviceId === 'default') || micGeraete[0];
+    if (ziel) sel.value = ziel.deviceId;
+    sel.classList.toggle('einzeln', micGeraete.length < 2);
+    sel.tabIndex = micGeraete.length < 2 ? -1 : 0;
+    box.hidden = !micGeraete.length;
+  } catch (e) { fehler(e, 'mic-liste'); }
+}
+$('quellewahl').addEventListener('change', e => { micMerken(e.target.value); });
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', () => micListe());
+micListe();
+
 // ---------- Aufnahme ----------
 const BLK = 1024;
 async function aufnahmeStart() {
@@ -656,9 +686,19 @@ async function aufnahmeStart() {
   const c = ctxHolen();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fehler(new Error('getUserMedia nicht verfügbar (https nötig)'), 'mic'); return; }
   let stream;
+  const roh = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const gemerkt = micGemerkt();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: gemerkt ? { ...roh, deviceId: { exact: gemerkt } } : roh });
+    } catch (e) {
+      if (!gemerkt || (e.name !== 'OverconstrainedError' && e.name !== 'NotFoundError')) throw e;
+      micMerken('');
+      fehler({ message: 'gewähltes Mikrofon nicht gefunden, nehme das Standard-Mikrofon' }, 'mic');
+      stream = await navigator.mediaDevices.getUserMedia({ audio: roh });
+    }
   } catch (e) { fehler(e, 'mic'); return; }
+  micListe(stream);
   try {
     await c.audioWorklet.addModule('/tools/mic-worklet.js');
     const qn = c.createMediaStreamSource(stream);
@@ -903,7 +943,7 @@ function spalteMalen(img, col, db, rate) {
     d[o] = BG[0] + (FG[0] - BG[0]) * t; d[o + 1] = BG[1] + (FG[1] - BG[1]) * t; d[o + 2] = BG[2] + (FG[2] - BG[2]) * t; d[o + 3] = 255;
   }
 }
-let sgBild = null, sgKey = '';
+let sgBild = null, sgKey = '', sgSpalten = null;
 function clearSg() {
   dim(cS);
   const x = cS.getContext('2d'); x.fillStyle = rgb(BG); x.fillRect(0, 0, cS.width, cS.height);
@@ -917,9 +957,15 @@ function sgStatisch() {
     sgKey = key;
     const img = new ImageData(W, H), db = new Float32Array(NF / 2);
     if (!h.x.length) { for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255; for (let i = 0; i < img.data.length; i += 4) { img.data[i] = BG[0]; img.data[i + 1] = BG[1]; img.data[i + 2] = BG[2]; } }
-    else for (let col = 0; col < W; col++) {
-      const s = Math.floor(col / W * h.x.length - NF / 2);
-      spalteMalen(img, col, spektrumAb(h.x, s, db), h.rate);
+    else {
+      // Die FFT-Spalten hängen nur von Clip und Breite ab, nicht von der Höhe: beim Verschieben des Panels ändert sich nur die Höhe.
+      const half = NF / 2, ck = hoerVer + '|' + W + '|' + h.x.length;
+      if (!sgSpalten || sgSpalten.key !== ck || sgSpalten.x !== h.x) {
+        const cols = new Float32Array(W * half);
+        for (let col = 0; col < W; col++) spektrumAb(h.x, Math.floor(col / W * h.x.length - NF / 2), db), cols.set(db, col * half);
+        sgSpalten = { key: ck, x: h.x, cols };
+      }
+      for (let col = 0; col < W; col++) spalteMalen(img, col, sgSpalten.cols.subarray(col * half, (col + 1) * half), h.rate);
     }
     sgBild = img;
   }
@@ -1075,17 +1121,21 @@ function spektrumMalen(db, rate) {
 }
 
 // Analyse für ruhenden Zustand
-function zeichneAnalyse() {
+let mittelSpek = null;
+function zeichneAnalyse(nurBild) {
   const h = hoerbarCache();
   sgStatisch();
   zeichneMod();
   if (h.x.length) {
-    const acc = new Float32Array(NF / 2), tmp = new Float32Array(NF / 2), n = 12;
-    for (let i = 0; i < n; i++) { spektrumAb(h.x, Math.floor((i + 0.5) / n * h.x.length - NF / 2), tmp); for (let k = 0; k < acc.length; k++) acc[k] += Math.pow(10, tmp[k] / 10) / n; }
-    for (let k = 0; k < acc.length; k++) acc[k] = 10 * Math.log10(acc[k] + 1e-18);
-    spektrumMalen(acc, h.rate);
+    if (!mittelSpek || mittelSpek.x !== h.x || mittelSpek.ver !== hoerVer) {
+      const acc = new Float32Array(NF / 2), tmp = new Float32Array(NF / 2), n = 12;
+      for (let i = 0; i < n; i++) { spektrumAb(h.x, Math.floor((i + 0.5) / n * h.x.length - NF / 2), tmp); for (let k = 0; k < acc.length; k++) acc[k] += Math.pow(10, tmp[k] / 10) / n; }
+      for (let k = 0; k < acc.length; k++) acc[k] = 10 * Math.log10(acc[k] + 1e-18);
+      mittelSpek = { x: h.x, ver: hoerVer, acc };
+    }
+    spektrumMalen(mittelSpek.acc, h.rate);
   } else spektrumMalen(null, sr);
-  lesungRuhe();
+  if (!nurBild) lesungRuhe();
 }
 function mm(s) { const m = Math.floor(s / 60); return m + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); }
 function lesungSetzen(hz, pk, t) {
@@ -1101,10 +1151,10 @@ function lesungRuhe() {
   lesungSetzen(hs.length ? hs[hs.length >> 1] : 0, pk, f * h.x.length / h.rate);
 }
 
-function zeichneAlles() {
+function zeichneAlles(nurBild) {
   zeichneWelle();
   if (rec) return;
-  zeichneAnalyse();
+  zeichneAnalyse(nurBild);
 }
 
 // ---------- Schleife (live) ----------
@@ -1143,6 +1193,7 @@ function schleife() {
 function knoepfe() {
   $('recpunkt').setAttribute('d', rec ? 'M13 13 H27 V27 H13 Z' : 'M12 20 A8 8 0 1 0 28 20 A8 8 0 1 0 12 20 Z');
   $('rec').title = $('rec').ariaLabel = rec ? 'stopp' : 'aufnehmen';
+  $('quellewahl').disabled = !!rec;
   $('playform').setAttribute('d', wiedergabe ? 'M14 12 H18 V28 H14 Z M22 12 H26 V28 H22 Z' : 'M16 12 L28 20 L16 28 Z');
   $('loop').classList.toggle('an', schleifeAn); $('loop').setAttribute('aria-pressed', String(schleifeAn));
   $('play').title = $('play').ariaLabel = wiedergabe ? 'pause' : 'abspielen';
@@ -1392,7 +1443,9 @@ function raumFuerPanel() {
     stage.style.paddingLeft = (r.left < 1 && innerWidth - r.right >= 480) ? r.right + 'px' : '';
   }
 }
-function layout() { raumFuerPanel(); sgKey = ''; zeichneAlles(); if (rec) clearSg(); }
+// Das Panel meldet beim Ziehen mehrfach je Bild (resize, layout-change auf Panel und Dokument): einmal je Bild zeichnen.
+let layoutRaf = 0;
+function layout() { if (layoutRaf) return; layoutRaf = requestAnimationFrame(() => { layoutRaf = 0; raumFuerPanel(); sgKey = ''; zeichneAlles(true); if (rec) clearSg(); }); }
 addEventListener('resize', layout);
 stage.addEventListener('ctrl-panel-layout-change', layout);
 document.addEventListener('ctrl-panel-layout-change', layout);
