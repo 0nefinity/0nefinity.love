@@ -37,19 +37,31 @@ function aufSpitze(y, ziel) { const m = spitzeVon(y); if (m > 0 && ziel > 0) { c
 
 // Ton im Ton: jede Ebene ist der ganze Clip noch einmal, halb so lang und eine Oktave höher, 2^k-mal hintereinander.
 // Tief genug unten wiederholt sich der Clip so schnell, dass er selbst zum Ton wird.
-function tonImTon(x, rate) {
+function tonImTon(x, rate, zusatz = {}) {
   const n = x.length, y = Float32Array.from(x);
   let ebene = x, g = 1;
+  const ebenen = zusatz.ebenen = [umriss(x)];
   for (let k = 1; ebene.length >> 1 >= 32; k++) {
     const h = new Float32Array(ebene.length >> 1);
     for (let i = 0; i < h.length; i++) h[i] = 0.5 * (ebene[2 * i] + ebene[2 * i + 1]);
-    ebene = h; g *= 0.7;
+    ebene = h; g *= 0.7; ebenen.push(umriss(h));
     const m = h.length, rand = Math.max(1, Math.min(m >> 3, Math.round(0.002 * rate)));
     const kachel = Float32Array.from(h);
     for (let i = 0; i < rand; i++) { const w = i / rand; kachel[i] *= w; kachel[m - 1 - i] *= w; }
     for (let i = 0; i < n; i++) y[i] += g * kachel[i % m];
   }
   return aufSpitze(y, spitzeVon(x));
+}
+
+// Umriss einer Ebene (min/max in B Fächern): daraus zeichnet die Seite den Zoom, aus derselben Pyramide, die klingt.
+function umriss(e, B = 512) {
+  const mn = new Float32Array(B), mx = new Float32Array(B), per = e.length / B;
+  for (let b = 0; b < B; b++) {
+    const a = Math.floor(b * per), z = Math.max(a + 1, Math.floor((b + 1) * per));
+    let lo = 0, hi = 0; for (let i = a; i < z && i < e.length; i++) { const v = e[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    mn[b] = lo; mx[b] = hi;
+  }
+  return { mn, mx };
 }
 
 // Endlos steigend: V Stimmen im Oktavabstand, alle steigen; was oben leise verschwindet, kommt unten leise wieder herein.
@@ -95,8 +107,170 @@ function steigTempo(x, rate) {
   return aufSpitze(y, spitzeVon(x));
 }
 
+// ---------- 0n: Spektrogramm (game of life, malen) ----------
+// Frequenzachse wie das Spektrogramm der Seite: logarithmisch von SF0 bis min(SF1, rate/2).
+const SF0 = 30, SF1 = 16000;
+const hoch = rate => Math.min(SF1, rate / 2);
+const hzVon = (v, rate) => SF0 * Math.pow(hoch(rate) / SF0, v);
+
+const LN = 2048, LH = 256;
+const lRev = new Uint16Array(LN), lCos = new Float64Array(LN / 2), lSin = new Float64Array(LN / 2), lWin = new Float64Array(LN);
+for (let i = 0, bits = Math.log2(LN); i < LN; i++) { let r = 0; for (let b = 0; b < bits; b++) if (i & (1 << b)) r |= 1 << (bits - 1 - b); lRev[i] = r; }
+for (let i = 0; i < LN / 2; i++) { lCos[i] = Math.cos(2 * Math.PI * i / LN); lSin[i] = -Math.sin(2 * Math.PI * i / LN); }
+for (let i = 0; i < LN; i++) lWin[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / LN);
+function fftL(re, im) {
+  for (let i = 0; i < LN; i++) { const j = lRev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+  for (let len = 2; len <= LN; len <<= 1) {
+    const h = len >> 1, step = LN / len;
+    for (let i = 0; i < LN; i += len) for (let k = 0; k < h; k++) {
+      const wr = lCos[k * step], wi = lSin[k * step], a = i + k, b = a + h;
+      const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+      re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+    }
+  }
+}
+
+// Oszillator mit Hüllkurve je Spalte (linear zwischen Spaltenmitten), Phase per Drehung statt Math.sin je Wert.
+function oszillator(y, o, n, hz, rate, amp, spalten, phase) {
+  const K = amp.length, dw = 2 * Math.PI * hz / rate, cr = Math.cos(dw), si = Math.sin(dw);
+  let c = Math.cos(phase), s = Math.sin(phase);
+  const mitte = j => Math.round((j + 0.5) * n / spalten);
+  for (let j = -1; j < K; j++) {
+    const a0 = amp[Math.max(0, j)], a1 = amp[Math.min(K - 1, j + 1)];
+    const s0 = j < 0 ? 0 : mitte(j), s1 = j + 1 >= K ? n : mitte(j + 1);
+    if (s1 <= s0) continue;
+    if (a0 === 0 && a1 === 0) { const d = (s1 - s0) * dw; const c2 = Math.cos(d), s2 = Math.sin(d); [c, s] = [c * c2 - s * s2, c * s2 + s * c2]; continue; }
+    const da = (a1 - a0) / (s1 - s0);
+    for (let i = s0, a = a0; i < s1; i++, a += da) { y[o + i] += a * s; const t = c * cr - s * si; s = c * si + s * cr; c = t; }
+    const r = 1 / Math.hypot(c, s); c *= r; s *= r;
+  }
+  return Math.atan2(s, c);
+}
+
+// Game of Life im Spektrogramm: die Bänder des Clips sind die Zellen (Zeilen = Frequenz, Spalten = Zeit).
+// Generation 0 ist der Clip selbst; jede weitere Generation spielt den Clip noch einmal durch ihre Welt:
+// lebende Zellen lassen den Clip durch, tote schweigen, neu geborene singen in ihrer Bandfrequenz.
+const LR = 48, LC = 96;
+function leben(x, rate, zusatz = {}) {
+  const n = x.length, dur = n / rate, hi = hoch(rate);
+  const G = Math.max(2, Math.min(32, Math.round(30 / Math.max(dur, 0.05))));
+  const F = Math.ceil(n / LH) + 1, B = LN / 2 + 1;
+  const re = new Float64Array(LN), im = new Float64Array(LN);
+  const band = new Int16Array(B), spalteVon = fr => Math.min(LC - 1, Math.max(0, Math.floor(fr * LH / n * LC)));
+  for (let k = 0; k < B; k++) { const hz = k * rate / LN; band[k] = hz < SF0 || hz > hi ? -1 : Math.min(LR - 1, Math.floor(LR * Math.log(hz / SF0) / Math.log(hi / SF0))); }
+  const E = new Float64Array(LC * LR), zahl = new Float64Array(LC * LR);
+  for (let fr = 0; fr < F; fr++) {
+    const s0 = fr * LH - LN / 2;
+    for (let i = 0; i < LN; i++) { const j = s0 + i; re[i] = j >= 0 && j < n ? x[j] * lWin[i] : 0; im[i] = 0; }
+    fftL(re, im);
+    const c = spalteVon(fr);
+    for (let k = 0; k < B; k++) {
+      if (band[k] >= 0) { const z = c * LR + band[k]; E[z] += Math.hypot(re[k], im[k]); zahl[z]++; }
+    }
+  }
+  let eMax = 0;
+  for (let z = 0; z < E.length; z++) { if (zahl[z]) E[z] /= zahl[z]; if (E[z] > eMax) eMax = E[z]; }
+  const voll = Array.from(E).filter(v => v > 0).sort((a, b) => a - b);
+  const schwelle = Math.max(voll.length ? voll[Math.floor(voll.length * 0.65)] : 0, 0.08 * eMax, 1e-9);
+
+  // Welten: Uint8 je Generation, Torus (der Rand der Zeit grenzt an ihren Anfang, die tiefste Frequenz an die höchste).
+  const welten = new Uint8Array(G * LC * LR), saat = new Uint8Array(LC * LR);
+  for (let z = 0; z < saat.length; z++) saat[z] = E[z] >= schwelle ? 1 : 0;
+  welten.set(saat, 0);
+  for (let g = 1; g < G; g++) {
+    const alt = welten.subarray((g - 1) * LC * LR, g * LC * LR), neu = welten.subarray(g * LC * LR, (g + 1) * LC * LR);
+    let lebt = 0;
+    for (let c = 0; c < LC; c++) for (let r = 0; r < LR; r++) {
+      let nb = 0;
+      for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) if (dc || dr) nb += alt[((c + dc + LC) % LC) * LR + (r + dr + LR) % LR];
+      const z = c * LR + r, v = nb === 3 || (nb === 2 && alt[z]) ? 1 : 0;
+      neu[z] = v; lebt += v;
+    }
+    // Stirbt die Welt aus oder erstarrt sie, sät der Clip sie neu: Leben kommt aus dem, was klingt.
+    const vor2 = g >= 2 ? welten.subarray((g - 2) * LC * LR, (g - 1) * LC * LR) : null;
+    let gleich = true, gleich2 = !!vor2;
+    for (let z = 0; z < neu.length && (gleich || gleich2); z++) { if (neu[z] !== alt[z]) gleich = false; if (vor2 && neu[z] !== vor2[z]) gleich2 = false; }
+    if (!lebt || gleich || gleich2) for (let z = 0; z < neu.length; z++) neu[z] |= saat[z];
+  }
+
+  // Klang: je Generation ein Durchlauf des Clips (Länge n), Maske aus der Welt, dazu Töne der Neugeborenen.
+  const y = new Float32Array(G * n), norm = new Float64Array(n);
+  for (let fr = 0; fr < F; fr++) { const s0 = fr * LH - LN / 2; for (let i = 0; i < LN; i++) { const j = s0 + i; if (j >= 0 && j < n) norm[j] += lWin[i] * lWin[i]; } }
+  const spitze = spitzeVon(x) || 1, fz = new Float64Array(LR), phase = new Float64Array(LR);
+  for (let r = 0; r < LR; r++) fz[r] = hzVon((r + 0.5) / LR, rate);
+  const amp = new Float32Array(LC);
+  for (let g = 0; g < G; g++) {
+    const w = welten.subarray(g * LC * LR, (g + 1) * LC * LR), o = g * n;
+    for (let fr = 0; fr < F; fr++) {
+      const u = fr * LH / n * LC - 0.5, c0 = Math.max(0, Math.min(LC - 1, Math.floor(u))), c1 = Math.min(LC - 1, c0 + 1), t = Math.max(0, Math.min(1, u - c0));
+      const s0 = fr * LH - LN / 2;
+      let still = true;
+      for (let r = 0; r < LR && still; r++) if (w[c0 * LR + r] || w[c1 * LR + r]) still = false;
+      if (still) continue;
+      // Spektrum je Rahmen neu statt gespeichert: der Speicher bleibt klein, egal wie lang der Clip ist.
+      for (let i = 0; i < LN; i++) { const j = s0 + i; re[i] = j >= 0 && j < n ? x[j] * lWin[i] : 0; im[i] = 0; }
+      fftL(re, im);
+      for (let k = 0; k < B; k++) {
+        const r = band[k], m = r < 0 ? 0 : w[c0 * LR + r] * (1 - t) + w[c1 * LR + r] * t;
+        re[k] *= m; im[k] *= m;
+      }
+      for (let k = 1; k < LN / 2; k++) { re[LN - k] = re[k]; im[LN - k] = -im[k]; }
+      for (let k = 0; k < LN; k++) im[k] = -im[k];
+      fftL(re, im);
+      for (let i = 0; i < LN; i++) { const j = s0 + i; if (j >= 0 && j < n && norm[j] > 1e-6) y[o + j] += re[i] / LN * lWin[i] / norm[j]; }
+    }
+    for (let r = 0; r < LR; r++) {
+      let jemand = false;
+      for (let c = 0; c < LC; c++) {
+        let lebend = 0; for (let q = 0; q < LR; q++) lebend += w[c * LR + q];
+        const z = c * LR + r, geboren = w[z] && E[z] < schwelle;
+        amp[c] = geboren ? 0.35 * spitze / Math.sqrt(lebend) : 0; if (amp[c]) jemand = true;
+      }
+      if (jemand) phase[r] = oszillator(y, o, n, fz[r], rate, amp, LC, phase[r]);
+      else phase[r] += 2 * Math.PI * fz[r] * n / rate;
+    }
+  }
+  zusatz.welten = welten; zusatz.G = G; zusatz.C = LC; zusatz.R = LR;
+  return aufSpitze(y, spitze);
+}
+
+// Malen: Striche (u = Anteil am Clip, v = Höhe im Spektrogramm, 0 unten) werden zu Sinustönen auf genau der Frequenz,
+// auf der sie im Spektrogramm liegen. Was man hineinmalt, malt das Spektrogramm wieder heraus.
+const MR = 256;
+function malen(x, rate, striche) {
+  const n = x.length, T = Math.max(32, Math.min(4096, Math.round(n / rate * 200)));
+  const tinte = new Float32Array(MR * T);
+  const tupfen = (u, v) => {
+    const cx = u * T - 0.5, cy = v * (MR - 1);
+    for (let r = Math.floor(cy - 1.5); r <= Math.ceil(cy + 1.5); r++) for (let c = Math.floor(cx - 1); c <= Math.ceil(cx + 1); c++) {
+      if (r < 0 || r >= MR || c < 0 || c >= T) continue;
+      const d = ((r - cy) / 1.1) ** 2 + ((c - cx) / 1.2) ** 2, w = Math.max(0, 1 - d);
+      if (w > tinte[r * T + c]) tinte[r * T + c] = w;
+    }
+  };
+  for (const s of striche) {
+    if (s.length < 2) continue;
+    tupfen(s[0], s[1]);
+    for (let i = 2; i + 1 < s.length; i += 2) {
+      const du = (s[i] - s[i - 2]) * T, dv = (s[i + 1] - s[i - 1]) * (MR - 1), k = Math.max(1, Math.ceil(Math.hypot(du, dv) * 2));
+      for (let j = 1; j <= k; j++) tupfen(s[i - 2] + (s[i] - s[i - 2]) * j / k, s[i - 1] + (s[i + 1] - s[i - 1]) * j / k);
+    }
+  }
+  const p = new Float32Array(n), amp = new Float32Array(T);
+  for (let r = 0; r < MR; r++) {
+    let jemand = false;
+    for (let c = 0; c < T; c++) { amp[c] = tinte[r * T + c]; if (amp[c]) jemand = true; }
+    if (jemand) oszillator(p, 0, n, hzVon(r / (MR - 1), rate), rate, amp, T, r * 2.399963);
+  }
+  const sx = spitzeVon(x), sp = spitzeVon(p);
+  if (sp > 0) { const g = Math.max(0.5 * sx, 0.25) / sp; for (let i = 0; i < n; i++) p[i] = x[i] + g * p[i]; } else p.set(x);
+  const sy = spitzeVon(p);
+  return sy > 0.99 ? aufSpitze(p, 0.99) : p;
+}
+
 self.onmessage = ev => {
-  const { op, x, rate, s } = ev.data;
-  const y = op === 'tit' ? tonImTon(x, rate) : op === 'ton' ? steigTon(x, rate) : op === 'tempo' ? steigTempo(x, rate) : wsola(x, rate, s);
-  self.postMessage({ y }, [y.buffer]);
+  const { op, x, rate, s, striche } = ev.data, zusatz = {};
+  const y = op === 'tit' ? tonImTon(x, rate, zusatz) : op === 'ton' ? steigTon(x, rate) : op === 'tempo' ? steigTempo(x, rate)
+    : op === 'leben' ? leben(x, rate, zusatz) : op === 'malen' ? malen(x, rate, striche) : wsola(x, rate, s);
+  self.postMessage({ y, zusatz }, [y.buffer]);
 };
