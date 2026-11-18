@@ -45,7 +45,7 @@
 #leiste svg .voll { fill: var(--text-color); stroke: none; }
 #loop.an circle { fill: var(--text-color); }
 #loop.an path { stroke: var(--bg-color); }
-#ab { display: flex; border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px; overflow: hidden; }
+#ab { flex: none; display: flex; border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px; overflow: hidden; }
 #ab button { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
 #ab button.an { background: var(--text-color); color: var(--bg-color); }
 #lesung { flex: 1 1 auto; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 0; }
@@ -67,6 +67,7 @@
 .mic-reset svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ctrl-range { touch-action: none; }
 @media (pointer: coarse) { .mic-reset { width: 2.2rem; height: 2.2rem; } .ctrl-range { padding-block: 14px; background-clip: content-box; } }
+@media (max-width: 600px) { #leiste { flex-wrap: wrap; row-gap: 0.2rem; } #lesung { flex: 1 0 100%; text-align: left; } }
 #mic [hidden] { display: none !important; }
 #clips, #schnitt { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); }
 #chips { flex: 1 1 auto; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
@@ -81,8 +82,7 @@
 #clips button.an { background: var(--text-color); color: var(--bg-color); }
 #clipaktion button { border-color: transparent; padding: 0.5rem 0.5rem; }
 .chipname { flex: none; width: 10rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); background: var(--bg-color); border: 1px solid var(--text-color); border-radius: 9999px; padding: 0.5rem 0.8rem; min-height: 2.4rem; box-sizing: border-box; }
-#schnitt { overflow-x: auto; touch-action: pan-x; scrollbar-width: none; gap: 0.15rem; }
-#schnitt::-webkit-scrollbar { display: none; }
+#schnitt { flex-wrap: wrap; gap: 0.15rem; }
 #schnitt button { flex: none; border-color: transparent; padding: 0.3rem; min-width: 2.4rem; display: flex; align-items: center; justify-content: center; }
 #schnitt button.wort { padding: 0.5rem 0.6rem; border-color: color-mix(in srgb, var(--text-color) 30%, transparent); }
 #schnitt svg { width: 1.5rem; height: 1.5rem; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

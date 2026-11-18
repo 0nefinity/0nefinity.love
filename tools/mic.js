@@ -863,6 +863,8 @@ function schleife() {
       rafId = requestAnimationFrame(tick);
     } else if (wiedergabe) {
       f = posF();
+      { const sp = view.b - view.a, p = posAufQuelle(f);
+        if (sp < 0.9999 && src.length && (p < view.a || p > view.b)) { const a0 = Math.max(0, Math.min(1 - sp, p - sp * 0.1)); view = { a: a0, b: a0 + sp }; scrollZeichnen(); } }
       zeichneWelle(); sgStatisch(); zeichneMod();
       anaOut.getFloatFrequencyData(dbLive); spektrumMalen(dbLive, ac.sampleRate);
       const h = hoerbarCache();
