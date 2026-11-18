@@ -173,6 +173,7 @@ const HILFEN = () => {
         panel[k] = { feld: z?.querySelector('.ctrl-value-input')?.value, regler: z?.querySelector('input[type="range"]')?.value };
       }
       panel.anzahl = zeile('anzahl')?.querySelector('input')?.value;
+      const periode = e?.periode ?? null;
       const leiste = e?.shadowRoot?.querySelector('.leiste');
       const knopf = leiste?.querySelector('[data-z="∞"]');
       let leisteOk = false;
@@ -187,7 +188,7 @@ const HILFEN = () => {
       const kopien = e?.kopien || [];
       const rects = kopien.slice(0, 5).map((k) => { const r = k.getBoundingClientRect(); return [Math.round(r.left * 10) / 10, Math.round(r.top * 10) / 10, Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10]; });
       return {
-        bildzeit, at, panel,
+        bildzeit, at, panel, periode,
         zaehler: document.querySelector('.b1-zaehler')?.textContent ?? null,
         grafik: document.querySelector('.b1-grafik')?.textContent ?? null,
         falten: e?._falten, schritt: e?.schritt ?? null, gezaehlt: e?.gezaehlt ?? null, sichtbar: e?._sichtbar,
@@ -233,7 +234,8 @@ function pruefeSinn(s, tag, gpu) {
   const gefaltet = s.falten !== false;
   // Unsinn im Anzahl-Feld bleibt stehen, statt auf die geltende Zahl zurückzuspringen.
   if (s.panel.anzahl !== undefined && s.panel.anzahl !== '' && s.panel.anzahl !== '∞' && !/^[\d.]+$/.test(s.panel.anzahl)) f.push(`Anzahl-Feld zeigt "${s.panel.anzahl.slice(0, 20)}" statt der Zahl`);
-  if (s.at.repeat === '∞' && / · DOM$/.test(s.zaehler || '') && gpu) f.push(`∞ zeigt "${s.zaehler}" obwohl WebGL2 da ist`);
+  // DOM ist nur ehrlich, wo sich der Inhalt nicht wiederholt (Nummern, Welle unterwegs): Periode 0. Sonst gehört ∞ der Grafikkarte.
+  if (s.at.repeat === '∞' && / · DOM$/.test(s.zaehler || '') && gpu && s.periode !== 0) f.push(`∞ zeigt "${s.zaehler}" obwohl WebGL2 da ist (Periode ${s.periode})`);
   // Panel = was wirkt.
   for (const k of ['bend', 'angle', 'scale']) {
     const a = Number(s.at[k]);

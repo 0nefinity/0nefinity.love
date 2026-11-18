@@ -49,15 +49,24 @@ export class InfRange extends InfElement {
     const spanne = this._max - this._min;
     r.style.setProperty('--f', String(spanne ? (this._null - this._min) / spanne : .5));
   }
-  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k, Number(k.dataset.i)); }
+  // Kehrt die Phase nach p Kopien auf denselben Wert zurück (p·phase ein Vielfaches der Spanne), wiederholt sich das Bild
+  // mit Periode p. Ohne Phase ist jede Kopie gleich. Bleibt die Folge länger als 64 Kopien neu, bleibt jede Kopie DOM.
+  get periode() {
+    const phase = Number(this.getAttribute('phase') ?? 0), spanne = this._max - this._min;
+    if (!phase || !spanne || !Number.isFinite(phase) || !Number.isFinite(spanne)) return 1;
+    for (let p = 1; p <= 64; p++) { const x = (p * phase) / spanne; if (Math.abs(x - Math.round(x)) < 1e-9) return p; }
+    return 0;
+  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k, Number(k.dataset.i)); this._faltung?.veraltet(); }
   get value() { return this._fuer(0); }
-  set value(v) { this._wert = Number(v); this.attributGeaendert(); }
+  set value(v) { this._wert = Number(v); this.attributGeaendert(); this.zeichne(); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('input', (e) => {
       const i = Number(e.target.dataset.i);
       const phase = Number(this.getAttribute('phase') ?? 0);
       this._wert = Number(e.target.value) - i * phase;
       for (const k of this.kopien) if (k !== e.target) k.value = String(this._fuer(Number(k.dataset.i)));
+      if (this._faltung) { this._faltung.veraltet(); this.zeichne(); }
     });
     // Doppelklick und Doppeltipp setzen auf den Nullpunkt zurück. Ein Tipp = kaum bewegt zwischen Drücken und Loslassen.
     const buehne = this._root.querySelector('.buehne');

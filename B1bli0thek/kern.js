@@ -12,6 +12,11 @@ const PROBE_BILDER = 6;
 const KAPAZITAET_MAX = 6000;
 // Technischer Schutz für gefaltete Kopien: 2^22 Orte, je 16 Byte.
 const FALT_MAX = 1 << 22;
+// So viele Zeichnungen schafft auch eine schwache Grafikkarte in einem Bild; mehr wird nie verlangt.
+const INSTANZEN_MAX = 1 << 20;
+// Jede endliche Eingabe bleibt endlich: was weiter reicht als WEIT, wirkt wie WEIT (rechnen ließe sich damit nur noch Infinity).
+const WEIT = 1e9;
+const klemme = (n, w) => (n === null ? null : Math.min(w, Math.max(-w, n)));
 // Pro Messdurchgang so viele Kopien vorausbauen: ein Reflow je Stapel statt einer je Kopie.
 const STAPEL = 64;
 // Welchen Teil eines Bildes ein Zug verbrauchen darf: ∞ lässt dem Rest der Seite Luft, ∞+ (capacity) schöpft aus.
@@ -155,17 +160,17 @@ export class InfElement extends HTMLElement {
     const a = (n) => this.getAttribute(n);
     const r = (a('repeat') ?? String(v.repeat)).trim().toLowerCase();
     const sp = a('space');
-    const fest = sp === null || sp.trim() === '' || !Number.isFinite(Number(sp)) ? null : Number(sp);
-    const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
+    const fest = sp === null || sp.trim() === '' || !Number.isFinite(Number(sp)) ? null : klemme(Number(sp), WEIT);
+    const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => klemme(zahl(s, 0), WEIT));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
       anzahl: UNENDLICH.has(r) ? FALT_MAX : Math.max(0, Math.floor(zahl(r, 1))),
-      bend: zahl(a('bend'), v.bend),
-      scale: Math.max(0.01, zahl(a('scale'), v.scale)),
-      angle: zahl(a('angle'), v.angle),
-      space: zahl(a('space'), v.space),
+      bend: klemme(zahl(a('bend'), v.bend), WEIT),
+      scale: Math.min(1e6, Math.max(0.01, zahl(a('scale'), v.scale))),
+      angle: klemme(zahl(a('angle'), v.angle), WEIT),
+      space: klemme(zahl(a('space'), v.space), WEIT),
       // Ausdrücklich gesetztes space ist der Schritt selbst: 0 = alle Kopien deckungsgleich. Ohne Attribut: Abstand aus der Größe.
-      gap: a('gap') !== null || fest === null ? ((a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null)) : fest,
+      gap: a('gap') !== null || fest === null ? ((a('gap') ?? String(v.gap)) === 'auto' ? null : klemme(zahl(a('gap') ?? v.gap, null), WEIT)) : fest,
       dx: schub[0] || 0,
       dy: schub[1] ?? 0,
       rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
@@ -482,8 +487,9 @@ export class InfElement extends HTMLElement {
           // Liegt der Grenzpunkt in der Kopie, sieht jeder Bildpunkt immer denselben Texel, solange die Kopie mitdreht.
           if (z.unendlich && this._qFenster(B, r, cx, cy, R)?.[1] === Infinity && !z.rotate && Math.abs(bm) > 1e-12) grund = 'schwingt';
         } else if (zyklus) qmax = Math.min(qmax, zyklus);
-        // Kreis: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten. Gezählt bleibt alles, gezeichnet wird mod 360°.
-        else if (!eins) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
+        // ∞ ohne geschlossenen Zyklus: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten, der Zähler sagt "dicht".
+        // Endlich gezählt wird endlich gezeichnet: 3600 Kopien auf einem Kreis, der sich erst nach 1800 schließt, sind 1800 Orte, nicht 13.
+        else if (!eins && !Number.isFinite(N)) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
         // Ein riesiger Kreis (winzige Krümmung) berührt das Bild nur in Bögen: am Anfang und am Ende jeder Runde.
         // Gezeichnet werden nur diese Bögen, nie die Milliarden Kopien dazwischen, die weit neben dem Bild liegen.
         for (const w of this._qBereiche(B, r, cx, cy, R, qmax)) {
@@ -501,13 +507,36 @@ export class InfElement extends HTMLElement {
         if (t && s[0] <= t[1] + P) t[1] = Math.max(t[1], s[1]);
         else teile.push([s[0], s[1]]);
       }
-      // Bei ∞ regelt kein Takt die Menge, nur der Speicher: mehr als FALT_MAX Orte ist ehrlich nicht ∞.
-      let rest = z.unendlich ? FALT_MAX : this._cap;
+      // Ausdünnen: liegen aufeinanderfolgende Kopien derselben Form näher als ein Viertel Bildpunkt, ist schon jede S-te
+      // das Bild. Gezeichnet wird dann die Bahn mit W^S: gleiches Grenzbild, ein S-tel der Arbeit. So hängt kein Bild an
+      // der Kopienzahl, nur an der Fläche, die die Bahn auf dem Bildschirm überstreicht.
+      const fein = 0.25 / dpr;
+      let Dmax = 0;
+      for (let r = 0; r < P; r++) Dmax = Math.max(Dmax, Math.hypot(dx[r], dy[r]));
+      const potenz = (S) => {
+        if (eins) return { ok: true, rx: S, ry: 0, inv: [ix, iy], a: S * a, bt: [mitte(S * bm), mitte(256 * S * bm), mitte(65536 * S * bm)] };
+        const th = mitte(S * bm), s2 = Math.sin(th / 2);
+        const wx2 = Math.expm1(S * a) * Math.cos(th) - 2 * s2 * s2, wy2 = Math.exp(S * a) * Math.sin(th);
+        const n2 = wx2 * wx2 + wy2 * wy2;
+        // W^S fast 1: S Perioden schließen den Kreis, jede S-te Kopie läge auf derselben Stelle. Dann ein anderes S.
+        if (n2 < 1e-20) return { ok: false };
+        return { ok: true, rx: wx2 * ix - wy2 * iy, ry: wx2 * iy + wy2 * ix, inv: [wx2 / n2, -wy2 / n2], a: S * a, bt: [th, mitte(256 * th), mitte(65536 * th)] };
+      };
+      const schritte = teile.map(([lo, hi]) => {
+        const sp = Dmax * Math.exp(Math.max(Math.floor(lo / P) * a, Math.ceil(hi / P) * a));
+        let S = sp > 0 ? Math.floor(fein / sp) : 1;
+        S = Math.max(1, Math.min(S, Math.floor((hi - lo) / P)));
+        while (S > 1 && !potenz(S).ok) S = Math.floor(S * 0.75);
+        return S;
+      });
+      const instanzen = (t, S) => Math.ceil((t[1] - t[0]) / (S * P)) * P;
+      // Bei ∞ regelt kein Takt die Menge, nur die Zeit je Bild: mehr als INSTANZEN_MAX Zeichnungen ist ehrlich nicht ∞.
+      let rest = z.unendlich ? INSTANZEN_MAX : this._cap;
       for (let k = 0; k < teile.length; k++) {
-        const t = teile[k];
-        if (t[1] - t[0] < rest) { rest -= t[1] - t[0]; continue; }
-        if (t[1] - t[0] > rest || k + 1 < teile.length) { if (z.unendlich) grund = 'dicht'; else voll = true; }
-        t[1] = t[0] + rest;
+        const t = teile[k], S = schritte[k], n = instanzen(t, S);
+        if (n < rest) { rest -= n; continue; }
+        if (n > rest || k + 1 < teile.length) { if (z.unendlich) grund = 'dicht'; else voll = true; }
+        t[1] = Math.min(t[1], t[0] + Math.max(1, rest) * S);
         teile.length = k + 1;
         break;
       }
@@ -515,8 +544,9 @@ export class InfElement extends HTMLElement {
         B.teile = teile;
         B.lo = teile[0][0]; B.hi = teile[teile.length - 1][1];
         let smax = 0;
-        const stueck = ([lo, hi]) => {
-          const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
+        const stueck = ([lo, hi], k) => {
+          const q0 = Math.floor(lo / P), r0 = lo - q0 * P, S = schritte[k];
+          const w = S === 1 ? { rx: 1, ry: 0, inv: [ix, iy], a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)] } : potenz(S);
           const b = new Float32Array(FORMEN_MAX * 4), c = new Float32Array(FORMEN_MAX * 2);
           let gx = q0, gy = 0, px = 1, py = 0;
           if (!eins) {
@@ -526,12 +556,15 @@ export class InfElement extends HTMLElement {
             px = e * Math.cos(th); py = e * Math.sin(th);
           }
           for (let v = 0; v < P; v++) {
-            b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, dx[v] * px - dy[v] * py, dx[v] * py + dy[v] * px], v * 4);
+            // D am Anfang des Stücks, mal (W^S - 1)/(W - 1): der Schritt von einer gezeichneten Periode zur nächsten.
+            const Dx = dx[v] * px - dy[v] * py, Dy = dx[v] * py + dy[v] * px;
+            b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, Dx * w.rx - Dy * w.ry, Dx * w.ry + Dy * w.rx], v * 4);
             c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
             c[v * 2 + 1] = (q0 * P + v) * ls;
           }
           smax = Math.max(smax, Math.exp(lo * ls), Math.exp((hi - 1) * ls));
-          return { r0, anzahl: hi - lo, b, c };
+          const anzahl = S === 1 ? hi - lo : instanzen([lo, hi], S) - r0;
+          return { r0, anzahl, b, c, inv: w.inv, a: w.a, bt: w.bt };
         };
         d = { P, teile: teile.map(stueck), eins, rotate: z.rotate, runde: zyklus > 0, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)] };
         d.smax = smax;
@@ -632,8 +665,10 @@ export class InfElement extends HTMLElement {
   _zaehle(n, gemalt = n, grund = null) {
     const z = this._zustand;
     this._gemalt = gemalt;
-    if (this._gezeigt !== n || this._grund !== grund || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
-      this._gezeigt = n; this._grund = grund; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+    // Auch der gezeichnete Schritt gehört zum Gezählten: dreht der Winkel, ändert sich der Abstand, den der Regler zeigt.
+    const schritt = this.schritt;
+    if (this._gezeigt !== n || this._grund !== grund || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich || this._zaehlSchritt !== schritt) {
+      this._gezeigt = n; this._grund = grund; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich; this._zaehlSchritt = schritt;
       this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
     }
   }
@@ -683,7 +718,9 @@ export class InfElement extends HTMLElement {
         for (let t = B.teile.length - 1; t >= 0; t--) {
           const [lo, hi] = B.teile[t];
           const von = Math.max(Math.ceil(w[0]) - 1, Math.ceil((lo - r) / P));
-          for (let q = Math.min(Math.floor(w[1]) + 1, Math.floor((hi - 1 - r) / P)); q >= von; q--) {
+          // Ausgedünnt gezeichnet, ausgedünnt gesucht: höchstens 4096 Kandidaten je Bogen, auch wenn Milliarden darin liegen.
+          const oben = Math.min(Math.floor(w[1]) + 1, Math.floor((hi - 1 - r) / P)), weite = Math.max(1, Math.ceil((oben - von + 1) / 4096));
+          for (let q = oben; q >= von; q -= weite) {
             const i = q * P + r;
             if (i <= best) break;
             const l = this._trifft(this._ort(B, i), m, px, py);
@@ -692,7 +729,10 @@ export class InfElement extends HTMLElement {
         }
       }
     }
-    if (best >= 0) this._reiche(e, best % P, bl, this._ort(B, best % P), b);
+    if (best >= 0) {
+      this._weiterVon = best;
+      try { this._reiche(e, best % P, bl, this._ort(B, best % P), b); } finally { this._weiterVon = null; }
+    }
   }
 
   // Den Klick an Vorlage v weitergeben, an denselben Punkt (l, in Koordinaten der Form): dort liegt, was getroffen gewesen wäre.

@@ -23,6 +23,8 @@ export class InfTable extends InfElement {
     const zellen = t.rows[0].cells;
     for (let j = 0; j < zellen.length; j++) zellen[j].textContent = inhalt === 'index' ? `${i},${j}` : (inhalt ?? '');
   }
+  // Gleiche Zellen in jeder Zeile: eine Zeile ist die Periode, den Rest faltet die Grafikkarte. Mit Index ist jede Zeile anders.
+  get periode() { return this.getAttribute('cell') === 'index' ? 0 : 1; }
   attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-table', InfTable);
