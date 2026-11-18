@@ -333,7 +333,7 @@ async function main() {
       // dieselben Fälle auf echter Grafikkarte (tower browser, Blade) bleiben unter 30 ms je Bild. Gemeldet wird es trotzdem.
       if (haenger && erholt !== null) (soft ? langsam : sinn).push({ tag, zustand, was, f: `stockt ${Math.round(erholt / 100) / 10} s, dann wieder da` });
       if (haenger && erholt !== null) { try { s = await mitWache(p, () => window.__t.stand(), null, 20000); } catch (e) { /* bleibt null */ } }
-      if (s && s.bildzeit > 2000) fehler.push(`Bild ${Math.round(s.bildzeit)} ms`);
+      if (s && s.bildzeit > 2000) { if (soft) langsam.push({ tag, zustand, was, f: `ein Bild ${Math.round(s.bildzeit)} ms` }); else fehler.push(`Bild ${Math.round(s.bildzeit)} ms`); }
       if (s) fehler.push(...pruefeZerstoert(s, tag));
       const ort = { tag, zustand, was };
       for (const f of fehler) zerstoert.push({ ...ort, f });
