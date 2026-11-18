@@ -12487,9 +12487,10 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 ### iframe-Chat-Knopf (nur dev)
 `tools/claude-chat.js`: Knopf und einklappbarer Rahmen mit iframe auf eigenem Origin, nur nach Login-Check sichtbar, Zustand gemerkt. Brauchbar, nur Dev-Hostnamen.
 
+ mic.html (Ton aufnehmen und verändern: AudioWorklet-Aufnahme, eigenes WSOLA-Tempo ohne Tonhöhenänderung, YIN-Tonhöhe, FFT-Spektrogramm auf Log-Frequenzachse, Offline-Render für Vorschau und WAV-Export, `tools/mic.js`).
+
 ### Jedes Element unendlich wiederholen
 `B1bli0thek/kern.js` (`InfElement`): Web-Component-Basis, die Kopien eines beliebigen Elements auf einen gekrümmten, skalierten Pfad legt (Fluchtpunkt, Bogen, Spirale), mit Gesten (ziehen, zwei Finger krümmen/spreizen, Rad, Tasten), Zustand als Attribute und Ereignis `inf-change`; neues Element = eine Datei mit `baueKopie(i)`, Liste in `B1bli0thek/alle.js`; ab der zweiten Periode nur noch gespiegelt: ein Schnappschuss der echten Kopie (SVG-`foreignObject` als Textur-Array mit Mipmaps), per WebGL2-Instancing an Zehntausende Orte gezeichnet (`B1bli0thek/faltung.js`), Kopienzahl geregelt nach gemessenem Bildtakt statt Pauschale; periodische Pfade in geschlossener Form im Vertex-Shader (Ort aus Instanz-Nummer, nur das sichtbare Fenster, Kreis mod 360°), deckungsgleicher Stapel per Fragment-Shader als 1−(1−a)ᵐ bis m = ∞. Brauchbar.
- mic.html (Ton aufnehmen und verändern: AudioWorklet-Aufnahme, eigenes WSOLA-Tempo ohne Tonhöhenänderung, YIN-Tonhöhe, FFT-Spektrogramm auf Log-Frequenzachse, Offline-Render für Vorschau und WAV-Export, `tools/mic.js`).
 
 1c0de.html
 <!DOCTYPE html>
@@ -61103,12 +61104,43 @@ mic.html
 .mic-reset svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ctrl-range { touch-action: none; }
 @media (pointer: coarse) { .mic-reset { width: 2.2rem; height: 2.2rem; } .ctrl-range { padding-block: 14px; background-clip: content-box; } }
+#mic [hidden] { display: none !important; }
+#clips, #schnitt { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); }
+#chips { flex: 1 1 auto; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
+#chips::-webkit-scrollbar { display: none; }
+#clipaktion { flex: none; display: flex; gap: 0.2rem; }
+#clips button, #schnitt button, #toast button, #anhaengen {
+  font-family: var(--font-family); font-size: 0.85rem; line-height: 1; color: var(--text-color); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px;
+  padding: 0.5rem 0.8rem; min-height: 2.4rem; cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+}
+#clips button.chip { flex: none; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+#clips button.an { background: var(--text-color); color: var(--bg-color); }
+#clipaktion button { border-color: transparent; padding: 0.5rem 0.5rem; }
+.chipname { flex: none; width: 10rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); background: var(--bg-color); border: 1px solid var(--text-color); border-radius: 9999px; padding: 0.5rem 0.8rem; min-height: 2.4rem; box-sizing: border-box; }
+#schnitt { overflow-x: auto; touch-action: pan-x; scrollbar-width: none; gap: 0.15rem; }
+#schnitt::-webkit-scrollbar { display: none; }
+#schnitt button { flex: none; border-color: transparent; padding: 0.3rem; min-width: 2.4rem; display: flex; align-items: center; justify-content: center; }
+#schnitt button.wort { padding: 0.5rem 0.6rem; border-color: color-mix(in srgb, var(--text-color) 30%, transparent); }
+#schnitt svg { width: 1.5rem; height: 1.5rem; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#schnitt button:disabled, #clips button:disabled { opacity: 0.3; cursor: default; }
+#schnitt .trenn { flex: none; width: 1px; align-self: stretch; margin: 0.4rem 0.3rem; background: color-mix(in srgb, var(--text-color) 30%, transparent); }
+#luecke { flex: none; width: 2.6rem; font-family: var(--font-family); font-size: 0.85rem; text-align: right; color: var(--text-color); background: transparent; border: 0; border-bottom: 1px solid var(--text-color); padding: 0.3rem 0.1rem; min-height: 2.4rem; box-sizing: border-box; }
+#luecke.wackel { animation: wackeln 0.3s; }
+#schnitt .einheit { flex: none; margin-right: 0.5rem; opacity: 0.7; }
+#anhaengen { flex: none; background: var(--bg-color); appearance: none; padding-right: 0.8rem; }
+#scroll { flex: 0 0 auto; position: relative; height: 1.1rem; margin: 0 0.75rem; touch-action: none; cursor: pointer; border-top: 1px solid color-mix(in srgb, var(--text-color) 20%, transparent); }
+#daumen { position: absolute; top: 0.2rem; bottom: 0.2rem; background: color-mix(in srgb, var(--text-color) 55%, transparent); border-radius: 9999px; min-width: 0.6rem; pointer-events: none; }
+#toast { position: absolute; left: 50%; bottom: 5rem; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 0.8rem; padding: 0.4rem 0.5rem 0.4rem 1rem; border: 1px solid var(--text-color); border-radius: 9999px; background: var(--bg-color); color: var(--text-color); font-family: var(--font-family); font-size: 0.9rem; }
 #datei { display: none; }
 </style>
 </head>
 <body>
 <div id="mic" class="_018-canvas">
+  <div id="clips" hidden><div id="chips"></div><div id="clipaktion"></div></div>
   <canvas id="welle"></canvas>
+  <div id="scroll" hidden><div id="daumen"></div></div>
+  <div id="schnitt" hidden></div>
   <canvas id="mod"></canvas>
   <canvas id="sg"></canvas>
   <canvas id="spek"></canvas>
@@ -61120,7 +61152,8 @@ mic.html
     <div id="lesung"></div>
   </div>
   <div id="fehler" role="alert"></div>
-  <input id="datei" type="file" accept="audio/*">
+  <div id="toast" role="status" hidden></div>
+  <input id="datei" type="file" accept="audio/*" multiple>
 </div>
 
 <script src="/tools/mic.js?v=<!--#flastmod virtual="/tools/mic.js" -->"></script>
@@ -78528,18 +78561,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -82591,7 +82613,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '';
+  let letzterDiag = '', letzterStand = '', diagBis = {};
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -82619,8 +82641,25 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
-    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
+    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
+    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
+    if (typeof d === 'object' && typeof d.text === 'string') {
+      const neu = (liste, feld) => {
+        if (!Array.isArray(liste)) return;
+        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
+        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
+      };
+      neu(d.rahmen, 'rahmen');
+      neu(d.ereignisse, 'ereignisse');
+      const stand = {};
+      if (d.fahrt) stand.fahrt = d.fahrt;
+      if (d.turm) stand.turm = d.turm;
+      if (Object.keys(stand).length) {
+        const st = JSON.stringify(stand);
+        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
+      }
+      d = { text: d.text };
+    }
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -82645,7 +82684,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);
@@ -95117,6 +95156,46 @@ tools/math-notation.js
     }, { capture: true, passive: true });
 })();
 
+tools/mic-worker.js
+// WSOLA: Dehnung um Faktor s ohne Tonhöhenänderung. Läuft im Worker, damit lange Clips die Seite nicht anhalten.
+function wsola(x, rate, s) {
+  const N = 2 * Math.round(0.02 * rate), Hs = N / 2, Ha = Hs / s, tol = Math.round(0.01 * rate);
+  const frames = Math.ceil(x.length * s / Hs) + 1;
+  const pad = N + tol + 2;
+  const xp = new Float32Array(x.length + 2 * pad + N * 2);
+  xp.set(x, pad);
+  const y = new Float32Array(frames * Hs + N);
+  const win = new Float32Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+  const cs = x.length > rate * 20 ? 8 : 4;
+  let prev = pad;
+  for (let k = 0; k < frames; k++) {
+    const nominal = pad + Math.round(k * Ha);
+    let best = nominal;
+    if (k > 0) {
+      const ref = prev + Hs;
+      let bc = -Infinity;
+      for (let dl = -tol; dl <= tol; dl += 2) {
+        const c = nominal + dl;
+        if (c < 0 || c + N >= xp.length) continue;
+        let sum = 0;
+        for (let i = 0; i < N; i += cs) sum += xp[ref + i] * xp[c + i];
+        if (sum > bc) { bc = sum; best = c; }
+      }
+    }
+    const o = k * Hs;
+    for (let i = 0; i < N; i++) y[o + i] += xp[best + i] * win[i];
+    prev = best;
+  }
+  return y.slice(0, Math.round(x.length * s));
+}
+
+self.onmessage = ev => {
+  const { x, rate, s } = ev.data;
+  const y = wsola(x, rate, s);
+  self.postMessage({ y }, [y.buffer]);
+};
+
 tools/mic-worklet.js
 class Aufnehmer extends AudioWorkletProcessor {
   process(inputs) {
@@ -95179,7 +95258,6 @@ let orig = new Float32Array(0);     // Region unverändert
 let out = null;                     // {ch:[Float32Array], sr}
 let ab = 0;                         // 0 original, 1 verändert
 let f = 0;                          // Abspielposition 0..1 im hörbaren Puffer
-const undo = [];
 
 let ac = null, anaIn = null, anaOut = null;
 let rec = null;                     // {stream, node, chunks, n, mins, maxs, cur, curN}
@@ -95277,37 +95355,17 @@ function regionHolen() {
   return src.subarray(a, Math.max(a + 1, b));
 }
 
-// WSOLA: Dehnung um Faktor s ohne Tonhöhenänderung
-function wsola(x, rate, s) {
-  const N = 2 * Math.round(0.02 * rate), Hs = N / 2, Ha = Hs / s, tol = Math.round(0.01 * rate);
-  const frames = Math.ceil(x.length * s / Hs) + 1;
-  const pad = N + tol + 2;
-  const xp = new Float32Array(x.length + 2 * pad + N * 2);
-  xp.set(x, pad);
-  const y = new Float32Array(frames * Hs + N);
-  const win = new Float32Array(N);
-  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
-  const cs = x.length > rate * 20 ? 8 : 4;
-  let prev = pad;
-  for (let k = 0; k < frames; k++) {
-    const nominal = pad + Math.round(k * Ha);
-    let best = nominal;
-    if (k > 0) {
-      const ref = prev + Hs;
-      let bc = -Infinity;
-      for (let dl = -tol; dl <= tol; dl += 2) {
-        const c = nominal + dl;
-        if (c < 0 || c + N >= xp.length) continue;
-        let sum = 0;
-        for (let i = 0; i < N; i += cs) sum += xp[ref + i] * xp[c + i];
-        if (sum > bc) { bc = sum; best = c; }
-      }
-    }
-    const o = k * Hs;
-    for (let i = 0; i < N; i++) y[o + i] += xp[best + i] * win[i];
-    prev = best;
-  }
-  return y.subarray(0, Math.round(x.length * s));
+// WSOLA läuft im Worker (tools/mic-worker.js); ein neuer Auftrag verwirft den laufenden.
+let wk = null, wkJob = null;
+function wsolaAsync(x, rate, s) {
+  return new Promise((res, rej) => {
+    if (wkJob) { wkJob(null); wk.terminate(); wk = null; wkJob = null; }
+    const w = wk = new Worker('/tools/mic-worker.js');
+    wkJob = res;
+    w.onmessage = ev => { if (wk === w) wkJob = null; w.terminate(); res(ev.data.y); };
+    w.onerror = e => { if (wk === w) wkJob = null; rej(new Error(e.message || 'worker')); };
+    w.postMessage({ x, rate, s });
+  });
 }
 
 function hallImpuls(rate, sek) {
@@ -95337,7 +95395,7 @@ async function rendern() {
     if (!x.length) { out = null; return; }
     if (P.rueck) { x = Float32Array.from(x).reverse(); }
     const p = Math.pow(2, P.st / 12), t = Math.max(0.01, P.tempo), s = p / t;
-    if (Math.abs(s - 1) > 1e-3) x = wsola(x, sr, s);
+    if (Math.abs(s - 1) > 1e-3) { x = await wsolaAsync(x, sr, s); if (x === null || my !== renderToken) return; }
     await new Promise(r => setTimeout(r, 0));
     if (my !== renderToken) return;
     const tail = (P.echoMix > 0 ? Math.min(P.echoS * 6, 8) : 0) + (P.hallMix > 0 ? P.hallS : 0);
@@ -95435,6 +95493,301 @@ function spulen(neu) {
   if (wiedergabe) abspielen(f); else zeichneAlles();
 }
 
+// ---------- Clips, Verlauf, Bearbeiten, Speichern ----------
+// Clip-Objekte sind unveränderlich ({id, name, data, sr}); Änderung = neues Objekt. Darum kostet ein Verlaufsschritt nur Verweise.
+let clips = [], curId = null, nextId = 1;
+let view = { a: 0, b: 1 };              // sichtbarer Ausschnitt der Welle (Anteile des Clips)
+let zwischen = null;                    // Ablage {x, sr}
+let undoSt = [], redoSt = [];
+const VERLAUF = 30;
+let zuletztId = null;
+const aktuell = () => clips.find(c => c.id === curId) || null;
+const snap = () => ({ clips, curId });
+
+function ladeAktuell(cursor) {
+  if (wiedergabe) stopQuelle();
+  const c = aktuell();
+  src = c ? c.data : new Float32Array(0);
+  if (c) sr = c.sr;
+  sel = null; f = 0;
+  if (curId !== zuletztId) view = { a: 0, b: 1 };
+  zuletztId = curId;
+  if (cursor != null) f = P.rueck ? 1 - cursor : cursor;
+  const sp = view.b - view.a, mn = Math.min(1, 64 / Math.max(1, src.length));
+  view = { a: Math.max(0, Math.min(1 - Math.max(sp, mn), view.a)), b: 0 }; view.b = Math.min(1, view.a + Math.max(sp, mn));
+  planen(); clipsZeichnen(); editKnoepfe(); knoepfe(); zeichneAlles(); scrollZeichnen();
+}
+function aendern(fn, cursor, nurListe) {
+  undoSt.push(snap()); if (undoSt.length > VERLAUF) undoSt.shift(); redoSt = [];
+  fn();
+  if (nurListe) { clipsZeichnen(); editKnoepfe(); } else ladeAktuell(cursor);
+  speichernPlanen();
+}
+function stellen(s) { clips = s.clips; curId = s.curId; ladeAktuell(); speichernPlanen(); }
+function zurueck() { if (rec) return; const s = undoSt.pop(); if (!s) return; redoSt.push(snap()); stellen(s); }
+function vor() { if (rec) return; const s = redoSt.pop(); if (!s) return; undoSt.push(snap()); stellen(s); }
+function neuerClip(data, rate, name) {
+  aendern(() => {
+    const c = { id: nextId++, name: name || ('aufnahme ' + (clips.length + 1)), data, sr: rate };
+    clips = [...clips, c]; curId = c.id;
+  });
+}
+function waehlen(id) {
+  if (rec || id === curId) return;
+  curId = id; ladeAktuell(); speichernPlanen();
+}
+
+// ----- Bearbeiten (immer auf dem aktuellen Clip)
+function concat(...teile) {
+  const o = new Float32Array(teile.reduce((n, t) => n + t.length, 0)); let p = 0;
+  for (const t of teile) { o.set(t, p); p += t.length; }
+  return o;
+}
+function resample(x, von, nach) {
+  if (von === nach || !x.length) return x;
+  const n = Math.max(1, Math.round(x.length * nach / von)), y = new Float32Array(n), r = von / nach;
+  for (let i = 0; i < n; i++) { const p = i * r, i0 = Math.floor(p), fr = p - i0; y[i] = x[Math.min(i0, x.length - 1)] * (1 - fr) + x[Math.min(i0 + 1, x.length - 1)] * fr; }
+  return y;
+}
+function cursorIdx(len) { return Math.min(len, Math.max(0, Math.round(posAufQuelle(f) * len))); }
+function bereich(len, mussSel) {
+  if (sel) { const a = Math.max(0, Math.floor(sel.a * len)), b = Math.min(len, Math.ceil(sel.b * len)); if (b > a) return [a, b]; }
+  return mussSel ? null : [0, len];
+}
+function bearbeiten(fn) {
+  const c = aktuell(); if (!c || rec) return;
+  if (wiedergabe) f = posF();
+  const neu = fn(c); if (!neu) return;
+  const cur = neu.cur; delete neu.cur;
+  aendern(() => { clips = clips.map(k => k.id === c.id ? { ...k, ...neu } : k); }, cur == null ? 0 : cur / Math.max(1, neu.data.length));
+}
+const rampe = mitte => bearbeiten(k => {
+  const r = bereich(k.data.length, false), d = Float32Array.from(k.data), n = r[1] - r[0];
+  for (let i = 0; i < n; i++) d[r[0] + i] *= mitte(i, n);
+  return { data: d, cur: r[0] };
+});
+const E = {
+  trim() { bearbeiten(c => { const r = bereich(c.data.length, true); return r && { data: c.data.slice(r[0], r[1]), cur: 0 }; }); },
+  schneiden() {
+    bearbeiten(c => { const r = bereich(c.data.length, true); if (!r) return null; zwischen = { x: c.data.slice(r[0], r[1]), sr: c.sr }; return { data: concat(c.data.subarray(0, r[0]), c.data.subarray(r[1])), cur: r[0] }; });
+  },
+  entfernen() { bearbeiten(c => { const r = bereich(c.data.length, true); return r && { data: concat(c.data.subarray(0, r[0]), c.data.subarray(r[1])), cur: r[0] }; }); },
+  kopieren() { const c = aktuell(); const r = c && bereich(c.data.length, true); if (!r) return; zwischen = { x: c.data.slice(r[0], r[1]), sr: c.sr }; editKnoepfe(); },
+  einfuegen() {
+    if (!zwischen) return;
+    bearbeiten(c => { const x = resample(zwischen.x, zwischen.sr, c.sr), i = cursorIdx(c.data.length); return { data: concat(c.data.subarray(0, i), x, c.data.subarray(i)), cur: i + x.length }; });
+  },
+  luecke() {
+    const inp = $('luecke'), sek = parseFloat(String(inp.value).replace(',', '.'));
+    if (!(sek > 0)) { inp.classList.remove('wackel'); void inp.offsetWidth; inp.classList.add('wackel'); return; }
+    bearbeiten(c => { const i = cursorIdx(c.data.length), n = Math.round(sek * c.sr); return { data: concat(c.data.subarray(0, i), new Float32Array(n), c.data.subarray(i)), cur: i + n }; });
+  },
+  teilen() {
+    const c = aktuell(); if (!c || rec) return;
+    if (wiedergabe) f = posF();
+    const i = cursorIdx(c.data.length); if (i <= 0 || i >= c.data.length) return;
+    aendern(() => {
+      const zwei = { id: nextId++, name: c.name + ' 2', data: c.data.slice(i), sr: c.sr };
+      const eins = { ...c, data: c.data.slice(0, i) };
+      clips = clips.flatMap(k => k.id === c.id ? [eins, zwei] : [k]);
+    }, 1);
+  },
+  einblenden() { rampe((i, n) => (i + 0.5) / n); },
+  ausblenden() { rampe((i, n) => 1 - (i + 0.5) / n); },
+  normalisieren() {
+    bearbeiten(c => {
+      const r = bereich(c.data.length, false); let pk = 0;
+      for (let i = r[0]; i < r[1]; i++) { const v = Math.abs(c.data[i]); if (v > pk) pk = v; }
+      if (pk < 1e-6) return null;
+      const d = Float32Array.from(c.data), g = 0.97 / pk;
+      for (let i = r[0]; i < r[1]; i++) d[i] *= g;
+      return { data: d, cur: r[0] };
+    });
+  },
+  anhaengen(id) {
+    const c = aktuell(), t = clips.find(k => k.id === id); if (!c || !t || c === t || rec) return;
+    aendern(() => {
+      const neu = { ...t, data: concat(t.data, resample(c.data, c.sr, t.sr)) };
+      clips = clips.filter(k => k.id !== c.id).map(k => k.id === t.id ? neu : k); curId = t.id;
+    }, t.data.length / (t.data.length + Math.round(c.data.length * t.sr / c.sr)));
+  },
+  kopie() {
+    const c = aktuell(); if (!c || rec) return;
+    aendern(() => {
+      const n = { id: nextId++, name: c.name + ' kopie', data: c.data, sr: c.sr };
+      const i = clips.indexOf(c); clips = [...clips.slice(0, i + 1), n, ...clips.slice(i + 1)]; curId = n.id;
+    });
+  },
+  loeschen() {
+    const c = aktuell(); if (!c || rec) return;
+    aendern(() => {
+      const i = clips.indexOf(c); clips = clips.filter(k => k !== c);
+      curId = clips.length ? clips[Math.min(i, clips.length - 1)].id : null;
+    });
+    toast('gelöscht', 'zurück', zurueck);
+  },
+};
+
+// ----- Zoom
+function setView(a, b) {
+  const mn = Math.min(1, 64 / Math.max(1, src.length)), sp = Math.min(1, Math.max(mn, b - a));
+  a = Math.max(0, Math.min(1 - sp, a)); view = { a, b: a + sp };
+  zeichneWelle(); scrollZeichnen();
+}
+function zoomen(faktor) { const m = (view.a + view.b) / 2, sp = (view.b - view.a) * faktor; setView(m - sp / 2, m + sp / 2); }
+function scrollZeichnen() {
+  const sp = view.b - view.a, aus = sp >= 0.9999 || !src.length;
+  $('scroll').hidden = aus;
+  if (!aus) { $('daumen').style.left = view.a * 100 + '%'; $('daumen').style.width = sp * 100 + '%'; }
+}
+(() => {
+  const tr = $('scroll'); let zieht = false;
+  const setzen = e => { const r = tr.getBoundingClientRect(), m = (e.clientX - r.left) / r.width, sp = view.b - view.a; setView(m - sp / 2, m + sp / 2); };
+  tr.addEventListener('pointerdown', e => { zieht = true; tr.setPointerCapture(e.pointerId); setzen(e); });
+  tr.addEventListener('pointermove', e => { if (zieht) setzen(e); });
+  const ende = () => { zieht = false; };
+  tr.addEventListener('pointerup', ende); tr.addEventListener('pointercancel', ende);
+})();
+
+// ----- Oberfläche: Clip-Zeile, Werkzeugleiste, Meldung
+const SVG = d => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>';
+const WERKZEUG = [
+  ['undo', 'rückgängig', 'M9 14 L4 9 L9 4 M4 9 H14 A6 6 0 0 1 14 21 H10', () => zurueck()],
+  ['redo', 'wiederherstellen', 'M15 14 L20 9 L15 4 M20 9 H10 A6 6 0 0 0 10 21 H14', () => vor()],
+  null,
+  ['trim', 'trim: Auswahl behalten', 'M6 2 V18 H22 M2 6 H18 V22', () => E.trim()],
+  ['cut', 'ausschneiden', 'M8 6 A3 3 0 1 1 5 3 A3 3 0 0 1 8 6 Z M8 18 A3 3 0 1 1 5 15 A3 3 0 0 1 8 18 Z M8 7.5 L21 18 M8 16.5 L21 6', () => E.schneiden()],
+  ['copy', 'kopieren', 'M9 9 H20 V20 H9 Z M5 15 V4 H15', () => E.kopieren()],
+  ['paste', 'einfügen', 'M9 4 H15 V7 H9 Z M7 5.5 H5 V21 H19 V5.5 H17', () => E.einfuegen()],
+  ['split', 'teilen an der Abspielposition', 'M12 2 V22 M8 7 L4 12 L8 17 M16 7 L20 12 L16 17', () => E.teilen()],
+  null,
+  ['fadein', 'einblenden', 'M3 20 L21 20 L21 4 Z', () => E.einblenden()],
+  ['fadeout', 'ausblenden', 'M3 4 V20 H21 Z', () => E.ausblenden()],
+  ['norm', 'normalisieren', 'M12 3 V9 M9 6 L12 9 L15 6 M12 21 V15 M9 18 L12 15 L15 18 M4 12 H20', () => E.normalisieren()],
+  null,
+  ['zin', 'vergrößern', 'M10 4 A6 6 0 1 1 10 16 A6 6 0 1 1 10 4 M15 15 L21 21 M7 10 H13 M10 7 V13', () => zoomen(0.5)],
+  ['zout', 'verkleinern', 'M10 4 A6 6 0 1 1 10 16 A6 6 0 1 1 10 4 M15 15 L21 21 M7 10 H13', () => zoomen(2)],
+];
+function werkzeugBauen() {
+  const box = $('schnitt');
+  for (const w of WERKZEUG) {
+    if (!w) { const t = document.createElement('span'); t.className = 'trenn'; box.appendChild(t); continue; }
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = 'e-' + w[0]; b.title = w[1]; b.ariaLabel = w[1]; b.innerHTML = SVG(w[2]);
+    b.addEventListener('click', w[3]); box.appendChild(b);
+  }
+  const lb = document.createElement('button');
+  lb.type = 'button'; lb.id = 'e-luecke'; lb.className = 'wort'; lb.textContent = 'lücke'; lb.title = lb.ariaLabel = 'Stille einfügen an der Abspielposition';
+  lb.addEventListener('click', () => E.luecke());
+  const li = document.createElement('input');
+  li.id = 'luecke'; li.type = 'text'; li.value = '1'; li.inputMode = 'decimal'; li.size = 3; li.title = li.ariaLabel = 'Länge der Lücke in Sekunden';
+  li.autocomplete = 'off'; li.setAttribute('data-1p-ignore', ''); li.setAttribute('data-lpignore', 'true'); li.setAttribute('data-bwignore', ''); li.setAttribute('data-form-type', 'other');
+  const ls = document.createElement('span'); ls.className = 'einheit'; ls.textContent = 's';
+  box.append(lb, li, ls);
+  const aus = document.createElement('select');
+  aus.id = 'anhaengen'; aus.title = aus.ariaLabel = 'anhängen an';
+  aus.addEventListener('change', () => { const v = Number(aus.value); aus.value = ''; if (v) E.anhaengen(v); });
+  box.appendChild(aus);
+  const akt = $('clipaktion');
+  for (const [id, text, fn] of [['c-name', 'name', () => umbenennen()], ['c-kopie', 'kopie', () => E.kopie()], ['c-weg', 'löschen', () => E.loeschen()]]) {
+    const b = document.createElement('button'); b.type = 'button'; b.id = id; b.textContent = text; b.title = b.ariaLabel = { name: 'Clip umbenennen', kopie: 'Clip duplizieren', 'löschen': 'Clip löschen' }[text];
+    b.addEventListener('click', fn); akt.appendChild(b);
+  }
+}
+function clipsZeichnen() {
+  const hat = clips.length > 0;
+  $('clips').hidden = $('schnitt').hidden = !hat;
+  const ch = $('chips'); ch.textContent = '';
+  for (const c of clips) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip' + (c.id === curId ? ' an' : ''); b.dataset.id = c.id;
+    b.textContent = c.name; b.title = c.name; b.setAttribute('aria-pressed', String(c.id === curId));
+    b.addEventListener('click', () => waehlen(c.id));
+    ch.appendChild(b);
+  }
+  const an = ch.querySelector('.an'); if (an && an.scrollIntoView) an.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const s = $('anhaengen'); s.textContent = '';
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'anhängen an'; s.appendChild(o0);
+  for (const c of clips) if (c.id !== curId) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; s.appendChild(o); }
+  s.value = ''; s.hidden = clips.length < 2;
+}
+function umbenennen() {
+  const c = aktuell(); if (!c || rec) return;
+  const chip = [...$('chips').children].find(b => b.dataset.id === String(c.id)); if (!chip) return;
+  const inp = document.createElement('input');
+  inp.className = 'chipname'; inp.value = c.name; inp.autocomplete = 'off'; inp.ariaLabel = 'Name';
+  inp.setAttribute('data-1p-ignore', ''); inp.setAttribute('data-lpignore', 'true'); inp.setAttribute('data-bwignore', ''); inp.setAttribute('data-form-type', 'other');
+  chip.replaceWith(inp); inp.focus(); inp.select();
+  let fertig = false;
+  const ok = () => {
+    if (fertig) return; fertig = true;
+    const n = inp.value.trim();
+    if (n && n !== c.name) aendern(() => { clips = clips.map(k => k.id === c.id ? { ...k, name: n } : k); }, null, true); else clipsZeichnen();
+  };
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') ok(); else if (e.key === 'Escape') { fertig = true; clipsZeichnen(); } });
+  inp.addEventListener('blur', ok);
+}
+function editKnoepfe() {
+  const hat = !!aktuell() && !rec, hatSel = hat && !!sel && src.length > 0;
+  const st = { undo: undoSt.length > 0 && !rec, redo: redoSt.length > 0 && !rec, trim: hatSel, cut: hatSel, copy: hatSel, paste: hat && !!zwischen, split: hat, fadein: hat, fadeout: hat, norm: hat, zin: hat, zout: hat, luecke: hat };
+  for (const k in st) { const b = $('e-' + k); if (b) b.disabled = !st[k]; }
+  for (const id of ['c-name', 'c-kopie', 'c-weg']) $(id).disabled = !hat;
+}
+let toastT = 0;
+function toastAus() { clearTimeout(toastT); $('toast').hidden = true; }
+function toast(text, aktion, fn) {
+  const t = $('toast'); t.textContent = '';
+  const s = document.createElement('span'); s.textContent = text; t.appendChild(s);
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = aktion; b.title = b.ariaLabel = aktion;
+  b.addEventListener('click', () => { toastAus(); fn(); }); t.appendChild(b);
+  t.hidden = false; clearTimeout(toastT); toastT = setTimeout(toastAus, 5000);
+}
+
+// ----- Speichern (IndexedDB, im Hintergrund; scheitert es: sichtbare Meldung)
+let idbP = null, gespeichert = new Map(), speicherT = 0, speicherKette = Promise.resolve();
+function idb() {
+  if (!idbP) idbP = new Promise((res, rej) => {
+    if (!window.indexedDB) return rej(new Error('IndexedDB nicht verfügbar'));
+    const q = indexedDB.open('mic', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('k');
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+  return idbP;
+}
+const txRun = (db, modus, fn) => new Promise((res, rej) => {
+  const t = db.transaction('k', modus); const r = fn(t.objectStore('k'));
+  t.oncomplete = () => res(r); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Speichern abgebrochen'));
+});
+async function speichernJetzt() {
+  const db = await idb(), jetzt = clips, id = curId, nx = nextId;
+  const neu = jetzt.filter(c => gespeichert.get(c.id) !== c);
+  const weg = [...gespeichert.keys()].filter(k => !jetzt.some(c => c.id === k));
+  await txRun(db, 'readwrite', s => {
+    for (const c of neu) s.put({ id: c.id, name: c.name, data: c.data, sr: c.sr }, 'c' + c.id);
+    for (const k of weg) s.delete('c' + k);
+    s.put({ order: jetzt.map(c => c.id), curId: id, nextId: nx }, 'meta');
+  });
+  gespeichert = new Map(jetzt.map(c => [c.id, c]));
+}
+function speicherStarten() { speicherKette = speicherKette.then(speichernJetzt).catch(e => fehler(e, 'speichern')); return speicherKette; }
+function speichernPlanen() { clearTimeout(speicherT); speicherT = setTimeout(() => { speicherT = 0; speicherStarten(); }, 400); }
+function speicherFertig() { if (speicherT) { clearTimeout(speicherT); speicherT = 0; speicherStarten(); } return speicherKette; }
+addEventListener('pagehide', () => { if (speicherT) { clearTimeout(speicherT); speicherT = 0; speicherStarten(); } });
+async function clipsLaden() {
+  try {
+    const db = await idb();
+    const [meta, alle] = await txRun(db, 'readonly', s => { const a = s.get('meta'), b = s.getAll(); return [a, b]; }).then(([a, b]) => [a.result, b.result]);
+    if (!meta) return;
+    const byId = new Map(alle.filter(x => x && x.data).map(c => [c.id, c]));
+    const geladen = meta.order.map(i => byId.get(i)).filter(Boolean);
+    if (!geladen.length || clips.length) return;
+    clips = geladen; gespeichert = new Map(geladen.map(c => [c.id, c]));
+    curId = byId.has(meta.curId) ? meta.curId : geladen[0].id;
+    nextId = Math.max(meta.nextId || 1, ...geladen.map(c => c.id + 1));
+    ladeAktuell();
+  } catch (e) { fehler(e, 'laden'); }
+}
+
 // ---------- Aufnahme ----------
 const BLK = 1024;
 async function aufnahmeStart() {
@@ -95472,13 +95825,8 @@ function aufnahmeStop() {
   r.qn.disconnect(); r.node.disconnect(); r.senke.disconnect();
   const all = new Float32Array(r.n); let o = 0;
   for (const c of r.chunks) { all.set(c, o); o += c.length; }
-  if (all.length) neueQuelle(all, ac.sampleRate);
+  if (all.length) neuerClip(all, ac.sampleRate);
   knoepfe(); zeichneAlles();
-}
-function neueQuelle(x, rate) {
-  if (src.length) { undo.push({ src, sr, sel }); if (undo.length > 5) undo.shift(); }
-  src = x; sr = rate; sel = null; f = 0; peakCache = new Map();
-  stopQuelle(); planen(); zeichneAlles();
 }
 
 // ---------- Datei laden ----------
@@ -95490,12 +95838,12 @@ async function dateiLaden(file) {
     const b = await c.decodeAudioData(ab_);
     const m = new Float32Array(b.length);
     for (let ch = 0; ch < b.numberOfChannels; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < m.length; i++) m[i] += d[i] / b.numberOfChannels; }
-    neueQuelle(m, b.sampleRate);
+    neuerClip(m, b.sampleRate, file.name.replace(/\.[^.]*$/, '') || undefined);
   } catch (e) { fehler(e, 'laden'); }
 }
-$('datei').addEventListener('change', e => { const fl = e.target.files[0]; if (fl) dateiLaden(fl); e.target.value = ''; });
+$('datei').addEventListener('change', async e => { const fls = [...e.target.files]; e.target.value = ''; for (const fl of fls) await dateiLaden(fl); });
 stage.addEventListener('dragover', e => e.preventDefault());
-stage.addEventListener('drop', e => { e.preventDefault(); const fl = e.dataTransfer.files[0]; if (fl) dateiLaden(fl); });
+stage.addEventListener('drop', async e => { e.preventDefault(); for (const fl of [...e.dataTransfer.files]) await dateiLaden(fl); });
 
 // ---------- WAV ----------
 function wavBauen(chs, rate) {
@@ -95520,7 +95868,7 @@ async function wavExport() {
     const rate = ab === 1 && out ? out.sr : sr;
     if (!chs[0] || !chs[0].length) throw new Error('nichts aufgenommen');
     const url = URL.createObjectURL(new Blob([wavBauen(chs, rate)], { type: 'audio/wav' }));
-    const a = document.createElement('a'); a.href = url; a.download = 'mic.wav';
+    const a = document.createElement('a'); a.href = url; a.download = (aktuell() ? aktuell().name.replace(/[\\/:*?"<>|]+/g, '_') : 'mic') + '.wav';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   } catch (e) { fehler(e, 'wav'); }
@@ -95532,17 +95880,18 @@ function dim(c) {
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; return true; }
   return false;
 }
-let peakCache = new Map();
-function spitzen(x, cols) {
+const peakCache = new WeakMap();
+function spitzen(x, cols, s0 = 0, s1 = x.length) {
   const k = cols; let e = peakCache.get(x);
-  if (e && e.cols === k) return e;
-  const mn = new Float32Array(k), mx = new Float32Array(k), per = x.length / k;
+  if (e && e.cols === k && e.s0 === s0 && e.s1 === s1) return e;
+  const mn = new Float32Array(k), mx = new Float32Array(k), per = (s1 - s0) / k;
   for (let i = 0; i < k; i++) {
-    const a = Math.floor(i * per), b = Math.max(a + 1, Math.floor((i + 1) * per));
+    const a = Math.floor(s0 + i * per), b = Math.max(a + 1, Math.floor(s0 + (i + 1) * per));
     let lo = 1, hi = -1; for (let j = a; j < b && j < x.length; j++) { const v = x[j]; if (v < lo) lo = v; if (v > hi) hi = v; }
-    mn[i] = x.length ? lo : 0; mx[i] = x.length ? hi : 0;
+    const leer = lo > hi;
+    mn[i] = leer ? 0 : lo; mx[i] = leer ? 0 : hi;
   }
-  e = { cols: k, mn, mx }; peakCache.set(x, e); return e;
+  e = { cols: k, s0, s1, mn, mx }; peakCache.set(x, e); return e;
 }
 function welleMalen(c, mn, mx, n) {
   const x = c.getContext('2d'), W = c.width, H = c.height, m = H / 2;
@@ -95577,15 +95926,19 @@ function zeichneWelle() {
     }
     return;
   }
-  const e = spitzen(src, W);
+  const e = spitzen(src, W, view.a * src.length, view.b * src.length);
   welleMalen(cW, e.mn, e.mx, src.length ? W : 0);
+  const vx = q => (q - view.a) / (view.b - view.a);
+  const klemme = v => Math.max(0, Math.min(W, v));
   if (sel) {
+    const xa = vx(sel.a) * W, xb = vx(sel.b) * W;
     x.fillStyle = rgb(BG, 0.65);
-    x.fillRect(0, 0, Math.round(sel.a * W), H);
-    x.fillRect(Math.round(sel.b * W), 0, W, H);
-    linieAn(cW, sel.a, 0.5); linieAn(cW, sel.b, 0.5);
+    x.fillRect(0, 0, Math.round(klemme(xa)), H);
+    x.fillRect(Math.round(klemme(xb)), 0, W, H);
+    if (xa >= 0 && xa <= W) linieAn(cW, vx(sel.a), 0.5);
+    if (xb >= 0 && xb <= W) linieAn(cW, vx(sel.b), 0.5);
   }
-  if (src.length) linieAn(cW, posAufQuelle(f), 1);
+  if (src.length) { const p = vx(posAufQuelle(f)); if (p >= 0 && p <= 1) linieAn(cW, p, 1); }
 }
 function zeichneMod() {
   dim(cM);
@@ -95766,21 +96119,51 @@ $('ab1').addEventListener('click', () => abSetzen(1));
 // ---------- Zeiger ----------
 function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); }
 (() => {
-  let x0 = null, bewegt = false;
-  cW.addEventListener('pointerdown', e => { if (rec || !src.length) return; cW.setPointerCapture(e.pointerId); x0 = anteil(cW, e); bewegt = false; });
-  cW.addEventListener('pointermove', e => {
-    if (x0 == null) return;
-    const q = anteil(cW, e);
-    if (!bewegt && Math.abs(q - x0) * cW.clientWidth < 4) return;
-    bewegt = true; sel = { a: Math.min(x0, q), b: Math.max(x0, q) }; zeichneWelle();
+  let x0 = null, bewegt = false, pinch = null;
+  const ptr = new Map();
+  const spanV = () => view.b - view.a;
+  const qAnteil = e => view.a + anteil(cW, e) * spanV();
+  const mitteX = () => { const [p, q] = [...ptr.values()], r = cW.getBoundingClientRect(); return { d: Math.abs(p - q) || 1, m: ((p + q) / 2 - r.left) / r.width }; };
+  cW.addEventListener('pointerdown', e => {
+    if (rec || !src.length) return;
+    cW.setPointerCapture(e.pointerId); ptr.set(e.pointerId, e.clientX);
+    if (ptr.size === 2) { x0 = null; const m = mitteX(); pinch = { d: m.d, v: { ...view }, anker: view.a + m.m * spanV() }; return; }
+    x0 = qAnteil(e); bewegt = false;
   });
-  cW.addEventListener('pointerup', e => {
+  cW.addEventListener('pointermove', e => {
+    if (!ptr.has(e.pointerId)) return;
+    ptr.set(e.pointerId, e.clientX);
+    if (pinch && ptr.size >= 2) {
+      const m = mitteX(), neu = (pinch.v.b - pinch.v.a) * pinch.d / m.d;
+      setView(pinch.anker - m.m * neu, pinch.anker - m.m * neu + neu);
+      return;
+    }
     if (x0 == null) return;
-    const q = anteil(cW, e);
+    const q = qAnteil(e);
+    if (!bewegt && Math.abs(q - x0) / spanV() * cW.clientWidth < 4) return;
+    bewegt = true; sel = { a: Math.min(x0, q), b: Math.max(x0, q) }; zeichneWelle(); editKnoepfe();
+  });
+  const hoch = e => {
+    const war = ptr.delete(e.pointerId);
+    if (!war) return;
+    if (pinch) { if (ptr.size < 2) pinch = null; x0 = null; return; }
+    if (x0 == null) return;
+    const q = qAnteil(e);
+    if (e.type === 'pointercancel') { x0 = null; return; }
     if (bewegt) { if (sel.b - sel.a < 1e-4) sel = null; planen(); stopQuelle(); knoepfe(); f = 0; zeichneAlles(); }
     else { const had = !!sel; sel = null; if (had) { planen(); stopQuelle(); knoepfe(); } f = P.rueck ? 1 - q : q; if (had) zeichneAlles(); else spulen(f); }
     x0 = null;
-  });
+  };
+  cW.addEventListener('pointerup', hoch);
+  cW.addEventListener('pointercancel', hoch);
+  cW.addEventListener('wheel', e => {
+    if (!src.length || rec) return;
+    e.preventDefault();
+    const r = cW.getBoundingClientRect(), m = (e.clientX - r.left) / r.width, sp = spanV();
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { const d = (e.deltaX || e.deltaY) / r.width * sp; setView(view.a + d, view.b + d); return; }
+    const neu = sp * Math.exp(e.deltaY * 0.002), anker = view.a + m * sp;
+    setView(anker - m * neu, anker - m * neu + neu);
+  }, { passive: false });
   for (const c of [cS, cM]) c.addEventListener('pointerdown', e => { if (!rec && src.length) spulen(anteil(c, e)); });
 })();
 
@@ -95844,14 +96227,8 @@ panel
     { key: 'wav', label: 'wav', onClick: wavExport },
   ] })
   .addButtonGroup('schnitt', { buttons: [
-    { key: 'trim', label: 'trim', onClick: () => {
-        if (!sel || !src.length) return;
-        const r = Float32Array.from(regionHolen()); neueQuelle(r, sr);
-      } },
-    { key: 'zurueck', label: 'zurück', onClick: () => {
-        const u = undo.pop(); if (!u) return;
-        src = u.src; sr = u.sr; sel = u.sel; f = 0; peakCache = new Map(); stopQuelle(); knoepfe(); planen(); zeichneAlles();
-      } },
+    { key: 'trim', label: 'trim', onClick: () => E.trim() },
+    { key: 'zurueck', label: 'zurück', onClick: () => zurueck() },
   ] })
   .addDivider();
 sl('tempo', 'Tempo', 0.05, 8, 0.01, P.tempo, 2, v => { P.tempo = v; });
@@ -95951,10 +96328,29 @@ stage.addEventListener('ctrl-panel-layout-change', layout);
 document.addEventListener('ctrl-panel-layout-change', layout);
 
 BG = grau('--bg-color'); FG = grau('--text-color');
+// ---------- Tastatur ----------
+stage.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b) b.blur(); });
+document.addEventListener('keydown', e => {
+  const t = e.target, tn = t && t.tagName;
+  if (tn === 'INPUT' || tn === 'TEXTAREA' || tn === 'SELECT' || (t && t.isContentEditable)) return;
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? vor() : zurueck(); return; }
+  if (mod && k === 'y') { e.preventDefault(); vor(); return; }
+  if (mod && k === 'c') { if (sel) { e.preventDefault(); E.kopieren(); } return; }
+  if (mod && k === 'x') { if (sel) { e.preventDefault(); E.schneiden(); } return; }
+  if (mod && k === 'v') { if (zwischen) { e.preventDefault(); E.einfuegen(); } return; }
+  if (mod || e.altKey) return;
+  if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); if (!e.repeat) $('play').click(); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); E.entfernen(); }
+});
+
+werkzeugBauen();
+clipsLaden();
+
 knoepfe();
 requestAnimationFrame(layout);
 
-window.__mic = { planen, get out() { return out; }, get src() { return src; }, get P() { return P; }, get sel() { return sel; }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
+window.__mic = { planen, E, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
 
 })();
 
