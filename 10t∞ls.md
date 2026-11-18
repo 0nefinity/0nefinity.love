@@ -260,3 +260,5 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
 ### iframe-Chat-Knopf (nur dev)
 `tools/claude-chat.js`: Knopf und einklappbarer Rahmen mit iframe auf eigenem Origin, nur nach Login-Check sichtbar, Zustand gemerkt. Brauchbar, nur Dev-Hostnamen.
+
+ mic.html (Ton aufnehmen und verändern: AudioWorklet-Aufnahme, eigenes WSOLA-Tempo ohne Tonhöhenänderung, YIN-Tonhöhe, FFT-Spektrogramm auf Log-Frequenzachse, Offline-Render für Vorschau und WAV-Export, `tools/mic.js`).
