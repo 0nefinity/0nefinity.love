@@ -38,6 +38,26 @@ let BUDGET = 1000 / 60;
 }
 
 const gemeldet = new Set();
+// Wer die Grafikkarte verliert, pausiert und versucht es wieder: jedes Mal doppelt so lange, nie für immer.
+const PAUSEN = [500, 1000, 2000, 4000, 8000];
+// Jeder Wechsel auf DOM sagt dem eigenen Server, warum (nur Grund, Element, Zeit; je Grund höchstens einmal pro Minute).
+const MELDUNG = new URL('meldung.txt', import.meta.url);
+const zuletzt = new Map();
+function meldeDom(el, grund) {
+  const schluessel = el.localName + '|' + grund, jetzt = Date.now();
+  if (jetzt - (zuletzt.get(schluessel) ?? -Infinity) < 60000) return;
+  zuletzt.set(schluessel, jetzt);
+  const q = new URLSearchParams({ grund: String(grund).slice(0, 160), el: el.localName, t: String(Math.round(performance.now())) });
+  fetch(MELDUNG + '?' + q, { cache: 'no-store', keepalive: true })
+    .then((r) => { if (!r.ok) console.error('B1bli0thek: Meldung abgewiesen', r.status); })
+    .catch((e) => console.error('B1bli0thek: Meldung nicht gesendet', e));
+}
+// Im Hintergrund baut niemand neu (der Browser würde den Kontext gleich wieder nehmen); beim Zurückkommen alle.
+const verbunden = new Set();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  for (const el of verbunden) if (el._nachSicht) el._faltWieder();
+});
 const TAU = 2 * Math.PI;
 // Ein Winkel auf den Kreis gefaltet: -π..π. Wie oft man schon herum ist, vergisst er.
 const mitte = (x) => x - TAU * Math.round(x / TAU);
@@ -101,7 +121,8 @@ export class InfElement extends HTMLElement {
     this._probe = null;
     this._masse = [];
     this._orte = new Float32Array(4096);
-    this._falten = true;
+    this._faltPause = 0;
+    this._faltVersuche = 0;
     this._faltung = null;
     this._zeiger = new Map();
     this._schreibt = false;
@@ -113,6 +134,7 @@ export class InfElement extends HTMLElement {
   connectedCallback() {
     if (this._verbunden) return;
     this._verbunden = true;
+    verbunden.add(this);
     this._groesse = new ResizeObserver(() => { this._masse = []; this._faltung?.veraltet(); this.zeichne(); });
     this._groesse.observe(this);
     this._root.querySelector('.leiste').addEventListener('click', (e) => this._leiste(e));
@@ -135,6 +157,8 @@ export class InfElement extends HTMLElement {
   disconnectedCallback() {
     this._groesse?.disconnect();
     this._verbunden = false;
+    verbunden.delete(this);
+    clearTimeout(this._faltWecker);
     // Browser halten nur wenige WebGL-Kontexte; wer geht, gibt seinen frei (beim Zurückkommen entsteht ein neuer).
     this._faltung?.weg_();
     this._faltung = null;
@@ -288,26 +312,56 @@ export class InfElement extends HTMLElement {
   // Wie viele Formen sich wiederholen. 0 = keine Faltung, jede Kopie bleibt echtes DOM.
   get periode() { return this.constructor.periode || 0; }
 
-  // Verlorener Kontext: neue Leinwand, neuer Kontext. Erst wer ihn dauernd verliert, bleibt beim DOM.
+  // Gefaltet wird, solange keine Pause läuft.
+  get _falten() { return performance.now() >= this._faltPause; }
+
+  // Verlorener Kontext: neue Leinwand, neuer Kontext. Wer ihn oft verliert, pausiert kurz und kommt wieder.
   _faltVerlust() {
+    this._faltung?.weg_();
+    this._faltung = null;
+    if (document.hidden) { this._nachSicht = true; return; }
     const jetzt = performance.now();
     this._verluste = (this._verluste || []).filter((t) => jetzt - t < 10000);
     this._verluste.push(jetzt);
-    this._faltung?.weg_();
-    this._faltung = null;
-    if (this._verluste.length > 3) this._faltFehler(new Error('B1bli0thek: WebGL-Kontext dauernd verloren, DOM-Weg'));
+    if (this._verluste.length > 3) this._faltPausieren('Kontext dauernd verloren');
     else this.zeichne();
   }
 
   _faltFehler(e) {
     if (this._faltung?.gl.isContextLost()) return; // webglcontextlost kommt und baut neu auf
     if (!gemeldet.has(e.message)) { gemeldet.add(e.message); console.error(e); }
-    this._falten = false;
+    this._faltPausieren(e.message);
+  }
+
+  // DOM ist eine Pause, kein Abschied: nach PAUSEN[k] ms der nächste Versuch, nach ruhigen 30 s fängt k wieder bei 0 an.
+  _faltPausieren(grund) {
+    const jetzt = performance.now();
+    if (jetzt - (this._faltZuletzt ?? -Infinity) > 30000) this._faltVersuche = 0;
+    this._faltZuletzt = jetzt;
+    const ms = PAUSEN[Math.min(this._faltVersuche++, PAUSEN.length - 1)];
+    this._faltPause = jetzt + ms;
     this._faltung?.weg_();
     this._faltung = null;
     this._masse = [];
+    this._capVorher ??= this._cap;
     this._cap = Math.min(this._cap, KAPAZITAET_MAX);
+    meldeDom(this, grund);
+    clearTimeout(this._faltWecker);
+    this._faltWecker = setTimeout(() => {
+      this._faltWecker = 0;
+      if (document.hidden) this._nachSicht = true;
+      else this._faltWieder();
+    }, ms);
     this.zeichne();
+  }
+
+  _faltWieder() {
+    this._nachSicht = false;
+    this._faltPause = 0;
+    this._verluste = [];
+    if (this._capVorher !== undefined) { this._cap = this._capVorher; this._capVorher = undefined; }
+    this._masse = [];
+    if (this._verbunden) this.zeichne();
   }
 
   // Wieviele Kopien sichtbar bleiben: bei ∞ bis aus dem Bild, unter einen halben Pixel oder ein Kreis geschlossen ist.
