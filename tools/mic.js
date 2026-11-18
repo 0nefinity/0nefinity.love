@@ -34,6 +34,7 @@ const P = {
   tempo: 1, st: 0, rueck: false, pegel: 1,
   filter: 'aus', fhz: 1000, fq: 1,
   echoS: 0.3, echoFb: 0.4, echoMix: 0, hallMix: 0, hallS: 2, verz: 0,
+  tit: false, bit: false, steig: 'aus',
 };
 let src = new Float32Array(0);      // Quelle mono
 let sr = 44100;
@@ -139,16 +140,17 @@ function regionHolen() {
   return src.subarray(a, Math.max(a + 1, b));
 }
 
-// WSOLA läuft im Worker (tools/mic-worker.js); ein neuer Auftrag verwirft den laufenden.
+// WSOLA und die 0n-Rechnungen (Ton im Ton, endlos steigend) laufen im Worker (tools/mic-worker.js); ein neuer Auftrag verwirft den laufenden.
 let wk = null, wkJob = null;
-function wsolaAsync(x, rate, s) {
+const wsolaAsync = (x, rate, s) => workerAuftrag({ x, rate, s });
+function workerAuftrag(auftrag) {
   return new Promise((res, rej) => {
     if (wkJob) { wkJob(null); wk.terminate(); wk = null; wkJob = null; }
     const w = wk = new Worker('/tools/mic-worker.js');
     wkJob = res;
     w.onmessage = ev => { if (wk === w) wkJob = null; w.terminate(); res(ev.data.y); };
     w.onerror = e => { if (wk === w) wkJob = null; rej(new Error(e.message || 'worker')); };
-    w.postMessage({ x, rate, s });
+    w.postMessage(auftrag);
   });
 }
 
@@ -178,7 +180,9 @@ async function rendern() {
     let x = regionHolen();
     if (!x.length) { out = null; return; }
     if (P.rueck) { x = Float32Array.from(x).reverse(); }
-    const p = Math.pow(2, P.st / 12), t = Math.max(0.01, P.tempo), s = p / t;
+    if (P.tit) { x = await workerAuftrag({ op: 'tit', x, rate: sr }); if (x === null || my !== renderToken) return; }
+    if (P.steig !== 'aus') { x = await workerAuftrag({ op: P.steig, x, rate: sr }); if (x === null || my !== renderToken) return; }
+    const p =Math.pow(2, P.st / 12), t = Math.max(0.01, P.tempo), s = p / t;
     if (Math.abs(s - 1) > 1e-3) { x = await wsolaAsync(x, sr, s); if (x === null || my !== renderToken) return; }
     await new Promise(r => setTimeout(r, 0));
     if (my !== renderToken) return;
@@ -215,10 +219,27 @@ async function rendern() {
     q.start();
     const r = await oc.startRendering();
     if (my !== renderToken) return;
-    out = { ch: [r.getChannelData(0), r.getChannelData(1)], sr: r.sampleRate };
+    out = { ch: [r.getChannelData(0), r.getChannelData(1)], sr: r.sampleRate, bit: P.bit };
+    if (P.bit) einBit(out.ch);
     if (wiedergabe) abspielen(f);
     zeichneAnalyse();
   } catch (e) { fehler(e, 'render'); }
+}
+
+// 1-Bit: jeder Abtastwert wird 1 oder 0 (oben oder unten, sonst nichts). Was zu leise ist, um sich zu entscheiden,
+// bleibt, was es war: Stille ist ein Bit, das sich nicht ändert.
+function einBit(chs) {
+  let m = 0;
+  for (const d of chs) for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > m) m = v; }
+  const schwelle = 0.02 * m, hoehe = 0.3 * Math.min(1, m);
+  for (const d of chs) {
+    let b = 1;
+    for (let i = 0; i < d.length; i++) {
+      const v = d[i];
+      if (v > schwelle) b = 1; else if (v < -schwelle) b = 0;
+      d[i] = b ? hoehe : -hoehe;
+    }
+  }
 }
 
 // hörbarer Puffer (mono für Analyse)
@@ -728,9 +749,30 @@ function zeichneMod() {
   dim(cM);
   const W = cM.width;
   if (!out || !src.length) { welleMalen(cM, null, null, 0); return; }
+  if (ab === 1 && out.bit) { bitsMalen(); return; }
   const m = hoerbarCache(), e = spitzen(m.x, W);
   welleMalen(cM, e.mn, e.mx, W);
   linieAn(cM, f, 1);
+}
+
+// 1-Bit sichtbar: die Bits um den Abspielpunkt (eine halbe Sekunde), als 1 oben und 0 unten. Die Welle besteht aus ihren Bits.
+function bitsMalen() {
+  const x = cM.getContext('2d'), W = cM.width, H = cM.height, d = out.ch[0], n = d.length;
+  x.clearRect(0, 0, W, H);
+  const gr = Math.max(8, Math.floor(H * 0.42));
+  x.font = gr + 'px ' + getComputedStyle(stage).fontFamily;
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  const bw = Math.max(4, x.measureText('0').width * 1.15), k = Math.max(2, Math.floor(W / bw));
+  const schritt = Math.max(1, Math.round(0.5 * out.sr / k)), mitte = Math.floor(f * n) - Math.floor(k / 2) * schritt;
+  for (let j = 0; j < k; j++) {
+    const i = mitte + j * schritt;
+    if (i < 0 || i >= n) continue;
+    const eins = d[i] > 0;
+    x.fillStyle = rgb(FG, 0.9);
+    x.fillText(eins ? '1' : '0', (j + 0.5) * W / k, eins ? H * 0.27 : H * 0.73);
+  }
+  x.fillStyle = rgb(FG, 0.25); x.fillRect(0, Math.floor(H / 2), W, 1);
+  linieAn(cM, (Math.floor(k / 2) + 0.5) / k, 0.6);
 }
 
 // Spektrogramm
@@ -1036,6 +1078,12 @@ sl('hallMix', 'Hall mix', 0, 1, 0.01, P.hallMix, 2, v => { P.hallMix = v; });
 sl('hallS', 'Hall s', 0.1, 10, 0.1, P.hallS, 2, v => { P.hallS = v; });
 panel.addDivider();
 sl('verz', 'Verzerrung', 0, 1, 0.01, P.verz, 2, v => { P.verz = v; });
+panel.addDivider()
+  .addToggle('tit', { label: 'Ton im Ton', value: P.tit, onChange: v => { P.tit = v; neuPlanen(); } })
+  .addToggle('bit', { label: '1-Bit', value: P.bit, onChange: v => { P.bit = v; neuPlanen(); } })
+  .addSelect('steig', { label: 'endlos steigend', value: P.steig, options: [
+      { value: 'aus', label: 'aus' }, { value: 'ton', label: 'Tonhöhe' }, { value: 'tempo', label: 'Tempo' }],
+    onChange: v => { P.steig = v; neuPlanen(); } });
 
 // Ziehen: eigener Zeiger statt nativem Range. Weiter weg vom Regler (senkrecht) = feiner (1, 1/4, 1/16 der Strecke),
 // und Tonhöhe rastet auf ganze Halbtöne, solange der Finger nah dran bleibt.
