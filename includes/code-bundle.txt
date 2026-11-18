@@ -14583,9 +14583,6 @@ export class Faltung {
     gl.uniform1i(u.u_eins, d.eins ? 1 : 0);
     gl.uniform1i(u.u_rot, d.rotate ? 1 : 0);
     gl.uniform4fv(u.u_g, this.g);
-    gl.uniform2f(u.u_inv, d.ix, d.iy);
-    gl.uniform1f(u.u_a, d.a);
-    gl.uniform3f(u.u_bt, d.bt[0], d.bt[1], d.bt[2]);
     gl.uniform3f(u.u_sicht, W / 2, H / 2, Math.hypot(W, H) / 2);
     gl.uniform1f(u.u_px, 2 / (devicePixelRatio || 1));
     if (d.runde) {
@@ -14595,6 +14592,10 @@ export class Faltung {
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
     for (const t of d.teile) {
+      // Jedes Stück hat seinen eigenen Schritt W^S (ausgedünnt, wo die Kopien dichter als ein Bildpunkt liegen).
+      gl.uniform2f(u.u_inv, t.inv[0], t.inv[1]);
+      gl.uniform1f(u.u_a, t.a);
+      gl.uniform3f(u.u_bt, t.bt[0], t.bt[1], t.bt[2]);
       gl.uniform1i(u.u_r0, t.r0);
       gl.uniform4fv(u.u_b, t.b);
       gl.uniform4fv(u.u_c, t.c);
@@ -14977,11 +14978,13 @@ const grafikZeigen = () => {
 // Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
 function anzahlSetzen(text) {
   const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
-  if (t === '') return;
   if (['∞', 'inf', 'unendlich', 'infinity'].includes(t)) el.unendlich();
   else if (/^\d+$/.test(t)) el.setzeAnzahl(Number(t));
-  else { zaehlen(); return; }
-  anzahlFeld()?.blur();
+  // Was keine Anzahl ist, bleibt nicht stehen: das Feld zeigt danach immer, was wirkt.
+  const f = anzahlFeld();
+  f?.blur();
+  zaehlen();
+  if (f) f.value = zahlText(el.gezaehlt.ziel);
 }
 const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : String(n));
 function zaehlen() {
@@ -15149,10 +15152,17 @@ export class InfCheck extends InfElement {
   constructor() {
     super();
     this._name = 'inf-check-' + (gruppe++);
-    this._an = new Set(this.hasAttribute('checked') ? [0] : []);
+    // Zustand aller Kopien: _basis, außer den Kopien in _anders. So hat auch ∞ einen Zustand, ohne ∞ Einträge.
+    this._basis = false;
+    this._anders = new Set(this.hasAttribute('checked') ? [0] : []);
     this._wellen = [];
+    this._welle = null;
   }
   get _typ() { return this.getAttribute('type') === 'radio' ? 'radio' : 'checkbox'; }
+  // Alle gleich und keine Welle unterwegs: eine Kopie ist die Periode, den Rest faltet die Grafikkarte.
+  // Läuft eine Welle, ist jede Kopie anders und echtes DOM, bis sie durch ist.
+  get periode() { return this._typ === 'checkbox' && !this._welle && !this._anders.size ? 1 : 0; }
+  _ist(i) { return this._basis !== this._anders.has(i); }
   baueKopie(i) {
     const l = document.createElement('label');
     l.className = 'ziel';
@@ -15164,35 +15174,60 @@ export class InfCheck extends InfElement {
     l.append(f);
     return l;
   }
-  fuelleKopie(l, i) { l.firstChild.checked = this._an.has(i); }
+  fuelleKopie(l, i) { l.firstChild.checked = this._ist(i); }
   attributGeaendert() { this.leereKopien(); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('change', (e) => {
-      const start = Number(e.target.closest('.kopie').dataset.i);
+      // Ein Klick auf ein Spiegelbild kommt bei seiner Vorlage an; die Welle startet trotzdem dort, wo geklickt wurde.
+      const start = this._weiterVon ?? Number(e.target.closest('.kopie').dataset.i);
       const wert = e.target.checked;
       for (const t of this._wellen.splice(0)) clearTimeout(t);
+      this._welle = null;
       if (this._typ === 'radio') return this._wandere(start);
-      // Welle nach beiden Seiten, ein Schritt je 30 ms
-      this.kopien.forEach((k, i) => {
-        if (i === start) { this._setze(i, wert); return; }
-        this._wellen.push(setTimeout(() => { this._setze(i, wert); }, Math.abs(i - start) * 30));
-      });
+      this._setze(start, wert);
+      this._welle = { start, wert };
+      this.zeichne();
     });
   }
+  // Welle nach beiden Seiten, ein Schritt je 30 ms, über die Kopien, die das Layout gerade gebaut hat.
+  nachLayout() {
+    const w = this._welle;
+    if (!w || w.laeuft) return;
+    w.laeuft = true;
+    const n = this.kopien.length, start = Math.min(w.start, Math.max(0, n - 1));
+    let offen = 0;
+    for (let i = 0; i < n; i++) {
+      if (i === w.start) continue;
+      offen++;
+      this._wellen.push(setTimeout(() => { this._setze(i, w.wert); if (--offen === 0) this._durch(w); }, Math.abs(i - start) * 30));
+    }
+    if (!offen) this._durch(w);
+  }
+  // Die Welle läuft weiter bis ∞: danach haben alle Kopien ihren Wert.
+  _durch(w) {
+    if (this._welle !== w) return;
+    this._welle = null;
+    this._wellen = [];
+    this._basis = w.wert;
+    this._anders.clear();
+    this._faltung?.veraltet();
+    this.zeichne();
+  }
   _setze(i, wert) {
-    if (wert) this._an.add(i); else this._an.delete(i);
+    if (wert === this._basis) this._anders.delete(i); else this._anders.add(i);
     const k = this.kopien[i];
     if (k) k.firstChild.checked = wert;
   }
   _wandere(i) {
-    this._an = new Set([i]);
+    this._basis = false;
+    this._anders = new Set([i]);
     const n = this.kopien.length;
     if (n < 2) return;
     const weiter = () => {
       const k = this.kopien[(i = (i + 1) % this.kopien.length)];
       if (!k) return;
       k.firstChild.checked = true;
-      this._an = new Set([i]);
+      this._anders = new Set([i]);
       if (i !== 0) this._wellen.push(setTimeout(weiter, 60));
     };
     this._wellen.push(setTimeout(weiter, 60));
@@ -15369,6 +15404,8 @@ export class InfList extends InfElement {
     const m = this.getAttribute('marker');
     if (m !== null) l.style.setProperty('--marker', JSON.stringify(m + ' '));
   }
+  // Aufzählungspunkte wiederholen sich, Nummern nie: nur die ungeordnete Liste hat eine Periode.
+  get periode() { return this.getAttribute('type') === 'ul' ? 1 : 0; }
   attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-list', InfList);
@@ -15425,15 +15462,24 @@ export class InfRange extends InfElement {
     const spanne = this._max - this._min;
     r.style.setProperty('--f', String(spanne ? (this._null - this._min) / spanne : .5));
   }
-  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k, Number(k.dataset.i)); }
+  // Kehrt die Phase nach p Kopien auf denselben Wert zurück (p·phase ein Vielfaches der Spanne), wiederholt sich das Bild
+  // mit Periode p. Ohne Phase ist jede Kopie gleich. Bleibt die Folge länger als 64 Kopien neu, bleibt jede Kopie DOM.
+  get periode() {
+    const phase = Number(this.getAttribute('phase') ?? 0), spanne = this._max - this._min;
+    if (!phase || !spanne || !Number.isFinite(phase) || !Number.isFinite(spanne)) return 1;
+    for (let p = 1; p <= 64; p++) { const x = (p * phase) / spanne; if (Math.abs(x - Math.round(x)) < 1e-9) return p; }
+    return 0;
+  }
+  attributGeaendert() { for (const k of this.kopien) this.fuelleKopie(k, Number(k.dataset.i)); this._faltung?.veraltet(); }
   get value() { return this._fuer(0); }
-  set value(v) { this._wert = Number(v); this.attributGeaendert(); }
+  set value(v) { this._wert = Number(v); this.attributGeaendert(); this.zeichne(); }
   verbunden() {
     this._root.querySelector('.buehne').addEventListener('input', (e) => {
       const i = Number(e.target.dataset.i);
       const phase = Number(this.getAttribute('phase') ?? 0);
       this._wert = Number(e.target.value) - i * phase;
       for (const k of this.kopien) if (k !== e.target) k.value = String(this._fuer(Number(k.dataset.i)));
+      if (this._faltung) { this._faltung.veraltet(); this.zeichne(); }
     });
     // Doppelklick und Doppeltipp setzen auf den Nullpunkt zurück. Ein Tipp = kaum bewegt zwischen Drücken und Loslassen.
     const buehne = this._root.querySelector('.buehne');
@@ -15482,6 +15528,8 @@ export class InfTable extends InfElement {
     const zellen = t.rows[0].cells;
     for (let j = 0; j < zellen.length; j++) zellen[j].textContent = inhalt === 'index' ? `${i},${j}` : (inhalt ?? '');
   }
+  // Gleiche Zellen in jeder Zeile: eine Zeile ist die Periode, den Rest faltet die Grafikkarte. Mit Index ist jede Zeile anders.
+  get periode() { return this.getAttribute('cell') === 'index' ? 0 : 1; }
   attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-table', InfTable);
@@ -15546,6 +15594,11 @@ const PROBE_BILDER = 6;
 const KAPAZITAET_MAX = 6000;
 // Technischer Schutz für gefaltete Kopien: 2^22 Orte, je 16 Byte.
 const FALT_MAX = 1 << 22;
+// So viele Zeichnungen schafft auch eine schwache Grafikkarte in einem Bild; mehr wird nie verlangt.
+const INSTANZEN_MAX = 1 << 20;
+// Jede endliche Eingabe bleibt endlich: was weiter reicht als WEIT, wirkt wie WEIT (rechnen ließe sich damit nur noch Infinity).
+const WEIT = 1e9;
+const klemme = (n, w) => (n === null ? null : Math.min(w, Math.max(-w, n)));
 // Pro Messdurchgang so viele Kopien vorausbauen: ein Reflow je Stapel statt einer je Kopie.
 const STAPEL = 64;
 // Welchen Teil eines Bildes ein Zug verbrauchen darf: ∞ lässt dem Rest der Seite Luft, ∞+ (capacity) schöpft aus.
@@ -15675,6 +15728,9 @@ export class InfElement extends HTMLElement {
     if (name === 'capacity' || (name === 'repeat' && this._zustand.unendlich)) this._gedeckelt = false;
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
+    // Nach jeder Änderung meldet der nächste Zug den Schritt neu, auch wenn er gleich bleibt: wer zwischendurch
+    // ungezeichnet nachgefragt hat (inf-change), soll nicht auf einem Zwischenstand stehen bleiben.
+    this._zaehlSchritt = NaN;
     this.zeichne();
   }
 
@@ -15689,17 +15745,17 @@ export class InfElement extends HTMLElement {
     const a = (n) => this.getAttribute(n);
     const r = (a('repeat') ?? String(v.repeat)).trim().toLowerCase();
     const sp = a('space');
-    const fest = sp === null || sp.trim() === '' || !Number.isFinite(Number(sp)) ? null : Number(sp);
-    const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => zahl(s, 0));
+    const fest = sp === null || sp.trim() === '' || !Number.isFinite(Number(sp)) ? null : klemme(Number(sp), WEIT);
+    const schub = (a('shift') || '0 0').trim().split(/[\s,]+/).map((s) => klemme(zahl(s, 0), WEIT));
     this._zustand = {
       unendlich: UNENDLICH.has(r),
       anzahl: UNENDLICH.has(r) ? FALT_MAX : Math.max(0, Math.floor(zahl(r, 1))),
-      bend: zahl(a('bend'), v.bend),
-      scale: Math.max(0.01, zahl(a('scale'), v.scale)),
-      angle: zahl(a('angle'), v.angle),
-      space: zahl(a('space'), v.space),
+      bend: klemme(zahl(a('bend'), v.bend), WEIT),
+      scale: Math.min(1e6, Math.max(0.01, zahl(a('scale'), v.scale))),
+      angle: klemme(zahl(a('angle'), v.angle), WEIT),
+      space: klemme(zahl(a('space'), v.space), WEIT),
       // Ausdrücklich gesetztes space ist der Schritt selbst: 0 = alle Kopien deckungsgleich. Ohne Attribut: Abstand aus der Größe.
-      gap: a('gap') !== null || fest === null ? ((a('gap') ?? String(v.gap)) === 'auto' ? null : zahl(a('gap') ?? v.gap, null)) : fest,
+      gap: a('gap') !== null || fest === null ? ((a('gap') ?? String(v.gap)) === 'auto' ? null : klemme(zahl(a('gap') ?? v.gap, null), WEIT)) : fest,
       dx: schub[0] || 0,
       dy: schub[1] ?? 0,
       rotate: a('rotate') === null ? v.rotate : a('rotate') !== 'false',
@@ -16016,8 +16072,9 @@ export class InfElement extends HTMLElement {
           // Liegt der Grenzpunkt in der Kopie, sieht jeder Bildpunkt immer denselben Texel, solange die Kopie mitdreht.
           if (z.unendlich && this._qFenster(B, r, cx, cy, R)?.[1] === Infinity && !z.rotate && Math.abs(bm) > 1e-12) grund = 'schwingt';
         } else if (zyklus) qmax = Math.min(qmax, zyklus);
-        // Kreis: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten. Gezählt bleibt alles, gezeichnet wird mod 360°.
-        else if (!eins) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
+        // ∞ ohne geschlossenen Zyklus: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten, der Zähler sagt "dicht".
+        // Endlich gezählt wird endlich gezeichnet: 3600 Kopien auf einem Kreis, der sich erst nach 1800 schließt, sind 1800 Orte, nicht 13.
+        else if (!eins && !Number.isFinite(N)) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
         // Ein riesiger Kreis (winzige Krümmung) berührt das Bild nur in Bögen: am Anfang und am Ende jeder Runde.
         // Gezeichnet werden nur diese Bögen, nie die Milliarden Kopien dazwischen, die weit neben dem Bild liegen.
         for (const w of this._qBereiche(B, r, cx, cy, R, qmax)) {
@@ -16035,13 +16092,43 @@ export class InfElement extends HTMLElement {
         if (t && s[0] <= t[1] + P) t[1] = Math.max(t[1], s[1]);
         else teile.push([s[0], s[1]]);
       }
-      // Bei ∞ regelt kein Takt die Menge, nur der Speicher: mehr als FALT_MAX Orte ist ehrlich nicht ∞.
-      let rest = z.unendlich ? FALT_MAX : this._cap;
+      // Ausdünnen: liegen aufeinanderfolgende Kopien derselben Form näher als ein Viertel Bildpunkt, ist schon jede S-te
+      // das Bild. Gezeichnet wird dann die Bahn mit W^S: gleiches Grenzbild, ein S-tel der Arbeit. So hängt kein Bild an
+      // der Kopienzahl, nur an der Fläche, die die Bahn auf dem Bildschirm überstreicht.
+      const fein = 0.25 / dpr;
+      // Was eine Periode eine Kopie verrückt: der Schritt D und, wenn sie mitdreht, ihre Ecken um bm (dreht sie nur auf
+      // der Stelle, ist D = 0 und allein die Drehung bewegt sie).
+      let Dmax = 0;
+      for (let r = 0; r < P; r++) Dmax = Math.max(Dmax, Math.hypot(dx[r], dy[r]) + (z.rotate ? h[r] * Math.abs(bm) : 0));
+      const potenz = (S) => {
+        if (eins) return { ok: true, rx: S, ry: 0, inv: [ix, iy], a: S * a, bt: [mitte(S * bm), mitte(256 * S * bm), mitte(65536 * S * bm)] };
+        const th = mitte(S * bm), s2 = Math.sin(th / 2);
+        const wx2 = Math.expm1(S * a) * Math.cos(th) - 2 * s2 * s2, wy2 = Math.exp(S * a) * Math.sin(th);
+        const n2 = wx2 * wx2 + wy2 * wy2;
+        // W^S fast 1: S Perioden schließen den Kreis, jede S-te Kopie läge auf derselben Stelle. Dann ein anderes S.
+        if (n2 < 1e-20) return { ok: false };
+        return { ok: true, rx: wx2 * ix - wy2 * iy, ry: wx2 * iy + wy2 * ix, inv: [wx2 / n2, -wy2 / n2], a: S * a, bt: [th, mitte(256 * th), mitte(65536 * th)] };
+      };
+      let lueckenlos = teile.length > 0;
+      const schritte = teile.map(([lo, hi]) => {
+        const sp = Dmax * Math.exp(Math.max(Math.floor(lo / P) * a, Math.ceil(hi / P) * a));
+        if (!(sp <= fein)) lueckenlos = false;
+        let S = sp > 0 ? Math.floor(fein / sp) : 1;
+        S = Math.max(1, Math.min(S, Math.floor((hi - lo) / P)));
+        while (S > 1 && !potenz(S).ok) S = Math.floor(S * 0.75);
+        return S;
+      });
+      // Liegen schon in der ersten Runde je zwei Kopien näher als ein Viertel Bildpunkt, füllen weitere Runden nichts
+      // mehr auf: das Gezeichnete ist das Grenzbild, der Zähler sagt ∞ statt "dicht".
+      if (grund === 'dicht' && !zyklus && lueckenlos) grund = null;
+      const instanzen = (t, S) => Math.ceil((t[1] - t[0]) / (S * P)) * P;
+      // Bei ∞ regelt kein Takt die Menge, nur die Zeit je Bild: mehr als INSTANZEN_MAX Zeichnungen ist ehrlich nicht ∞.
+      let rest = z.unendlich ? INSTANZEN_MAX : this._cap;
       for (let k = 0; k < teile.length; k++) {
-        const t = teile[k];
-        if (t[1] - t[0] < rest) { rest -= t[1] - t[0]; continue; }
-        if (t[1] - t[0] > rest || k + 1 < teile.length) { if (z.unendlich) grund = 'dicht'; else voll = true; }
-        t[1] = t[0] + rest;
+        const t = teile[k], S = schritte[k], n = instanzen(t, S);
+        if (n < rest) { rest -= n; continue; }
+        if (n > rest || k + 1 < teile.length) { if (z.unendlich) grund = 'dicht'; else voll = true; }
+        t[1] = Math.min(t[1], t[0] + Math.max(1, rest) * S);
         teile.length = k + 1;
         break;
       }
@@ -16049,8 +16136,9 @@ export class InfElement extends HTMLElement {
         B.teile = teile;
         B.lo = teile[0][0]; B.hi = teile[teile.length - 1][1];
         let smax = 0;
-        const stueck = ([lo, hi]) => {
-          const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
+        const stueck = ([lo, hi], k) => {
+          const q0 = Math.floor(lo / P), r0 = lo - q0 * P, S = schritte[k];
+          const w = S === 1 ? { rx: 1, ry: 0, inv: [ix, iy], a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)] } : potenz(S);
           const b = new Float32Array(FORMEN_MAX * 4), c = new Float32Array(FORMEN_MAX * 2);
           let gx = q0, gy = 0, px = 1, py = 0;
           if (!eins) {
@@ -16060,12 +16148,15 @@ export class InfElement extends HTMLElement {
             px = e * Math.cos(th); py = e * Math.sin(th);
           }
           for (let v = 0; v < P; v++) {
-            b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, dx[v] * px - dy[v] * py, dx[v] * py + dy[v] * px], v * 4);
+            // D am Anfang des Stücks, mal (W^S - 1)/(W - 1): der Schritt von einer gezeichneten Periode zur nächsten.
+            const Dx = dx[v] * px - dy[v] * py, Dy = dx[v] * py + dy[v] * px;
+            b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, Dx * w.rx - Dy * w.ry, Dx * w.ry + Dy * w.rx], v * 4);
             c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
             c[v * 2 + 1] = (q0 * P + v) * ls;
           }
           smax = Math.max(smax, Math.exp(lo * ls), Math.exp((hi - 1) * ls));
-          return { r0, anzahl: hi - lo, b, c };
+          const anzahl = S === 1 ? hi - lo : instanzen([lo, hi], S) - r0;
+          return { r0, anzahl, b, c, inv: w.inv, a: w.a, bt: w.bt };
         };
         d = { P, teile: teile.map(stueck), eins, rotate: z.rotate, runde: zyklus > 0, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)] };
         d.smax = smax;
@@ -16166,8 +16257,10 @@ export class InfElement extends HTMLElement {
   _zaehle(n, gemalt = n, grund = null) {
     const z = this._zustand;
     this._gemalt = gemalt;
-    if (this._gezeigt !== n || this._grund !== grund || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich) {
-      this._gezeigt = n; this._grund = grund; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich;
+    // Auch der gezeichnete Schritt gehört zum Gezählten: dreht der Winkel, ändert sich der Abstand, den der Regler zeigt.
+    const schritt = this.schritt;
+    if (this._gezeigt !== n || this._grund !== grund || this._zaehlZiel !== z.anzahl || this._zaehlInf !== z.unendlich || this._zaehlSchritt !== schritt) {
+      this._gezeigt = n; this._grund = grund; this._zaehlZiel = z.anzahl; this._zaehlInf = z.unendlich; this._zaehlSchritt = schritt;
       this.dispatchEvent(new CustomEvent('inf-zaehl', { bubbles: true, composed: true, detail: this.gezaehlt }));
     }
   }
@@ -16217,7 +16310,9 @@ export class InfElement extends HTMLElement {
         for (let t = B.teile.length - 1; t >= 0; t--) {
           const [lo, hi] = B.teile[t];
           const von = Math.max(Math.ceil(w[0]) - 1, Math.ceil((lo - r) / P));
-          for (let q = Math.min(Math.floor(w[1]) + 1, Math.floor((hi - 1 - r) / P)); q >= von; q--) {
+          // Ausgedünnt gezeichnet, ausgedünnt gesucht: höchstens 4096 Kandidaten je Bogen, auch wenn Milliarden darin liegen.
+          const oben = Math.min(Math.floor(w[1]) + 1, Math.floor((hi - 1 - r) / P)), weite = Math.max(1, Math.ceil((oben - von + 1) / 4096));
+          for (let q = oben; q >= von; q -= weite) {
             const i = q * P + r;
             if (i <= best) break;
             const l = this._trifft(this._ort(B, i), m, px, py);
@@ -16226,7 +16321,10 @@ export class InfElement extends HTMLElement {
         }
       }
     }
-    if (best >= 0) this._reiche(e, best % P, bl, this._ort(B, best % P), b);
+    if (best >= 0) {
+      this._weiterVon = best;
+      try { this._reiche(e, best % P, bl, this._ort(B, best % P), b); } finally { this._weiterVon = null; }
+    }
   }
 
   // Den Klick an Vorlage v weitergeben, an denselben Punkt (l, in Koordinaten der Form): dort liegt, was getroffen gewesen wäre.
@@ -78580,7 +78678,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -82632,7 +82741,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '', letzterStand = '', diagBis = {};
+  let letzterDiag = '';
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -82660,25 +82769,8 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
-    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
-    if (typeof d === 'object' && typeof d.text === 'string') {
-      const neu = (liste, feld) => {
-        if (!Array.isArray(liste)) return;
-        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
-        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
-      };
-      neu(d.rahmen, 'rahmen');
-      neu(d.ereignisse, 'ereignisse');
-      const stand = {};
-      if (d.fahrt) stand.fahrt = d.fahrt;
-      if (d.turm) stand.turm = d.turm;
-      if (Object.keys(stand).length) {
-        const st = JSON.stringify(stand);
-        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
-      }
-      d = { text: d.text };
-    }
+    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
+    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -82703,7 +82795,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);
