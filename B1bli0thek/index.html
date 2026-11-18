@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+<meta charset="UTF-8">
+<title></title>
+<style>
+#b1 { position: fixed; inset: 0; display: flex; flex-direction: column; white-space: normal; text-shadow: none; font-size: 1rem; line-height: normal; }
+#b1 * { white-space: normal; }
+#kopf { flex: 0 0 auto; padding: .75rem .5rem 0; display: flex; flex-direction: column; align-items: center; gap: .5rem; min-width: 0; }
+#marke { all: unset; cursor: pointer; font-size: 1.5rem; letter-spacing: .04em; line-height: 44px; min-height: 44px;
+  padding: 0 .5rem; margin: 0 4rem; border-radius: 4px; color: var(--text-color); -webkit-tap-highlight-color: transparent; }
+#marke span { display: inline-block; transition: transform 200ms ease; }
+#marke.liegt span.acht { transform: rotate(90deg); }
+#marke:focus-visible { outline: 1px solid var(--text-color); outline-offset: 2px; }
+#wahl { display: flex; gap: .25rem; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 2px; touch-action: pan-x; overscroll-behavior-x: contain; }
+#wahl::-webkit-scrollbar { display: none; }
+#wahl .gruppe { flex: 0 0 auto; display: flex; gap: .25rem; align-items: center; }
+#wahl .gruppe + .gruppe { padding-left: .5rem; margin-left: .25rem; border-left: 1px solid var(--ui-fill-20); }
+#wahl a { flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 .75rem; border-radius: 4px;
+  color: var(--ui-text-60); text-decoration: none; font-size: .95rem; -webkit-tap-highlight-color: transparent; }
+#wahl a[aria-current="true"] { color: var(--text-color); background: var(--ui-fill-10); }
+#wahl a:active { background: var(--ui-fill-20); }
+@media (hover: hover) { #wahl a:hover { color: var(--text-color); } }
+#wahl a:focus-visible { outline: 1px solid var(--text-color); outline-offset: -1px; }
+#buehne { flex: 1 1 auto; position: relative; min-height: 0; }
+#buehne > * { position: absolute; inset: 0; height: auto; }
+#buehne > *:focus-visible { outline: none; }
+/* Zähler: kleine Zahl links in der Griffzeile des Panels, fährt mit; Griff (Mitte) und Leiste bleiben frei. */
+.b1-zaehler { position: absolute; left: 14px; top: 14px; z-index: 1; font: 11px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  color: var(--text-color); opacity: .6; user-select: none; cursor: pointer; padding: 6px; margin: -6px; }
+.b1-grafik { display: block !important; grid-column: 1 / -1; text-align: left; font: 11px/1.4 system-ui, sans-serif; opacity: .6; overflow-wrap: anywhere; padding: 6px 12px; }
+.b1-zaehler:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { #marke span { transition: none; } }
+</style>
+</head>
+<body>
+<main id="b1" class="_018-canvas">
+  <div id="kopf">
+    <button id="marke" type="button"></button>
+    <nav id="wahl"></nav>
+  </div>
+  <div id="buehne"></div>
+</main>
+<script type="module">
+import { NAME, elemente, bereit } from './alle.js';
+
+document.title = NAME;
+const marke = document.getElementById('marke');
+// B, b und 8 sind aufgestellte Unendlichkeiten; antippen legt sie hin.
+for (const z of NAME) {
+  const s = document.createElement('span');
+  s.textContent = z;
+  if ('Bb8'.includes(z)) s.className = 'acht';
+  marke.append(s);
+}
+marke.setAttribute('aria-label', NAME);
+marke.addEventListener('click', () => marke.classList.toggle('liegt'));
+
+const wahl = document.getElementById('wahl');
+const buehne = document.getElementById('buehne');
+const kurz = (tag) => tag.replace(/^inf-/, '');
+const gruppen = new Map();
+for (const e of elemente) {
+  if (!gruppen.has(e.gruppe)) {
+    const g = document.createElement('div');
+    g.className = 'gruppe';
+    g.setAttribute('aria-label', e.gruppe);
+    wahl.append(g);
+    gruppen.set(e.gruppe, g);
+  }
+  const a = document.createElement('a');
+  a.href = '#' + kurz(e.tag);
+  a.textContent = e.name;
+  a.dataset.tag = e.tag;
+  gruppen.get(e.gruppe).append(a);
+}
+
+// Das Control Panel (tools/controls.js) liegt eingeklappt unten und lässt sich hochschieben. Die 0/1/∞-Leiste des Elements
+// sitzt auf seiner Oberkante und fährt mit (--leiste-hoch).
+const panel = window.Controls.createPanel({ id: 'b1-panel', position: 'left', mobileInitialOpenMode: 'peek', desktopInitialHeightFraction: 0 });
+// Der Claude-Chat (tools/claude-chat.js) setzt .cc-an und fuellt den Panelkoerper; bei eingeklapptem Panel hat er Hoehe 0.
+new MutationObserver(() => {
+  const e = panel.el;
+  if (!e.classList.contains('cc-an')) return;
+  if (panel.openSheetIfClosed) {
+    // Peek reicht fuer den Chat nicht: einmalig ganz oeffnen, danach Modus zurueck.
+    const modus = panel.options.mobileInitialOpenMode;
+    panel.options.mobileInitialOpenMode = 'full';
+    panel.openSheetIfClosed();
+    panel.options.mobileInitialOpenMode = modus;
+  }
+  if (e.classList.contains('ctrl-panel-collapsed-body') && panel.bodyEl) {
+    const h = Math.round(innerHeight * 0.45) + 'px';
+    panel.bodyEl.style.height = h;
+    panel.bodyEl.style.maxHeight = h;
+    e.classList.remove('ctrl-panel-collapsed-body');
+  }
+}).observe(panel.el, { attributes: true, attributeFilter: ['class'] });
+let el = null;
+const setze = (name, wert) => { if (el) el.setAttribute(name, String(wert)); };
+const eigene = {
+  'inf-letter': [
+    ['input', 'char', { label: 'Zeichen', value: 'B' }, (v) => { if (v) el.char = v; }],
+  ],
+  'inf-button': [
+    ['select', 'shape', { label: 'Form', value: 'standard', options: ['standard', 'eckig', 'rund', 'pille', 'kreis'].map((v) => ({ value: v, label: v })) }, (v) => (v === 'standard' ? el.removeAttribute('shape') : setze('shape', v))],
+    ['input', 'label', { label: 'Text', value: 'Button' }, (v) => (v === '' ? el.removeAttribute('label') : setze('label', v))],
+  ],
+};
+panel
+  .beginSection('eigene').endSection()
+  .beginSection('gemeinsam')
+  .addInput('anzahl', { label: 'Anzahl', value: '', type: 'text', inputmode: 'numeric', commit: 'enter', onChange: (v) => anzahlSetzen(v) })
+  .addToggle('capacity', { label: '∞+', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
+  .addSlider('bend', { label: 'Krümmung', min: -360, max: 360, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
+  .addSlider('angle', { label: 'Winkel', min: -180, max: 180, step: 1, value: 0, onChange: (v) => setze('angle', v) })
+  .addSlider('space', { label: 'Abstand', min: -100, max: 100, step: 1, value: 8, onChange: (v) => setze('space', v) })
+  .addSlider('scale', { label: 'Größe', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
+  .endSection();
+
+// Doppeltipp auf einen Regler setzt ihn auf 0 (Größe auf 1). Maus: dblclick; Touch: zwei kurze Tipps ohne Zug
+// (Touch löst nicht verlässlich dblclick aus).
+const zuruecksetzen = (r) => {
+  const key = r.closest('[data-key]')?.dataset.key || r.dataset.key;
+  if (!key || !el) return;
+  const nullwert = key === 'scale' ? 1 : 0;
+  panel.set(key, nullwert);
+  setze(key, nullwert);
+};
+panel.el.addEventListener('dblclick', (e) => {
+  const r = e.target.closest('input[type="range"]');
+  if (r) zuruecksetzen(r);
+});
+let tipp = null;
+panel.el.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  const r = e.target.closest('input[type="range"]');
+  if (!r) { tipp = null; return; }
+  const jetzt = performance.now();
+  const doppelt = tipp && tipp.r === r && jetzt - tipp.t < 400 && Math.abs(e.clientX - tipp.x) < 12;
+  tipp = doppelt ? null : { r, t: jetzt, x: e.clientX };
+  if (doppelt) setTimeout(() => zuruecksetzen(r), 0);
+});
+
+// Element -> Panel: Gesten und Tasten schreiben in die Attribute, das Panel folgt (set löst kein onChange aus).
+// Meldungen (Rückgängig) sitzen über der 0/1/∞-Leiste, nie darauf.
+window.Controls.keepClear.add(() => el?.shadowRoot.querySelector('.leiste')?.getBoundingClientRect());
+const anzahlFeld = () => panel.el.querySelector('[data-key="anzahl"] input');
+const zaehlerEl = document.createElement('div');
+zaehlerEl.className = 'b1-zaehler';
+zaehlerEl.setAttribute('aria-live', 'off');
+zaehlerEl.title = 'Anzahl';
+panel.el.append(zaehlerEl);
+// Zahl antippen: Panel auf, Anzahl-Feld bereit.
+zaehlerEl.addEventListener('click', () => {
+  const e = panel.el;
+  if (panel.openSheetIfClosed) {
+    const modus = panel.options.mobileInitialOpenMode;
+    panel.options.mobileInitialOpenMode = 'full';
+    panel.openSheetIfClosed();
+    panel.options.mobileInitialOpenMode = modus;
+  }
+  if (e.classList.contains('ctrl-panel-collapsed-body') && panel.bodyEl) {
+    const h = Math.round(innerHeight * 0.45) + 'px';
+    panel.bodyEl.style.height = h;
+    panel.bodyEl.style.maxHeight = h;
+    e.classList.remove('ctrl-panel-collapsed-body');
+  }
+  const f = anzahlFeld();
+  f?.focus({ preventScroll: true });
+  f?.select();
+  requestAnimationFrame(() => requestAnimationFrame(() => panel.reveal(['anzahl'])));
+});
+// Womit gezeichnet wird: Grafikkarte, Software-Renderer oder (ohne WebGL2) nur DOM.
+const grafikZeile = document.createElement('div');
+grafikZeile.className = 'ctrl-row b1-grafik';
+grafikZeile.dataset.key = 'grafik';
+anzahlFeld()?.closest('.ctrl-row')?.parentElement?.append(grafikZeile);
+const grafik = (() => {
+  let gl = null;
+  try { gl = document.createElement('canvas').getContext('webgl2'); } catch (e) { console.error(e); }
+  if (!gl) { console.error('B1bli0thek: kein WebGL2, alle Kopien laufen als DOM'); return { text: 'kein WebGL2 · DOM', gpu: false }; }
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  if (!name) return { text: 'unbekannt', gpu: null };
+  const soft = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+  return { text: `${soft ? 'Software' : 'GPU'} · ${name}`, gpu: !soft };
+})();
+let domGemeldet = false;
+const grafikZeigen = () => {
+  const dom = el && el._falten === false;
+  if (dom && !domGemeldet && grafik.gpu !== false) { domGemeldet = true; console.error('B1bli0thek: WebGL2 gescheitert, Kopien laufen als DOM'); }
+  grafikZeile.textContent = 'Grafik: ' + (dom ? 'DOM · ' : '') + grafik.text;
+};
+// Zahl eingeben setzt einen endlichen Wert, ∞ (auch als Text) schaltet auf adaptiv.
+function anzahlSetzen(text) {
+  const t = String(text).trim().toLowerCase().replace(/[\s.']/g, '');
+  if (t === '') return;
+  if (['∞', 'inf', 'unendlich', 'infinity'].includes(t)) el.unendlich();
+  else if (/^\d+$/.test(t)) el.setzeAnzahl(Number(t));
+  else { zaehlen(); return; }
+  anzahlFeld()?.blur();
+}
+const zahlText = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE') : String(n));
+function zaehlen() {
+  if (!el) return;
+  const { gezeigt, ziel, grund } = el.gezaehlt;
+  // Eine Zahl für Zähler und Feld: alle Kopien, auch die neben dem Bild. Bei ∞ steht ∞, außer das Bild ist nicht das
+  // unendliche: dann die echte Zahl und in einem Wort, warum.
+  const zahl = zahlText(ziel);
+  zaehlerEl.textContent = ziel === '∞' && grund ? `${zahlText(gezeigt)} · ${grund}` : zahl;
+  const f = anzahlFeld();
+  if (f && document.activeElement !== f) f.value = zahl;
+  abstandZeigen();
+  grafikZeigen();
+}
+// Ohne gesetztes space zeigt der Abstand-Regler den Schritt, der gerade gezeichnet wird (Mitte zu Mitte, 0 = deckungsgleich),
+// damit er beim ersten Anfassen nicht springt. Sein Bereich reicht bis zum Vierfachen davon, mindestens 100.
+let abstandFuer = null;
+function abstandZeigen() {
+  if (el.hasAttribute('space') || el.hasAttribute('gap')) return;
+  const s = el.schritt;
+  if (s === null) return;
+  if (abstandFuer !== el) {
+    abstandFuer = el;
+    const weite = Math.max(100, Math.ceil((4 * Math.abs(s)) / 50) * 50);
+    panel.setSliderConfig('space', { min: -weite, max: weite });
+  }
+  panel.set('space', Math.round(s));
+}
+const folge = () => {
+  const z = el.zustand;
+  zaehlen();
+  panel.set('bend', z.bend);
+  panel.set('scale', z.scale);
+};
+const baueEigene = (tag) => {
+  panel.fillSection('eigene', (p) => {
+    for (const [art, key, cfg, fn] of eigene[tag] || []) {
+      p[art === 'select' ? 'addSelect' : 'addInput'](key, { ...cfg, onChange: fn });
+    }
+  });
+};
+
+// Die Leiste auf die Oberkante des Panels heben: Abstand zwischen Unterkante der Bühne und Oberkante des Panels.
+let hubZeile = 0;
+const hub = () => {
+  hubZeile = 0;
+  if (!el) return;
+  const b = buehne.getBoundingClientRect(), p = panel.el.getBoundingClientRect();
+  const wert = { '--leiste-hoch': Math.max(0, Math.round(b.bottom - p.top)) + 'px', '--leiste-versatz': Math.round(p.left + p.width / 2 - (b.left + b.width / 2)) + 'px' };
+  for (const [k, v] of Object.entries(wert)) if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v);
+};
+const hubPlanen = () => { if (!hubZeile) hubZeile = requestAnimationFrame(hub); };
+// Panel bewegt sich (Ziehen, Animation, Einklappen, Fenstergröße): Leiste folgt Bild für Bild.
+new ResizeObserver(hubPlanen).observe(panel.el);
+new MutationObserver(hubPlanen).observe(panel.el, { attributes: true, attributeFilter: ['style', 'class'] });
+const folgeAnimation = () => { hub(); if (panel.el.getAnimations().length) requestAnimationFrame(folgeAnimation); };
+panel.el.addEventListener('transitionrun', folgeAnimation);
+addEventListener('resize', hubPlanen);
+addEventListener('pointermove', hubPlanen);
+
+const zeige = () => {
+  const e = elemente.find((x) => kurz(x.tag) === location.hash.slice(1)) || elemente[0];
+  for (const a of wahl.querySelectorAll('a')) a.setAttribute('aria-current', String(a.dataset.tag === e.tag));
+  wahl.querySelector('[aria-current="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  el = document.createElement(e.tag);
+  for (const [k, v] of Object.entries(e.attribute || {})) el.setAttribute(k, v);
+  el.addEventListener('inf-change', folge);
+  el.addEventListener('inf-zaehl', zaehlen);
+  buehne.replaceChildren(el);
+  baueEigene(e.tag);
+  folge();
+  const v = el.constructor.vorgaben;
+  panel.set('angle', v.angle);
+  panel.set('space', v.space);
+  panel.set('capacity', false);
+  hub();
+};
+panel.addResetButton({ onClick: () => zeige() });
+addEventListener('hashchange', zeige);
+await bereit;
+zeige();
+</script>
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
