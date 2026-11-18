@@ -23,6 +23,8 @@ export class InfList extends InfElement {
     const m = this.getAttribute('marker');
     if (m !== null) l.style.setProperty('--marker', JSON.stringify(m + ' '));
   }
+  // Aufzählungspunkte wiederholen sich, Nummern nie: nur die ungeordnete Liste hat eine Periode.
+  get periode() { return this.getAttribute('type') === 'ul' ? 1 : 0; }
   attributGeaendert() { this.leereKopien(); }
 }
 registriere('inf-list', InfList);
