@@ -14484,7 +14484,8 @@ export class Faltung {
     this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     c.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
-      if (!this.weg) el._faltFehler(new Error('B1bli0thek: WebGL-Kontext verloren, DOM-Weg'));
+      // Handys nehmen den Kontext oft weg (Hintergrund, Speicher): neu aufbauen statt für immer auf DOM.
+      if (!this.weg) el._faltVerlust();
     });
     this.g = new Float32Array(FORMEN_MAX * 4);
     this.tex = null;
@@ -14707,7 +14708,8 @@ export class Faltung {
       this.texP = P;
       this.rand = rand;
     } catch (e) {
-      if (!this.weg) el._faltFehler(e);
+      // Mitten im Bild verlorener Kontext ist kein Fehler: webglcontextlost baut neu auf.
+      if (!this.weg && !gl.isContextLost()) el._faltFehler(e);
       return;
     } finally {
       this.laeuft = false;
@@ -15662,6 +15664,9 @@ export class InfElement extends HTMLElement {
   disconnectedCallback() {
     this._groesse?.disconnect();
     this._verbunden = false;
+    // Browser halten nur wenige WebGL-Kontexte; wer geht, gibt seinen frei (beim Zurückkommen entsteht ein neuer).
+    this._faltung?.weg_();
+    this._faltung = null;
   }
 
   attributeChangedCallback(name) {
@@ -15809,7 +15814,19 @@ export class InfElement extends HTMLElement {
   // Wie viele Formen sich wiederholen. 0 = keine Faltung, jede Kopie bleibt echtes DOM.
   get periode() { return this.constructor.periode || 0; }
 
+  // Verlorener Kontext: neue Leinwand, neuer Kontext. Erst wer ihn dauernd verliert, bleibt beim DOM.
+  _faltVerlust() {
+    const jetzt = performance.now();
+    this._verluste = (this._verluste || []).filter((t) => jetzt - t < 10000);
+    this._verluste.push(jetzt);
+    this._faltung?.weg_();
+    this._faltung = null;
+    if (this._verluste.length > 3) this._faltFehler(new Error('B1bli0thek: WebGL-Kontext dauernd verloren, DOM-Weg'));
+    else this.zeichne();
+  }
+
   _faltFehler(e) {
+    if (this._faltung?.gl.isContextLost()) return; // webglcontextlost kommt und baut neu auf
     if (!gemeldet.has(e.message)) { gemeldet.add(e.message); console.error(e); }
     this._falten = false;
     this._faltung?.weg_();
@@ -78561,7 +78578,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -82613,7 +82641,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '', letzterStand = '', diagBis = {};
+  let letzterDiag = '';
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -82641,25 +82669,8 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
-    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
-    if (typeof d === 'object' && typeof d.text === 'string') {
-      const neu = (liste, feld) => {
-        if (!Array.isArray(liste)) return;
-        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
-        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
-      };
-      neu(d.rahmen, 'rahmen');
-      neu(d.ereignisse, 'ereignisse');
-      const stand = {};
-      if (d.fahrt) stand.fahrt = d.fahrt;
-      if (d.turm) stand.turm = d.turm;
-      if (Object.keys(stand).length) {
-        const st = JSON.stringify(stand);
-        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
-      }
-      d = { text: d.text };
-    }
+    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
+    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -82684,7 +82695,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);
