@@ -113,7 +113,7 @@ panel
   .beginSection('gemeinsam')
   .addInput('anzahl', { label: 'Anzahl', value: '', type: 'text', inputmode: 'numeric', commit: 'enter', onChange: (v) => anzahlSetzen(v) })
   .addToggle('capacity', { label: '∞+', value: false, onChange: (v) => (v ? setze('capacity', '') : el.removeAttribute('capacity')) })
-  .addSlider('bend', { label: 'Krümmung', min: -180, max: 180, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
+  .addSlider('bend', { label: 'Krümmung', min: -360, max: 360, step: 0.1, decimals: 1, value: 0, onChange: (v) => setze('bend', v) })
   .addSlider('angle', { label: 'Winkel', min: -180, max: 180, step: 1, value: 0, onChange: (v) => setze('angle', v) })
   .addSlider('space', { label: 'Abstand', min: -100, max: 100, step: 1, value: 8, onChange: (v) => setze('space', v) })
   .addSlider('scale', { label: 'Größe', min: 0.01, max: 2, step: 0.01, decimals: 2, value: 1, onChange: (v) => setze('scale', v) })
@@ -213,7 +213,22 @@ function zaehlen() {
   zaehlerEl.textContent = ziel === '∞' && grund ? `${zahlText(gezeigt)} · ${grund}` : zahl;
   const f = anzahlFeld();
   if (f && document.activeElement !== f) f.value = zahl;
+  abstandZeigen();
   grafikZeigen();
+}
+// Ohne gesetztes space zeigt der Abstand-Regler den Schritt, der gerade gezeichnet wird (Mitte zu Mitte, 0 = deckungsgleich),
+// damit er beim ersten Anfassen nicht springt. Sein Bereich reicht bis zum Vierfachen davon, mindestens 100.
+let abstandFuer = null;
+function abstandZeigen() {
+  if (el.hasAttribute('space') || el.hasAttribute('gap')) return;
+  const s = el.schritt;
+  if (s === null) return;
+  if (abstandFuer !== el) {
+    abstandFuer = el;
+    const weite = Math.max(100, Math.ceil((4 * Math.abs(s)) / 50) * 50);
+    panel.setSliderConfig('space', { min: -weite, max: weite });
+  }
+  panel.set('space', Math.round(s));
 }
 const folge = () => {
   const z = el.zustand;

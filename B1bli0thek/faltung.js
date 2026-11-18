@@ -59,6 +59,8 @@ out float v_k;
 const float TAU = 6.283185307179586;
 float mitte(float x) { return x - TAU * floor(x / TAU + 0.5); }
 float expm1_(float x) { return abs(x) < 0.01 ? x * (1.0 + x * (0.5 + x * (1.0 / 6.0 + x / 24.0))) : exp(x) - 1.0; }
+// sin der Grafikkarte ist nur absolut genau (~1e-7): bei winziger Krümmung wäre jeder Schritt null. Nahe 0 die Reihe.
+float sin_(float x) { return abs(x) < 0.01 ? x * (1.0 - x * x * (1.0 / 6.0 - x * x / 120.0)) : sin(x); }
 void main() {
   int id = gl_VertexID;
   vec2 ecke = vec2((id == 1 || id == 2 || id == 4) ? 1.0 : 0.0, (id == 2 || id == 4 || id == 5) ? 1.0 : 0.0);
@@ -70,8 +72,8 @@ void main() {
   vec2 G;
   if (u_eins == 1) G = vec2(fk, 0.0);
   else {
-    float ka = fk * u_a, sh = sin(0.5 * th);
-    vec2 w = vec2(expm1_(ka) * cos(th) - 2.0 * sh * sh, exp(ka) * sin(th));
+    float ka = fk * u_a, sh = sin_(0.5 * th);
+    vec2 w = vec2(expm1_(ka) * cos(th) - 2.0 * sh * sh, exp(ka) * sin_(th));
     G = vec2(w.x * u_inv.x - w.y * u_inv.y, w.x * u_inv.y + w.y * u_inv.x);
   }
   vec4 b = u_b[v];
@@ -313,7 +315,8 @@ export class Faltung {
     gl.bindVertexArray(null);
   }
 
-  // d: Bahn ab Kopie d.lo, d.anzahl Stück. d.b = je Form (x, y, Dx, Dy) am Anfang, d.c = je Form (Drehung, ln Größe).
+  // d.teile: Stücke der Bahn, je ab Kopie r0 (in der ersten Periode des Stücks), anzahl Stück.
+  // b = je Form (x, y, Dx, Dy) am Anfang des Stücks, c = je Form (Drehung, ln Größe).
   bahn(d, W, H, smax) {
     const gl = this.gl, u = this.pb.u;
     if (!this._ruesten(d.P, W, H, smax)) return;
@@ -323,12 +326,9 @@ export class Faltung {
     gl.uniform2f(u.u_flaeche, W, H);
     gl.uniform1f(u.u_rand, this.rand);
     gl.uniform1i(u.u_p, d.P);
-    gl.uniform1i(u.u_r0, d.r0);
     gl.uniform1i(u.u_eins, d.eins ? 1 : 0);
     gl.uniform1i(u.u_rot, d.rotate ? 1 : 0);
     gl.uniform4fv(u.u_g, this.g);
-    gl.uniform4fv(u.u_b, d.b);
-    gl.uniform4fv(u.u_c, d.c);
     gl.uniform2f(u.u_inv, d.ix, d.iy);
     gl.uniform1f(u.u_a, d.a);
     gl.uniform3f(u.u_bt, d.bt[0], d.bt[1], d.bt[2]);
@@ -340,7 +340,12 @@ export class Faltung {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.rf);
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, d.anzahl);
+    for (const t of d.teile) {
+      gl.uniform1i(u.u_r0, t.r0);
+      gl.uniform4fv(u.u_b, t.b);
+      gl.uniform4fv(u.u_c, t.c);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, t.anzahl);
+    }
     if (d.runde) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.useProgram(this.pr.prog);

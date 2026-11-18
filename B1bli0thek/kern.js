@@ -411,7 +411,7 @@ export class InfElement extends HTMLElement {
     // ∞ ist ∞: gezählt wird nie eine Abbruchgrenze, nur gezeichnet wird so viel, dass das Bild das Grenzbild ist.
     const N = z.unendlich ? Infinity : z.anzahl;
     let grund = null;
-    const B = (this._b = { P, zx, zy, dx, dy, fx, fy, h, eins, a, bm, be, ls, ix, iy, N, lo: 0, hi: 0, rotate: z.rotate, stapel: false, m: 0, rest: 0 });
+    const B = (this._b = { P, zx, zy, dx, dy, fx, fy, h, eins, a, bm, be, ls, ix, iy, N, lo: 0, hi: 0, teile: [], rotate: z.rotate, stapel: false, m: 0, rest: 0 });
 
     const dom = Math.min(N, P);
     this._abgleich(dom);
@@ -446,16 +446,14 @@ export class InfElement extends HTMLElement {
       let zyklus = 0;
       if (z.unendlich && !eins && a === 0) {
         const k = Math.round(z.bend * 1000);
-        if (Math.abs(z.bend * 1000 - k) < 1e-6) {
+        if (k !== 0 && Math.abs(z.bend * 1000 - k) < 1e-6) {
           const b = 360000 / ggt((((k * P) % 360000) + 360000) % 360000, 360000);
           if (b * P <= FALT_MAX) zyklus = b;
         }
         if (!zyklus) grund = 'dicht';
       }
-      let lo = Infinity, hi = -Infinity;
+      const stuecke = [];
       for (let r = 0; r < P; r++) {
-        const w = this._qFenster(B, r, cx, cy, R);
-        if (!w) continue;
         let qmax = Number.isFinite(N) ? Math.floor((N - 1 - r) / P) : Infinity;
         if (ls < 0) {
           // Schrumpfend: alles ab Kopie qmax bedeckt zusammen weniger als ein 256stel Bildpunkt (geometrische Reihe der Flächen).
@@ -467,39 +465,61 @@ export class InfElement extends HTMLElement {
           // Wachsend: ab 64 Bildschirmdiagonalen ist der Bildschirm kleiner als ein halber Texel der Kopie.
           qmax = Math.min(qmax, Math.floor((bis(r, diag * 64) - r) / P));
           // Liegt der Grenzpunkt in der Kopie, sieht jeder Bildpunkt immer denselben Texel, solange die Kopie mitdreht.
-          if (z.unendlich && w[1] === Infinity && !z.rotate && Math.abs(bm) > 1e-12) grund = 'schwingt';
+          if (z.unendlich && this._qFenster(B, r, cx, cy, R)?.[1] === Infinity && !z.rotate && Math.abs(bm) > 1e-12) grund = 'schwingt';
         } else if (zyklus) qmax = Math.min(qmax, zyklus);
         // Kreis: nach einer Runde liegt jede weitere Kopie (fast) auf einer gezeichneten. Gezählt bleibt alles, gezeichnet wird mod 360°.
         else if (!eins) qmax = Math.min(qmax, Math.ceil(TAU / Math.abs(bm)));
-        const qlo = Math.max(0, Math.ceil(w[0]) - 1), qhi = Math.min(Math.floor(w[1]) + 1, qmax);
-        if (!(qlo <= qhi)) continue;
-        lo = Math.min(lo, qlo * P + r);
-        hi = Math.max(hi, qhi * P + r + 1);
+        // Ein riesiger Kreis (winzige Krümmung) berührt das Bild nur in Bögen: am Anfang und am Ende jeder Runde.
+        // Gezeichnet werden nur diese Bögen, nie die Milliarden Kopien dazwischen, die weit neben dem Bild liegen.
+        for (const w of this._qBereiche(B, r, cx, cy, R, qmax)) {
+          const qlo = Math.max(0, Math.ceil(w[0]) - 1), qhi = Math.min(Math.floor(w[1]) + 1, qmax);
+          if (!(qlo <= qhi)) continue;
+          const von = Math.max(qlo * P + r, P), bis = Math.min(qhi * P + r + 1, N);
+          if (von < bis) stuecke.push([von, bis]);
+        }
       }
-      lo = Math.max(lo, P);
-      hi = Math.min(hi, N);
-      if (z.unendlich) {
-        // Bei ∞ regelt kein Takt die Menge, nur der Speicher: mehr als FALT_MAX Orte ist ehrlich nicht ∞.
-        if (hi - lo > FALT_MAX) { grund = 'dicht'; hi = lo + FALT_MAX; }
-      } else if (hi - lo > this._cap) { voll = true; hi = lo + this._cap; }
-      if (lo < hi) {
-        B.lo = lo; B.hi = hi;
-        const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
-        const b = new Float32Array(FORMEN_MAX * 4), c = new Float32Array(FORMEN_MAX * 2);
-        let gx = q0, gy = 0, px = 1, py = 0;
-        if (!eins) {
-          const th = mitte(q0 * bm), e = Math.exp(q0 * a), s2 = Math.sin(th / 2);
-          const ux = Math.expm1(q0 * a) * Math.cos(th) - 2 * s2 * s2, uy = e * Math.sin(th);
-          gx = ux * ix - uy * iy; gy = ux * iy + uy * ix;
-          px = e * Math.cos(th); py = e * Math.sin(th);
-        }
-        for (let v = 0; v < P; v++) {
-          b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, dx[v] * px - dy[v] * py, dx[v] * py + dy[v] * px], v * 4);
-          c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
-          c[v * 2 + 1] = (q0 * P + v) * ls;
-        }
-        d = { P, r0, anzahl: hi - lo, eins, rotate: z.rotate, runde: zyklus > 0, b, c, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)],
-          smax: Math.max(Math.exp(lo * ls), Math.exp((hi - 1) * ls)) };
+      // Benachbarte Bögen der Formen zu Stücken zusammenlegen; jedes Stück ist ein Zeichenaufruf ab seinem Anfang.
+      stuecke.sort((x, y) => x[0] - y[0]);
+      const teile = [];
+      for (const s of stuecke) {
+        const t = teile[teile.length - 1];
+        if (t && s[0] <= t[1] + P) t[1] = Math.max(t[1], s[1]);
+        else teile.push([s[0], s[1]]);
+      }
+      // Bei ∞ regelt kein Takt die Menge, nur der Speicher: mehr als FALT_MAX Orte ist ehrlich nicht ∞.
+      let rest = z.unendlich ? FALT_MAX : this._cap;
+      for (let k = 0; k < teile.length; k++) {
+        const t = teile[k];
+        if (t[1] - t[0] < rest) { rest -= t[1] - t[0]; continue; }
+        if (t[1] - t[0] > rest || k + 1 < teile.length) { if (z.unendlich) grund = 'dicht'; else voll = true; }
+        t[1] = t[0] + rest;
+        teile.length = k + 1;
+        break;
+      }
+      if (teile.length) {
+        B.teile = teile;
+        B.lo = teile[0][0]; B.hi = teile[teile.length - 1][1];
+        let smax = 0;
+        const stueck = ([lo, hi]) => {
+          const q0 = Math.floor(lo / P), r0 = lo - q0 * P;
+          const b = new Float32Array(FORMEN_MAX * 4), c = new Float32Array(FORMEN_MAX * 2);
+          let gx = q0, gy = 0, px = 1, py = 0;
+          if (!eins) {
+            const th = mitte(q0 * bm), e = Math.exp(q0 * a), s2 = Math.sin(th / 2);
+            const ux = Math.expm1(q0 * a) * Math.cos(th) - 2 * s2 * s2, uy = e * Math.sin(th);
+            gx = ux * ix - uy * iy; gy = ux * iy + uy * ix;
+            px = e * Math.cos(th); py = e * Math.sin(th);
+          }
+          for (let v = 0; v < P; v++) {
+            b.set([zx[v] + dx[v] * gx - dy[v] * gy, zy[v] + dx[v] * gy + dy[v] * gx, dx[v] * px - dy[v] * py, dx[v] * py + dy[v] * px], v * 4);
+            c[v * 2] = z.rotate ? mitte(mitte(q0 * bm) + v * be) : 0;
+            c[v * 2 + 1] = (q0 * P + v) * ls;
+          }
+          smax = Math.max(smax, Math.exp(lo * ls), Math.exp((hi - 1) * ls));
+          return { r0, anzahl: hi - lo, b, c };
+        };
+        d = { P, teile: teile.map(stueck), eins, rotate: z.rotate, runde: zyklus > 0, ix, iy, a, bt: [bm, mitte(256 * bm), mitte(65536 * bm)] };
+        d.smax = smax;
       }
     }
     if (d) {
@@ -538,6 +558,34 @@ export class InfElement extends HTMLElement {
     const u2 = dd - R > 0 ? Math.log((dd - R) / (rho + hh)) : -Infinity;
     if (u2 > u1) return null;
     return B.a < 0 ? [u1 / B.a, u2 / B.a] : [u2 / B.a, u1 / B.a];
+  }
+
+  // Wie _qFenster, aber für q in [0, qmax] und als Liste: der Kreis (a = 0) läuft um F und berührt das Bild
+  // in jeder Runde in einem Bogen um die Richtung zum Bild. Ist der Kreis riesig, sind das wenige Kopien je Runde.
+  _qBereiche(B, r, cx, cy, R, qmax) {
+    if (B.eins || B.a !== 0) { const w = this._qFenster(B, r, cx, cy, R); return w ? [w] : []; }
+    const ex = B.zx[r] - B.fx[r], ey = B.zy[r] - B.fy[r];
+    const rho = Math.hypot(ex, ey), dd = Math.hypot(cx - B.fx[r], cy - B.fy[r]), RR = R + B.h[r];
+    if (rho < 1e-9 || dd < 1e-9 || rho + dd <= RR) return [[0, Infinity]];
+    // Halber Bogenwinkel alpha aus sin²(alpha/2) = (RR² - (rho - dd)²) / (4 rho dd): bleibt genau, auch wenn rho und dd
+    // Milliarden Pixel sind und RR nur ein Bildschirm (die Form mit cos verlöre dort alle Stellen).
+    const s2 = (RR * RR - (rho - dd) ** 2) / (4 * rho * dd);
+    if (s2 <= 0) return [];
+    if (s2 >= 1) return [[0, Infinity]];
+    const alpha = 2 * Math.asin(Math.sqrt(s2)), beta = Math.abs(B.bm);
+    // t wächst mit q: t = t0 + q*beta, sichtbar wo t im Bogen [2πk - alpha, 2πk + alpha] liegt.
+    const d0 = mitte(Math.atan2(ey, ex) - Math.atan2(cy - B.fy[r], cx - B.fx[r]));
+    const t0 = B.bm < 0 ? -d0 : d0;
+    const qende = Number.isFinite(qmax) ? qmax : TAU / beta;
+    const k0 = Math.floor((t0 - alpha) / TAU), k1 = Math.ceil((t0 + qende * beta + alpha) / TAU);
+    // Viele Runden: der Bogen kommt so oft vorbei, dass ein Fenster über alles ehrlicher ist als tausend Stücke.
+    if (k1 - k0 > 64) return [[0, Infinity]];
+    const aus = [];
+    for (let k = k0; k <= k1; k++) {
+      const von = Math.max(0, (TAU * k - alpha - t0) / beta), bis = (TAU * k + alpha - t0) / beta;
+      if (bis >= 0 && von <= qende) aus.push([von, bis]);
+    }
+    return aus;
   }
 
   // Ort der Kopie i in geschlossener Form.
@@ -615,14 +663,18 @@ export class InfElement extends HTMLElement {
     for (let r = 0; r < P; r++) {
       const m = this._masse[r];
       if (!m) return;
-      const w = this._qFenster(B, r, px, py, 0);
-      if (!w) continue;
-      const von = Math.max(Math.ceil(w[0]) - 1, Math.ceil((B.lo - r) / P));
-      for (let q = Math.min(Math.floor(w[1]) + 1, Math.floor((B.hi - 1 - r) / P)); q >= von; q--) {
-        const i = q * P + r;
-        if (i <= best) break;
-        const l = this._trifft(this._ort(B, i), m, px, py);
-        if (l) { best = i; bl = l; break; }
+      // Nur in gezeichneten Stücken suchen, von oben (spät gezeichnet) nach unten.
+      for (const w of this._qBereiche(B, r, px, py, 0, Infinity)) {
+        for (let t = B.teile.length - 1; t >= 0; t--) {
+          const [lo, hi] = B.teile[t];
+          const von = Math.max(Math.ceil(w[0]) - 1, Math.ceil((lo - r) / P));
+          for (let q = Math.min(Math.floor(w[1]) + 1, Math.floor((hi - 1 - r) / P)); q >= von; q--) {
+            const i = q * P + r;
+            if (i <= best) break;
+            const l = this._trifft(this._ort(B, i), m, px, py);
+            if (l) { best = i; bl = l; break; }
+          }
+        }
       }
     }
     if (best >= 0) this._reiche(e, best % P, bl, this._ort(B, best % P), b);
@@ -696,6 +748,20 @@ export class InfElement extends HTMLElement {
   }
 
   vermessen() { this._masse = []; this._faltung?.veraltet(); this.zeichne(); }
+
+  // Der Schritt von Mitte zu Mitte, wie er gerade gezeichnet wird (Mittel über eine Periode), oder null vor dem ersten Messen.
+  // Das ist, was space ausdrücklich setzt: so springt der Abstand-Regler nicht, wenn man ihn zum ersten Mal anfasst.
+  get schritt() {
+    const z = this._zustand;
+    if (z.gap !== null) return z.gap;
+    const P = Math.max(1, this.periode), m = this._masse;
+    if (!m[0] || (P > 1 && !m[P - 1])) return null;
+    const a0 = z.angle * Math.PI / 180, ca = Math.abs(Math.cos(a0)), sa = Math.abs(Math.sin(a0));
+    const lang = (x) => ca * x.w + sa * x.h;
+    let summe = 0;
+    for (let r = 0; r < P; r++) summe += (lang(m[r]) + lang(m[(r + 1) % P] || m[r])) / 2 + z.space;
+    return summe / P;
+  }
   get kopien() { return this._kopien.slice(0, this._sichtbar); }
 
   _leiste(e) {
