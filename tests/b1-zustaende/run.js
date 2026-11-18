@@ -279,7 +279,7 @@ async function main() {
   let server = null, base = URL_;
   if (!base) { const s = await start(ROOT); server = s.server; base = s.base; }
   const browser = await STARTE();
-  const zerstoert = [], sinn = [], bilder = [];
+  const zerstoert = [], sinn = [], langsam = [], bilder = [];
   let faelle = 0;
   const PAARE = paarweise();
   const tags = NUR ? String(NUR).split(',') : ELEMENTE;
@@ -289,6 +289,7 @@ async function main() {
     let br = await STARTE();
     let p = await neueSeite(br, base, tag);
     const gpu = await p.evaluate(() => /^Grafik: (GPU|Software)/.test(document.querySelector('.b1-grafik')?.textContent || ''));
+    const soft = await p.evaluate(() => /^Grafik: (DOM · )?Software/.test(document.querySelector('.b1-grafik')?.textContent || ''));
     const neu = async (hart) => {
       if (!hart) {
         try { await Promise.race([p._ctx.close(), new Promise((_, n) => setTimeout(() => n(new Error('zu')), 5000))]); p = await neueSeite(br, base, tag); return; } catch (e) { /* Browser hängt: neu starten */ }
@@ -328,7 +329,9 @@ async function main() {
       }
       const fehler = [...p._fehler];
       if (haenger && erholt === null) fehler.push('eingefroren (> 20 s keine Antwort)');
-      if (haenger && erholt !== null) sinn.push({ tag, zustand, was, f: `stockt ${Math.round(erholt / 100) / 10} s, dann wieder da` });
+      // Auf dem Software-Renderer (Testserver ohne Grafikkarte) ist Stocken Rechenzeit der CPU, kein Befund über die Seite:
+      // dieselben Fälle auf echter Grafikkarte (tower browser, Blade) bleiben unter 30 ms je Bild. Gemeldet wird es trotzdem.
+      if (haenger && erholt !== null) (soft ? langsam : sinn).push({ tag, zustand, was, f: `stockt ${Math.round(erholt / 100) / 10} s, dann wieder da` });
       if (haenger && erholt !== null) { try { s = await mitWache(p, () => window.__t.stand(), null, 20000); } catch (e) { /* bleibt null */ } }
       if (s && s.bildzeit > 2000) fehler.push(`Bild ${Math.round(s.bildzeit)} ms`);
       if (s) fehler.push(...pruefeZerstoert(s, tag));
@@ -495,7 +498,8 @@ async function main() {
   for (const g of gz) console.log(`  ${g.n}× [${[...g.tags].join(',')}] ${g.f}\n     z.B. ${g.beispiele.join('\n          ')}`);
   console.log(`\nSINN: ${sinn.length}`);
   for (const g of gs) console.log(`  ${g.n}× [${[...g.tags].join(',')}] ${g.f}\n     z.B. ${g.beispiele.join('\n          ')}`);
-  if (JSON_) fs.writeFileSync(JSON_, JSON.stringify({ faelle, url: URL_, zerstoert, sinn, bilder: bilder.map(({ png, ...b }) => b) }, null, 1));
+  if (langsam.length) console.log(`\nLANGSAM nur auf dem Software-Renderer: ${langsam.length}\n  ${langsam.map((x) => `${x.tag} [${x.zustand}] ${x.was}: ${x.f}`).join('\n  ')}`);
+  if (JSON_) fs.writeFileSync(JSON_, JSON.stringify({ faelle, url: URL_, zerstoert, sinn, langsam, bilder: bilder.map(({ png, ...b }) => b) }, null, 1));
   process.exit(zerstoert.length ? 1 : 0);
 }
 

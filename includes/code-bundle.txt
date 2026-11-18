@@ -15728,6 +15728,9 @@ export class InfElement extends HTMLElement {
     if (name === 'capacity' || (name === 'repeat' && this._zustand.unendlich)) this._gedeckelt = false;
     // Wiederholen, krümmen, skalieren ... ändert nur Orte, nie Inhalt oder Maße.
     if (!BASIS_ATTRIBUTE.has(name)) { this._masse = []; this.attributGeaendert(); }
+    // Nach jeder Änderung meldet der nächste Zug den Schritt neu, auch wenn er gleich bleibt: wer zwischendurch
+    // ungezeichnet nachgefragt hat (inf-change), soll nicht auf einem Zwischenstand stehen bleiben.
+    this._zaehlSchritt = NaN;
     this.zeichne();
   }
 
@@ -16093,8 +16096,10 @@ export class InfElement extends HTMLElement {
       // das Bild. Gezeichnet wird dann die Bahn mit W^S: gleiches Grenzbild, ein S-tel der Arbeit. So hängt kein Bild an
       // der Kopienzahl, nur an der Fläche, die die Bahn auf dem Bildschirm überstreicht.
       const fein = 0.25 / dpr;
+      // Was eine Periode eine Kopie verrückt: der Schritt D und, wenn sie mitdreht, ihre Ecken um bm (dreht sie nur auf
+      // der Stelle, ist D = 0 und allein die Drehung bewegt sie).
       let Dmax = 0;
-      for (let r = 0; r < P; r++) Dmax = Math.max(Dmax, Math.hypot(dx[r], dy[r]));
+      for (let r = 0; r < P; r++) Dmax = Math.max(Dmax, Math.hypot(dx[r], dy[r]) + (z.rotate ? h[r] * Math.abs(bm) : 0));
       const potenz = (S) => {
         if (eins) return { ok: true, rx: S, ry: 0, inv: [ix, iy], a: S * a, bt: [mitte(S * bm), mitte(256 * S * bm), mitte(65536 * S * bm)] };
         const th = mitte(S * bm), s2 = Math.sin(th / 2);
@@ -16104,13 +16109,18 @@ export class InfElement extends HTMLElement {
         if (n2 < 1e-20) return { ok: false };
         return { ok: true, rx: wx2 * ix - wy2 * iy, ry: wx2 * iy + wy2 * ix, inv: [wx2 / n2, -wy2 / n2], a: S * a, bt: [th, mitte(256 * th), mitte(65536 * th)] };
       };
+      let lueckenlos = teile.length > 0;
       const schritte = teile.map(([lo, hi]) => {
         const sp = Dmax * Math.exp(Math.max(Math.floor(lo / P) * a, Math.ceil(hi / P) * a));
+        if (!(sp <= fein)) lueckenlos = false;
         let S = sp > 0 ? Math.floor(fein / sp) : 1;
         S = Math.max(1, Math.min(S, Math.floor((hi - lo) / P)));
         while (S > 1 && !potenz(S).ok) S = Math.floor(S * 0.75);
         return S;
       });
+      // Liegen schon in der ersten Runde je zwei Kopien näher als ein Viertel Bildpunkt, füllen weitere Runden nichts
+      // mehr auf: das Gezeichnete ist das Grenzbild, der Zähler sagt ∞ statt "dicht".
+      if (grund === 'dicht' && !zyklus && lueckenlos) grund = null;
       const instanzen = (t, S) => Math.ceil((t[1] - t[0]) / (S * P)) * P;
       // Bei ∞ regelt kein Takt die Menge, nur die Zeit je Bild: mehr als INSTANZEN_MAX Zeichnungen ist ehrlich nicht ∞.
       let rest = z.unendlich ? INSTANZEN_MAX : this._cap;
