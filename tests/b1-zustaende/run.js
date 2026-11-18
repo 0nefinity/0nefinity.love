@@ -173,6 +173,7 @@ const HILFEN = () => {
         panel[k] = { feld: z?.querySelector('.ctrl-value-input')?.value, regler: z?.querySelector('input[type="range"]')?.value };
       }
       panel.anzahl = zeile('anzahl')?.querySelector('input')?.value;
+      const periode = e?.periode ?? null;
       const leiste = e?.shadowRoot?.querySelector('.leiste');
       const knopf = leiste?.querySelector('[data-z="∞"]');
       let leisteOk = false;
@@ -187,7 +188,7 @@ const HILFEN = () => {
       const kopien = e?.kopien || [];
       const rects = kopien.slice(0, 5).map((k) => { const r = k.getBoundingClientRect(); return [Math.round(r.left * 10) / 10, Math.round(r.top * 10) / 10, Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10]; });
       return {
-        bildzeit, at, panel,
+        bildzeit, at, panel, periode,
         zaehler: document.querySelector('.b1-zaehler')?.textContent ?? null,
         grafik: document.querySelector('.b1-grafik')?.textContent ?? null,
         falten: e?._falten, schritt: e?.schritt ?? null, gezaehlt: e?.gezaehlt ?? null, sichtbar: e?._sichtbar,
@@ -233,7 +234,8 @@ function pruefeSinn(s, tag, gpu) {
   const gefaltet = s.falten !== false;
   // Unsinn im Anzahl-Feld bleibt stehen, statt auf die geltende Zahl zurückzuspringen.
   if (s.panel.anzahl !== undefined && s.panel.anzahl !== '' && s.panel.anzahl !== '∞' && !/^[\d.]+$/.test(s.panel.anzahl)) f.push(`Anzahl-Feld zeigt "${s.panel.anzahl.slice(0, 20)}" statt der Zahl`);
-  if (s.at.repeat === '∞' && / · DOM$/.test(s.zaehler || '') && gpu) f.push(`∞ zeigt "${s.zaehler}" obwohl WebGL2 da ist`);
+  // DOM ist nur ehrlich, wo sich der Inhalt nicht wiederholt (Nummern, Welle unterwegs): Periode 0. Sonst gehört ∞ der Grafikkarte.
+  if (s.at.repeat === '∞' && / · DOM$/.test(s.zaehler || '') && gpu && s.periode !== 0) f.push(`∞ zeigt "${s.zaehler}" obwohl WebGL2 da ist (Periode ${s.periode})`);
   // Panel = was wirkt.
   for (const k of ['bend', 'angle', 'scale']) {
     const a = Number(s.at[k]);
@@ -277,7 +279,7 @@ async function main() {
   let server = null, base = URL_;
   if (!base) { const s = await start(ROOT); server = s.server; base = s.base; }
   const browser = await STARTE();
-  const zerstoert = [], sinn = [], bilder = [];
+  const zerstoert = [], sinn = [], langsam = [], bilder = [];
   let faelle = 0;
   const PAARE = paarweise();
   const tags = NUR ? String(NUR).split(',') : ELEMENTE;
@@ -287,6 +289,7 @@ async function main() {
     let br = await STARTE();
     let p = await neueSeite(br, base, tag);
     const gpu = await p.evaluate(() => /^Grafik: (GPU|Software)/.test(document.querySelector('.b1-grafik')?.textContent || ''));
+    const soft = await p.evaluate(() => /^Grafik: (DOM · )?Software/.test(document.querySelector('.b1-grafik')?.textContent || ''));
     const neu = async (hart) => {
       if (!hart) {
         try { await Promise.race([p._ctx.close(), new Promise((_, n) => setTimeout(() => n(new Error('zu')), 5000))]); p = await neueSeite(br, base, tag); return; } catch (e) { /* Browser hängt: neu starten */ }
@@ -326,7 +329,9 @@ async function main() {
       }
       const fehler = [...p._fehler];
       if (haenger && erholt === null) fehler.push('eingefroren (> 20 s keine Antwort)');
-      if (haenger && erholt !== null) sinn.push({ tag, zustand, was, f: `stockt ${Math.round(erholt / 100) / 10} s, dann wieder da` });
+      // Auf dem Software-Renderer (Testserver ohne Grafikkarte) ist Stocken Rechenzeit der CPU, kein Befund über die Seite:
+      // dieselben Fälle auf echter Grafikkarte (tower browser, Blade) bleiben unter 30 ms je Bild. Gemeldet wird es trotzdem.
+      if (haenger && erholt !== null) (soft ? langsam : sinn).push({ tag, zustand, was, f: `stockt ${Math.round(erholt / 100) / 10} s, dann wieder da` });
       if (haenger && erholt !== null) { try { s = await mitWache(p, () => window.__t.stand(), null, 20000); } catch (e) { /* bleibt null */ } }
       if (s && s.bildzeit > 2000) fehler.push(`Bild ${Math.round(s.bildzeit)} ms`);
       if (s) fehler.push(...pruefeZerstoert(s, tag));
@@ -493,7 +498,8 @@ async function main() {
   for (const g of gz) console.log(`  ${g.n}× [${[...g.tags].join(',')}] ${g.f}\n     z.B. ${g.beispiele.join('\n          ')}`);
   console.log(`\nSINN: ${sinn.length}`);
   for (const g of gs) console.log(`  ${g.n}× [${[...g.tags].join(',')}] ${g.f}\n     z.B. ${g.beispiele.join('\n          ')}`);
-  if (JSON_) fs.writeFileSync(JSON_, JSON.stringify({ faelle, url: URL_, zerstoert, sinn, bilder: bilder.map(({ png, ...b }) => b) }, null, 1));
+  if (langsam.length) console.log(`\nLANGSAM nur auf dem Software-Renderer: ${langsam.length}\n  ${langsam.map((x) => `${x.tag} [${x.zustand}] ${x.was}: ${x.f}`).join('\n  ')}`);
+  if (JSON_) fs.writeFileSync(JSON_, JSON.stringify({ faelle, url: URL_, zerstoert, sinn, langsam, bilder: bilder.map(({ png, ...b }) => b) }, null, 1));
   process.exit(zerstoert.length ? 1 : 0);
 }
 
