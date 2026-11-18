@@ -130,6 +130,9 @@ export class InfElement extends HTMLElement {
   disconnectedCallback() {
     this._groesse?.disconnect();
     this._verbunden = false;
+    // Browser halten nur wenige WebGL-Kontexte; wer geht, gibt seinen frei (beim Zurückkommen entsteht ein neuer).
+    this._faltung?.weg_();
+    this._faltung = null;
   }
 
   attributeChangedCallback(name) {
@@ -277,7 +280,19 @@ export class InfElement extends HTMLElement {
   // Wie viele Formen sich wiederholen. 0 = keine Faltung, jede Kopie bleibt echtes DOM.
   get periode() { return this.constructor.periode || 0; }
 
+  // Verlorener Kontext: neue Leinwand, neuer Kontext. Erst wer ihn dauernd verliert, bleibt beim DOM.
+  _faltVerlust() {
+    const jetzt = performance.now();
+    this._verluste = (this._verluste || []).filter((t) => jetzt - t < 10000);
+    this._verluste.push(jetzt);
+    this._faltung?.weg_();
+    this._faltung = null;
+    if (this._verluste.length > 3) this._faltFehler(new Error('B1bli0thek: WebGL-Kontext dauernd verloren, DOM-Weg'));
+    else this.zeichne();
+  }
+
   _faltFehler(e) {
+    if (this._faltung?.gl.isContextLost()) return; // webglcontextlost kommt und baut neu auf
     if (!gemeldet.has(e.message)) { gemeldet.add(e.message); console.error(e); }
     this._falten = false;
     this._faltung?.weg_();

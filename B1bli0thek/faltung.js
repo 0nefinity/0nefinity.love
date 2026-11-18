@@ -231,7 +231,8 @@ export class Faltung {
     this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     c.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
-      if (!this.weg) el._faltFehler(new Error('B1bli0thek: WebGL-Kontext verloren, DOM-Weg'));
+      // Handys nehmen den Kontext oft weg (Hintergrund, Speicher): neu aufbauen statt für immer auf DOM.
+      if (!this.weg) el._faltVerlust();
     });
     this.g = new Float32Array(FORMEN_MAX * 4);
     this.tex = null;
@@ -454,7 +455,8 @@ export class Faltung {
       this.texP = P;
       this.rand = rand;
     } catch (e) {
-      if (!this.weg) el._faltFehler(e);
+      // Mitten im Bild verlorener Kontext ist kein Fehler: webglcontextlost baut neu auf.
+      if (!this.weg && !gl.isContextLost()) el._faltFehler(e);
       return;
     } finally {
       this.laeuft = false;
