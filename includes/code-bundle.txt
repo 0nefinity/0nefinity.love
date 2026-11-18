@@ -12489,6 +12489,7 @@ Die gemeinsame Infrastruktur (`meta.js`, `controls.js`, `zoom.js`, `0nefinity.js
 
 ### Jedes Element unendlich wiederholen
 `B1bli0thek/kern.js` (`InfElement`): Web-Component-Basis, die Kopien eines beliebigen Elements auf einen gekrümmten, skalierten Pfad legt (Fluchtpunkt, Bogen, Spirale), mit Gesten (ziehen, zwei Finger krümmen/spreizen, Rad, Tasten), Zustand als Attribute und Ereignis `inf-change`; neues Element = eine Datei mit `baueKopie(i)`, Liste in `B1bli0thek/alle.js`; ab der zweiten Periode nur noch gespiegelt: ein Schnappschuss der echten Kopie (SVG-`foreignObject` als Textur-Array mit Mipmaps), per WebGL2-Instancing an Zehntausende Orte gezeichnet (`B1bli0thek/faltung.js`), Kopienzahl geregelt nach gemessenem Bildtakt statt Pauschale; periodische Pfade in geschlossener Form im Vertex-Shader (Ort aus Instanz-Nummer, nur das sichtbare Fenster, Kreis mod 360°), deckungsgleicher Stapel per Fragment-Shader als 1−(1−a)ᵐ bis m = ∞. Brauchbar.
+ mic.html (Ton aufnehmen und verändern: AudioWorklet-Aufnahme, eigenes WSOLA-Tempo ohne Tonhöhenänderung, YIN-Tonhöhe, FFT-Spektrogramm auf Log-Frequenzachse, Offline-Render für Vorschau und WAV-Export, `tools/mic.js`).
 
 1c0de.html
 <!DOCTYPE html>
@@ -60960,6 +60961,8 @@ mic.html
   white-space: normal;
   touch-action: none;
   font-size: 0;
+  box-sizing: border-box;
+  padding-top: 4.4rem;
 }
 #mic * { white-space: normal; text-shadow: none; }
 #mic canvas { display: block; width: 100%; flex: 0 0 auto; touch-action: none; }
