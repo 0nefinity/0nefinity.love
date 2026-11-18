@@ -60993,6 +60993,8 @@ mic.html
 }
 #leiste svg { width: 2.4rem; height: 2.4rem; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #leiste svg .voll { fill: var(--text-color); stroke: none; }
+#loop.an circle { fill: var(--text-color); }
+#loop.an path { stroke: var(--bg-color); }
 #ab { display: flex; border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px; overflow: hidden; }
 #ab button { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
 #ab button.an { background: var(--text-color); color: var(--bg-color); }
@@ -61010,6 +61012,11 @@ mic.html
   animation: wackeln 0.3s;
 }
 @keyframes wackeln { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.mic-reset { flex: none; width: 1.6rem; height: 1.6rem; padding: 0; margin: 0; background: none; border: 0; cursor: pointer; opacity: 0; pointer-events: none; }
+.mic-reset.sichtbar { opacity: 1; pointer-events: auto; }
+.mic-reset svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ctrl-range { touch-action: none; }
+@media (pointer: coarse) { .mic-reset { width: 2.2rem; height: 2.2rem; } .ctrl-range { padding-block: 14px; background-clip: content-box; } }
 #datei { display: none; }
 </style>
 </head>
@@ -61022,6 +61029,7 @@ mic.html
   <div id="leiste">
     <button id="rec" aria-label="aufnehmen" title="aufnehmen"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path id="recpunkt" class="voll" d="M12 20 A8 8 0 1 0 28 20 A8 8 0 1 0 12 20 Z"/></svg></button>
     <button id="play" aria-label="abspielen" title="abspielen"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path id="playform" class="voll" d="M16 12 L28 20 L16 28 Z"/></svg></button>
+    <button id="loop" aria-label="wiederholen" title="wiederholen" aria-pressed="false"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path d="M12 19 V17 Q12 13 16 13 H27 M24 10 L28 13 L24 16 M28 21 V23 Q28 27 24 27 H13 M16 24 L12 27 L16 30"/></svg></button>
     <div id="ab" role="group" aria-label="original oder verändert"><button id="ab0" class="an" title="original anhören" aria-label="original anhören">original</button><button id="ab1" title="verändert anhören" aria-label="verändert anhören">verändert</button></div>
     <div id="lesung"></div>
   </div>
@@ -95096,6 +95104,8 @@ const undo = [];
 let ac = null, anaIn = null, anaOut = null;
 let rec = null;                     // {stream, node, chunks, n, mins, maxs, cur, curN}
 let wiedergabe = null;              // {quelle, t0, dur}
+let schleifeAn = false;             // Loop: Region (Auswahl oder alles) lückenlos wiederholen
+const BLENDE = 0.02;                // s, Ein-/Ausblendung gegen Knackser beim Tauschen des Puffers
 let rafId = 0;
 
 // ---------- Audio-Kontext (iOS: in der Geste) ----------
@@ -95315,20 +95325,29 @@ function abspielen(von) {
   if (!chs[0].length) return;
   const b = c.createBuffer(chs.length, chs[0].length, rate);
   chs.forEach((d, i) => b.copyToChannel(d, i));
-  const q = c.createBufferSource(); q.buffer = b; q.connect(anaOut);
+  const q = c.createBufferSource(); q.buffer = b; q.loop = schleifeAn;
+  const gn = c.createGain(); gn.gain.setValueAtTime(0, c.currentTime); gn.gain.linearRampToValueAtTime(1, c.currentTime + BLENDE);
+  q.connect(gn); gn.connect(anaOut);
   const dur = b.duration;
   f = Math.min(Math.max(von, 0), 0.9999);
   q.onended = () => { if (wiedergabe && wiedergabe.quelle === q) { wiedergabe = null; f = 0; knoepfe(); zeichneAlles(); } };
   q.start(0, f * dur);
-  wiedergabe = { quelle: q, t0: c.currentTime - f * dur, dur };
+  wiedergabe = { quelle: q, gain: gn, t0: c.currentTime - f * dur, dur };
   knoepfe(); schleife();
 }
+function posF() {
+  const x = (ac.currentTime - wiedergabe.t0) / wiedergabe.dur;
+  return schleifeAn ? ((x % 1) + 1) % 1 : Math.min(1, x);
+}
 function stopQuelle() {
-  if (wiedergabe) { const q = wiedergabe.quelle; wiedergabe = null; q.onended = null; try { q.stop(); } catch (e) { /* schon gestoppt */ } }
+  if (wiedergabe) {
+    const { quelle: q, gain: gn } = wiedergabe; wiedergabe = null; q.onended = null;
+    try { const t = ac.currentTime; gn.gain.cancelScheduledValues(t); gn.gain.setValueAtTime(gn.gain.value, t); gn.gain.linearRampToValueAtTime(0, t + BLENDE); q.stop(t + BLENDE); } catch (e) { /* schon gestoppt */ }
+  }
 }
 function pause() {
   if (!wiedergabe) return;
-  f = Math.min(1, (ac.currentTime - wiedergabe.t0) / wiedergabe.dur);
+  f = posF();
   stopQuelle(); knoepfe(); zeichneAlles();
 }
 function spulen(neu) {
@@ -95626,7 +95645,7 @@ function schleife() {
       lesungSetzen(hz, spitze(dbLive, ac.sampleRate), rec.n / ac.sampleRate);
       rafId = requestAnimationFrame(tick);
     } else if (wiedergabe) {
-      f = Math.min(1, (ac.currentTime - wiedergabe.t0) / wiedergabe.dur);
+      f = posF();
       zeichneWelle(); sgStatisch(); zeichneMod();
       anaOut.getFloatFrequencyData(dbLive); spektrumMalen(dbLive, ac.sampleRate);
       const h = hoerbarCache();
@@ -95642,6 +95661,7 @@ function knoepfe() {
   $('recpunkt').setAttribute('d', rec ? 'M13 13 H27 V27 H13 Z' : 'M12 20 A8 8 0 1 0 28 20 A8 8 0 1 0 12 20 Z');
   $('rec').title = $('rec').ariaLabel = rec ? 'stopp' : 'aufnehmen';
   $('playform').setAttribute('d', wiedergabe ? 'M14 12 H18 V28 H14 Z M22 12 H26 V28 H22 Z' : 'M16 12 L28 20 L16 28 Z');
+  $('loop').classList.toggle('an', schleifeAn); $('loop').setAttribute('aria-pressed', String(schleifeAn));
   $('play').title = $('play').ariaLabel = wiedergabe ? 'pause' : 'abspielen';
   $('ab0').classList.toggle('an', ab === 0);
   $('ab1').classList.toggle('an', ab === 1);
@@ -95651,6 +95671,10 @@ $('play').addEventListener('click', () => {
   if (rec) return;
   if (wiedergabe) return pause();
   try { abspielen(f >= 0.999 ? 0 : f); } catch (e) { fehler(e, 'play'); }
+});
+$('loop').addEventListener('click', () => {
+  schleifeAn = !schleifeAn; knoepfe();
+  if (wiedergabe) { f = posF(); wiedergabe.quelle.loop = schleifeAn; wiedergabe.t0 = ac.currentTime - f * wiedergabe.dur; }
 });
 function abSetzen(v) {
   if (ab === v) return; ab = v; knoepfe();
@@ -95682,8 +95706,58 @@ function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, 
 
 // ---------- Panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
-const neuPlanen = () => { planen(); };
-const sl = (key, label, min, max, step, value, dec, fn) => panel.addSlider(key, { label, min, max, step, value, decimals: dec, onChange: v => { fn(v); neuPlanen(); } });
+const neuPlanen = () => { planen(); resetsAbgleichen(); };
+
+// Reglerwege: Position 0..1000 <-> Wert. Wahrnehmungsnah (log) wo der Wert ein Faktor ist, Rastpunkt (Detent) auf dem neutralen Wert.
+const WEG = 1000, RAST = 0.025;
+let fein = false;                       // Feinmodus: ganze Halbtöne aus, Nachkommastellen an
+const fmt = (v, d) => String(Number(v.toFixed(d)));
+function logWeg(min, max, neutral, dec, nudgeFaktor) {
+  const l = Math.log(max / min), np = neutral == null ? null : Math.log(neutral / min) / l * WEG;
+  return {
+    toSliderValue: v => v <= min ? 0 : Math.min(WEG, Math.log(v / min) / l * WEG),
+    fromSliderValue: p => {
+      if (np != null && Math.abs(p - np) <= RAST * WEG) return neutral;
+      return min * Math.exp(Math.max(0, Math.min(WEG, p)) / WEG * l);
+    },
+    nudge: (v, dir) => {
+      const n = Math.max(v, min) * Math.pow(nudgeFaktor, dir);
+      return Number(n.toFixed(dec));
+    },
+  };
+}
+const WEGE = {
+  tempo: { ...logWeg(0.05, 8, 1, 2, 1.01), formatDisplayValue: v => fmt(v * 100, 0) + ' %',
+    parseDisplayValue: s => parseFloat(String(s).replace(',', '.')) / 100,
+    nudge: (v, dir) => Math.max(0, Number((v + dir * 0.01).toFixed(2))) },
+  st: {
+    toSliderValue: v => v,
+    fromSliderValue: p => fein ? Math.round(p * 10) / 10 : Math.round(p),
+    nudge: (v, dir) => Math.round(v + dir),
+    formatDisplayValue: v => (v > 0 ? '+' : '') + fmt(v, 1),
+    parseDisplayValue: s => parseFloat(String(s).replace(',', '.')),
+  },
+  pegel: {
+    toSliderValue: v => v,
+    fromSliderValue: p => Math.abs(p - 1) <= RAST * 4 ? 1 : p,
+    nudge: (v, dir) => Math.max(0, Number((v + dir * 0.05).toFixed(2))),
+  },
+  fhz: logWeg(20, 24000, null, 0, Math.pow(2, 1 / 12)),
+  fq: logWeg(0.1, 30, 1, 2, Math.pow(2, 1 / 6)),
+  echoS: logWeg(0.001, 2, null, 3, Math.pow(2, 1 / 6)),
+  hallS: logWeg(0.1, 10, null, 2, Math.pow(2, 1 / 6)),
+};
+const logKeys = new Set(['tempo', 'fhz', 'fq', 'echoS', 'hallS']);
+const sl = (key, label, min, max, step, value, dec, fn) => {
+  const w = WEGE[key];
+  const cfg = { label, min, max, step, value, decimals: dec, onChange: v => { fn(v); neuPlanen(); } };
+  if (w) {
+    cfg.transform = w;
+    if (logKeys.has(key)) { cfg.min = 0; cfg.max = WEG; cfg.step = 1; }
+    if (key === 'st') cfg.step = 0.01;
+  }
+  return panel.addSlider(key, cfg);
+};
 panel
   .addButtonGroup('dateien', { buttons: [
     { key: 'laden', label: 'laden', onClick: () => $('datei').click() },
@@ -95709,16 +95783,75 @@ panel.addDivider()
       { value: 'aus', label: 'aus' }, { value: 'low', label: 'low' }, { value: 'high', label: 'high' }, { value: 'band', label: 'band' }],
     onChange: v => { P.filter = v; neuPlanen(); } });
 sl('fhz', 'Hz', 0, 24000, 1, P.fhz, 0, v => { P.fhz = v; });
-sl('fq', 'Güte', 0.1, 30, 0.1, P.fq, 1, v => { P.fq = v; });
+sl('fq', 'Güte', 0.1, 30, 0.1, P.fq, 2, v => { P.fq = v; });
 panel.addDivider();
 sl('echoS', 'Echo s', 0.001, 2, 0.001, P.echoS, 3, v => { P.echoS = v; });
 sl('echoFb', 'Echo fb', 0, 0.95, 0.01, P.echoFb, 2, v => { P.echoFb = v; });
 sl('echoMix', 'Echo mix', 0, 1, 0.01, P.echoMix, 2, v => { P.echoMix = v; });
 panel.addDivider();
 sl('hallMix', 'Hall mix', 0, 1, 0.01, P.hallMix, 2, v => { P.hallMix = v; });
-sl('hallS', 'Hall s', 0.1, 10, 0.1, P.hallS, 1, v => { P.hallS = v; });
+sl('hallS', 'Hall s', 0.1, 10, 0.1, P.hallS, 2, v => { P.hallS = v; });
 panel.addDivider();
 sl('verz', 'Verzerrung', 0, 1, 0.01, P.verz, 2, v => { P.verz = v; });
+
+// Ziehen: eigener Zeiger statt nativem Range. Weiter weg vom Regler (senkrecht) = feiner (1, 1/4, 1/16 der Strecke),
+// und Tonhöhe rastet auf ganze Halbtöne, solange der Finger nah dran bleibt.
+for (const range of panel.el.querySelectorAll('.ctrl-range')) {
+  const key = range.closest('.ctrl-row').dataset.key;
+  let drag = null;
+  const spanVon = () => ({ min: Number(range.min), max: Number(range.max) });
+  const setzen = pos => { range.value = String(pos); range.dispatchEvent(new Event('input', { bubbles: true })); };
+  const abs = e => { const r = range.getBoundingClientRect(), s = spanVon(); return s.min + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (s.max - s.min); };
+  range.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    e.preventDefault(); range.setPointerCapture(e.pointerId);
+    const r = range.getBoundingClientRect();
+    drag = { x: e.clientX, y0: r.top + r.height / 2, pos: abs(e), faktor: 1 };
+    fein = false; setzen(drag.pos);
+  });
+  range.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dy = Math.abs(e.clientY - drag.y0);
+    const faktor = dy > 140 ? 1 / 16 : dy > 60 ? 1 / 4 : 1;
+    if (faktor !== drag.faktor) { drag.x = e.clientX; drag.pos = Number(range.value); drag.faktor = faktor; }
+    fein = key === 'st' && faktor < 1;
+    const r = range.getBoundingClientRect(), s = spanVon();
+    const pos = Math.min(s.max, Math.max(s.min, drag.pos + (e.clientX - drag.x) / r.width * (s.max - s.min) * faktor));
+    setzen(pos);
+  });
+  const ende = () => { drag = null; fein = false; };
+  range.addEventListener('pointerup', ende);
+  range.addEventListener('pointercancel', ende);
+  for (const t of ['mousedown', 'touchstart']) range.addEventListener(t, e => e.preventDefault(), { passive: false });
+}
+
+// Zurücksetzen je Feld: Knopf nur sichtbar (und bedienbar), wenn der Wert vom Standard abweicht.
+const RESET_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a7 7 0 1 0 2.2-5.1M4.5 4v4.5H9"/></svg>';
+const resetKnoepfe = [];
+for (const row of panel.el.querySelectorAll('.ctrl-row[data-key]')) {
+  const key = row.dataset.key;
+  if (!(key in P)) continue;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'mic-reset'; b.innerHTML = RESET_SVG;
+  b.title = b.ariaLabel = 'zurücksetzen';
+  b.addEventListener('click', () => {
+    const d = panel.defaultOf(key);
+    panel.set(key, d); panel.params[key] = d;
+    if (panel.callbacks[key]) panel.callbacks[key](d, key);
+  });
+  const grp = row.querySelector('.ctrl-slider-group');
+  const trig = grp && grp.querySelector('.ctrl-config-trigger');
+  if (grp) grp.insertBefore(b, trig || null); else row.appendChild(b);
+  resetKnoepfe.push([key, b]);
+}
+function resetsAbgleichen() {
+  for (const [key, b] of resetKnoepfe) {
+    const d = panel.defaultOf(key), v = panel.params[key];
+    const gleich = typeof v === 'number' ? Math.abs(v - d) < 1e-9 : v === d;
+    b.classList.toggle('sichtbar', !gleich);
+  }
+}
+resetsAbgleichen();
 panel.el.addEventListener('pointerdown', () => { try { ctxHolen(); } catch (e) { fehler(e, 'ctx'); } });
 
 // ---------- Layout ----------
