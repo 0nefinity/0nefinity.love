@@ -50,6 +50,11 @@
 #ab { flex: none; display: flex; border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px; overflow: hidden; }
 #ab button { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
 #ab button.an { background: var(--text-color); color: var(--bg-color); }
+#quelle { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.3rem; color: var(--text-color); }
+#quelle svg { flex: none; width: 1.3rem; height: 1.3rem; stroke-width: 2; }
+#quellewahl { min-width: 0; max-width: 9rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); background: var(--bg-color); border: 0; border-bottom: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 0; padding: 0.3rem 0.2rem; appearance: none; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; cursor: pointer; color-scheme: dark; }
+#quellewahl.einzeln { pointer-events: none; border-bottom-color: transparent; }
+#quellewahl:disabled { opacity: 0.3; }
 #lesung { flex: 1 1 auto; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 0; }
 #fehler {
   display: none;
@@ -69,7 +74,7 @@
 .mic-reset svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ctrl-range { touch-action: none; }
 @media (pointer: coarse) { .mic-reset { width: 2.2rem; height: 2.2rem; } .ctrl-range { padding-block: 14px; background-clip: content-box; } }
-@media (max-width: 600px) { #leiste { flex-wrap: wrap; row-gap: 0.2rem; } #lesung { flex: 1 0 100%; text-align: left; } }
+@media (max-width: 600px) { #leiste { flex-wrap: wrap; row-gap: 0.2rem; } #quelle { flex: 1 0 100%; } #lesung { flex: 1 0 100%; text-align: left; } }
 #mic [hidden] { display: none !important; }
 #clips, #schnitt { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); }
 #chips { flex: 1 1 auto; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
@@ -114,6 +119,7 @@
     <button id="play" aria-label="abspielen" title="abspielen"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path id="playform" class="voll" d="M16 12 L28 20 L16 28 Z"/></svg></button>
     <button id="loop" aria-label="wiederholen" title="wiederholen" aria-pressed="false"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path d="M12 19 V17 Q12 13 16 13 H27 M24 10 L28 13 L24 16 M28 21 V23 Q28 27 24 27 H13 M16 24 L12 27 L16 30"/></svg></button>
     <div id="ab" role="group" aria-label="original oder verändert"><button id="ab0" class="an" title="original anhören" aria-label="original anhören">original</button><button id="ab1" title="verändert anhören" aria-label="verändert anhören">verändert</button></div>
+    <label id="quelle" title="mikrofon" hidden><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11 A6.5 6.5 0 0 0 18.5 11 M12 17.5 V21"/></svg><select id="quellewahl" aria-label="mikrofon"></select></label>
     <div id="lesung"></div>
   </div>
   <div id="fehler" role="alert"></div>

@@ -61264,6 +61264,11 @@ mic.html
 #ab { flex: none; display: flex; border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px; overflow: hidden; }
 #ab button { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
 #ab button.an { background: var(--text-color); color: var(--bg-color); }
+#quelle { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.3rem; color: var(--text-color); }
+#quelle svg { flex: none; width: 1.3rem; height: 1.3rem; stroke-width: 2; }
+#quellewahl { min-width: 0; max-width: 9rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); background: var(--bg-color); border: 0; border-bottom: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 0; padding: 0.3rem 0.2rem; appearance: none; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; cursor: pointer; color-scheme: dark; }
+#quellewahl.einzeln { pointer-events: none; border-bottom-color: transparent; }
+#quellewahl:disabled { opacity: 0.3; }
 #lesung { flex: 1 1 auto; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 0; }
 #fehler {
   display: none;
@@ -61283,7 +61288,7 @@ mic.html
 .mic-reset svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ctrl-range { touch-action: none; }
 @media (pointer: coarse) { .mic-reset { width: 2.2rem; height: 2.2rem; } .ctrl-range { padding-block: 14px; background-clip: content-box; } }
-@media (max-width: 600px) { #leiste { flex-wrap: wrap; row-gap: 0.2rem; } #lesung { flex: 1 0 100%; text-align: left; } }
+@media (max-width: 600px) { #leiste { flex-wrap: wrap; row-gap: 0.2rem; } #quelle { flex: 1 0 100%; } #lesung { flex: 1 0 100%; text-align: left; } }
 #mic [hidden] { display: none !important; }
 #clips, #schnitt { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; font-family: var(--font-family); font-size: 0.85rem; color: var(--text-color); }
 #chips { flex: 1 1 auto; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
@@ -61328,6 +61333,7 @@ mic.html
     <button id="play" aria-label="abspielen" title="abspielen"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path id="playform" class="voll" d="M16 12 L28 20 L16 28 Z"/></svg></button>
     <button id="loop" aria-label="wiederholen" title="wiederholen" aria-pressed="false"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path d="M12 19 V17 Q12 13 16 13 H27 M24 10 L28 13 L24 16 M28 21 V23 Q28 27 24 27 H13 M16 24 L12 27 L16 30"/></svg></button>
     <div id="ab" role="group" aria-label="original oder verändert"><button id="ab0" class="an" title="original anhören" aria-label="original anhören">original</button><button id="ab1" title="verändert anhören" aria-label="verändert anhören">verändert</button></div>
+    <label id="quelle" title="mikrofon" hidden><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11 A6.5 6.5 0 0 0 18.5 11 M12 17.5 V21"/></svg><select id="quellewahl" aria-label="mikrofon"></select></label>
     <div id="lesung"></div>
   </div>
   <div id="fehler" role="alert"></div>
@@ -78740,18 +78746,7 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
-      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
-      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
-      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
-      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
-      ro = new ResizeObserver(function () {
-        var pw = canvasEl.width, ph = canvasEl.height;
-        resize();
-        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
-          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
-        }
-      });
+      ro = new ResizeObserver(resize);
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -82803,7 +82798,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '';
+  let letzterDiag = '', letzterStand = '', diagBis = {};
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -82831,8 +82826,25 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
-    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
+    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
+    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
+    if (typeof d === 'object' && typeof d.text === 'string') {
+      const neu = (liste, feld) => {
+        if (!Array.isArray(liste)) return;
+        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
+        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
+      };
+      neu(d.rahmen, 'rahmen');
+      neu(d.ereignisse, 'ereignisse');
+      const stand = {};
+      if (d.fahrt) stand.fahrt = d.fahrt;
+      if (d.turm) stand.turm = d.turm;
+      if (Object.keys(stand).length) {
+        const st = JSON.stringify(stand);
+        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
+      }
+      d = { text: d.text };
+    }
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -82857,7 +82869,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);
@@ -96323,6 +96335,36 @@ async function clipsLaden() {
   } catch (e) { fehler(e, 'laden'); }
 }
 
+// ---------- Mikrofon wählen ----------
+const micSchluessel = 'mic.eingang';
+function micGemerkt() { try { return localStorage.getItem(micSchluessel) || ''; } catch (e) { return ''; } }
+function micMerken(id) { try { id ? localStorage.setItem(micSchluessel, id) : localStorage.removeItem(micSchluessel); } catch (e) { console.warn('mic: Auswahl nicht gespeichert', e); } }
+let micGeraete = [];
+// Namen gibt es erst nach der ersten Freigabe; "communications" und ein "default", das ein echtes Gerät doppelt, fallen weg.
+async function micListe(stream) {
+  const md = navigator.mediaDevices, sel = $('quellewahl'), box = $('quelle');
+  if (!md || !md.enumerateDevices) return;
+  try {
+    const alle = (await md.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'communications');
+    micGeraete = alle.filter(d => d.deviceId !== 'default' || !alle.some(o => o !== d && o.groupId && o.groupId === d.groupId));
+    const tr = stream && stream.getAudioTracks()[0], aktiv = (tr && tr.getSettings().deviceId) || micGemerkt();
+    const gemerkt = micGemerkt();
+    if (gemerkt && !micGeraete.some(d => d.deviceId === gemerkt) && micGeraete.some(d => d.label)) {
+      micMerken(''); fehler({ message: 'gewähltes Mikrofon nicht gefunden, nehme das Standard-Mikrofon' }, 'mic');
+    }
+    sel.textContent = '';
+    micGeraete.forEach((d, i) => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || 'mikrofon' + (micGeraete.length > 1 ? ' ' + (i + 1) : ''); sel.appendChild(o); });
+    const ziel = micGeraete.find(d => d.deviceId === micGemerkt()) || micGeraete.find(d => d.deviceId === aktiv) || micGeraete.find(d => d.deviceId === 'default') || micGeraete[0];
+    if (ziel) sel.value = ziel.deviceId;
+    sel.classList.toggle('einzeln', micGeraete.length < 2);
+    sel.tabIndex = micGeraete.length < 2 ? -1 : 0;
+    box.hidden = !micGeraete.length;
+  } catch (e) { fehler(e, 'mic-liste'); }
+}
+$('quellewahl').addEventListener('change', e => { micMerken(e.target.value); });
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', () => micListe());
+micListe();
+
 // ---------- Aufnahme ----------
 const BLK = 1024;
 async function aufnahmeStart() {
@@ -96331,9 +96373,19 @@ async function aufnahmeStart() {
   const c = ctxHolen();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fehler(new Error('getUserMedia nicht verfügbar (https nötig)'), 'mic'); return; }
   let stream;
+  const roh = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const gemerkt = micGemerkt();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: gemerkt ? { ...roh, deviceId: { exact: gemerkt } } : roh });
+    } catch (e) {
+      if (!gemerkt || (e.name !== 'OverconstrainedError' && e.name !== 'NotFoundError')) throw e;
+      micMerken('');
+      fehler({ message: 'gewähltes Mikrofon nicht gefunden, nehme das Standard-Mikrofon' }, 'mic');
+      stream = await navigator.mediaDevices.getUserMedia({ audio: roh });
+    }
   } catch (e) { fehler(e, 'mic'); return; }
+  micListe(stream);
   try {
     await c.audioWorklet.addModule('/tools/mic-worklet.js');
     const qn = c.createMediaStreamSource(stream);
@@ -96578,7 +96630,7 @@ function spalteMalen(img, col, db, rate) {
     d[o] = BG[0] + (FG[0] - BG[0]) * t; d[o + 1] = BG[1] + (FG[1] - BG[1]) * t; d[o + 2] = BG[2] + (FG[2] - BG[2]) * t; d[o + 3] = 255;
   }
 }
-let sgBild = null, sgKey = '';
+let sgBild = null, sgKey = '', sgSpalten = null;
 function clearSg() {
   dim(cS);
   const x = cS.getContext('2d'); x.fillStyle = rgb(BG); x.fillRect(0, 0, cS.width, cS.height);
@@ -96592,9 +96644,15 @@ function sgStatisch() {
     sgKey = key;
     const img = new ImageData(W, H), db = new Float32Array(NF / 2);
     if (!h.x.length) { for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255; for (let i = 0; i < img.data.length; i += 4) { img.data[i] = BG[0]; img.data[i + 1] = BG[1]; img.data[i + 2] = BG[2]; } }
-    else for (let col = 0; col < W; col++) {
-      const s = Math.floor(col / W * h.x.length - NF / 2);
-      spalteMalen(img, col, spektrumAb(h.x, s, db), h.rate);
+    else {
+      // Die FFT-Spalten hängen nur von Clip und Breite ab, nicht von der Höhe: beim Verschieben des Panels ändert sich nur die Höhe.
+      const half = NF / 2, ck = hoerVer + '|' + W + '|' + h.x.length;
+      if (!sgSpalten || sgSpalten.key !== ck || sgSpalten.x !== h.x) {
+        const cols = new Float32Array(W * half);
+        for (let col = 0; col < W; col++) spektrumAb(h.x, Math.floor(col / W * h.x.length - NF / 2), db), cols.set(db, col * half);
+        sgSpalten = { key: ck, x: h.x, cols };
+      }
+      for (let col = 0; col < W; col++) spalteMalen(img, col, sgSpalten.cols.subarray(col * half, (col + 1) * half), h.rate);
     }
     sgBild = img;
   }
@@ -96750,17 +96808,21 @@ function spektrumMalen(db, rate) {
 }
 
 // Analyse für ruhenden Zustand
-function zeichneAnalyse() {
+let mittelSpek = null;
+function zeichneAnalyse(nurBild) {
   const h = hoerbarCache();
   sgStatisch();
   zeichneMod();
   if (h.x.length) {
-    const acc = new Float32Array(NF / 2), tmp = new Float32Array(NF / 2), n = 12;
-    for (let i = 0; i < n; i++) { spektrumAb(h.x, Math.floor((i + 0.5) / n * h.x.length - NF / 2), tmp); for (let k = 0; k < acc.length; k++) acc[k] += Math.pow(10, tmp[k] / 10) / n; }
-    for (let k = 0; k < acc.length; k++) acc[k] = 10 * Math.log10(acc[k] + 1e-18);
-    spektrumMalen(acc, h.rate);
+    if (!mittelSpek || mittelSpek.x !== h.x || mittelSpek.ver !== hoerVer) {
+      const acc = new Float32Array(NF / 2), tmp = new Float32Array(NF / 2), n = 12;
+      for (let i = 0; i < n; i++) { spektrumAb(h.x, Math.floor((i + 0.5) / n * h.x.length - NF / 2), tmp); for (let k = 0; k < acc.length; k++) acc[k] += Math.pow(10, tmp[k] / 10) / n; }
+      for (let k = 0; k < acc.length; k++) acc[k] = 10 * Math.log10(acc[k] + 1e-18);
+      mittelSpek = { x: h.x, ver: hoerVer, acc };
+    }
+    spektrumMalen(mittelSpek.acc, h.rate);
   } else spektrumMalen(null, sr);
-  lesungRuhe();
+  if (!nurBild) lesungRuhe();
 }
 function mm(s) { const m = Math.floor(s / 60); return m + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); }
 function lesungSetzen(hz, pk, t) {
@@ -96776,10 +96838,10 @@ function lesungRuhe() {
   lesungSetzen(hs.length ? hs[hs.length >> 1] : 0, pk, f * h.x.length / h.rate);
 }
 
-function zeichneAlles() {
+function zeichneAlles(nurBild) {
   zeichneWelle();
   if (rec) return;
-  zeichneAnalyse();
+  zeichneAnalyse(nurBild);
 }
 
 // ---------- Schleife (live) ----------
@@ -96818,6 +96880,7 @@ function schleife() {
 function knoepfe() {
   $('recpunkt').setAttribute('d', rec ? 'M13 13 H27 V27 H13 Z' : 'M12 20 A8 8 0 1 0 28 20 A8 8 0 1 0 12 20 Z');
   $('rec').title = $('rec').ariaLabel = rec ? 'stopp' : 'aufnehmen';
+  $('quellewahl').disabled = !!rec;
   $('playform').setAttribute('d', wiedergabe ? 'M14 12 H18 V28 H14 Z M22 12 H26 V28 H22 Z' : 'M16 12 L28 20 L16 28 Z');
   $('loop').classList.toggle('an', schleifeAn); $('loop').setAttribute('aria-pressed', String(schleifeAn));
   $('play').title = $('play').ariaLabel = wiedergabe ? 'pause' : 'abspielen';
@@ -97067,7 +97130,9 @@ function raumFuerPanel() {
     stage.style.paddingLeft = (r.left < 1 && innerWidth - r.right >= 480) ? r.right + 'px' : '';
   }
 }
-function layout() { raumFuerPanel(); sgKey = ''; zeichneAlles(); if (rec) clearSg(); }
+// Das Panel meldet beim Ziehen mehrfach je Bild (resize, layout-change auf Panel und Dokument): einmal je Bild zeichnen.
+let layoutRaf = 0;
+function layout() { if (layoutRaf) return; layoutRaf = requestAnimationFrame(() => { layoutRaf = 0; raumFuerPanel(); sgKey = ''; zeichneAlles(true); if (rec) clearSg(); }); }
 addEventListener('resize', layout);
 stage.addEventListener('ctrl-panel-layout-change', layout);
 document.addEventListener('ctrl-panel-layout-change', layout);
