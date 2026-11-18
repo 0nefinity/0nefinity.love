@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!--#include virtual="/includes/something-in-the-head.html" -->
+<meta charset="UTF-8">
+<title>mic</title>
+<style>
+#mic {
+  display: flex;
+  flex-direction: column;
+  white-space: normal;
+  touch-action: none;
+  font-size: 0;
+}
+#mic * { white-space: normal; text-shadow: none; }
+#mic canvas { display: block; width: 100%; flex: 0 0 auto; touch-action: none; }
+#welle { height: 15%; cursor: crosshair; }
+#mod   { height: 9%;  cursor: pointer; }
+#sg    { flex: 1 1 auto !important; min-height: 0; cursor: pointer; }
+#spek  { height: 16%; }
+#leiste {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  color: var(--text-color);
+}
+#leiste button {
+  font-family: var(--font-family);
+  font-size: 1.1rem;
+  line-height: 1;
+  background: transparent;
+  color: var(--text-color);
+  border: 0;
+  padding: 0.2rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#leiste svg { width: 2.4rem; height: 2.4rem; display: block; fill: none; stroke: var(--text-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#leiste svg .voll { fill: var(--text-color); }
+#ab { display: flex; border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent); border-radius: 9999px; overflow: hidden; }
+#ab button { padding: 0.5rem 0.9rem; min-width: 2.6rem; }
+#ab button.an { background: var(--text-color); color: var(--bg-color); }
+#lesung { flex: 1 1 auto; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 0; }
+#fehler {
+  display: none;
+  position: absolute; left: 0.75rem; right: 0.75rem; top: 0.75rem;
+  z-index: 5;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--text-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 0.9rem;
+  animation: wackeln 0.3s;
+}
+@keyframes wackeln { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+#datei { display: none; }
+</style>
+</head>
+<body>
+<div id="mic" class="_018-canvas">
+  <canvas id="welle"></canvas>
+  <canvas id="mod"></canvas>
+  <canvas id="sg"></canvas>
+  <canvas id="spek"></canvas>
+  <div id="leiste">
+    <button id="rec" aria-label="rec"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><circle id="recpunkt" cx="20" cy="20" r="8"/></svg></button>
+    <button id="play" aria-label="play"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path id="playform" d="M16 17 L21 13 L21 27"/></svg></button>
+    <div id="ab"><button id="ab0" class="an">0</button><button id="ab1">1</button></div>
+    <div id="lesung"></div>
+  </div>
+  <div id="fehler" role="alert"></div>
+  <input id="datei" type="file" accept="audio/*">
+</div>
+
+<script src="/tools/mic.js?v=<!--#flastmod virtual="/tools/mic.js" -->"></script>
+
+<!--#include virtual="/includes/something-in-the-body.html" -->
+</body>
+</html>
