@@ -590,8 +590,10 @@ function schleife() {
 
 // ---------- Knöpfe ----------
 function knoepfe() {
-  $('recpunkt').classList.toggle('voll', !!rec);
-  $('playform').setAttribute('d', wiedergabe ? 'M16 13 V27 M24 13 V27' : 'M16 17 L21 13 L21 27');
+  $('recpunkt').setAttribute('d', rec ? 'M13 13 H27 V27 H13 Z' : 'M12 20 A8 8 0 1 0 28 20 A8 8 0 1 0 12 20 Z');
+  $('rec').title = $('rec').ariaLabel = rec ? 'stopp' : 'aufnehmen';
+  $('playform').setAttribute('d', wiedergabe ? 'M14 12 H18 V28 H14 Z M22 12 H26 V28 H22 Z' : 'M16 12 L28 20 L16 28 Z');
+  $('play').title = $('play').ariaLabel = wiedergabe ? 'pause' : 'abspielen';
   $('ab0').classList.toggle('an', ab === 0);
   $('ab1').classList.toggle('an', ab === 1);
 }
