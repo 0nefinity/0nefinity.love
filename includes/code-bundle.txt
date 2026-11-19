@@ -96407,7 +96407,7 @@ async function rendern() {
     await oc.audioWorklet.addModule('/tools/mic-worklet.js');
     if (my !== renderToken) return;
     const g = graphBauen(oc, { offline: true, n: v.x.length, S: v.S,
-      motor: { x: v.x.slice(), tempo: P.tempo, p: tonP(P), loop: false, tailN: L.tail, spiel: { pos: 0, nach: -1, sofort: true } },
+      motor: { x: v.x, tempo: P.tempo, p: tonP(P), loop: false, tailN: L.tail, spiel: { pos: 0, nach: -1, sofort: true } },
       ende: { bit: P.bit, S: v.S * P.pegel } });
     setzen(g, P, true);
     const t0 = performance.now();
@@ -96978,8 +96978,13 @@ async function wavExport() {
 }
 
 // ---------- Zeichnen ----------
+// Größen kommen vom ResizeObserver: clientWidth/clientHeight im Bildtakt erzwingen sonst bei jedem Zug ein Layout.
+const grossen = new WeakMap();
+const grossenBeob = new ResizeObserver(es => { for (const e of es) grossen.set(e.target, [e.target.clientWidth, e.target.clientHeight]); });
 function dim(c) {
-  const d = dpr(), w = Math.max(1, Math.round(c.clientWidth * d)), h = Math.max(1, Math.round(c.clientHeight * d));
+  let g = grossen.get(c);
+  if (!g) { g = [c.clientWidth, c.clientHeight]; grossen.set(c, g); grossenBeob.observe(c); }
+  const d = dpr(), w = Math.max(1, Math.round(g[0] * d)), h = Math.max(1, Math.round(g[1] * d));
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; return true; }
   return false;
 }
@@ -96996,9 +97001,11 @@ function spitzen(x, cols, s0 = 0, s1 = x.length) {
   }
   e = { cols: k, s0, s1, mn, mx }; peakCache.set(x, e); return e;
 }
-function welleMalen(c, mn, mx, n) {
-  const x = c.getContext('2d'), W = c.width, H = c.height, m = H / 2;
-  x.clearRect(0, 0, W, H);
+// Die ruhende Welle ändert sich nur mit Clip, Breite, Höhe und Farbe: beim zweiten Bild mit denselben Spitzen wird sie
+// einmal in eine Bitmap gemalt, danach kopiert drawImage sie (statt 800 fillRect je Bild und Leinwand).
+const welleBm = new WeakMap();
+function welleStrich(x, W, H, mn, mx, n) {
+  const m = H / 2;
   x.fillStyle = rgb(FG, 0.25); x.fillRect(0, Math.floor(m), W, 1);
   if (!n) return;
   x.fillStyle = rgb(FG, 0.9);
@@ -97007,6 +97014,20 @@ function welleMalen(c, mn, mx, n) {
     const y1 = m - mx[j] * m, y2 = m - mn[j] * m;
     x.fillRect(i, y1, 1, Math.max(1, y2 - y1));
   }
+}
+function welleMalen(c, mn, mx, n) {
+  const x = c.getContext('2d'), W = c.width, H = c.height, fg = rgb(FG, 0);
+  x.clearRect(0, 0, W, H);
+  let e = welleBm.get(c);
+  const gleich = e && e.mn === mn && e.n === n && e.W === W && e.H === H && e.fg === fg;
+  if (gleich && e.bm) { x.drawImage(e.bm, 0, 0); return; }
+  if (gleich && mn) {
+    e.bm = document.createElement('canvas'); e.bm.width = W; e.bm.height = H;
+    welleStrich(e.bm.getContext('2d'), W, H, mn, mx, n);
+    x.drawImage(e.bm, 0, 0); return;
+  }
+  welleBm.set(c, { mn, n, W, H, fg, bm: null });
+  welleStrich(x, W, H, mn, mx, n);
 }
 function linieAn(c, q, a = 1) {
   const x = c.getContext('2d'), p = Math.round(q * c.width);
@@ -97145,15 +97166,17 @@ function spalteMalen(img, col, db, rate) {
     d[o] = BG[0] + (FG[0] - BG[0]) * t; d[o + 1] = BG[1] + (FG[1] - BG[1]) * t; d[o + 2] = BG[2] + (FG[2] - BG[2]) * t; d[o + 3] = 255;
   }
 }
+const sgBitmap = document.createElement('canvas');
+let sgSchmutz = true, sgGemalt = null, sgNeu = true, sgDx = null, sgBitmapOk = false;
 let sgBild = null, sgKey = '', sgSpalten = null, sgTeil = false, sgWeiter = 0;
 function clearSg() {
-  dim(cS);
+  sgGemalt = null; dim(cS);
   const x = cS.getContext('2d'); x.fillStyle = rgb(BG); x.fillRect(0, 0, cS.width, cS.height);
 }
 function sgStatisch() {
   dim(cS);
   const W = cS.width, H = cS.height, h = hoerbarCache();
-  if (ab === 1 && out && out.leben && h.x.length) { lebenMalen(W, H, h); malSpurMalen(); return; }
+  if (ab === 1 && out && out.leben && h.x.length) { sgGemalt = null; lebenMalen(W, H, h); malSpurMalen(); return; }
   const key = [W, H, ab, hoerVer, h.x.length, h.rate, out ? out.ch[0].length : 0, src.length, sel ? sel.a + ',' + sel.b : ''].join('|');
   if (key !== sgKey || sgTeil) {
     const ganz = key !== sgKey;
@@ -97162,6 +97185,7 @@ function sgStatisch() {
     const img = alt ? sgBild : new ImageData(W, H), db = new Float32Array(NF / 2);
     if (!h.x.length || !alt) { for (let i = 0; i < img.data.length; i += 4) { img.data[i] = BG[0]; img.data[i + 1] = BG[1]; img.data[i + 2] = BG[2]; img.data[i + 3] = 255; } }
     sgTeil = false;
+    if (!h.x.length || !alt) sgDx = null;
     if (h.x.length) {
       // Die FFT-Spalten hängen nur von Clip und Breite ab, nicht von der Höhe: beim Verschieben des Panels ändert sich nur die Höhe.
       // Sie entstehen in Scheiben zu 6 ms je Bild: das neue Spektrogramm wischt über das alte, die Hand am Regler ruckelt nie.
@@ -97173,16 +97197,31 @@ function sgStatisch() {
         spektrumAb(h.x, Math.floor(col / W * h.x.length - NF / 2), db); S.cols.set(db, col * half);
       }
       for (let col = von; col < S.n; col++) spalteMalen(img, col, S.cols.subarray(col * half, (col + 1) * half), h.rate);
+      sgDx = !alt ? null : sgSchmutz ? (sgDx ? [Math.min(sgDx[0], von), S.n] : null) : [von, S.n];
       if (S.n < W) {
         sgTeil = true;
         if (!sgWeiter) sgWeiter = requestAnimationFrame(() => { sgWeiter = 0; if (sgTeil) sgStatisch(); });
       }
     }
-    sgBild = img;
+    sgBild = img; sgSchmutz = true;
   }
-  cS.getContext('2d').putImageData(sgBild, 0, 0);
+  if (sgSchmutz || sgBitmap.width !== W || sgBitmap.height !== H) {
+    // Das Bild ändert sich selten; im Bildtakt zeichnet nur drawImage (GPU) statt putImageData (CPU-Kopie von ~2 MB).
+    if (sgBitmap.width !== W || sgBitmap.height !== H) { sgBitmap.width = W; sgBitmap.height = H; sgBitmapOk = false; }
+    const bx = sgBitmap.getContext('2d');
+    if (sgDx && sgBitmapOk) bx.putImageData(sgBild, 0, 0, sgDx[0], 0, sgDx[1] - sgDx[0], H); else bx.putImageData(sgBild, 0, 0);
+    sgSchmutz = false; sgNeu = true; sgDx = null; sgBitmapOk = true;
+  }
+  const cx = cS.getContext('2d'), lw = Math.max(1, Math.round(dpr())), lp = Math.round(f * W);
+  if (sgGemalt && sgGemalt.W === W && sgGemalt.H === H && !sgNeu && !malStriche.length) {
+    // Nur der Abspielstrich bewegt sich: den alten Streifen aus der Bitmap zurückholen, statt die ganze Leinwand zu kopieren.
+    const q = sgGemalt.p, x0 = Math.max(0, Math.min(q, lp) - 1), x1 = Math.min(W, Math.max(q, lp) + lw + 1);
+    cx.drawImage(sgBitmap, x0, 0, x1 - x0, H, x0, 0, x1 - x0, H);
+  } else cx.drawImage(sgBitmap, 0, 0);
+  sgNeu = false;
   if (h.x.length) linieAn(cS, f, 0.9);
   malSpurMalen();
+  sgGemalt = { W, H, p: lp };
 }
 
 // game of life sichtbar: das Spektrogramm einer Generation, darüber ihre Zellen. Der Abspielpunkt wischt die neue
@@ -97298,6 +97337,7 @@ async function malEinarbeiten(s) {
 }
 const dbLive = new Float32Array(1024);
 function sgLive() {
+  sgGemalt = null;
   const x = cS.getContext('2d'), W = cS.width, H = cS.height, cw = Math.max(1, Math.round(dpr()));
   anaIn.getFloatFrequencyData(dbLive);
   x.drawImage(cS, -cw, 0);
