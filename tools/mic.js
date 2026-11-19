@@ -69,6 +69,11 @@ function ctxHolen() {
       spieler.connect(anaOut);
       spieler.port.onmessage = ev => spielerEcho(ev.data);
       spieler.onprocessorerror = () => fehler(new Error('spieler'), 'worklet');
+      lg = graphBauen(c, {});
+      lg.motor.port.onmessage = ev => motorPost(ev.data);
+      lg.motor.onprocessorerror = () => fehler(new Error('motor'), 'worklet');
+      lg.ende.onprocessorerror = () => fehler(new Error('ende'), 'worklet');
+      setzen(lg, P, true);
     }).catch(e => fehler(e, 'worklet'));
   }
   if (ac.state !== 'running') ac.resume().catch(e => fehler(e, 'resume'));
@@ -81,11 +86,14 @@ addEventListener('pointerdown', () => { try { ctxHolen(); } catch (e) { fehler(e
 // angekommen ist: daraus die Latenz (latenzen, für Messungen).
 let spieler = null, spielerBereit = null, spielerPuf = null, spielerId = 0;
 const spielerOffen = new Map(), latenzen = [];
-function spielerSenden(m, transfer = []) {
+function idMerken(m) {
   m.id = ++spielerId;
   if (spielerOffen.size > 500) spielerOffen.clear();
   const ts = ac.getOutputTimestamp ? ac.getOutputTimestamp() : null;
-  spielerOffen.set(m.id, { t: performance.now(), ctx: ac.currentTime, aus: ts && ts.contextTime > 0 ? ts.contextTime : null });
+  spielerOffen.set(m.id, { t: performance.now(), ctx: ac.currentTime, aus: ts && ts.contextTime > 0 ? ts.contextTime : null, art: m.t });
+}
+function spielerSenden(m, transfer = []) {
+  idMerken(m);
   if (spieler) spieler.port.postMessage(m, transfer);
   else spielerBereit.then(() => { if (spieler) spieler.port.postMessage(m, transfer); });
 }
@@ -93,8 +101,21 @@ function spielerEcho(d) {
   const o = spielerOffen.get(d.id);
   if (!o) return;
   spielerOffen.delete(d.id);
-  latenzen.push({ ms: performance.now() - o.t, block: (d.ct - o.ctx) * 1000, hoerbar: o.aus != null ? (d.ct - o.aus) * 1000 : null });
+  latenzen.push({ art: o.art, ms: performance.now() - o.t, block: (d.ct - o.ctx) * 1000, hoerbar: o.aus != null ? (d.ct - o.aus) * 1000 : null });
   if (latenzen.length > 400) latenzen.shift();
+}
+// Motor: Tempo und Tonhöhe im Audio-Thread. Er meldet, wo er steht, und wann er fertig ist.
+function motorSenden(m, transfer = []) {
+  if (!lg) return;
+  idMerken(m);
+  lg.motor.port.postMessage(m, transfer);
+}
+function motorPost(d) {
+  if (d.t === 'echo') return spielerEcho(d);
+  const w = wiedergabe;
+  if (!w || !w.motor || !w.st || d.gen !== w.st.gen) return;
+  if (d.t === 'stand') w.st = { pos: d.pos, nach: d.nach, ct: d.ct, gen: d.gen };
+  else if (d.t === 'ende') { wiedergabe = null; f = 0; knoepfe(); zeichneAlles(); }
 }
 let spielerN = 0;
 function spielerPuffer() {
@@ -103,13 +124,7 @@ function spielerPuffer() {
   if (spielerPuf !== chs[0]) {
     spielerPuf = chs[0];
     // Der Spieler zählt in Samples des Audio-Takts; fremde Raten einmal linear umrechnen, nicht bei jeder Bewegung.
-    const k = rate / ac.sampleRate, n = Math.max(1, Math.round(chs[0].length / k));
-    const kopie = chs.map(d => {
-      if (k === 1) return d.slice();
-      const y = new Float32Array(n);
-      for (let i = 0; i < n; i++) { const x = i * k, j = Math.floor(x), t = x - j; y[i] = (d[j] || 0) * (1 - t) + (d[j + 1] || 0) * t; }
-      return y;
-    });
+    const kopie = chs.map(d => umrechnen(d, rate));
     spielerN = kopie[0].length;
     spielerSenden({ t: 'puffer', ch: kopie, bit: !!(useOut && out.bit) }, kopie.map(d => d.buffer));
   }
@@ -171,13 +186,28 @@ function spektrumAb(x, s, db) {
 }
 
 // ---------- Tonhöhe (YIN) ----------
+const yinA = new Float32Array(NF), yinAi = new Float32Array(NF);
+// Differenzfunktion über die Kreuzkorrelation im Frequenzraum: d(t) = E(0) + E(t) - 2 r(t), dieselbe Kurve in einem Bruchteil der Zeit.
 function yin(x, s, rate) {
   const W = 1024, tauMax = Math.min(W, Math.floor(rate / 60));
   if (s < 0 || s + W + tauMax > x.length) return 0;
   let e = 0; for (let i = 0; i < W; i++) e += x[s + i] * x[s + i];
   if (Math.sqrt(e / W) < 0.003) return 0;
+  for (let i = 0; i < NF; i++) { fftRe[i] = i < W ? x[s + i] : 0; fftIm[i] = 0; }
+  fft(); yinA.set(fftRe); yinAi.set(fftIm);
+  for (let i = 0; i < NF; i++) { fftRe[i] = i < W + tauMax ? x[s + i] : 0; fftIm[i] = 0; }
+  fft();
+  for (let k = 0; k < NF; k++) {
+    const re = yinA[k] * fftRe[k] + yinAi[k] * fftIm[k], im = yinA[k] * fftIm[k] - yinAi[k] * fftRe[k];
+    fftRe[k] = re; fftIm[k] = -im;
+  }
+  fft();
   const d = new Float32Array(tauMax + 1);
-  for (let t = 1; t <= tauMax; t++) { let sum = 0; for (let j = 0; j < W; j++) { const v = x[s + j] - x[s + j + t]; sum += v * v; } d[t] = sum; }
+  let E = e;
+  for (let t = 1; t <= tauMax; t++) {
+    E += x[s + W - 1 + t] * x[s + W - 1 + t] - x[s + t - 1] * x[s + t - 1];
+    d[t] = Math.max(0, e + E - 2 * fftRe[t] / NF);
+  }
   let run = 0; d[0] = 1;
   for (let t = 1; t <= tauMax; t++) { run += d[t]; d[t] = d[t] * t / (run || 1); }
   const lo = Math.max(2, Math.floor(rate / 4000));
@@ -215,9 +245,8 @@ function regionHolen() {
   return src.subarray(a, Math.max(a + 1, b));
 }
 
-// WSOLA und die 0n-Rechnungen (Ton im Ton, endlos steigend) laufen im Worker (tools/mic-worker.js); ein neuer Auftrag verwirft den laufenden.
+// Die 0n-Rechnungen (Ton im Ton, endlos steigend, game of life) laufen im Worker (tools/mic-worker.js); ein neuer Auftrag verwirft den laufenden.
 let wk = null, wkJob = null;
-const wsolaAsync = (x, rate, s) => workerAuftrag({ x, rate, s }).then(d => d && d.y);
 // Antwort: {y, zusatz} (zusatz: Ebenen von Ton im Ton, Welten von game of life) oder null, wenn überholt.
 function workerAuftrag(auftrag) {
   return new Promise((res, rej) => {
@@ -238,14 +267,198 @@ function hallImpuls(rate, sek) {
   for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = rnd() * Math.exp(-6.9 * i / n); }
   return b;
 }
+// Hall-Länge in Halbtonschritten (Faktor 2^(1/12)): so wenige Impulse wie nötig, live und im Export dieselben.
+const hallQ = s => Math.max(0.05, Math.pow(2, Math.round(Math.log2(Math.max(0.05, s)) * 12) / 12));
+const impulse = new Map();
+function impulsHolen(rate, q) {
+  const k = rate + '|' + q;
+  let b = impulse.get(k);
+  if (!b) { b = hallImpuls(rate, q); impulse.set(k, b); if (impulse.size > 6) impulse.delete(impulse.keys().next().value); }
+  return b;
+}
 function kurve(k) {
   const n = 2048, c = new Float32Array(n), g = 1 + k * 20, nm = Math.tanh(g);
   for (let i = 0; i < n; i++) { const x = i * 2 / (n - 1) - 1; c[i] = Math.tanh(x * g) / nm; }
   return c;
 }
+const kurven = new Map();
+function kurveHolen(k) {
+  let c = kurven.get(k);
+  if (!c) { c = kurve(k); kurven.set(k, c); if (kurven.size > 64) kurven.delete(kurven.keys().next().value); }
+  return c;
+}
+
+// ---------- Kette: ein Graph für Hören und Export ----------
+// Motor (Tempo, Tonhöhe) -> Pegel -> Filter -> Verzerrung -> M -> trocken + Echo + Hall -> Ende (1-Bit).
+// Live hängt er dauerhaft am Ausgang und jeder Regler setzt nur Werte, im nächsten Audio-Block hörbar.
+// Der Export baut denselben Graphen offline: was man hört, ist was man bekommt.
+const FILTER = { low: 'lowpass', high: 'highpass', band: 'bandpass' };
+let lg = null;                          // der Live-Graph
+let motorGen = 0;
+function graphBauen(c, opt = {}) {
+  const live = !opt.offline;
+  const gain = v => { const g = c.createGain(); g.gain.value = v; return g; };
+  const g = { c, live, R: c.sampleRate, n: opt.n || 0, S: opt.S || 0, kurveK: -1, hall: [], hallKey: null, rDl: null, rMax: 0 };
+  g.motor = new AudioWorkletNode(c, 'mic-motor', { numberOfInputs: 0, outputChannelCount: [1], processorOptions: opt.motor || {} });
+  g.pegel = gain(1); g.durch = gain(1); g.fAus = gain(1);
+  g.motor.connect(g.pegel); g.pegel.connect(g.durch); g.durch.connect(g.fAus);
+  g.bq = {}; g.bqG = {};
+  for (const k in FILTER) {
+    const b = c.createBiquadFilter(), bg = gain(0); b.type = FILTER[k];
+    g.pegel.connect(b); b.connect(bg); bg.connect(g.fAus); g.bq[k] = b; g.bqG[k] = bg;
+  }
+  g.vDry = gain(1); g.vWet = gain(0); g.shaper = c.createWaveShaper(); g.M = gain(1);
+  g.fAus.connect(g.vDry); g.vDry.connect(g.M); g.fAus.connect(g.shaper); g.shaper.connect(g.vWet); g.vWet.connect(g.M);
+  g.sum = gain(1); g.M.connect(g.sum);
+  // Offline steht das Echo still: ein Puffer genau so lang wie es, nicht zehn Sekunden auf Vorrat (das kostete beim Ziehen 70 ms).
+  g.dl = c.createDelay(live ? 10 : Math.min(10, Math.max(0.001, P.echoS)) + 0.001); g.fb = gain(0); g.eWet = gain(0);
+  g.M.connect(g.dl); g.dl.connect(g.fb); g.fb.connect(g.dl); g.dl.connect(g.eWet); g.eWet.connect(g.sum);
+  g.hWet = gain(0); g.hWet.connect(g.sum);
+  g.ende = new AudioWorkletNode(c, 'mic-ende', { numberOfInputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit', processorOptions: opt.ende || {} });
+  g.sum.connect(g.ende);
+  // rekursiv echo: was herauskommt, geht nach einer halben Cliplänge wieder vorne hinein, leiser. Jede Wiederholung
+  // enthält alle vorigen: ein Baum aus Echos von Echos.
+  g.rG = gain(0); g.rG.connect(g.pegel);
+  if (live) { g.tor = gain(0); g.ende.connect(g.tor); g.tor.connect(anaOut); } else g.ende.connect(c.destination);
+  return g;
+}
+// Länge in Samples bei Rate R: Clip (Tempo), Fahne (Echo, Hall), bei rekursiv der Baum dahinter.
+function laengen(n, R, P) {
+  const t = Math.max(0.01, P.tempo), clip = n / t;
+  const fahne = Math.ceil(((P.echoMix > 0 ? Math.min(6 * P.echoS, 8) : 0) + (P.hallMix > 0 ? P.hallS : 0)) * R);
+  let total = Math.max(1, Math.ceil(clip) + fahne);
+  if (P.rekursiv) total += Math.ceil(Math.min(3 * total, 60 * R));
+  return { t, clip, tail: total - Math.ceil(clip), total };
+}
+const tonP = P => Math.pow(2, P.st / 12);
+function setzen(g, P, sofort) {
+  const c = g.c, t0 = c.currentTime;
+  const set = (prm, v) => { if (sofort) { prm.cancelScheduledValues(0); prm.value = v; } else prm.setTargetAtTime(v, t0, 0.005); };
+  set(g.pegel.gain, P.pegel);
+  set(g.durch.gain, P.filter === 'aus' ? 1 : 0);
+  const fhz = Math.max(1, Math.min(P.fhz, g.R / 2 - 1)), q = Math.max(1e-4, P.fq);
+  for (const k in FILTER) { set(g.bqG[k].gain, P.filter === k ? 1 : 0); set(g.bq[k].frequency, fhz); set(g.bq[k].Q, q); }
+  const vk = Math.round(P.verz / 0.005) * 0.005;
+  if (vk > 0 && vk !== g.kurveK) { g.shaper.curve = kurveHolen(vk); g.kurveK = vk; }
+  const os = vk > 0 ? '4x' : 'none';
+  if (g.shaper.oversample !== os) g.shaper.oversample = os;
+  set(g.vDry.gain, vk > 0 ? 0 : 1); set(g.vWet.gain, vk > 0 ? 1 : 0);
+  set(g.dl.delayTime, Math.min(10, Math.max(0.001, P.echoS)));
+  const fb = Math.min(0.95, Math.max(0, P.echoFb));
+  set(g.fb.gain, fb); set(g.eWet.gain, P.echoMix);
+  set(g.hWet.gain, P.hallMix);
+  if (P.hallMix > 0) hallSetzen(g, hallQ(P.hallS));
+  const L = laengen(g.n, g.R, P);
+  if (P.rekursiv) {
+    const d = Math.min(60, Math.max(0.01, 0.5 * L.clip / g.R));
+    if (!g.rDl || g.rMax < d) {
+      const alt = g.rDl;
+      g.rMax = g.live ? Math.min(60, Math.max(1, 2 * d)) : d;
+      g.rDl = c.createDelay(g.rMax); g.rDl.delayTime.value = d;
+      g.sum.connect(g.rDl); g.rDl.connect(g.rG);
+      if (alt) { alt.disconnect(); g.sum.disconnect(alt); }
+    } else set(g.rDl.delayTime, d);
+    // Schleifenverstärkung unter 0.6: die Wiederholungen werden leiser, egal wie laut Echo und Hall sind.
+    const vg = vk > 0 ? (1 + 20 * vk) / Math.tanh(1 + 20 * vk) : 1;
+    const fg = P.filter === 'low' || P.filter === 'high' ? Math.pow(10, q / 20) : 1;
+    set(g.rG.gain, 0.6 / Math.max(1, P.pegel * (1 + P.echoMix / (1 - fb)) * (1 + P.hallMix) * vg * fg));
+  } else set(g.rG.gain, 0);
+  if (g.live) {
+    motorSenden({ t: 'param', tempo: P.tempo, p: tonP(P), tailN: L.tail, loop: endlos() });
+    g.ende.port.postMessage({ bit: P.bit, S: g.S * P.pegel });
+  }
+}
+// Hall: ein Faltungsknoten je Länge. Live wird der neue im Hintergrund gebaut und über 40 ms eingeblendet.
+function hallSetzen(g, q) {
+  if (g.hallKey === q) return;
+  g.hallKey = q;
+  if (!g.live) {
+    const cv = g.c.createConvolver(); cv.buffer = impulsHolen(g.R, q);
+    g.M.connect(cv); cv.connect(g.hWet);
+    return;
+  }
+  if (g.hallBaut) return;
+  g.hallBaut = true;
+  setTimeout(function bau() {
+    try {
+      const q = g.hallKey, c = g.c, t = c.currentTime;
+      const cv = c.createConvolver(); cv.buffer = impulsHolen(g.R, q);
+      const xg = c.createGain(); xg.gain.setValueAtTime(0, t); xg.gain.linearRampToValueAtTime(1, t + 0.04);
+      g.M.connect(cv); cv.connect(xg); xg.connect(g.hWet);
+      for (const h of g.hall) {
+        h.xg.gain.cancelScheduledValues(t); h.xg.gain.setValueAtTime(h.xg.gain.value, t); h.xg.gain.linearRampToValueAtTime(0, t + 0.04);
+        setTimeout(() => { g.M.disconnect(h.cv); h.xg.disconnect(); }, 120);
+      }
+      g.hall = [{ cv, xg, q }];
+      if (g.hallKey !== q) setTimeout(bau, 0); else g.hallBaut = false;
+    } catch (e) { g.hallBaut = false; fehler(e, 'hall'); }
+  }, 0);
+}
+
+// Vorlauf: was der Motor liest. Rückwärts und Krebs sofort, die 0n-Rechnungen im Worker. Bis sie da sind, klingt der alte Puffer weiter.
+let vl = null;
+function vorlauf() {
+  const key = [src, sel && sel.a, sel && sel.b, P.rueck, P.krebs, P.tit, P.steig, P.leben];
+  if (vl && vl.key.every((k, i) => k === key[i])) return vl;
+  let x = regionHolen();
+  if (P.rueck) x = Float32Array.from(x).reverse();
+  // Krebs Kanon: der Clip und sein Krebs zugleich, vorwärts und rückwärts. In der Mitte begegnen sie sich.
+  if (P.krebs) {
+    const n = x.length, k = new Float32Array(n);
+    let m0 = 0, m1 = 0;
+    for (let i = 0; i < n; i++) { k[i] = x[i] + x[n - 1 - i]; m0 = Math.max(m0, Math.abs(x[i])); m1 = Math.max(m1, Math.abs(k[i])); }
+    if (m1 > 0) for (let i = 0; i < n; i++) k[i] *= m0 / m1;
+    x = k;
+  }
+  const spitzeVon = y => { let m = 0; for (let i = 0; i < y.length; i++) { const v = Math.abs(y[i]); if (v > m) m = v; } return m; };
+  const e = vl = { key, wert: null, prom: null };
+  const ops = [P.tit && 'tit', P.steig !== 'aus' && P.steig, P.leben && 'leben'].filter(Boolean);
+  if (!ops.length) { e.wert = { x, S: spitzeVon(x), tit: null, leben: null }; e.prom = Promise.resolve(e.wert); return e; }
+  e.prom = (async () => {
+    let tit = null, leben = null;
+    try {
+      for (const op of ops) {
+        const d = await workerAuftrag({ op, x, rate: sr });
+        if (!d) { if (vl === e) vl = null; return null; }
+        x = d.y;
+        if (op === 'tit') tit = d.zusatz.ebenen;
+        if (op === 'leben') leben = d.zusatz;
+      }
+    } catch (err) { if (vl === e) vl = null; throw err; }
+    e.wert = { x, S: spitzeVon(x), tit, leben };
+    if (vl === e && wiedergabe && wiedergabe.motor && wiedergabe.st) motorPuffer();
+    return e.wert;
+  })();
+  return e;
+}
+// Fremde Raten einmal linear auf den Audio-Takt umrechnen, nicht bei jeder Bewegung.
+function umrechnen(d, rate) {
+  const k = rate / ac.sampleRate;
+  if (k === 1) return d.slice();
+  const n = Math.max(1, Math.round(d.length / k)), y = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = i * k, j = Math.floor(x), t = x - j; y[i] = (d[j] || 0) * (1 - t) + (d[j + 1] || 0) * t; }
+  return y;
+}
+function motorPuffer() {
+  const v = vl && vl.wert;
+  if (!lg || !v || lg.quelle === v.x) return;
+  lg.quelle = v.x;
+  const y = umrechnen(v.x, sr);
+  lg.n = y.length; lg.S = v.S;
+  motorSenden({ t: 'puffer', x: y }, [y.buffer]);
+  setzen(lg, P, false);
+}
+// Jeder Regler: sofort in den Live-Graphen. Das Bild (Welle, Spektrum, Export) rechnet planen() hinterher.
+function liveSetzen() {
+  if (!lg) return;
+  try {
+    if (wiedergabe && wiedergabe.motor) { const v = vorlauf(); if (v.wert) motorPuffer(); }
+    setzen(lg, P, false);
+  } catch (e) { fehler(e, 'live'); }
+}
 
 let renderToken = 0, renderTimer = 0, renderOffen = null;
-// Regler warten 150 ms auf Ruhe, Schalter rendern sofort.
+// Regler warten 150 ms auf Ruhe, Schalter rendern sofort. Hören wartet auf nichts davon.
 function planen(warte = 150) {
   clearTimeout(renderTimer);
   orig = regionHolen();
@@ -254,99 +467,31 @@ function planen(warte = 150) {
 async function rendern() {
   const my = ++renderToken;
   try {
-    const x0 = regionHolen();
-    if (!x0.length) { out = null; return; }
-    const v = await kette(x0, my);
+    if (!regionHolen().length) { out = null; return; }
+    const v = await vorlauf().prom;
     if (!v || my !== renderToken) return;
-    let ch = v.ch, haupt = v.haupt;
-    // rekursiv echo: jede Wiederholung ist die vorige, noch einmal durch die ganze Kette geschickt, und setzt
-    // in der Mitte der vorigen ein. Jede Ebene enthält alle vorigen: ein Baum aus Echos von Echos.
-    if (P.rekursiv) {
-      const len0 = ch[0].length, grenze = Math.max(len0, Math.min(4 * len0, 60 * sr));
-      const ebenen = [{ ch, start: 0 }];
-      let ende = len0, start = 0, vor = v;
-      for (let k = 1; Math.pow(0.6, k) >= 0.02; k++) {
-        const m = new Float32Array(vor.ch[0].length);
-        for (let i = 0; i < m.length; i++) m[i] = 0.5 * (vor.ch[0][i] + vor.ch[1][i]);
-        const w = await kette(m, my);
-        if (!w || my !== renderToken) return;
-        start += Math.round(0.5 * vor.ch[0].length * vor.haupt);
-        if (w.ch[0].length < 64 || start + w.ch[0].length > grenze) break;
-        ebenen.push({ ch: w.ch, start, g: Math.pow(0.6, k) });
-        ende = Math.max(ende, start + w.ch[0].length); vor = w;
-      }
-      const L = new Float32Array(ende), R = new Float32Array(ende);
-      for (const e of ebenen) { const g = e.g || 1; for (let i = 0; i < e.ch[0].length; i++) { L[e.start + i] += g * e.ch[0][i]; R[e.start + i] += g * e.ch[1][i]; } }
-      let m0 = 0, m1 = 0;
-      for (let i = 0; i < len0; i++) m0 = Math.max(m0, Math.abs(ch[0][i]), Math.abs(ch[1][i]));
-      for (let i = 0; i < ende; i++) m1 = Math.max(m1, Math.abs(L[i]), Math.abs(R[i]));
-      if (m1 > Math.max(m0, 0.99) && m1 > 0) { const g = Math.max(m0, 0.99) / m1; for (let i = 0; i < ende; i++) { L[i] *= g; R[i] *= g; } }
-      haupt = haupt * len0 / ende; ch = [L, R];
-    }
+    const L = laengen(v.x.length, sr, P);
+    const oc = new OfflineAudioContext(2, L.total, sr);
+    await oc.audioWorklet.addModule('/tools/mic-worklet.js');
+    if (my !== renderToken) return;
+    const g = graphBauen(oc, { offline: true, n: v.x.length, S: v.S,
+      motor: { x: v.x.slice(), tempo: P.tempo, p: tonP(P), loop: false, tailN: L.tail, spiel: { pos: 0, nach: -1, sofort: true } },
+      ende: { bit: P.bit, S: v.S * P.pegel } });
+    setzen(g, P, true);
+    const t0 = performance.now();
+    const r = await oc.startRendering();
+    renderMs.push({ ms: performance.now() - t0, s: L.total / sr });
+    if (renderMs.length > 50) renderMs.shift();
+    if (my !== renderToken) return;
     // haupt: Anteil des Puffers, den der Clip selbst füllt (danach nur Echo-/Hallfahne).
-    out = { ch, sr, bit: P.bit, tit: v.tit, leben: v.leben, krebs: P.krebs, rekursiv: P.rekursiv, haupt };
-    if (P.bit) einBit(out.ch);
+    out = { ch: [r.getChannelData(0), r.getChannelData(1)], sr, bit: P.bit, tit: v.tit, leben: v.leben, krebs: P.krebs, rekursiv: P.rekursiv, haupt: Math.min(1, L.clip / L.total) };
     malSpurAbgeholt(my);
-    if (wiedergabe) abspielen(f);
+    if (wiedergabe && !wiedergabe.motor) abspielen(f);
     if (scrub) { scrub.n = spielerPuffer(); scrubZu(f); }
     zeichneAnalyse();
   } catch (e) { fehler(e, 'render'); }
 }
-
-// Die ganze Effektkette für einen Mono-Puffer x. Liefert {ch, haupt, tit, leben} oder null, wenn überholt.
-async function kette(x, my) {
-    if (P.rueck) { x = Float32Array.from(x).reverse(); }
-    let tit = null, leben = null, d;
-    // Krebs Kanon: der Clip und sein Krebs zugleich, vorwärts und rückwärts. In der Mitte begegnen sie sich.
-    if (P.krebs) {
-      const n = x.length, k = new Float32Array(n);
-      let m0 = 0, m1 = 0;
-      for (let i = 0; i < n; i++) { k[i] = x[i] + x[n - 1 - i]; m0 = Math.max(m0, Math.abs(x[i])); m1 = Math.max(m1, Math.abs(k[i])); }
-      if (m1 > 0) for (let i = 0; i < n; i++) k[i] *= m0 / m1;
-      x = k;
-    }
-    if (P.tit) { d = await workerAuftrag({ op: 'tit', x, rate: sr }); if (!d || my !== renderToken) return null; x = d.y; tit = d.zusatz.ebenen; }
-    if (P.steig !== 'aus') { d = await workerAuftrag({ op: P.steig, x, rate: sr }); if (!d || my !== renderToken) return null; x = d.y; }
-    if (P.leben) { d = await workerAuftrag({ op: 'leben', x, rate: sr }); if (!d || my !== renderToken) return null; x = d.y; leben = d.zusatz; }
-    const p =Math.pow(2, P.st / 12), t = Math.max(0.01, P.tempo), s = p / t;
-    if (Math.abs(s - 1) > 1e-3) { x = await wsolaAsync(x, sr, s); if (x === null || my !== renderToken) return null; }
-    await new Promise(r => setTimeout(r, 0));
-    if (my !== renderToken) return null;
-    const tail = (P.echoMix > 0 ? Math.min(P.echoS * 6, 8) : 0) + (P.hallMix > 0 ? P.hallS : 0);
-    const len = Math.max(1, Math.ceil(x.length / p) + Math.ceil(tail * sr));
-    const oc = new OfflineAudioContext(2, len, sr);
-    const buf = oc.createBuffer(1, x.length, sr); buf.copyToChannel(x, 0);
-    const q = oc.createBufferSource(); q.buffer = buf; q.playbackRate.value = p;
-    const g = oc.createGain(); g.gain.value = P.pegel;
-    q.connect(g);
-    let k = g;
-    if (P.filter !== 'aus') {
-      const bq = oc.createBiquadFilter();
-      bq.type = { low: 'lowpass', high: 'highpass', band: 'bandpass' }[P.filter];
-      bq.frequency.value = Math.max(1, Math.min(P.fhz, sr / 2 - 1)); bq.Q.value = Math.max(0.0001, P.fq);
-      k.connect(bq); k = bq;
-    }
-    if (P.verz > 0) {
-      const w = oc.createWaveShaper(); w.curve = kurve(P.verz); w.oversample = '4x';
-      k.connect(w); k = w;
-    }
-    k.connect(oc.destination);
-    if (P.echoMix > 0) {
-      const dl = oc.createDelay(10); dl.delayTime.value = Math.min(10, Math.max(0.001, P.echoS));
-      const fb = oc.createGain(); fb.gain.value = Math.min(0.95, Math.max(0, P.echoFb));
-      const wet = oc.createGain(); wet.gain.value = P.echoMix;
-      k.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(oc.destination);
-    }
-    if (P.hallMix > 0) {
-      const cv = oc.createConvolver(); cv.buffer = hallImpuls(sr, Math.max(0.05, P.hallS));
-      const wet = oc.createGain(); wet.gain.value = P.hallMix;
-      k.connect(cv); cv.connect(wet); wet.connect(oc.destination);
-    }
-    q.start();
-    const r = await oc.startRendering();
-    if (my !== renderToken) return null;
-    return { ch: [r.getChannelData(0), r.getChannelData(1)], haupt: Math.min(1, x.length / p / len), tit, leben };
-}
+const renderMs = [];
 
 // 1-Bit: jeder Abtastwert wird 1 oder 0 (oben oder unten, sonst nichts). Was zu leise ist, um sich zu entscheiden,
 // bleibt, was es war: Stille ist ein Bit, das sich nicht ändert.
@@ -382,6 +527,7 @@ function hoerbarCache() {
 // ---------- Wiedergabe ----------
 function dauer() { const h = hoerbarCache(); return h.x.length / h.rate; }
 function abspielen(von) {
+  if (ab === 1 && !gefroren() && regionHolen().length) return motorAbspielen(von);
   stopQuelle();
   const c = ctxHolen();
   const useOut = ab === 1 && out;
@@ -409,12 +555,49 @@ function abspielen(von) {
   wiedergabe = { quelle: q, gain: gn, t0: c.currentTime - f * dur, dur };
   knoepfe(); schleife();
 }
+// Verändert hören: der Motor spielt die Region live durch den Live-Graphen, jeder Regler greift im nächsten Block.
+function motorAbspielen(von) {
+  if (!(wiedergabe && wiedergabe.motor)) stopQuelle();
+  ctxHolen();
+  f = Math.min(Math.max(von, 0), 0.9999);
+  const v = vorlauf();
+  const w = wiedergabe = { motor: true, st: null, von: f };
+  knoepfe(); schleife();
+  if (lg && v.wert) motorStart(w);
+  else Promise.all([spielerBereit, v.prom]).then(() => { if (wiedergabe === w && lg && vl && vl.wert) motorStart(w); }).catch(e => fehler(e, 'motor'));
+}
+function motorStart(w) {
+  motorPuffer();
+  const L = laengen(lg.n, lg.R, P), o = w.von * L.total;
+  const pos = Math.min(Math.round(o * L.t), lg.n), nach = o >= L.clip ? Math.round(o - L.clip) : -1;
+  setzen(lg, P, false);
+  const gen = ++motorGen;
+  motorSenden({ t: 'spiel', pos, nach, gen, loop: endlos() });
+  const t = ac.currentTime, g = lg.tor.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(1, t + BLENDE);
+  w.st = { pos, nach, ct: t, gen };
+}
 function posF() {
   if (wiedergabe.frei) return f;
+  if (wiedergabe.motor) {
+    const st = wiedergabe.st;
+    if (!st || !lg) return wiedergabe.von;
+    const L = laengen(lg.n, lg.R, P), dt = Math.max(0, ac.currentTime - st.ct) * lg.R;
+    let o = st.nach < 0 ? Math.min(st.pos / L.t + dt, L.total) : Math.ceil(L.clip) + st.nach + dt;
+    if (endlos()) o %= L.total;
+    return Math.min(0.9999, o / L.total);
+  }
   const x = (ac.currentTime - wiedergabe.t0) / wiedergabe.dur;
   return endlos() ? ((x % 1) + 1) % 1 : Math.min(1, x);
 }
 function stopQuelle() {
+  if (wiedergabe && wiedergabe.motor) {
+    wiedergabe = null; motorGen++;
+    motorSenden({ t: 'aus' });
+    const t = ac.currentTime, g = lg.tor.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + BLENDE);
+    return;
+  }
   if (wiedergabe && wiedergabe.frei) { wiedergabe = null; if (!scrub) spielerSenden({ t: 'aus' }); return; }
   if (wiedergabe) {
     const { quelle: q, gain: gn } = wiedergabe; wiedergabe = null; q.onended = null;
@@ -1030,7 +1213,7 @@ function spalteMalen(img, col, db, rate) {
     d[o] = BG[0] + (FG[0] - BG[0]) * t; d[o + 1] = BG[1] + (FG[1] - BG[1]) * t; d[o + 2] = BG[2] + (FG[2] - BG[2]) * t; d[o + 3] = 255;
   }
 }
-let sgBild = null, sgKey = '', sgSpalten = null;
+let sgBild = null, sgKey = '', sgSpalten = null, sgTeil = false, sgWeiter = 0;
 function clearSg() {
   dim(cS);
   const x = cS.getContext('2d'); x.fillStyle = rgb(BG); x.fillRect(0, 0, cS.width, cS.height);
@@ -1039,20 +1222,29 @@ function sgStatisch() {
   dim(cS);
   const W = cS.width, H = cS.height, h = hoerbarCache();
   if (ab === 1 && out && out.leben && h.x.length) { lebenMalen(W, H, h); malSpurMalen(); return; }
-  const key = [W, H, ab, hoerVer, h.x.length, h.rate, out ? out.ch[0].length : 0, src.length, sel ? sel.a + ',' + sel.b : '', JSON.stringify(P)].join('|');
-  if (key !== sgKey) {
+  const key = [W, H, ab, hoerVer, h.x.length, h.rate, out ? out.ch[0].length : 0, src.length, sel ? sel.a + ',' + sel.b : ''].join('|');
+  if (key !== sgKey || sgTeil) {
+    const ganz = key !== sgKey;
     sgKey = key;
-    const img = new ImageData(W, H), db = new Float32Array(NF / 2);
-    if (!h.x.length) { for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255; for (let i = 0; i < img.data.length; i += 4) { img.data[i] = BG[0]; img.data[i + 1] = BG[1]; img.data[i + 2] = BG[2]; } }
-    else {
+    const alt = sgBild && sgBild.width === W && sgBild.height === H;
+    const img = alt ? sgBild : new ImageData(W, H), db = new Float32Array(NF / 2);
+    if (!h.x.length || !alt) { for (let i = 0; i < img.data.length; i += 4) { img.data[i] = BG[0]; img.data[i + 1] = BG[1]; img.data[i + 2] = BG[2]; img.data[i + 3] = 255; } }
+    sgTeil = false;
+    if (h.x.length) {
       // Die FFT-Spalten hängen nur von Clip und Breite ab, nicht von der Höhe: beim Verschieben des Panels ändert sich nur die Höhe.
+      // Sie entstehen in Scheiben zu 6 ms je Bild: das neue Spektrogramm wischt über das alte, die Hand am Regler ruckelt nie.
       const half = NF / 2, ck = hoerVer + '|' + W + '|' + h.x.length;
-      if (!sgSpalten || sgSpalten.key !== ck || sgSpalten.x !== h.x) {
-        const cols = new Float32Array(W * half);
-        for (let col = 0; col < W; col++) spektrumAb(h.x, Math.floor(col / W * h.x.length - NF / 2), db), cols.set(db, col * half);
-        sgSpalten = { key: ck, x: h.x, cols };
+      if (!sgSpalten || sgSpalten.key !== ck || sgSpalten.x !== h.x) sgSpalten = { key: ck, x: h.x, cols: new Float32Array(W * half), n: 0 };
+      const S = sgSpalten, von = ganz || !alt ? 0 : S.n, t0 = performance.now();
+      while (S.n < W && (S.n === von || performance.now() - t0 < 6)) {
+        const col = S.n++;
+        spektrumAb(h.x, Math.floor(col / W * h.x.length - NF / 2), db); S.cols.set(db, col * half);
       }
-      for (let col = 0; col < W; col++) spalteMalen(img, col, sgSpalten.cols.subarray(col * half, (col + 1) * half), h.rate);
+      for (let col = von; col < S.n; col++) spalteMalen(img, col, S.cols.subarray(col * half, (col + 1) * half), h.rate);
+      if (S.n < W) {
+        sgTeil = true;
+        if (!sgWeiter) sgWeiter = requestAnimationFrame(() => { sgWeiter = 0; if (sgTeil) sgStatisch(); });
+      }
     }
     sgBild = img;
   }
@@ -1222,7 +1414,7 @@ function zeichneAnalyse(nurBild) {
     }
     spektrumMalen(mittelSpek.acc, h.rate);
   } else spektrumMalen(null, sr);
-  if (!nurBild) lesungRuhe();
+  if (!nurBild && !wiedergabe && !scrub) lesungRuhe();
 }
 function mm(s) { const m = Math.floor(s / 60); return m + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); }
 function lesungSetzen(hz, pk, t) {
@@ -1295,7 +1487,8 @@ $('play').addEventListener('click', () => {
 });
 $('loop').addEventListener('click', () => {
   schleifeAn = !schleifeAn; knoepfe();
-  if (wiedergabe && !wiedergabe.frei) { f = posF(); wiedergabe.quelle.loop = endlos(); wiedergabe.t0 = ac.currentTime - f * wiedergabe.dur; }
+  if (wiedergabe && wiedergabe.motor) motorSenden({ t: 'param', loop: endlos() });
+  else if (wiedergabe && !wiedergabe.frei) { f = posF(); wiedergabe.quelle.loop = endlos(); wiedergabe.t0 = ac.currentTime - f * wiedergabe.dur; }
 });
 function abSetzen(v) {
   if (ab === v) return; ab = v; knoepfe();
@@ -1388,8 +1581,8 @@ function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, 
 
 // ---------- Panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
-const neuPlanen = () => { planen(); resetsAbgleichen(); };
-const sofortPlanen = () => { planen(0); resetsAbgleichen(); };
+const neuPlanen = () => { liveSetzen(); planen(); resetsAbgleichen(); };
+const sofortPlanen = () => { liveSetzen(); planen(0); resetsAbgleichen(); };
 
 // Reglerwege: Position 0..1000 <-> Wert. Wahrnehmungsnah (log) wo der Wert ein Faktor ist, Rastpunkt (Detent) auf dem neutralen Wert.
 const WEG = 1000, RAST = 0.025;
@@ -1583,8 +1776,8 @@ clipsLaden();
 knoepfe();
 requestAnimationFrame(layout);
 
-window.__mic = { planen, E, get malAn() { return malAn; }, get malStriche() { return malStriche; },
+window.__mic = { planen, E, liveSetzen, get lg() { return lg; }, get wiedergabe() { return wiedergabe; }, get motorLaeuft() { return !!(wiedergabe && wiedergabe.motor && wiedergabe.st); }, get renderMs() { return renderMs; }, get malAn() { return malAn; }, get malStriche() { return malStriche; },
   malen: (ton, bild) => { const z = { bild: bild || [], ton, id: curId, T: null }; malStriche.push(z); return (malKette = malKette.then(() => malEinarbeiten(z))); },
-  get f() { return f; }, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get latenzen() { return latenzen; }, get anaOut() { return anaOut; }, get scrub() { return scrub; }, get ac() { return ac; }, get gefroren() { return gefroren(); }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
+  get f() { return f; }, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get latenzen() { return latenzen; }, get anaOut() { return anaOut; }, get scrub() { return scrub; }, get ac() { return ac; }, get gefroren() { return gefroren(); }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; while (sgTeil) await new Promise(r => requestAnimationFrame(r)); } };
 
 })();
