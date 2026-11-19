@@ -48,9 +48,10 @@ let ac = null, anaIn = null, anaOut = null;
 let rec = null;                     // {stream, node, chunks, n, mins, maxs, cur, curN}
 let wiedergabe = null;              // {quelle, t0, dur}
 let schleifeAn = false;             // Loop: Region (Auswahl oder alles) lückenlos wiederholen
-let freiPos = 0;                    // Moment einfrieren: Stelle als Anteil von src
-// Ein eingefrorener Moment hat kein Ende: er läuft im Kreis, auch ohne Loop.
-const endlos = () => schleifeAn || (ab === 1 && !!out && out.frei != null);
+const endlos = () => schleifeAn;
+// Moment einfrieren klingt im Audio-Thread an der Stelle f, ohne Rendern: Umschalten und Verschieben sind sofort hörbar.
+const gefroren = () => P.frei && ab === 1 && !!out;
+let scrub = null;                   // {warSpielend, n}: Finger hält das Band
 const BLENDE = 0.02;                // s, Ein-/Ausblendung gegen Knackser beim Tauschen des Puffers
 let rafId = 0;
 
@@ -62,11 +63,82 @@ function ctxHolen() {
     anaIn = ac.createAnalyser(); anaOut = ac.createAnalyser();
     for (const a of [anaIn, anaOut]) { a.fftSize = 2048; a.minDecibels = -100; a.maxDecibels = -20; a.smoothingTimeConstant = 0.5; }
     anaOut.connect(ac.destination);
+    const c = ac;
+    spielerBereit = c.audioWorklet.addModule('/tools/mic-worklet.js').then(() => {
+      spieler = new AudioWorkletNode(c, 'mic-spieler', { numberOfInputs: 0, outputChannelCount: [2] });
+      spieler.connect(anaOut);
+      spieler.port.onmessage = ev => spielerEcho(ev.data);
+      spieler.onprocessorerror = () => fehler(new Error('spieler'), 'worklet');
+    }).catch(e => fehler(e, 'worklet'));
   }
   if (ac.state !== 'running') ac.resume().catch(e => fehler(e, 'resume'));
   return ac;
 }
 addEventListener('pointerdown', () => { try { ctxHolen(); } catch (e) { fehler(e, 'ctx'); } }, { once: true });
+
+// ---------- Spieler im Audio-Thread (tools/mic-worklet.js): Scrubben, Moment einfrieren ----------
+// Der Puffer geht einmal hinüber, danach nur Positionen. Jede Nachricht kommt mit der Blockzeit zurück, in der sie
+// angekommen ist: daraus die Latenz (latenzen, für Messungen).
+let spieler = null, spielerBereit = null, spielerPuf = null, spielerId = 0;
+const spielerOffen = new Map(), latenzen = [];
+function spielerSenden(m, transfer = []) {
+  m.id = ++spielerId;
+  if (spielerOffen.size > 500) spielerOffen.clear();
+  const ts = ac.getOutputTimestamp ? ac.getOutputTimestamp() : null;
+  spielerOffen.set(m.id, { t: performance.now(), ctx: ac.currentTime, aus: ts && ts.contextTime > 0 ? ts.contextTime : null });
+  if (spieler) spieler.port.postMessage(m, transfer);
+  else spielerBereit.then(() => { if (spieler) spieler.port.postMessage(m, transfer); });
+}
+function spielerEcho(d) {
+  const o = spielerOffen.get(d.id);
+  if (!o) return;
+  spielerOffen.delete(d.id);
+  latenzen.push({ ms: performance.now() - o.t, block: (d.ct - o.ctx) * 1000, hoerbar: o.aus != null ? (d.ct - o.aus) * 1000 : null });
+  if (latenzen.length > 400) latenzen.shift();
+}
+let spielerN = 0;
+function spielerPuffer() {
+  const useOut = ab === 1 && out, chs = useOut ? out.ch : [orig], rate = useOut ? out.sr : sr;
+  if (!chs[0].length) return 0;
+  if (spielerPuf !== chs[0]) {
+    spielerPuf = chs[0];
+    // Der Spieler zählt in Samples des Audio-Takts; fremde Raten einmal linear umrechnen, nicht bei jeder Bewegung.
+    const k = rate / ac.sampleRate, n = Math.max(1, Math.round(chs[0].length / k));
+    const kopie = chs.map(d => {
+      if (k === 1) return d.slice();
+      const y = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const x = i * k, j = Math.floor(x), t = x - j; y[i] = (d[j] || 0) * (1 - t) + (d[j + 1] || 0) * t; }
+      return y;
+    });
+    spielerN = kopie[0].length;
+    spielerSenden({ t: 'puffer', ch: kopie, bit: !!(useOut && out.bit) }, kopie.map(d => d.buffer));
+  }
+  return spielerN;
+}
+// Scrubben: das Band unter dem Finger. Vorwärts, rückwärts, schnell, langsam, still.
+function scrubStart(fNeu) {
+  ctxHolen();
+  const n = spielerPuffer();
+  if (!n) return false;
+  scrub = { warSpielend: !!wiedergabe, n };
+  if (!gefroren()) stopQuelle();
+  scrubZu(fNeu, true);
+  schleife();
+  return true;
+}
+function scrubZu(fNeu, start) {
+  const alt = f;
+  f = Math.min(Math.max(fNeu, 0), 0.9999);
+  if (gefroren()) spielerSenden({ t: 'frei', c: f * scrub.n });
+  else spielerSenden(start ? { t: 'scrub', z: f * scrub.n, von: alt * scrub.n } : { t: 'scrub', z: f * scrub.n });
+}
+function scrubEnde() {
+  if (!scrub) return;
+  const s = scrub; scrub = null;
+  if (gefroren()) { if (!s.warSpielend || !wiedergabe) spielerSenden({ t: 'aus' }); }
+  else { spielerSenden({ t: 'aus' }); if (s.warSpielend) abspielen(f); }
+  if (!wiedergabe) zeichneAlles();
+}
 
 // ---------- FFT ----------
 const NF = 2048;
@@ -173,10 +245,11 @@ function kurve(k) {
 }
 
 let renderToken = 0, renderTimer = 0, renderOffen = null;
-function planen() {
+// Regler warten 150 ms auf Ruhe, Schalter rendern sofort.
+function planen(warte = 150) {
   clearTimeout(renderTimer);
   orig = regionHolen();
-  renderTimer = setTimeout(() => { renderTimer = 0; renderOffen = rendern(); }, 150);
+  renderTimer = setTimeout(() => { renderTimer = 0; renderOffen = rendern(); }, warte);
 }
 async function rendern() {
   const my = ++renderToken;
@@ -211,18 +284,19 @@ async function rendern() {
       haupt = haupt * len0 / ende; ch = [L, R];
     }
     // haupt: Anteil des Puffers, den der Clip selbst füllt (danach nur Echo-/Hallfahne).
-    out = { ch, sr, bit: P.bit, tit: v.tit, leben: v.leben, krebs: P.krebs, frei: v.frei, rekursiv: P.rekursiv, haupt };
+    out = { ch, sr, bit: P.bit, tit: v.tit, leben: v.leben, krebs: P.krebs, rekursiv: P.rekursiv, haupt };
     if (P.bit) einBit(out.ch);
     malSpurAbgeholt(my);
     if (wiedergabe) abspielen(f);
+    if (scrub) { scrub.n = spielerPuffer(); scrubZu(f); }
     zeichneAnalyse();
   } catch (e) { fehler(e, 'render'); }
 }
 
-// Die ganze Effektkette für einen Mono-Puffer x. Liefert {ch, haupt, tit, leben, frei} oder null, wenn überholt.
+// Die ganze Effektkette für einen Mono-Puffer x. Liefert {ch, haupt, tit, leben} oder null, wenn überholt.
 async function kette(x, my) {
     if (P.rueck) { x = Float32Array.from(x).reverse(); }
-    let tit = null, leben = null, frei = null, d;
+    let tit = null, leben = null, d;
     // Krebs Kanon: der Clip und sein Krebs zugleich, vorwärts und rückwärts. In der Mitte begegnen sie sich.
     if (P.krebs) {
       const n = x.length, k = new Float32Array(n);
@@ -230,13 +304,6 @@ async function kette(x, my) {
       for (let i = 0; i < n; i++) { k[i] = x[i] + x[n - 1 - i]; m0 = Math.max(m0, Math.abs(x[i])); m1 = Math.max(m1, Math.abs(k[i])); }
       if (m1 > 0) for (let i = 0; i < n; i++) k[i] *= m0 / m1;
       x = k;
-    }
-    if (P.frei) {
-      const a = sel ? sel.a : 0, b = sel ? sel.b : 1;
-      let p = Math.max(0, Math.min(1, (freiPos - a) / Math.max(1e-9, b - a)));
-      frei = a + p * (b - a);
-      if (P.rueck) p = 1 - p;
-      d = await workerAuftrag({ op: 'frei', x, rate: sr, p }); if (!d || my !== renderToken) return null; x = d.y;
     }
     if (P.tit) { d = await workerAuftrag({ op: 'tit', x, rate: sr }); if (!d || my !== renderToken) return null; x = d.y; tit = d.zusatz.ebenen; }
     if (P.steig !== 'aus') { d = await workerAuftrag({ op: P.steig, x, rate: sr }); if (!d || my !== renderToken) return null; x = d.y; }
@@ -278,7 +345,7 @@ async function kette(x, my) {
     q.start();
     const r = await oc.startRendering();
     if (my !== renderToken) return null;
-    return { ch: [r.getChannelData(0), r.getChannelData(1)], haupt: Math.min(1, x.length / p / len), tit, leben, frei };
+    return { ch: [r.getChannelData(0), r.getChannelData(1)], haupt: Math.min(1, x.length / p / len), tit, leben };
 }
 
 // 1-Bit: jeder Abtastwert wird 1 oder 0 (oben oder unten, sonst nichts). Was zu leise ist, um sich zu entscheiden,
@@ -321,6 +388,15 @@ function abspielen(von) {
   const chs = useOut ? out.ch : [orig];
   const rate = useOut ? out.sr : sr;
   if (!chs[0].length) return;
+  if (gefroren()) {
+    // Eingefroren: kein Buffer-Start, der Spieler hält den Moment unter dem Kopf, sofort.
+    f = Math.min(Math.max(von, 0), 0.9999);
+    const n = spielerPuffer();
+    spielerSenden({ t: 'frei', c: f * n });
+    wiedergabe = { frei: true, dur: chs[0].length / rate, t0: 0 };
+    knoepfe(); schleife();
+    return;
+  }
   const b = c.createBuffer(chs.length, chs[0].length, rate);
   chs.forEach((d, i) => b.copyToChannel(d, i));
   const q = c.createBufferSource(); q.buffer = b; q.loop = endlos();
@@ -334,10 +410,12 @@ function abspielen(von) {
   knoepfe(); schleife();
 }
 function posF() {
+  if (wiedergabe.frei) return f;
   const x = (ac.currentTime - wiedergabe.t0) / wiedergabe.dur;
   return endlos() ? ((x % 1) + 1) % 1 : Math.min(1, x);
 }
 function stopQuelle() {
+  if (wiedergabe && wiedergabe.frei) { wiedergabe = null; if (!scrub) spielerSenden({ t: 'aus' }); return; }
   if (wiedergabe) {
     const { quelle: q, gain: gn } = wiedergabe; wiedergabe = null; q.onended = null;
     try { const t = ac.currentTime; gn.gain.cancelScheduledValues(t); gn.gain.setValueAtTime(gn.gain.value, t); gn.gain.linearRampToValueAtTime(0, t + BLENDE); q.stop(t + BLENDE); } catch (e) { /* schon gestoppt */ }
@@ -764,9 +842,19 @@ async function wavExport() {
   try {
     if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); }
     if (renderOffen) await renderOffen;
-    const chs = ab === 1 && out ? out.ch : [orig];
+    let chs = ab === 1 && out ? out.ch : [orig];
     const rate = ab === 1 && out ? out.sr : sr;
     if (!chs[0] || !chs[0].length) throw new Error('nichts aufgenommen');
+    if (gefroren()) {
+      // Der eingefrorene Moment wird erst hier zu einer Datei, hören geht ohne Rechnen.
+      const a = chs[0], b = chs[1] || a, m = new Float32Array(a.length);
+      for (let i = 0; i < m.length; i++) m[i] = 0.5 * (a[i] + b[i]);
+      const d = await workerAuftrag({ op: 'frei', x: m, rate, p: f });
+      if (!d || !d.y) throw new Error('einfrieren');
+      const z = d.y;
+      if (out.bit) einBit([z]);
+      chs = [z, z];
+    }
     const url = URL.createObjectURL(new Blob([wavBauen(chs, rate)], { type: 'audio/wav' }));
     const a = document.createElement('a'); a.href = url; a.download = (aktuell() ? aktuell().name.replace(/[\\/:*?"<>|]+/g, '_') : 'mic') + '.wav';
     document.body.appendChild(a); a.click(); a.remove();
@@ -813,7 +901,6 @@ function linieAn(c, q, a = 1) {
 // Lange Clips: eine Generation dauert D (Anteil am Clip), der Clip läuft dabei weiter im Kreis.
 const durchlauf = fr => out && out.leben ? (Math.min(fr / out.haupt, 0.99999) * out.leben.G * (out.leben.D || 1)) % 1 : fr;
 function posAufQuelle(fr) {
-  if (ab === 1 && out && out.frei != null) return out.frei;
   if (ab === 1) fr = durchlauf(fr);
   const a = sel ? sel.a : 0, b = sel ? sel.b : 1;
   return a + (P.rueck ? 1 - fr : fr) * (b - a);
@@ -847,7 +934,7 @@ function zeichneWelle() {
     const q = posAufQuelle(f), p = vx(q);
     if (p >= 0 && p <= 1) linieAn(cW, p, 1);
     // Krebs Kanon: der zweite Abspielkopf läuft gespiegelt, beide treffen sich in der Mitte.
-    if (ab === 1 && out && out.krebs && out.frei == null) { const a = sel ? sel.a : 0, b = sel ? sel.b : 1, k = vx(a + b - q); if (k >= 0 && k <= 1) linieAn(cW, k, 1); }
+    if (ab === 1 && out && out.krebs && !gefroren()) { const a = sel ? sel.a : 0, b = sel ? sel.b : 1, k = vx(a + b - q); if (k >= 0 && k <= 1) linieAn(cW, k, 1); }
   }
 }
 function zeichneMod() {
@@ -1175,14 +1262,14 @@ function schleife() {
       }
       lesungSetzen(hz, spitze(dbLive, ac.sampleRate), rec.n / ac.sampleRate);
       rafId = requestAnimationFrame(tick);
-    } else if (wiedergabe) {
-      f = posF();
+    } else if (wiedergabe || scrub) {
+      if (wiedergabe && !scrub) f = posF();
       { const sp = view.b - view.a, p = posAufQuelle(f);
-        if (sp < 0.9999 && src.length && (p < view.a || p > view.b)) { const a0 = Math.max(0, Math.min(1 - sp, p - sp * 0.1)); view = { a: a0, b: a0 + sp }; scrollZeichnen(); } }
+        if (!scrub && sp < 0.9999 && src.length && (p < view.a || p > view.b)) { const a0 = Math.max(0, Math.min(1 - sp, p - sp * 0.1)); view = { a: a0, b: a0 + sp }; scrollZeichnen(); } }
       zeichneWelle(); sgStatisch(); zeichneMod();
       anaOut.getFloatFrequencyData(dbLive); spektrumMalen(dbLive, ac.sampleRate);
       const h = hoerbarCache();
-      lesungSetzen(yin(h.x, Math.floor(f * h.x.length), h.rate), spitze(dbLive, ac.sampleRate), f * wiedergabe.dur);
+      lesungSetzen(yin(h.x, Math.floor(f * h.x.length), h.rate), spitze(dbLive, ac.sampleRate), f * dauer());
       rafId = requestAnimationFrame(tick);
     }
   };
@@ -1208,7 +1295,7 @@ $('play').addEventListener('click', () => {
 });
 $('loop').addEventListener('click', () => {
   schleifeAn = !schleifeAn; knoepfe();
-  if (wiedergabe) { f = posF(); wiedergabe.quelle.loop = endlos(); wiedergabe.t0 = ac.currentTime - f * wiedergabe.dur; }
+  if (wiedergabe && !wiedergabe.frei) { f = posF(); wiedergabe.quelle.loop = endlos(); wiedergabe.t0 = ac.currentTime - f * wiedergabe.dur; }
 });
 function abSetzen(v) {
   if (ab === v) return; ab = v; knoepfe();
@@ -1220,17 +1307,23 @@ $('ab1').addEventListener('click', () => abSetzen(1));
 // ---------- Zeiger ----------
 function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); }
 (() => {
-  let x0 = null, bewegt = false, pinch = null;
+  let x0 = null, bewegt = false, pinch = null, lp = false, lpTimer = 0;
   const ptr = new Map();
+  const lpAus = () => { clearTimeout(lpTimer); lpTimer = 0; };
+  // Quelle (Anteil am Clip) -> Kopf (Anteil an dem, was man hört): innerhalb der Auswahl, rückwärts gespiegelt.
+  const welleF = q => { const a = sel ? sel.a : 0, b = sel ? sel.b : 1; let u = Math.min(1, Math.max(0, (q - a) / Math.max(1e-9, b - a))); return P.rueck ? 1 - u : u; };
   const spanV = () => view.b - view.a;
   const qAnteil = e => view.a + anteil(cW, e) * spanV();
   const mitteX = () => { const [p, q] = [...ptr.values()], r = cW.getBoundingClientRect(); return { d: Math.abs(p - q) || 1, m: ((p + q) / 2 - r.left) / r.width }; };
   cW.addEventListener('pointerdown', e => {
     if (rec || !src.length) return;
     cW.setPointerCapture(e.pointerId); ptr.set(e.pointerId, e.clientX);
-    if (ptr.size === 2) { x0 = null; const m = mitteX(); pinch = { d: m.d, v: { ...view }, anker: view.a + m.m * spanV() }; return; }
-    x0 = qAnteil(e); bewegt = false;
+    if (ptr.size === 2) { lpAus(); if (lp) { lp = false; scrubEnde(); } x0 = null; const m = mitteX(); pinch = { d: m.d, v: { ...view }, anker: view.a + m.m * spanV() }; return; }
+    x0 = qAnteil(e); bewegt = false; lp = false;
+    // Gedrückt halten: das Band liegt unter dem Finger.
+    lpAus(); lpTimer = setTimeout(() => { lpTimer = 0; if (x0 != null && !bewegt && ptr.size === 1) lp = scrubStart(welleF(x0)); }, 250);
   });
+  cW.addEventListener('contextmenu', e => { if (lp || lpTimer) e.preventDefault(); });
   cW.addEventListener('pointermove', e => {
     if (!ptr.has(e.pointerId)) return;
     ptr.set(e.pointerId, e.clientX);
@@ -1241,18 +1334,21 @@ function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, 
     }
     if (x0 == null) return;
     const q = qAnteil(e);
+    if (lp) { scrubZu(welleF(q)); return; }
     if (!bewegt && Math.abs(q - x0) / spanV() * cW.clientWidth < 4) return;
-    bewegt = true; sel = { a: Math.min(x0, q), b: Math.max(x0, q) }; zeichneWelle(); editKnoepfe();
+    lpAus(); bewegt = true; sel = { a: Math.min(x0, q), b: Math.max(x0, q) }; zeichneWelle(); editKnoepfe();
   });
   const hoch = e => {
     const war = ptr.delete(e.pointerId);
     if (!war) return;
+    lpAus();
+    if (lp) { lp = false; x0 = null; scrubEnde(); return; }
     if (pinch) { if (ptr.size < 2) pinch = null; x0 = null; return; }
     if (x0 == null) return;
     const q = qAnteil(e);
     if (e.type === 'pointercancel') { x0 = null; return; }
     if (bewegt) { if (sel.b - sel.a < 1e-4) sel = null; planen(); stopQuelle(); knoepfe(); f = 0; zeichneAlles(); }
-    else { const had = !!sel; sel = null; if (had) { planen(); stopQuelle(); knoepfe(); } f = P.rueck ? 1 - q : q; if (P.frei) { freiPos = q; planen(); } if (had) zeichneAlles(); else spulen(f); }
+    else { const had = !!sel; sel = null; if (had) { planen(); stopQuelle(); knoepfe(); } f = P.rueck ? 1 - q : q; if (had) zeichneAlles(); else spulen(f); }
     x0 = null;
   };
   cW.addEventListener('pointerup', hoch);
@@ -1265,14 +1361,27 @@ function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, 
     const neu = sp * Math.exp(e.deltaY * 0.002), anker = view.a + m * sp;
     setView(anker - m * neu, anker - m * neu + neu);
   }, { passive: false });
-  cM.addEventListener('pointerdown', e => { if (!rec && src.length) spulen(modSprung(anteil(cM, e))); });
-  cS.addEventListener('pointerdown', e => {
-    if (malAn) { malStart(e); return; }
-    if (rec || !src.length) return;
-    const q = anteil(cS, e);
-    if (ab === 1 && out && out.leben) spulen(lebenSprung(q));
-    else spulen(q);
-  });
+  // Spektrogramm und Modulation: Tippen springt, Ziehen scrubbt (der Ton folgt dem Finger, vor und zurück).
+  const kratzen = (c, abbild) => {
+    let z = null;
+    c.addEventListener('pointerdown', e => {
+      if (c === cS && malAn) return;
+      if (rec || !src.length) return;
+      c.setPointerCapture(e.pointerId);
+      z = { id: e.pointerId, x: e.clientX, an: false };
+      spulen(abbild(anteil(c, e)));
+    });
+    c.addEventListener('pointermove', e => {
+      if (!z || e.pointerId !== z.id) return;
+      if (!z.an) { if (Math.abs(e.clientX - z.x) < 3) return; z.an = scrubStart(abbild(anteil(c, e))); return; }
+      scrubZu(abbild(anteil(c, e)));
+    });
+    const los = e => { if (!z || e.pointerId !== z.id) return; const an = z.an; z = null; if (an) scrubEnde(); };
+    c.addEventListener('pointerup', los); c.addEventListener('pointercancel', los);
+  };
+  kratzen(cM, q => modSprung(q));
+  kratzen(cS, q => ab === 1 && out && out.leben ? lebenSprung(q) : q);
+  cS.addEventListener('pointerdown', e => { if (malAn) malStart(e); });
   cS.addEventListener('pointermove', e => { if (malZug) malZiehen(e); });
   for (const t of ['pointerup', 'pointercancel']) cS.addEventListener(t, malEnde);
 })();
@@ -1280,6 +1389,7 @@ function anteil(c, e) { const r = c.getBoundingClientRect(); return Math.min(1, 
 // ---------- Panel ----------
 const panel = Controls.createPanel({ position: 'left', mobileInitialOpenMode: 'peek' });
 const neuPlanen = () => { planen(); resetsAbgleichen(); };
+const sofortPlanen = () => { planen(0); resetsAbgleichen(); };
 
 // Reglerwege: Position 0..1000 <-> Wert. Wahrnehmungsnah (log) wo der Wert ein Faktor ist, Rastpunkt (Detent) auf dem neutralen Wert.
 const WEG = 1000, RAST = 0.025;
@@ -1348,7 +1458,7 @@ sl('pegel', 'Pegel', 0, 4, 0.01, P.pegel, 2, v => { P.pegel = v; });
 panel.addDivider()
   .addSelect('filter', { label: 'Filter', value: P.filter, options: [
       { value: 'aus', label: 'aus' }, { value: 'low', label: 'low' }, { value: 'high', label: 'high' }, { value: 'band', label: 'band' }],
-    onChange: v => { P.filter = v; neuPlanen(); } });
+    onChange: v => { P.filter = v; sofortPlanen(); } });
 sl('fhz', 'Hz', 0, 24000, 1, P.fhz, 0, v => { P.fhz = v; });
 sl('fq', 'Güte', 0.1, 30, 0.1, P.fq, 2, v => { P.fq = v; });
 panel.addDivider();
@@ -1361,16 +1471,16 @@ sl('hallS', 'Hall s', 0.1, 10, 0.1, P.hallS, 2, v => { P.hallS = v; });
 panel.addDivider();
 sl('verz', 'Verzerrung', 0, 1, 0.01, P.verz, 2, v => { P.verz = v; });
 panel.addDivider()
-  .addToggle('tit', { label: 'Ton im Ton', value: P.tit, onChange: v => { P.tit = v; neuPlanen(); } })
-  .addToggle('bit', { label: '1-Bit', value: P.bit, onChange: v => { P.bit = v; neuPlanen(); } })
+  .addToggle('tit', { label: 'Ton im Ton', value: P.tit, onChange: v => { P.tit = v; sofortPlanen(); } })
+  .addToggle('bit', { label: '1-Bit', value: P.bit, onChange: v => { P.bit = v; sofortPlanen(); } })
   .addSelect('steig', { label: 'endlos steigend', value: P.steig, options: [
       { value: 'aus', label: 'aus' }, { value: 'ton', label: 'Tonhöhe' }, { value: 'tempo', label: 'Tempo' }],
-    onChange: v => { P.steig = v; neuPlanen(); } })
-  .addToggle('leben', { label: 'game of life', value: P.leben, onChange: v => { P.leben = v; neuPlanen(); } })
+    onChange: v => { P.steig = v; sofortPlanen(); } })
+  .addToggle('leben', { label: 'game of life', value: P.leben, onChange: v => { P.leben = v; sofortPlanen(); } })
   .addToggle('malen', { label: 'malen', value: false, onChange: v => { malAn = v; cS.classList.toggle('malt', v); } })
-  .addToggle('krebs', { label: 'Krebs Kanon', value: P.krebs, onChange: v => { P.krebs = v; neuPlanen(); } })
-  .addToggle('rekursiv', { label: 'rekursiv echo', value: P.rekursiv, onChange: v => { P.rekursiv = v; neuPlanen(); } })
-  .addToggle('frei', { label: 'Moment einfrieren', value: P.frei, onChange: v => { if (v && !P.frei) freiPos = posAufQuelle(f); P.frei = v; neuPlanen(); } });
+  .addToggle('krebs', { label: 'Krebs Kanon', value: P.krebs, onChange: v => { P.krebs = v; sofortPlanen(); } })
+  .addToggle('rekursiv', { label: 'rekursiv echo', value: P.rekursiv, onChange: v => { P.rekursiv = v; sofortPlanen(); } })
+  .addToggle('frei', { label: 'Moment einfrieren', value: P.frei, onChange: v => { const p = wiedergabe ? posF() : f; P.frei = v; resetsAbgleichen(); if (wiedergabe) abspielen(p); else zeichneAlles(); } });
 
 // Ziehen: eigener Zeiger statt nativem Range. Weiter weg vom Regler (senkrecht) = feiner (1, 1/4, 1/16 der Strecke),
 // und Tonhöhe rastet auf ganze Halbtöne, solange der Finger nah dran bleibt.
@@ -1475,6 +1585,6 @@ requestAnimationFrame(layout);
 
 window.__mic = { planen, E, get malAn() { return malAn; }, get malStriche() { return malStriche; },
   malen: (ton, bild) => { const z = { bild: bild || [], ton, id: curId, T: null }; malStriche.push(z); return (malKette = malKette.then(() => malEinarbeiten(z))); },
-  get f() { return f; }, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get freiPos() { return freiPos; }, set freiPos(v) { freiPos = v; planen(); }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
+  get f() { return f; }, zurueck, vor, setView, speicherFertig, get view() { return view; }, get clips() { return clips; }, get curId() { return curId; }, get zwischen() { return zwischen; }, get out() { return out; }, get src() { return src; }, get P() { return P; }, get latenzen() { return latenzen; }, get anaOut() { return anaOut; }, get scrub() { return scrub; }, get ac() { return ac; }, get gefroren() { return gefroren(); }, get sel() { return sel; }, set sel(v) { sel = v; zeichneAlles(); editKnoepfe(); }, set f(v) { f = v; zeichneAlles(); }, renderFertig: async () => { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; renderOffen = rendern(); } if (renderOffen) await renderOffen; } };
 
 })();
