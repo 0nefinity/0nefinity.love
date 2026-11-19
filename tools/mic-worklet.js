@@ -146,3 +146,147 @@ class Spieler extends AudioWorkletProcessor {
   }
 }
 registerProcessor('mic-spieler', Spieler);
+
+// Motor: Tempo und Tonhöhe unabhängig voneinander, live. WSOLA im Audio-Thread: Körner von G Samples, halb
+// überlappend (Hann periodisch, Summe genau 1). Jedes Korn liest mit der Tonhöhe p, rückt mit dem Tempo t vor und
+// sucht sich in ±10 ms die Stelle, die zum vorigen Korn passt. t = p = 1 ist genau der Clip, Sample für Sample.
+const G = 2048, HA = G / 2, gWin = new Float32Array(G);
+for (let i = 0; i < G; i++) gWin[i] = 0.5 - 0.5 * Math.cos(TAU * i / G);
+class Motor extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    const q = (o && o.processorOptions) || {};
+    this.x = new Float32Array(0); this.n = 0;
+    this.t = 1; this.p = 1; this.loop = false; this.tailN = 0;
+    this.an = false; this.env = 0; this.envZiel = 0; this.envD = 1 / (0.004 * sampleRate);
+    this.acc = new Float64Array(G); this.ai = HA; this.kopf = 0; this.nom = 0; this.s = 0; this.nach = -1;
+    this.wartet = null; this.blk = 0; this.gen = 0; this.suchR = Math.round(0.01 * sampleRate); this.tpl = new Float64Array(HA);
+    if (q.x) this.puffer(q.x);
+    this.setzen(q);
+    if (q.spiel) this.spiel(q.spiel);
+    this.port.onmessage = e => this.nachricht(e.data);
+  }
+  puffer(x) { this.x = x; this.n = x.length; }
+  setzen(m) {
+    if (m.tempo != null) this.t = Math.max(0.01, m.tempo);
+    if (m.p != null) this.p = m.p;
+    if (m.loop != null) this.loop = !!m.loop;
+    if (m.tailN != null) this.tailN = Math.max(0, m.tailN);
+  }
+  spiel(m) {
+    this.setzen(m);
+    const ziel = { pos: Math.min(Math.max(0, Math.round(m.pos || 0)), this.n), nach: m.nach != null ? m.nach : -1, gen: m.gen };
+    if (this.an && this.env > 0 && !m.sofort) { this.wartet = ziel; this.envZiel = 0; return; }
+    this.start(ziel); this.an = true; this.env = m.sofort ? 1 : 0; this.envZiel = 1;
+  }
+  nachricht(m) {
+    if (m.t === 'puffer') this.puffer(m.x);
+    else if (m.t === 'param') this.setzen(m);
+    else if (m.t === 'spiel') this.spiel(m);
+    else if (m.t === 'aus') { this.envZiel = 0; this.wartet = null; }
+    if (m.id != null) this.port.postMessage({ t: 'echo', id: m.id, ct: currentTime });
+  }
+  lies(pos) {
+    const d = this.x, n = this.n, i = Math.floor(pos);
+    if (i < -1 || i >= n) return 0;
+    const t = pos - i, x1 = i >= 0 ? d[i] : 0;
+    if (t === 0) return x1;
+    const x0 = i > 0 ? d[i - 1] : 0, x2 = i + 1 < n ? d[i + 1] : 0, x3 = i + 2 < n ? d[i + 2] : 0;
+    const c1 = 0.5 * (x2 - x0), c2 = x0 - 2.5 * x1 + 2 * x2 - 0.5 * x3, c3 = 0.5 * (x3 - x0) + 1.5 * (x1 - x2);
+    return ((c3 * t + c2) * t + c1) * t + x1;
+  }
+  nah(pos) { const i = Math.round(pos); return i >= 0 && i < this.n ? this.x[i] : 0; }
+  // Korn mit Quellmitte s, Mitte bei acc[mitte]; nur der Teil, der in acc liegt.
+  korn(s, mitte) {
+    const p = this.p, acc = this.acc, j0 = Math.max(0, HA - mitte), j1 = Math.min(G, G + HA - mitte);
+    for (let j = j0; j < j1; j++) acc[mitte - HA + j] += gWin[j] * this.lies(s + p * (j - HA));
+  }
+  // Verschiebung d, mit der das neue Korn (Nennmitte sNom) das vorige (Mitte sL) am besten fortsetzt.
+  suche(sL, sNom) {
+    const p = this.p, tp = this.tpl, R = this.suchR, basis = sNom - p * HA;
+    let ea = 0;
+    for (let m = 0; m < HA; m++) { const v = this.nah(sL + p * m); tp[m] = v; ea += v * v; }
+    if (ea < 1e-12) return 0;
+    const korr = (d, st) => {
+      let ab = 0, bb = 0;
+      for (let m = 0; m < HA; m += st) { const v = this.nah(basis + d + p * m); ab += tp[m] * v; bb += v * v; }
+      return bb > 1e-12 ? ab / Math.sqrt(bb) : -Infinity;
+    };
+    let best = 0, bv = korr(0, 4);
+    for (let d = -R; d <= R; d += 8) { if (d === 0) continue; const v = korr(d, 4); if (v > bv + 1e-9 * Math.abs(bv)) { bv = v; best = d; } }
+    let fein = best; bv = korr(best, 1);
+    for (let d = best - 7; d <= best + 7; d++) { if (d === best) continue; const v = korr(d, 1); if (v > bv + 1e-9 * Math.abs(bv)) { bv = v; fein = d; } }
+    return fein;
+  }
+  start(z) {
+    this.acc.fill(0);
+    if (z.gen != null) this.gen = z.gen;
+    this.kopf = this.nom = this.s = z.pos;
+    this.korn(z.pos, 0);
+    this.nom = z.pos + this.t * HA;
+    this.s = this.nom + this.suche(z.pos, this.nom);
+    this.korn(this.s, HA);
+    this.ai = 0; this.nach = z.pos >= this.n ? Math.max(0, z.nach) : -1;
+  }
+  schritt() {
+    const acc = this.acc;
+    acc.copyWithin(0, HA); acc.fill(0, HA);
+    this.kopf = this.nom;
+    this.nom += this.t * HA;
+    const s = this.nom + this.suche(this.s, this.nom);
+    this.korn(s, HA); this.s = s; this.ai = 0;
+  }
+  process(_, outputs) {
+    const o = outputs[0][0], N = o.length;
+    if (this.an) {
+      for (let i = 0; i < N; i++) {
+        if (this.env < this.envZiel) this.env = Math.min(this.envZiel, this.env + this.envD);
+        else if (this.env > this.envZiel) this.env = Math.max(this.envZiel, this.env - this.envD);
+        if (this.env === 0 && this.envZiel === 0) {
+          if (!this.wartet) { this.an = false; break; }
+          this.start(this.wartet); this.wartet = null; this.envZiel = 1;
+        }
+        if (this.ai >= HA) this.schritt();
+        o[i] = this.acc[this.ai++] * this.env;
+        if (this.nach < 0) { if (this.kopf + this.t * this.ai >= this.n) this.nach = 0; }
+        else if (++this.nach >= this.tailN) {
+          // Das Ende der Schleife ist ihre 0.
+          if (this.loop) this.start({ pos: 0, nach: -1 });
+          else { this.an = false; this.env = this.envZiel = 0; this.port.postMessage({ t: 'ende', gen: this.gen }); break; }
+        }
+      }
+    }
+    if ((++this.blk & 3) === 0 && this.an) this.port.postMessage({ t: 'stand', pos: this.kopf + this.t * this.ai, nach: this.nach, ct: currentTime, gen: this.gen });
+    return true;
+  }
+}
+registerProcessor('mic-motor', Motor);
+
+// Ende der Kette: 1-Bit live. Jeder Wert wird oben oder unten, Schwelle und Höhe aus der Spitze S des Clips
+// (mal Pegel), damit es genau zwei Werte gibt, live wie im Export. Aus: unverändert durch.
+class Ende extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    const q = (o && o.processorOptions) || {};
+    this.bit = !!q.bit; this.S = q.S || 0; this.b = [1, 1];
+    this.port.onmessage = e => {
+      const m = e.data;
+      if (m.bit != null) this.bit = !!m.bit;
+      if (m.S != null) this.S = m.S;
+      if (m.id != null) this.port.postMessage({ t: 'echo', id: m.id, ct: currentTime });
+    };
+  }
+  process(inputs, outputs) {
+    const ein = inputs[0], aus = outputs[0], N = aus[0].length;
+    const sw = 0.02 * this.S, h = 0.3 * Math.min(1, this.S);
+    for (let c = 0; c < aus.length; c++) {
+      const x = ein[c] || ein[0], y = aus[c];
+      if (!this.bit) { if (x) y.set(x); continue; }
+      let b = this.b[c];
+      for (let i = 0; i < N; i++) { const v = x ? x[i] : 0; if (v > sw) b = 1; else if (v < -sw) b = 0; y[i] = b ? h : -h; }
+      this.b[c] = b;
+    }
+    return true;
+  }
+}
+registerProcessor('mic-ende', Ende);
