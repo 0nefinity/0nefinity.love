@@ -26589,8 +26589,8 @@ if (!preg_match('#^/(?!/)[A-Za-z0-9/_.%~-]*$#', $next)) $next = '/';
 
 $ip = client_ip();
 
-// Rate-limit check
-$rl = rate_limit_check($ip);
+// Count the attempt before the argon2 hash runs (atomic, per /64 for IPv6); released again on success
+$rl = rate_limit_reserve($ip, $username);
 if (!$rl['ok']) {
   header('Retry-After: ' . $rl['retry_after']);
   json_response(['error' => 'rate_limited', 'retry_after' => $rl['retry_after']], 429);
@@ -26606,14 +26606,13 @@ $DUMMY = '$argon2id$v=19$m=65536,t=4,p=1$ZHVtbXkx$dW1teWR1bW15ZHVtbXlkdW1teWR1bW
 $ok = password_verify($password, $row['password_hash'] ?? $DUMMY) && $row;
 
 if (!$ok) {
-  rate_limit_record($ip, $username, false);
   // Anti-timing sleep: small extra jitter
   usleep(random_int(50_000, 250_000));
   json_response(['error' => 'invalid_credentials'], 401);
 }
 
 // Success
-rate_limit_record($ip, $username, true);
+rate_limit_release($rl['id']);
 session_regenerate_id(true);
 $_SESSION['uid'] = (int) $row['id'];
 
@@ -78746,7 +78745,18 @@ tools/0necanvas/engine.js
 
     var ro = null;
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(resize);
+      // ResizeObserver-Callbacks laufen NACH den rAF-Callbacks desselben
+      // Frames: der Puffer-Resize (canvas.width setzen loescht den Canvas)
+      // wuerde sonst genau einen leeren Frame malen — sichtbares Flackern
+      // bei jedem Stage-Resize (Mobil-Sheet/Occlusion, Fenster-Resize).
+      // Deshalb sofort synchron neu zeichnen (circleheart: resize->draw).
+      ro = new ResizeObserver(function () {
+        var pw = canvasEl.width, ph = canvasEl.height;
+        resize();
+        if (tPrev !== null && (canvasEl.width !== pw || canvasEl.height !== ph)) {
+          try { render(0); } catch (e) { console.error('OneCanvas: render after resize failed', e); }
+        }
+      });
       ro.observe(canvasEl);
     } else {
       window.addEventListener('resize', resize);
@@ -82798,7 +82808,7 @@ tools/aufnahme.js
   const ablehnung = (e) => merke('e', `unhandledrejection ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`);
 
   let letzteUrl = '';
-  let letzterDiag = '', letzterStand = '', diagBis = {};
+  let letzterDiag = '';
   let frameT = 0;
   let sek = null;
   let rafId = 0;
@@ -82826,25 +82836,8 @@ tools/aufnahme.js
   const diagMerken = () => {
     let d = diagLesen();
     if (d == null) return;
-    // in die Spur der Text, wenn es einen gibt, dazu was die Seite je Bild und je Ereignis
-    // fuehrt (rahmen, ereignisse) ab dem zuletzt gemerkten und den Fahrtstand (fahrt, turm)
-    if (typeof d === 'object' && typeof d.text === 'string') {
-      const neu = (liste, feld) => {
-        if (!Array.isArray(liste)) return;
-        const ab = diagBis[feld] || 0, frisch = liste.filter((e) => e && e.t > ab);
-        if (frisch.length) { diagBis[feld] = frisch[frisch.length - 1].t; merke(feld === 'rahmen' ? 'r' : 'e', frisch); }
-      };
-      neu(d.rahmen, 'rahmen');
-      neu(d.ereignisse, 'ereignisse');
-      const stand = {};
-      if (d.fahrt) stand.fahrt = d.fahrt;
-      if (d.turm) stand.turm = d.turm;
-      if (Object.keys(stand).length) {
-        const st = JSON.stringify(stand);
-        if (st !== letzterStand) { letzterStand = st; merke('s', stand); }
-      }
-      d = { text: d.text };
-    }
+    // in die Spur nur der Text, wenn es einen gibt: die Rohdaten gehen per ?diag laufend mit
+    if (typeof d === 'object' && typeof d.text === 'string') d = { text: d.text };
     let s;
     try { s = JSON.stringify(d); } catch (e) { s = JSON.stringify({ fehler: String(e) }); }
     if (s !== letzterDiag) { letzterDiag = s; merke('d', JSON.parse(s)); }
@@ -82869,7 +82862,7 @@ tools/aufnahme.js
       canvas: canvas ? { id: canvas.id || null, w: canvas.width, h: canvas.height,
         cssW: r1(canvas.getBoundingClientRect().width), cssH: r1(canvas.getBoundingClientRect().height) } : null,
     };
-    letzteUrl = ''; letzterDiag = ''; letzterStand = ''; diagBis = {}; frameT = 0; sek = null;
+    letzteUrl = ''; letzterDiag = ''; frameT = 0; sek = null;
     for (const [ziel, typ, fn] of LAUSCHER) ziel.addEventListener(typ, fn, opts);
     if (window.visualViewport) {
       visualViewport.addEventListener('resize', viewport);
