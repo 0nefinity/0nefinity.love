@@ -24,8 +24,8 @@ if (!preg_match('#^/(?!/)[A-Za-z0-9/_.%~-]*$#', $next)) $next = '/';
 
 $ip = client_ip();
 
-// Rate-limit check
-$rl = rate_limit_check($ip);
+// Count the attempt before the argon2 hash runs (atomic, per /64 for IPv6); released again on success
+$rl = rate_limit_reserve($ip, $username);
 if (!$rl['ok']) {
   header('Retry-After: ' . $rl['retry_after']);
   json_response(['error' => 'rate_limited', 'retry_after' => $rl['retry_after']], 429);
@@ -41,14 +41,13 @@ $DUMMY = '$argon2id$v=19$m=65536,t=4,p=1$ZHVtbXkx$dW1teWR1bW15ZHVtbXlkdW1teWR1bW
 $ok = password_verify($password, $row['password_hash'] ?? $DUMMY) && $row;
 
 if (!$ok) {
-  rate_limit_record($ip, $username, false);
   // Anti-timing sleep: small extra jitter
   usleep(random_int(50_000, 250_000));
   json_response(['error' => 'invalid_credentials'], 401);
 }
 
 // Success
-rate_limit_record($ip, $username, true);
+rate_limit_release($rl['id']);
 session_regenerate_id(true);
 $_SESSION['uid'] = (int) $row['id'];
 
